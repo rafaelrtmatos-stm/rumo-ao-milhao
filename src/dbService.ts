@@ -1,67 +1,47 @@
-import { supabase } from './auth';
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
 
-async function getAll<T>(table: string): Promise<T[]> {
-  const { data, error } = await supabase.from(table).select('data').order('created_at' as any, { ascending: true });
-  if (error) throw error;
-  return (data || []).map((r: any) => r.data as T);
+async function apiGet<T>(path: string): Promise<T> {
+  const res = await fetch(path, { credentials: 'include' });
+  if (!res.ok) throw new Error(`GET ${path} failed: ${res.status}`);
+  return res.json();
 }
 
-async function upsertRecord(table: string, id: string, record: any) {
-  const { error } = await supabase.from(table).upsert({ id, data: record });
-  if (error) throw error;
-}
-
-async function deleteRecord(table: string, id: string) {
-  const { error } = await supabase.from(table).delete().eq('id', id);
-  if (error) throw error;
-}
-
-async function syncAll<T extends { id: string }>(table: string, items: T[]) {
-  const existing = await getAll<T>(table);
-  const existingIds = new Set(existing.map((e: any) => e.id));
-  const newIds = new Set(items.map(e => e.id));
-  for (const id of existingIds) {
-    if (!newIds.has(id)) await deleteRecord(table, id);
-  }
-  for (const item of items) {
-    await upsertRecord(table, item.id, item);
-  }
+async function apiPost(path: string, body: any): Promise<void> {
+  const res = await fetch(path, {
+    method: 'POST',
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
 }
 
 export const dbService = {
   async getEmpreendimentos(): Promise<Empreendimento[]> {
-    return getAll<Empreendimento>('empreendimentos');
+    return apiGet<Empreendimento[]>('/api/empreendimentos');
   },
   async saveEmpreendimentos(items: Empreendimento[]) {
-    await syncAll('empreendimentos', items);
+    await apiPost('/api/empreendimentos', items);
   },
 
   async getClientes(): Promise<Cliente[]> {
-    return getAll<Cliente>('clientes');
+    return apiGet<Cliente[]>('/api/clientes');
   },
   async saveClientes(items: Cliente[]) {
-    await syncAll('clientes', items);
+    await apiPost('/api/clientes', items);
   },
 
   async getVendas(): Promise<Venda[]> {
-    return getAll<Venda>('vendas');
+    return apiGet<Venda[]>('/api/vendas');
   },
   async saveVendas(items: Venda[]) {
-    await syncAll('vendas', items);
+    await apiPost('/api/vendas', items);
   },
 
   async getAppConfig(): Promise<AppConfig> {
-    const { data, error } = await supabase.from('app_config').select('data').maybeSingle();
-    if (error || !data) return { theme: 'standard' };
-    return data.data as AppConfig;
+    return apiGet<AppConfig>('/api/config');
   },
   async saveAppConfig(config: AppConfig) {
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return;
-    const { error } = await supabase
-      .from('app_config')
-      .upsert({ user_id: userData.user.id, data: config });
-    if (error) throw error;
+    await apiPost('/api/config', config);
   },
 };
