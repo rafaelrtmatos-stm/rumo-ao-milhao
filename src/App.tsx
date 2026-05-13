@@ -69,7 +69,7 @@ const exportToCSV = (sales: Venda[]) => {
 
 // --- Components ---
 
-const Sidebar = ({ currentSection, setSection, isOpen, setIsOpen }: { currentSection: Section, setSection: (s: Section) => void, isOpen: boolean, setIsOpen: (val: boolean) => void }) => {
+const Sidebar = ({ currentSection, setSection, isOpen, setIsOpen, onLogout }: { currentSection: Section, setSection: (s: Section) => void, isOpen: boolean, setIsOpen: (val: boolean) => void, onLogout?: () => void }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'empreendimentos', label: 'Empreendimentos', icon: Building2 },
@@ -135,7 +135,7 @@ const Sidebar = ({ currentSection, setSection, isOpen, setIsOpen }: { currentSec
         </nav>
 
         <div className="p-6 border-t border-slate-50">
-          <button className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50">
+          <button onClick={onLogout} className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50">
             <LogOut size={20} />
             <span className="font-semibold text-sm">Sair do Sistema</span>
           </button>
@@ -2039,7 +2039,7 @@ const CalculatorSection = () => {
 
 // --- Main App ---
 
-export default function App() {
+export default function App({ onLogout }: { onLogout?: () => void }) {
   const [section, setSection] = useState<Section>('dashboard');
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -2175,7 +2175,8 @@ export default function App() {
         currentSection={section} 
         setSection={setSection} 
         isOpen={isSidebarOpen} 
-        setIsOpen={setIsSidebarOpen} 
+        setIsOpen={setIsSidebarOpen}
+        onLogout={onLogout}
       />
       
       <main className="flex-1 lg:ml-72 p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 pb-32 lg:pb-10 no-print transition-all duration-300">

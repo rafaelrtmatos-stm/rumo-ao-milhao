@@ -15,9 +15,14 @@ function Root() {
     });
   }, []);
 
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setLoggedIn(false);
+  };
+
   if (checking) return null;
   if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
-  return <App />;
+  return <App onLogout={handleLogout} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<Root />);
