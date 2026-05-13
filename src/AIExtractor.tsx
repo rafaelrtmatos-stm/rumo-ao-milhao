@@ -1,10 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { Sparkles, RefreshCw, ClipboardPaste, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
 
-// ─── Types ───────────────────────────────────────────────────────────────────
-
 export interface ExtractedData {
-  // Cliente
   nome?: string;
   cpf?: string;
   rg?: string;
@@ -15,88 +12,97 @@ export interface ExtractedData {
   cidade?: string;
   estado?: string;
   cep?: string;
-  // Venda
   lote?: string;
   quadra?: string;
   valorTotal?: number;
   entrada?: number;
   parcelas?: number;
-  vencimento?: number; // dia do mês
+  vencimento?: number;
 }
 
 interface AIExtractorProps {
   onExtract: (data: ExtractedData) => void;
 }
 
-// ─── Status Types ────────────────────────────────────────────────────────────
-
 type Status = 'idle' | 'loading' | 'success' | 'error';
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const SYSTEM_PROMPT = `Você é um assistente especializado em extrair dados de textos relacionados a vendas de lotes imobiliários.
 
-Analise o texto fornecido e extraia os dados disponíveis no formato JSON abaixo. Use null para campos não encontrados. Retorne APENAS o JSON, sem markdown, sem explicações.
+Analise o texto fornecido e extraia os dados disponíveis. Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois, sem explicações.
 
-{
-  "nome": "Nome completo do comprador",
-  "cpf": "CPF apenas dígitos",
-  "rg": "RG como está no texto",
-  "telefone": "Telefone apenas dígitos",
-  "email": "Email se houver",
-  "endereco": "Logradouro (rua, av, travessa)",
-  "bairro": "Bairro",
-  "cidade": "Cidade",
-  "estado": "UF com 2 letras",
-  "cep": "CEP apenas dígitos",
-  "lote": "Número do lote como string",
-  "quadra": "Identificador da quadra",
-  "valorTotal": 0,
-  "entrada": 0,
-  "parcelas": 0,
-  "vencimento": 0
-}
+Formato exato:
+{"nome":null,"cpf":null,"rg":null,"telefone":null,"email":null,"endereco":null,"bairro":null,"cidade":null,"estado":null,"cep":null,"lote":null,"quadra":null,"valorTotal":0,"entrada":0,"parcelas":0,"vencimento":0}
 
 Regras:
-- valorTotal, entrada: valores numéricos em reais (ex: 45000.00)
-- parcelas: quantidade de parcelas (número inteiro)
-- vencimento: dia do mês para vencimento (1-31)
-- Para campos numéricos sem dados, use 0 (não null)
-- Para campos texto sem dados, use null`;
+- valorTotal e entrada: número em reais sem formatação (ex: 25500)
+- parcelas: quantidade inteira (ex: 80)
+- vencimento: dia do mês 1-31 (ex: 10)
+- Strings não encontradas: null
+- Números não encontrados: 0
+- cpf: apenas dígitos, sem pontos ou traços
+- telefone: apenas dígitos`;
 
 async function callClaudeAPI(text: string): Promise<ExtractedData> {
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 1000,
-      system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: `Extraia os dados deste texto:\n\n${text}`,
-        },
-      ],
-    }),
-  });
+  const apiKey =
+    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_ANTHROPIC_API_KEY) ||
+    (typeof window !== 'undefined' && (window as any).__ANTHROPIC_KEY__) ||
+    '';
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'anthropic-version': '2023-06-01',
+    'anthropic-dangerous-direct-browser-access': 'true',
+  };
+
+  if (apiKey) {
+    headers['x-api-key'] = apiKey;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        system: SYSTEM_PROMPT,
+        messages: [{ role: 'user', content: `Texto para extração:\n\n${text}` }],
+      }),
+    });
+  } catch (networkErr: any) {
+    throw new Error(
+      `Erro de rede: ${networkErr?.message || networkErr}. Verifique se a API key está configurada nos Secrets do Replit como VITE_ANTHROPIC_API_KEY.`
+    );
+  }
 
   if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as any)?.error?.message || `Erro HTTP ${response.status}`);
+    let detail = `HTTP ${response.status}`;
+    try {
+      const errBody = await response.json();
+      detail = errBody?.error?.message || JSON.stringify(errBody);
+    } catch {}
+    throw new Error(`API retornou erro ${response.status}: ${detail}`);
   }
 
   const data = await response.json();
-  const raw = data.content
+  const rawText: string = data.content
     .map((item: any) => (item.type === 'text' ? item.text : ''))
-    .join('');
+    .join('')
+    .trim();
 
-  const cleaned = raw.replace(/```json|```/g, '').trim();
-  const parsed: Record<string, any> = JSON.parse(cleaned);
+  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error(`Resposta sem JSON válido: "${rawText.slice(0, 200)}"`);
+  }
 
-  // Sanitize: remove null values so existing data isn't overwritten
+  let parsed: Record<string, any>;
+  try {
+    parsed = JSON.parse(jsonMatch[0]);
+  } catch {
+    throw new Error(`Falha no parse do JSON: ${jsonMatch[0].slice(0, 200)}`);
+  }
+
   const result: ExtractedData = {};
   for (const [k, v] of Object.entries(parsed)) {
     if (v !== null && v !== '' && v !== 0) {
@@ -105,8 +111,6 @@ async function callClaudeAPI(text: string): Promise<ExtractedData> {
   }
   return result;
 }
-
-// ─── Preview badge ────────────────────────────────────────────────────────────
 
 const FieldBadge = ({ label, value }: { label: string; value: string }) => (
   <div className="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">
@@ -117,10 +121,8 @@ const FieldBadge = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
-const formatCurrency = (v: number) =>
+const fmt = (v: number) =>
   new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
-
-// ─── Component ────────────────────────────────────────────────────────────────
 
 export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
   const [rawText, setRawText] = useState('');
@@ -133,11 +135,9 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
   const handlePaste = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      setRawText(text);
-      textareaRef.current?.focus();
-    } catch {
-      textareaRef.current?.focus();
-    }
+      if (text) setRawText(text);
+    } catch {}
+    textareaRef.current?.focus();
   };
 
   const handleExtract = async () => {
@@ -154,8 +154,8 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
       setShowPreview(true);
       onExtract(data);
     } catch (err: any) {
-      console.error('[AIExtractor]', err);
-      setErrorMsg(err?.message || 'Erro desconhecido. Tente novamente.');
+      console.error('[AIExtractor] Erro:', err);
+      setErrorMsg(err?.message ?? 'Erro desconhecido.');
       setStatus('error');
     }
   };
@@ -168,30 +168,31 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
     setShowPreview(false);
   };
 
-  // Build preview fields from extracted data
   const previewFields: { label: string; value: string }[] = extracted
-    ? [
+    ? ([
         extracted.nome && { label: 'Nome', value: extracted.nome },
         extracted.cpf && { label: 'CPF', value: extracted.cpf },
         extracted.rg && { label: 'RG', value: extracted.rg },
-        extracted.telefone && { label: 'Telefone', value: extracted.telefone },
+        extracted.telefone && { label: 'Tel.', value: extracted.telefone },
         extracted.email && { label: 'E-mail', value: extracted.email },
         extracted.cep && { label: 'CEP', value: extracted.cep },
         extracted.endereco && { label: 'Endereço', value: extracted.endereco },
         extracted.bairro && { label: 'Bairro', value: extracted.bairro },
-        extracted.cidade && { label: 'Cidade', value: `${extracted.cidade}${extracted.estado ? ` / ${extracted.estado}` : ''}` },
+        (extracted.cidade || extracted.estado) && {
+          label: 'Cidade',
+          value: [extracted.cidade, extracted.estado].filter(Boolean).join(' / '),
+        },
         extracted.quadra && { label: 'Quadra', value: extracted.quadra },
         extracted.lote && { label: 'Lote', value: extracted.lote },
-        extracted.valorTotal && { label: 'Valor Total', value: formatCurrency(extracted.valorTotal) },
-        extracted.entrada && { label: 'Entrada', value: formatCurrency(extracted.entrada) },
+        extracted.valorTotal && { label: 'Total', value: fmt(extracted.valorTotal) },
+        extracted.entrada && { label: 'Entrada', value: fmt(extracted.entrada) },
         extracted.parcelas && { label: 'Parcelas', value: `${extracted.parcelas}x` },
-        extracted.vencimento && { label: 'Vencimento', value: `Dia ${extracted.vencimento}` },
-      ].filter(Boolean) as { label: string; value: string }[]
+        extracted.vencimento && { label: 'Venc.', value: `Dia ${extracted.vencimento}` },
+      ].filter(Boolean) as { label: string; value: string }[])
     : [];
 
   return (
     <div className="card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10 space-y-5">
-      {/* Header */}
       <div className="flex items-center gap-3">
         <div className="p-3 bg-primary-main text-primary-contrast rounded-2xl shadow-lg shadow-primary-main/20">
           <Sparkles size={20} />
@@ -201,32 +202,26 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
             Auto-preenchimento Inteligente
           </h3>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-            Cole qualquer texto com dados do comprador ou da venda
+            Cole texto bruto — WhatsApp, e-mail, ficha preenchida
           </p>
         </div>
       </div>
 
-      {/* Textarea */}
       <div className="relative">
         <textarea
           ref={textareaRef}
           className="input-field min-h-[120px] resize-none pr-28 font-mono text-xs leading-relaxed"
-          placeholder="Cole aqui um print de conversa de WhatsApp, e-mail, ficha preenchida, dados brutos..."
+          placeholder="Cole aqui os dados do comprador ou da venda (nome, CPF, lote, valores, parcelas...)"
           value={rawText}
           onChange={(e) => {
             setRawText(e.target.value);
-            if (status !== 'idle') {
-              setStatus('idle');
-              setExtracted(null);
-            }
+            if (status !== 'idle') handleReset();
           }}
           disabled={status === 'loading'}
         />
-        {/* Paste shortcut */}
         <button
           type="button"
           onClick={handlePaste}
-          title="Colar da área de transferência"
           className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-widest"
         >
           <ClipboardPaste size={13} />
@@ -234,13 +229,12 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
         </button>
       </div>
 
-      {/* Actions row */}
       <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
         <button
           type="button"
           disabled={status === 'loading' || !rawText.trim()}
           onClick={handleExtract}
-          className="btn-primary px-8 w-full sm:w-auto"
+          className="btn-primary px-8 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {status === 'loading' ? (
             <>
@@ -256,22 +250,18 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
         </button>
 
         {(status === 'success' || status === 'error') && (
-          <button
-            type="button"
-            onClick={handleReset}
-            className="btn-ghost px-6 w-full sm:w-auto text-slate-400"
-          >
-            <span>Limpar</span>
+          <button type="button" onClick={handleReset} className="btn-ghost px-6 w-full sm:w-auto text-slate-400">
+            Limpar
           </button>
         )}
 
-        {/* Status badge */}
         {status === 'success' && previewFields.length > 0 && (
           <span className="flex items-center gap-1.5 text-[10px] font-extrabold text-success-main uppercase tracking-widest ml-auto">
             <CheckCircle2 size={14} />
             {previewFields.length} campo{previewFields.length !== 1 ? 's' : ''} preenchido{previewFields.length !== 1 ? 's' : ''}
           </span>
         )}
+
         {status === 'error' && (
           <span className="flex items-center gap-1.5 text-[10px] font-extrabold text-red-500 uppercase tracking-widest ml-auto">
             <XCircle size={14} />
@@ -280,15 +270,17 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
         )}
       </div>
 
-      {/* Error message */}
       {status === 'error' && errorMsg && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl text-xs text-red-600 font-semibold">
-          <span className="font-bold uppercase tracking-wider">Erro: </span>
-          {errorMsg}
+        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-2">
+          <p className="text-[10px] font-extrabold text-red-600 uppercase tracking-widest">Detalhes do erro:</p>
+          <p className="text-xs text-red-600 font-medium break-words">{errorMsg}</p>
+          <p className="text-[10px] text-red-400 font-bold pt-1 border-t border-red-100">
+            💡 No Replit: vá em <strong>Secrets</strong> (cadeado na barra lateral) e adicione a variável{' '}
+            <code className="bg-red-100 px-1 rounded font-mono">VITE_ANTHROPIC_API_KEY</code> com sua chave da Anthropic.
+          </p>
         </div>
       )}
 
-      {/* Preview accordion */}
       {status === 'success' && previewFields.length > 0 && (
         <div className="border border-primary-main/10 rounded-2xl overflow-hidden">
           <button
@@ -297,13 +289,9 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
             className="w-full flex items-center justify-between px-5 py-3.5 bg-primary-main/5 hover:bg-primary-main/10 transition-colors"
           >
             <span className="text-[10px] font-extrabold text-primary-main uppercase tracking-widest">
-              Dados extraídos — clique para {showPreview ? 'ocultar' : 'conferir'}
+              Dados extraídos — {showPreview ? 'ocultar' : 'conferir'}
             </span>
-            {showPreview ? (
-              <ChevronUp size={16} className="text-primary-main" />
-            ) : (
-              <ChevronDown size={16} className="text-primary-main" />
-            )}
+            {showPreview ? <ChevronUp size={16} className="text-primary-main" /> : <ChevronDown size={16} className="text-primary-main" />}
           </button>
 
           {showPreview && (
@@ -316,10 +304,9 @@ export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
         </div>
       )}
 
-      {/* Empty extraction notice */}
       {status === 'success' && previewFields.length === 0 && (
         <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-700 font-semibold">
-          A IA não encontrou dados reconhecíveis no texto. Tente com um texto mais detalhado.
+          A IA não encontrou dados reconhecíveis. Tente com um texto mais detalhado.
         </div>
       )}
     </div>
