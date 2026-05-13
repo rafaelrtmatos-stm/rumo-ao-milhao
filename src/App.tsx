@@ -1280,6 +1280,9 @@ const VendasSection = ({
 
   const [rawText, setRawText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isExtractingFiles, setIsExtractingFiles] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
 
   const handleExtractIA = async () => {
@@ -1335,6 +1338,75 @@ Vendedor: ${lastSavedVenda.vendedor}
     `.trim();
     navigator.clipboard.writeText(summary);
     alert("Resumo copiado para a área de transferência!");
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => {
+      const combined = [...prev, ...chosen];
+      return combined.slice(0, 2);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const applyExtractedData = (data: Record<string, any>, devs: typeof developments) => {
+    const nomeLower = (data.empreendimentoNome || "").toLowerCase();
+    let empreendimentoId: string | undefined;
+    if (nomeLower) {
+      const match = devs.find(
+        (d) =>
+          d.nome.toLowerCase().includes(nomeLower) ||
+          nomeLower.includes(d.nome.toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+    setClientData((prev) => ({
+      ...prev,
+      nome: data.nome || data.nomeComprador || prev.nome,
+      nacionalidade: data.nacionalidade || prev.nacionalidade,
+      rg: data.rg || prev.rg,
+      cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
+      estadoCivil: data.estadoCivil || prev.estadoCivil,
+      profissao: data.profissao || prev.profissao,
+      nascimento: data.nascimento || prev.nascimento,
+      telefone1: data.telefone1 ? maskPhone(data.telefone1) : prev.telefone1,
+      endereco: data.endereco || prev.endereco,
+      numero: data.numero || prev.numero,
+      bairro: data.bairro || prev.bairro,
+      cidade: data.cidade || prev.cidade,
+      estado: data.estado || prev.estado,
+      cep: data.cep ? maskCEP(data.cep) : prev.cep,
+    }));
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      numeroLote: data.numeroLote || prev.numeroLote,
+      quadra: data.quadra || prev.quadra,
+      valorLote: data.valorLote || prev.valorLote,
+      valorEntrada: data.valorEntrada || prev.valorEntrada,
+      valorParcela: data.valorParcela || prev.valorParcela,
+      quantidadeParcelas: data.quantidadeParcelas || prev.quantidadeParcelas,
+      dataVencimento: data.dataVencimento || prev.dataVencimento,
+      vendedor: data.vendedor || prev.vendedor,
+    }));
+  };
+
+  const handleExtractFromFiles = async () => {
+    if (attachedFiles.length === 0) return;
+    setIsExtractingFiles(true);
+    try {
+      const data = await geminiService.extractFromFiles(attachedFiles);
+      applyExtractedData(data, developments);
+      alert("IA preencheu os campos a partir dos documentos!");
+    } catch (err) {
+      alert("Erro ao extrair dados dos arquivos. Verifique a chave do Gemini.");
+    } finally {
+      setIsExtractingFiles(false);
+    }
   };
 
   // Effect to auto-calculate default commission (e.g., 5%)
@@ -1494,17 +1566,19 @@ Vendedor: ${lastSavedVenda.vendedor}
           </div>
           <div>
             <h3 className="text-lg font-display font-bold text-slate-800">
-              Auto-preenchimento{" "}
+              Auto-preenchimento
             </h3>
             <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
-              Cole informações aqui
+              Cole texto ou anexe documentos
             </p>
           </div>
         </div>
+
         <div className="space-y-4">
+          {/* Textarea */}
           <textarea
-            className="input-field min-h-[120px] resize-none"
-            placeholder="cole aqui"
+            className="input-field min-h-[100px] resize-none"
+            placeholder="Cole aqui nome, CPF, endereço, lote, pagamento..."
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
           />
@@ -1526,6 +1600,91 @@ Vendedor: ${lastSavedVenda.vendedor}
               </>
             )}
           </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">ou</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {/* File upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <button
+            type="button"
+            disabled={attachedFiles.length >= 2}
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-secondary w-full sm:w-auto px-8"
+          >
+            <span>📎</span>
+            <span>Anexar Documentos</span>
+            <span className="text-xs opacity-60">(máx. 2)</span>
+          </button>
+
+          {/* Previews */}
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="relative flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-sm"
+                >
+                  {file.type.startsWith("image/") ? (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      className="w-10 h-10 object-cover rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-lg text-red-500 text-xl">
+                      📄
+                    </div>
+                  )}
+                  <div className="max-w-[120px]">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{file.name}</p>
+                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="ml-1 p-1 rounded-full hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Extract from files button — only when files are selected */}
+          {attachedFiles.length > 0 && (
+            <button
+              type="button"
+              disabled={isExtractingFiles}
+              onClick={handleExtractFromFiles}
+              className="btn-primary w-full sm:w-auto px-8"
+            >
+              {isExtractingFiles ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span>Analisando documentos...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  <span>Extrair com IA</span>
+                </>
+              )}
+            </button>
+          )}
         </div>
       </div>
 

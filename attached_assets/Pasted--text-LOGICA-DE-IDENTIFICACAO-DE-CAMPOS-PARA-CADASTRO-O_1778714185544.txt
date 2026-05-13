@@ -1,0 +1,157 @@
+```text
+LOGICA DE IDENTIFICACAO DE CAMPOS PARA CADASTRO
+
+OBJETIVO:
+Interpretar textos soltos enviados pelo usuario e distribuir automaticamente cada informacao no campo correto do cadastro.
+
+REGRAS DE INTERPRETACAO:
+
+1. ENDERECO E NUMERO
+Quando existir rua, avenida, travessa, alameda, etc + numero:
+EXEMPLO:
+"rua careiro 152"
+
+RESULTADO:
+ENDERECO = RUA CAREIRO
+NUMERO = 152
+
+REGRA:
+- O ultimo numero geralmente e o numero da residencia.
+- O restante vira nome da rua/endereco.
+
+--------------------------------------------------
+
+2. BAIRRO E CIDADE
+Quando houver nome de bairro seguido de cidade:
+EXEMPLO:
+"Bairro Sao Jose Manaus"
+
+RESULTADO:
+BAIRRO = SAO JOSE
+CIDADE = MANAUS
+
+REGRA:
+- Palavras conhecidas como "bairro" indicam bairro.
+- Ultima palavra geralmente pode ser cidade.
+
+--------------------------------------------------
+
+3. ESTADO CIVIL
+Quando aparecer:
+"solteiro"
+"casado"
+"divorciado"
+"viuvo"
+
+RESULTADO:
+ESTADO CIVIL = valor identificado
+
+EXEMPLO:
+"Estado solteiro"
+
+RESULTADO:
+ESTADO CIVIL = SOLTEIRO
+
+REGRA:
+- Mesmo se vier escrito errado como "estado", interpretar como estado civil quando nao for sigla de UF.
+
+--------------------------------------------------
+
+4. TELEFONES
+Numeros longos com DDD devem ser interpretados como contato.
+
+EXEMPLO:
+"9299072582, 9299628098"
+
+RESULTADO:
+CONTATO = 92 99072-5820 / 92 99628-0988
+
+REGRA:
+- Numeros de 10 ou 11 digitos sao telefones.
+- Separar multiplos contatos por "/".
+
+--------------------------------------------------
+
+5. LOTE E QUADRA
+EXEMPLO:
+"Lote 15 quadra 4"
+
+RESULTADO:
+LOTE = 15
+QUADRA = 4
+
+REGRA:
+- Numero apos "lote" vira lote.
+- Numero apos "quadra" vira quadra.
+
+--------------------------------------------------
+
+6. EMPREENDIMENTO
+Texto restante que nao seja endereco, telefone ou valores pode ser empreendimento.
+
+EXEMPLO:
+"Ceu Azul 3"
+
+RESULTADO:
+EMPREENDIMENTO = CEU AZUL 3
+
+--------------------------------------------------
+
+7. ENTRADA E PARCELAS
+Padrao:
+"500 50x350"
+
+INTERPRETACAO:
+ENTRADA = 500
+QUANTIDADE_PARCELAS = 50
+VALOR_PARCELA = 350
+
+CALCULO:
+VALOR_TOTAL = ENTRADA + (QUANTIDADE_PARCELAS × VALOR_PARCELA)
+
+EXEMPLO:
+500 + (50 × 350)
+= 18.000
+
+RESULTADO:
+VALOR TOTAL = 18.000
+
+REGRA:
+- Primeiro numero geralmente e entrada.
+- Expressao "50x350" significa:
+50 parcelas de 350.
+
+--------------------------------------------------
+
+8. VENCIMENTO
+EXEMPLO:
+"Vencimento 20"
+
+RESULTADO:
+DATA DE VENCIMENTO = DIA 20
+
+--------------------------------------------------
+
+9. PRIORIDADE DE INTERPRETACAO
+
+ORDEM:
+1 = TELEFONE
+2 = LOTE/QUADRA
+3 = VALORES/PARCELAS
+4 = ESTADO CIVIL
+5 = ENDERECO
+6 = EMPREENDIMENTO
+
+--------------------------------------------------
+
+10. REGRA GERAL
+
+A IA deve:
+- Interpretar significado pelo contexto.
+- Corrigir pequenos erros de digitacao.
+- Identificar padroes numericos.
+- Separar automaticamente endereco e numero.
+- Calcular valor total automaticamente.
+- Formatar telefones automaticamente.
+- Converter tudo para padrao de cadastro.
+```

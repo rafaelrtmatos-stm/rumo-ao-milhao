@@ -218,6 +218,77 @@ export const geminiService = {
     return JSON.parse(text);
   },
 
+  async extractFromFiles(files: File[]) {
+    const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+    if (!apiKey) throw new Error("API Key do Gemini não configurada.");
+
+    const genAI = new GoogleGenAI({ apiKey });
+
+    const toBase64 = (file: File): Promise<string> =>
+      new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+
+    const fileParts = await Promise.all(
+      files.map(async (file) => {
+        const data = await toBase64(file);
+        const mimeType = file.type === 'application/pdf' ? 'application/pdf' : file.type;
+        return { inlineData: { data, mimeType } };
+      })
+    );
+
+    const prompt = `Você é um assistente de extração de dados imobiliários brasileiros.
+Analise os documentos enviados (pode ser RG, CPF, contrato, ficha de cadastro, etc).
+Extraia todos os dados de cadastro imobiliário que encontrar.
+
+Regras:
+- endereco e numero: separar "Rua X, 123" → endereco="Rua X", numero="123"
+- bairro e cidade: separar em campos distintos
+- estadoCivil: identificar solteiro/casado/divorciado/viuvo/separado
+- telefone1: número com 10 ou 11 dígitos
+- valorLote: calcule entrada + (parcelas * valorParcela) se não explícito
+- nascimento: formato YYYY-MM-DD
+
+Retorne SOMENTE JSON puro, sem markdown, sem explicações:
+{
+  "nome": null,
+  "cpf": null,
+  "rg": null,
+  "nascimento": null,
+  "estadoCivil": null,
+  "profissao": null,
+  "nacionalidade": null,
+  "endereco": null,
+  "numero": null,
+  "bairro": null,
+  "cidade": null,
+  "estado": null,
+  "cep": null,
+  "telefone1": null,
+  "numeroLote": null,
+  "quadra": null,
+  "empreendimentoNome": null,
+  "valorLote": null,
+  "valorEntrada": null,
+  "valorParcela": null,
+  "quantidadeParcelas": null,
+  "dataVencimento": null,
+  "vendedor": null
+}`;
+
+    const response = await genAI.models.generateContent({
+      model: "gemini-2.0-flash",
+      contents: [{ parts: [{ text: prompt }, ...fileParts] }],
+      config: { responseMimeType: "application/json" }
+    });
+
+    const text = response.text;
+    if (!text) throw new Error("IA não retornou resposta.");
+    return JSON.parse(text);
+  },
+
   async extractSaleData(rawText: string) {
     const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
     if (!apiKey) return extractLocallyFromText(rawText);
