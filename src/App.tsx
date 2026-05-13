@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from 'motion/react';
 import { Section, Empreendimento, Cliente, Venda, Address, AppConfig, AppTheme } from './types';
 import { storageService } from './storageService';
+import { dbService } from './dbService';
 import { maskCPF, maskCEP, maskPhone } from './lib/masks';
 import { geminiService } from './geminiService';
 import { Sparkles, Copy, FileCheck, MessageCircle, BarChart3, Download, CheckCircle2, Clock, AlertCircle, RefreshCw, PieChart as PieChartIcon } from 'lucide-react';
@@ -2052,10 +2053,26 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const [prefilledSale, setPrefilledSale] = useState<Partial<Venda> | undefined>(undefined);
 
   useEffect(() => {
-    setDevelopments(storageService.getEmpreendimentos());
-    setClients(storageService.getClientes());
-    setSales(storageService.getVendas());
-    setConfig(storageService.getAppConfig());
+    const load = async () => {
+      try {
+        const [devs, cls, sls, cfg] = await Promise.all([
+          dbService.getEmpreendimentos(),
+          dbService.getClientes(),
+          dbService.getVendas(),
+          dbService.getAppConfig(),
+        ]);
+        setDevelopments(devs);
+        setClients(cls);
+        setSales(sls);
+        setConfig(cfg);
+      } catch {
+        setDevelopments(storageService.getEmpreendimentos());
+        setClients(storageService.getClientes());
+        setSales(storageService.getVendas());
+        setConfig(storageService.getAppConfig());
+      }
+    };
+    load();
   }, []);
 
   useEffect(() => {
@@ -2065,32 +2082,30 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const saveDev = (newDev: Empreendimento) => {
     const updated = [...developments, newDev];
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter(d => d.id !== id);
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
-    // Save client if not exists (check by CPF)
     let updatedClients = [...clients];
     const existingClientIndex = clients.findIndex(c => c.cpf === newClient.cpf);
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      storageService.saveClientes(updatedClients);
+      dbService.saveClientes(updatedClients).catch(console.error);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    storageService.saveVendas(updatedSales);
+    dbService.saveVendas(updatedSales).catch(console.error);
 
-    // Update development counts AND lotesInfo (street)
     const updatedDevs = developments.map(d => {
       if (d.id === newSale.empreendimentoId) {
         const lotInfoKey = `${newSale.quadra}-${newSale.numeroLote}`.toUpperCase();
@@ -2106,7 +2121,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       return d;
     });
     setDevelopments(updatedDevs);
-    storageService.saveEmpreendimentos(updatedDevs);
+    dbService.saveEmpreendimentos(updatedDevs).catch(console.error);
 
     return newSale;
   };
@@ -2114,12 +2129,12 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const updateLotesInfo = (id: string, info: Record<string, { rua: string }>) => {
     const updated = developments.map(d => d.id === id ? { ...d, lotesInfo: { ...(d.lotesInfo || {}), ...info } } : d);
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    storageService.saveAppConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
   const handleGoToContracts = (v: Venda) => {
@@ -2135,7 +2150,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const updateVendaStatus = (vendaId: string, newStatus: 'pendente' | 'pago' | 'cancelado') => {
     const updated = sales.map(s => s.id === vendaId ? { ...s, status: newStatus } : s);
     setSales(updated);
-    storageService.saveVendas(updated);
+    dbService.saveVendas(updated).catch(console.error);
     if (contractToOpen && contractToOpen.id === vendaId) {
       setContractToOpen({ ...contractToOpen, status: newStatus });
     }
