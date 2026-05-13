@@ -5,7 +5,11 @@ async function apiPost(path: string, body: any): Promise<any> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
-  if (!res.ok) throw new Error(`POST ${path} failed: ${res.status}`);
+  if (!res.ok) {
+    let detail = '';
+    try { const j = await res.json(); detail = j.error || j.message || ''; } catch {}
+    throw new Error(detail || `Erro ${res.status} ao chamar ${path}`);
+  }
   return res.json();
 }
 

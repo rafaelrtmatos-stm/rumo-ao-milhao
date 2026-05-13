@@ -889,11 +889,9 @@ const EmpreendimentosSection = ({
         `Sucesso! IA identificou ${result.lotes.length} lotes e ${result.ruasEncontradas?.length || 0} ruas no mapa.`,
       );
       setIsAnalyzing(false);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert(
-        "Erro ao analisar mapa. Verifique se a API Key do Gemini está configurada corretamente.",
-      );
+      alert("Erro ao analisar mapa: " + (err?.message || "Tente novamente."));
       setIsAnalyzing(false);
     }
   };
@@ -1403,7 +1401,7 @@ Vendedor: ${lastSavedVenda.vendedor}
       applyExtractedData(data, developments);
       alert("IA preencheu os campos a partir dos documentos!");
     } catch (err) {
-      alert("Erro ao extrair dados dos arquivos. Verifique a chave do Gemini.");
+      alert("Erro ao extrair dados dos arquivos: " + ((err as any)?.message || "Tente novamente."));
     } finally {
       setIsExtractingFiles(false);
     }

@@ -175,9 +175,9 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
       config: { responseMimeType: "application/json" },
     });
     res.json(JSON.parse(response.text || "{}"));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "AI analysis failed" });
+  } catch (e: any) {
+    console.error("Gemini analyze-map error:", e?.message || e);
+    res.status(500).json({ error: e?.message || "AI analysis failed" });
   }
 });
 
@@ -195,9 +195,9 @@ Retorne SOMENTE JSON puro, sem markdown:
       config: { responseMimeType: "application/json" },
     });
     res.json(JSON.parse(response.text || "{}"));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "AI extraction failed" });
+  } catch (e: any) {
+    console.error("Gemini extract-files error:", e?.message || e);
+    res.status(500).json({ error: e?.message || "AI extraction failed" });
   }
 });
 
@@ -214,9 +214,9 @@ Texto: """${rawText}"""`;
       config: { responseMimeType: "application/json" },
     });
     res.json(JSON.parse(response.text || "{}"));
-  } catch (e) {
-    console.error(e);
-    res.status(500).json({ error: "AI extraction failed" });
+  } catch (e: any) {
+    console.error("Gemini extract-sale error:", e?.message || e);
+    res.status(500).json({ error: e?.message || "AI extraction failed" });
   }
 });
 
