@@ -1,312 +1,421 @@
-import React, { useState, useRef } from 'react';
-import { Sparkles, RefreshCw, ClipboardPaste, CheckCircle2, XCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import React, { useState } from 'react';
+import { ClipboardPaste, Copy, CheckCircle2, ChevronDown, ChevronUp, X, RefreshCw } from 'lucide-react';
 
 export interface ExtractedData {
   nome?: string;
   cpf?: string;
   rg?: string;
+  estadoCivil?: string;
+  nascimento?: string;
   telefone?: string;
-  email?: string;
   endereco?: string;
+  numero?: string;
   bairro?: string;
   cidade?: string;
   estado?: string;
   cep?: string;
   lote?: string;
   quadra?: string;
+  empreendimento?: string;
   valorTotal?: number;
   entrada?: number;
   parcelas?: number;
+  valorParcela?: number;
   vencimento?: number;
+  vendedor?: string;
 }
 
 interface AIExtractorProps {
   onExtract: (data: ExtractedData) => void;
 }
 
-type Status = 'idle' | 'loading' | 'success' | 'error';
-
-const SYSTEM_PROMPT = `Você é um assistente especializado em extrair dados de textos relacionados a vendas de lotes imobiliários.
-
-Analise o texto fornecido e extraia os dados disponíveis. Retorne APENAS um objeto JSON válido, sem markdown, sem texto antes ou depois, sem explicações.
-
-Formato exato:
-{"nome":null,"cpf":null,"rg":null,"telefone":null,"email":null,"endereco":null,"bairro":null,"cidade":null,"estado":null,"cep":null,"lote":null,"quadra":null,"valorTotal":0,"entrada":0,"parcelas":0,"vencimento":0}
-
-Regras:
-- valorTotal e entrada: número em reais sem formatação (ex: 25500)
-- parcelas: quantidade inteira (ex: 80)
-- vencimento: dia do mês 1-31 (ex: 10)
-- Strings não encontradas: null
-- Números não encontrados: 0
-- cpf: apenas dígitos, sem pontos ou traços
-- telefone: apenas dígitos`;
-
-async function callClaudeAPI(text: string): Promise<ExtractedData> {
-  const apiKey =
-    (typeof import.meta !== 'undefined' && (import.meta as any).env?.VITE_ANTHROPIC_API_KEY) ||
-    (typeof window !== 'undefined' && (window as any).__ANTHROPIC_KEY__) ||
-    '';
-
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'anthropic-version': '2023-06-01',
-    'anthropic-dangerous-direct-browser-access': 'true',
+// ─── Parser: texto → objeto ───────────────────────────────────────────────────
+function parseText(text: string): ExtractedData {
+  const get = (label: string) => {
+    const regex = new RegExp(`${label}[:\\s]+([^\\n]+)`, 'i');
+    const m = text.match(regex);
+    return m ? m[1].trim() : undefined;
   };
 
-  if (apiKey) {
-    headers['x-api-key'] = apiKey;
+  const nome = get('NOME');
+  const rg = get('RG');
+  const cpf = get('CPF');
+  const estadoCivil = get('ESTADO CIVIL');
+  const nascimentoRaw = get('DATA DE ANIVERSÁRIO') || get('NASCIMENTO') || get('DATA NASC');
+  const enderecoRaw = get('ENDEREÇO') || get('ENDERECO');
+  const numero = get('Nº') || get('NUMERO') || get('NUM');
+  const bairro = get('BAIRRO');
+  const cepRaw = get('CEP');
+  const contatoRaw = get('CONTATO') || get('TELEFONE') || get('FONE');
+  const lote = get('LOTE');
+  const quadra = get('QUADRA');
+  const empreendimento = get('EMPREENDIMENTO');
+  const vendedor = get('VENDEDOR');
+
+  // Valor total
+  const valorTotalRaw = get('VALOR TOTAL');
+  const valorTotal = valorTotalRaw
+    ? parseFloat(valorTotalRaw.replace(/[^\d,]/g, '').replace(',', '.'))
+    : undefined;
+
+  // Entrada
+  const entradaRaw = get('ENTRADA');
+  const entrada = entradaRaw
+    ? parseFloat(entradaRaw.replace(/[^\d,]/g, '').replace(',', '.'))
+    : undefined;
+
+  // Parcelas e valor da parcela
+  const parcelasRaw = get('QUANTIDADE DE PARCELAS') || get('PARCELAS');
+  let parcelas: number | undefined;
+  let valorParcela: number | undefined;
+  if (parcelasRaw) {
+    const mP = parcelasRaw.match(/(\d+)[xX]/);
+    if (mP) parcelas = parseInt(mP[1]);
+    const mV = parcelasRaw.match(/R\$\s?([\d.,]+)/i);
+    if (mV) valorParcela = parseFloat(mV[1].replace(/\./g, '').replace(',', '.'));
   }
 
-  let response: Response;
-  try {
-    response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: 'user', content: `Texto para extração:\n\n${text}` }],
-      }),
-    });
-  } catch (networkErr: any) {
-    throw new Error(
-      `Erro de rede: ${networkErr?.message || networkErr}. Verifique se a API key está configurada nos Secrets do Replit como VITE_ANTHROPIC_API_KEY.`
-    );
+  // Vencimento
+  const vencimentoRaw = get('DATA DE VENCIMENTO') || get('VENCIMENTO');
+  const vencimento = vencimentoRaw ? parseInt(vencimentoRaw.replace(/\D/g, '')) : undefined;
+
+  // CEP
+  const cepMatch = (cepRaw || text).match(/\d{5}-?\d{3}/);
+  const cep = cepMatch ? cepMatch[0].replace('-', '') : undefined;
+
+  // Telefone (pega o primeiro número)
+  const telMatch = (contatoRaw || text).match(/\(?\d{2}\)?\s?\d{4,5}[-\s]?\d{4}/);
+  const telefone = telMatch ? telMatch[0].replace(/\D/g, '') : undefined;
+
+  // Nascimento → YYYY-MM-DD
+  let nascimento: string | undefined;
+  if (nascimentoRaw) {
+    const mN = nascimentoRaw.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+    if (mN) nascimento = `${mN[3]}-${mN[2]}-${mN[1]}`;
   }
 
-  if (!response.ok) {
-    let detail = `HTTP ${response.status}`;
-    try {
-      const errBody = await response.json();
-      detail = errBody?.error?.message || JSON.stringify(errBody);
-    } catch {}
-    throw new Error(`API retornou erro ${response.status}: ${detail}`);
-  }
-
-  const data = await response.json();
-  const rawText: string = data.content
-    .map((item: any) => (item.type === 'text' ? item.text : ''))
-    .join('')
-    .trim();
-
-  const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-  if (!jsonMatch) {
-    throw new Error(`Resposta sem JSON válido: "${rawText.slice(0, 200)}"`);
-  }
-
-  let parsed: Record<string, any>;
-  try {
-    parsed = JSON.parse(jsonMatch[0]);
-  } catch {
-    throw new Error(`Falha no parse do JSON: ${jsonMatch[0].slice(0, 200)}`);
-  }
-
-  const result: ExtractedData = {};
-  for (const [k, v] of Object.entries(parsed)) {
-    if (v !== null && v !== '' && v !== 0) {
-      (result as any)[k] = v;
-    }
-  }
-  return result;
+  return {
+    nome, rg, cpf, estadoCivil, nascimento, telefone,
+    endereco: enderecoRaw, numero, bairro, cep,
+    lote, quadra, empreendimento, vendedor,
+    valorTotal, entrada, parcelas, valorParcela, vencimento,
+  };
 }
 
-const FieldBadge = ({ label, value }: { label: string; value: string }) => (
-  <div className="flex items-start gap-2 py-1.5 border-b border-slate-100 last:border-0">
-    <span className="text-[9px] font-extrabold uppercase tracking-widest text-slate-400 w-20 shrink-0 mt-0.5">
-      {label}
-    </span>
-    <span className="text-xs font-semibold text-slate-700 break-all">{value}</span>
-  </div>
-);
+// ─── Formatter: objeto → texto ────────────────────────────────────────────────
+function formatText(f: ExtractedData): string {
+  const fmtBRL = (v?: number) =>
+    v ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '';
 
-const fmt = (v: number) =>
-  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
+  const nascFormatted = f.nascimento
+    ? f.nascimento.split('-').reverse().join('/')
+    : '';
 
+  const parcelasLine =
+    f.parcelas && f.valorParcela
+      ? `${f.parcelas}X DE ${fmtBRL(f.valorParcela)}`
+      : f.parcelas
+      ? `${f.parcelas}X`
+      : '';
+
+  const lines = [
+    'CADASTRO DO COMPRADOR',
+    f.nome        ? `NOME: ${f.nome.toUpperCase()}` : '',
+    f.rg          ? `RG: ${f.rg}` : '',
+    f.cpf         ? `CPF: ${f.cpf}` : '',
+    f.estadoCivil ? `ESTADO CIVIL: ${f.estadoCivil.toUpperCase()}` : '',
+    nascFormatted ? `DATA DE ANIVERSÁRIO: ${nascFormatted}` : '',
+    f.endereco    ? `ENDEREÇO: ${f.endereco.toUpperCase()}` : '',
+    f.numero      ? `Nº: ${f.numero}` : '',
+    f.bairro      ? `BAIRRO: ${f.bairro.toUpperCase()}` : '',
+    f.cep         ? `CEP: ${f.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2')}` : '',
+    f.telefone    ? `CONTATO: ${f.telefone}` : '',
+    f.lote        ? `LOTE: ${f.lote}` : '',
+    f.quadra      ? `QUADRA: ${f.quadra}` : '',
+    f.empreendimento ? `EMPREENDIMENTO: ${f.empreendimento.toUpperCase()}` : '',
+    f.valorTotal  ? `VALOR TOTAL: ${fmtBRL(f.valorTotal)}` : '',
+    f.entrada     ? `ENTRADA: ${fmtBRL(f.entrada)}` : '',
+    parcelasLine  ? `QUANTIDADE DE PARCELAS: ${parcelasLine}` : '',
+    f.vencimento  ? `DATA DE VENCIMENTO: ${f.vencimento}` : '',
+    f.vendedor    ? `VENDEDOR: ${f.vendedor}` : '',
+  ].filter(Boolean);
+
+  return lines.join('\n');
+}
+
+// ─── Component ────────────────────────────────────────────────────────────────
 export const AIExtractor: React.FC<AIExtractorProps> = ({ onExtract }) => {
-  const [rawText, setRawText] = useState('');
-  const [status, setStatus] = useState<Status>('idle');
-  const [errorMsg, setErrorMsg] = useState('');
-  const [extracted, setExtracted] = useState<ExtractedData | null>(null);
-  const [showPreview, setShowPreview] = useState(false);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [form, setForm] = useState<ExtractedData>({});
+  const [showForm, setShowForm] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [pasteMode, setPasteMode] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
-  const handlePaste = async () => {
+  const set = (key: keyof ExtractedData, value: string | number) =>
+    setForm((prev) => ({ ...prev, [key]: value === '' ? undefined : value }));
+
+  // Lê do clipboard e popula o form
+  const handleReadClipboard = async () => {
     try {
       const text = await navigator.clipboard.readText();
-      if (text) setRawText(text);
-    } catch {}
-    textareaRef.current?.focus();
-  };
-
-  const handleExtract = async () => {
-    if (!rawText.trim()) return;
-    setStatus('loading');
-    setErrorMsg('');
-    setExtracted(null);
-    setShowPreview(false);
-
-    try {
-      const data = await callClaudeAPI(rawText);
-      setExtracted(data);
-      setStatus('success');
-      setShowPreview(true);
-      onExtract(data);
-    } catch (err: any) {
-      console.error('[AIExtractor] Erro:', err);
-      setErrorMsg(err?.message ?? 'Erro desconhecido.');
-      setStatus('error');
+      if (text.trim()) {
+        const parsed = parseText(text);
+        setForm(parsed);
+        setShowForm(true);
+        setPasteMode(false);
+      }
+    } catch {
+      setPasteMode(true);
+      setShowForm(false);
     }
   };
 
-  const handleReset = () => {
-    setRawText('');
-    setStatus('idle');
-    setErrorMsg('');
-    setExtracted(null);
-    setShowPreview(false);
+  // Lê do textarea de paste manual
+  const handleParsePaste = () => {
+    const parsed = parseText(pasteText);
+    setForm(parsed);
+    setShowForm(true);
+    setPasteMode(false);
+    setPasteText('');
   };
 
-  const previewFields: { label: string; value: string }[] = extracted
-    ? ([
-        extracted.nome && { label: 'Nome', value: extracted.nome },
-        extracted.cpf && { label: 'CPF', value: extracted.cpf },
-        extracted.rg && { label: 'RG', value: extracted.rg },
-        extracted.telefone && { label: 'Tel.', value: extracted.telefone },
-        extracted.email && { label: 'E-mail', value: extracted.email },
-        extracted.cep && { label: 'CEP', value: extracted.cep },
-        extracted.endereco && { label: 'Endereço', value: extracted.endereco },
-        extracted.bairro && { label: 'Bairro', value: extracted.bairro },
-        (extracted.cidade || extracted.estado) && {
-          label: 'Cidade',
-          value: [extracted.cidade, extracted.estado].filter(Boolean).join(' / '),
-        },
-        extracted.quadra && { label: 'Quadra', value: extracted.quadra },
-        extracted.lote && { label: 'Lote', value: extracted.lote },
-        extracted.valorTotal && { label: 'Total', value: fmt(extracted.valorTotal) },
-        extracted.entrada && { label: 'Entrada', value: fmt(extracted.entrada) },
-        extracted.parcelas && { label: 'Parcelas', value: `${extracted.parcelas}x` },
-        extracted.vencimento && { label: 'Venc.', value: `Dia ${extracted.vencimento}` },
-      ].filter(Boolean) as { label: string; value: string }[])
-    : [];
+  // Copia o texto gerado
+  const handleCopy = async () => {
+    const text = formatText(form);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {}
+  };
+
+  // Aplica no formulário principal
+  const handleApply = () => {
+    const clean: ExtractedData = {};
+    for (const [k, v] of Object.entries(form)) {
+      if (v !== undefined && v !== '') (clean as any)[k] = v;
+    }
+    onExtract(clean);
+  };
+
+  const fmtBRL = (v?: number) =>
+    v ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '';
+
+  const previewText = formatText(form);
+  const hasData = Object.values(form).some((v) => v !== undefined && v !== '');
 
   return (
-    <div className="card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10 space-y-5">
-      <div className="flex items-center gap-3">
-        <div className="p-3 bg-primary-main text-primary-contrast rounded-2xl shadow-lg shadow-primary-main/20">
-          <Sparkles size={20} />
+    <div className="card-premium border-slate-200 space-y-5">
+      {/* Header */}
+      <div className="flex items-center justify-between flex-wrap gap-3">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
+            <ClipboardPaste size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-display font-bold text-slate-800">Ficha do Comprador</h3>
+            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
+              Cole, preencha e gere o texto formatado
+            </p>
+          </div>
         </div>
-        <div>
-          <h3 className="text-lg font-display font-bold text-slate-800">
-            Auto-preenchimento Inteligente
-          </h3>
-          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-            Cole texto bruto — WhatsApp, e-mail, ficha preenchida
-          </p>
-        </div>
-      </div>
 
-      <div className="relative">
-        <textarea
-          ref={textareaRef}
-          className="input-field min-h-[120px] resize-none pr-28 font-mono text-xs leading-relaxed"
-          placeholder="Cole aqui os dados do comprador ou da venda (nome, CPF, lote, valores, parcelas...)"
-          value={rawText}
-          onChange={(e) => {
-            setRawText(e.target.value);
-            if (status !== 'idle') handleReset();
-          }}
-          disabled={status === 'loading'}
-        />
-        <button
-          type="button"
-          onClick={handlePaste}
-          className="absolute top-3 right-3 flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-500 rounded-xl transition-colors text-[10px] font-bold uppercase tracking-widest"
-        >
-          <ClipboardPaste size={13} />
-          Colar
-        </button>
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-        <button
-          type="button"
-          disabled={status === 'loading' || !rawText.trim()}
-          onClick={handleExtract}
-          className="btn-primary px-8 w-full sm:w-auto disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {status === 'loading' ? (
-            <>
-              <RefreshCw size={18} className="animate-spin" />
-              <span>Analisando com IA...</span>
-            </>
-          ) : (
-            <>
-              <Sparkles size={18} />
-              <span>Preencher Automaticamente</span>
-            </>
-          )}
-        </button>
-
-        {(status === 'success' || status === 'error') && (
-          <button type="button" onClick={handleReset} className="btn-ghost px-6 w-full sm:w-auto text-slate-400">
-            Limpar
+        <div className="flex gap-2 flex-wrap">
+          <button type="button" onClick={handleReadClipboard} className="btn-primary px-4 py-2.5 text-sm">
+            <ClipboardPaste size={15} />
+            Ler Clipboard
           </button>
-        )}
-
-        {status === 'success' && previewFields.length > 0 && (
-          <span className="flex items-center gap-1.5 text-[10px] font-extrabold text-success-main uppercase tracking-widest ml-auto">
-            <CheckCircle2 size={14} />
-            {previewFields.length} campo{previewFields.length !== 1 ? 's' : ''} preenchido{previewFields.length !== 1 ? 's' : ''}
-          </span>
-        )}
-
-        {status === 'error' && (
-          <span className="flex items-center gap-1.5 text-[10px] font-extrabold text-red-500 uppercase tracking-widest ml-auto">
-            <XCircle size={14} />
-            Falha na extração
-          </span>
-        )}
-      </div>
-
-      {status === 'error' && errorMsg && (
-        <div className="p-4 bg-red-50 border border-red-100 rounded-2xl space-y-2">
-          <p className="text-[10px] font-extrabold text-red-600 uppercase tracking-widest">Detalhes do erro:</p>
-          <p className="text-xs text-red-600 font-medium break-words">{errorMsg}</p>
-          <p className="text-[10px] text-red-400 font-bold pt-1 border-t border-red-100">
-            💡 No Replit: vá em <strong>Secrets</strong> (cadeado na barra lateral) e adicione a variável{' '}
-            <code className="bg-red-100 px-1 rounded font-mono">VITE_ANTHROPIC_API_KEY</code> com sua chave da Anthropic.
-          </p>
-        </div>
-      )}
-
-      {status === 'success' && previewFields.length > 0 && (
-        <div className="border border-primary-main/10 rounded-2xl overflow-hidden">
           <button
             type="button"
-            onClick={() => setShowPreview((v) => !v)}
-            className="w-full flex items-center justify-between px-5 py-3.5 bg-primary-main/5 hover:bg-primary-main/10 transition-colors"
+            onClick={() => { setPasteMode((v) => !v); setShowForm(false); }}
+            className="btn-ghost px-4 py-2.5 text-sm"
           >
-            <span className="text-[10px] font-extrabold text-primary-main uppercase tracking-widest">
-              Dados extraídos — {showPreview ? 'ocultar' : 'conferir'}
-            </span>
-            {showPreview ? <ChevronUp size={16} className="text-primary-main" /> : <ChevronDown size={16} className="text-primary-main" />}
+            <RefreshCw size={15} />
+            Colar Texto
           </button>
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="btn-ghost px-4 py-2.5 text-sm"
+          >
+            {showForm ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+            Manual
+          </button>
+        </div>
+      </div>
 
-          {showPreview && (
-            <div className="px-5 py-4 bg-white grid grid-cols-1 sm:grid-cols-2 gap-x-8">
-              {previewFields.map((f) => (
-                <FieldBadge key={f.label} label={f.label} value={f.value} />
-              ))}
-            </div>
-          )}
+      {/* Modo: colar texto para parsear */}
+      {pasteMode && (
+        <div className="space-y-3">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+            Cole o texto da ficha abaixo:
+          </p>
+          <textarea
+            autoFocus
+            className="input-field min-h-[160px] resize-none font-mono text-xs leading-relaxed"
+            placeholder={"NOME: FULANO DE TAL\nCPF: 000.000.000-00\nLOTE: 8\nQUADRA: 7\n..."}
+            value={pasteText}
+            onChange={(e) => setPasteText(e.target.value)}
+          />
+          <div className="flex gap-2 justify-end">
+            <button type="button" onClick={() => setPasteMode(false)} className="btn-ghost px-5">
+              <X size={15} /> Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={handleParsePaste}
+              disabled={!pasteText.trim()}
+              className="btn-primary px-6 disabled:opacity-40"
+            >
+              <CheckCircle2 size={15} /> Ler e Preencher
+            </button>
+          </div>
         </div>
       )}
 
-      {status === 'success' && previewFields.length === 0 && (
-        <div className="p-4 bg-amber-50 border border-amber-100 rounded-2xl text-xs text-amber-700 font-semibold">
-          A IA não encontrou dados reconhecíveis. Tente com um texto mais detalhado.
+      {/* Formulário manual */}
+      {showForm && (
+        <div className="space-y-6 pt-1">
+          {/* Comprador */}
+          <div>
+            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">Comprador</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              <div className="sm:col-span-2 md:col-span-3">
+                <label className="label">Nome Completo</label>
+                <input className="input-field" placeholder="NOME COMPLETO" value={form.nome ?? ''} onChange={(e) => set('nome', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">CPF</label>
+                <input className="input-field font-mono" placeholder="000.000.000-00" value={form.cpf ?? ''} onChange={(e) => set('cpf', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">RG</label>
+                <input className="input-field font-mono" placeholder="RG" value={form.rg ?? ''} onChange={(e) => set('rg', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Estado Civil</label>
+                <select className="input-field font-semibold" value={form.estadoCivil ?? ''} onChange={(e) => set('estadoCivil', e.target.value)}>
+                  <option value="">--</option>
+                  <option>SOLTEIRO</option><option>SOLTEIRA</option>
+                  <option>CASADO</option><option>CASADA</option>
+                  <option>DIVORCIADO</option><option>DIVORCIADA</option>
+                  <option>VIÚVO</option><option>VIÚVA</option>
+                  <option>UNIÃO ESTÁVEL</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">Data de Nascimento</label>
+                <input type="date" className="input-field font-semibold" value={form.nascimento ?? ''} onChange={(e) => set('nascimento', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Telefone</label>
+                <input className="input-field font-mono" placeholder="93 99999-9999" value={form.telefone ?? ''} onChange={(e) => set('telefone', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">CEP</label>
+                <input className="input-field font-mono" placeholder="00000-000" value={form.cep ?? ''} onChange={(e) => set('cep', e.target.value)} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Endereço</label>
+                <input className="input-field" placeholder="Rua / Comunidade" value={form.endereco ?? ''} onChange={(e) => set('endereco', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Número</label>
+                <input className="input-field" placeholder="S/N" value={form.numero ?? ''} onChange={(e) => set('numero', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Bairro</label>
+                <input className="input-field" placeholder="Bairro" value={form.bairro ?? ''} onChange={(e) => set('bairro', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Venda */}
+          <div className="pt-4 border-t border-slate-100">
+            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest mb-3">Venda</p>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              <div>
+                <label className="label">Empreendimento</label>
+                <input className="input-field" placeholder="Nome do loteamento" value={form.empreendimento ?? ''} onChange={(e) => set('empreendimento', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Lote</label>
+                <input className="input-field font-mono font-bold" placeholder="0" value={form.lote ?? ''} onChange={(e) => set('lote', e.target.value)} />
+              </div>
+              <div>
+                <label className="label">Quadra</label>
+                <input className="input-field font-mono font-bold" placeholder="A" value={form.quadra ?? ''} onChange={(e) => set('quadra', e.target.value.toUpperCase())} />
+              </div>
+              <div>
+                <label className="label">Valor Total (R$)</label>
+                <input type="number" className="input-field font-bold" placeholder="0" value={form.valorTotal ?? ''} onChange={(e) => set('valorTotal', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label">Entrada (R$)</label>
+                <input type="number" className="input-field font-bold" placeholder="0" value={form.entrada ?? ''} onChange={(e) => set('entrada', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label">Parcelas</label>
+                <input type="number" className="input-field font-bold" placeholder="0" value={form.parcelas ?? ''} onChange={(e) => set('parcelas', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label">Valor Parcela (R$)</label>
+                <input type="number" className="input-field font-bold" placeholder="0" value={form.valorParcela ?? ''} onChange={(e) => set('valorParcela', Number(e.target.value))} />
+              </div>
+              <div>
+                <label className="label">Dia Vencimento</label>
+                <input type="number" min={1} max={31} className="input-field font-bold" placeholder="10" value={form.vencimento ?? ''} onChange={(e) => set('vencimento', Number(e.target.value))} />
+              </div>
+              <div className="col-span-2">
+                <label className="label">Vendedor(es)</label>
+                <input className="input-field" placeholder="Nome do vendedor" value={form.vendedor ?? ''} onChange={(e) => set('vendedor', e.target.value)} />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview do texto gerado + ações */}
+      {hasData && (
+        <div className="pt-4 border-t border-slate-100 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-widest">
+              Texto gerado
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[11px] font-bold uppercase tracking-widest transition-all border ${
+                  copied
+                    ? 'bg-success-main/10 text-success-main border-success-main/20'
+                    : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
+                {copied ? 'Copiado!' : 'Copiar Texto'}
+              </button>
+              <button
+                type="button"
+                onClick={handleApply}
+                className="btn-primary px-5 py-2 text-sm"
+              >
+                <CheckCircle2 size={15} />
+                Aplicar no Formulário
+              </button>
+              <button
+                type="button"
+                onClick={() => { setForm({}); setShowForm(false); }}
+                className="p-2 rounded-xl text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors border border-slate-200"
+              >
+                <X size={15} />
+              </button>
+            </div>
+          </div>
+
+          <pre className="w-full bg-slate-900 text-green-400 text-[11px] font-mono leading-relaxed p-5 rounded-2xl overflow-x-auto whitespace-pre-wrap select-all border border-slate-800">
+            {previewText}
+          </pre>
         </div>
       )}
     </div>
