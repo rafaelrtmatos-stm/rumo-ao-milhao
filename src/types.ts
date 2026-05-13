@@ -1,0 +1,85 @@
+export interface Address {
+  cep: string;
+  logradouro: string;
+  bairro: string;
+  localidade: string;
+  uf: string;
+  complemento?: string;
+}
+
+export interface Empreendimento {
+  id: string;
+  nome: string;
+  endereco: string;
+  cidade: string;
+  estado: string;
+  totalLotes: number;
+  descricao: string;
+  lotesVendidos: number;
+  comunidade?: string;
+  quadras?: string;
+  ruas?: string;
+  lotesInfo?: Record<string, { rua: string }>; // Chave: 'QUADRA-LOTE', Valor: { rua: 'Nome da Rua' }
+}
+
+export interface Cliente {
+  id: string;
+  nome: string;
+  nacionalidade: string;
+  genero: 'M' | 'F' | 'O';
+  rg: string;
+  cpf: string;
+  estadoCivil: string;
+  profissao: string;
+  nascimento: string;
+  cep: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  telefone1: string;
+  telefone2?: string;
+  dataCadastro: string;
+}
+
+export interface Venda {
+  id: string;
+  numeroContrato: string;
+  clienteId: string;
+  clienteNome: string;
+  empreendimentoId: string;
+  empreendimentoNome: string;
+  numeroLote: string;
+  quadra: string;
+  rua: string;
+  valorLote: number;
+  valorEntrada: number;
+  quantidadeParcelas: number;
+  valorParcela: number;
+  dataVencimento: string;
+  vendedor: string;
+  dataVenda: string;
+  custo: number;
+  comissao: number;
+  formaPagamento: string;
+  status?: 'pendente' | 'pago' | 'cancelado';
+  comprador2?: {
+    nome: string;
+    nacionalidade: string;
+    genero: 'M' | 'F' | 'O';
+    rg: string;
+    cpf: string;
+    estadoCivil: string;
+    nascimento: string;
+    profissao: string;
+  };
+}
+
+export type AppTheme = 'standard' | 'blue-gradient' | 'dark';
+
+export interface AppConfig {
+  theme: AppTheme;
+}
+
+export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config';
