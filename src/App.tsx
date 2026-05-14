@@ -44,6 +44,36 @@ import { dbService } from "./dbService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
+function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
+  const loteNum = parseInt(lote.replace(/\D/g, ""), 10);
+  if (!isNaN(loteNum) && dev.ruasFaixas && dev.ruasFaixas.length > 0) {
+    const faixa = dev.ruasFaixas.find(
+      (f) => f.quadra.toUpperCase() === quadra.toUpperCase() && loteNum >= f.loteInicio && loteNum <= f.loteFim
+    );
+    if (faixa?.rua) return faixa.rua;
+  }
+  const ruasQ = dev.ruasPorQuadra?.[quadra];
+  if (ruasQ) {
+    const arr = ruasQ.split(",").map((r) => r.trim()).filter(Boolean);
+    if (arr.length === 1) return arr[0];
+  }
+  return null;
+}
+
+function getRuasSugeridas(dev: Empreendimento, quadra: string, lote: string): string[] {
+  const exact = getRuaSugerida(dev, quadra, lote);
+  if (exact) return [exact];
+  if (dev.ruasFaixas) {
+    const ruas = dev.ruasFaixas
+      .filter((f) => f.quadra.toUpperCase() === quadra.toUpperCase() && f.rua)
+      .map((f) => f.rua);
+    if (ruas.length > 0) return [...new Set(ruas)];
+  }
+  const ruasQ = dev.ruasPorQuadra?.[quadra];
+  if (ruasQ) return ruasQ.split(",").map((r) => r.trim()).filter(Boolean);
+  return [];
+}
+
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -991,7 +1021,7 @@ const EmpreendimentosSection = ({
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
-    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "", ruasPorQuadra: {},
+    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "", ruasPorQuadra: {}, ruasFaixas: [],
   };
   const [isAdding, setIsAdding] = useState(false);
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
@@ -1026,6 +1056,7 @@ const EmpreendimentosSection = ({
       totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
       quadras: dev.quadras, ruas: dev.ruas, proprietarioId: dev.proprietarioId || "",
       ruasPorQuadra: dev.ruasPorQuadra || {},
+      ruasFaixas: dev.ruasFaixas || [],
     });
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1199,41 +1230,117 @@ const EmpreendimentosSection = ({
                   <input
                     className="input-field"
                     value={formData.quadras}
-                    onChange={(e) =>
-                      setFormData({ ...formData, quadras: e.target.value, ruasPorQuadra: {} })
-                    }
+                    onChange={(e) => setFormData({ ...formData, quadras: e.target.value })}
                     placeholder="Ex: A, B, C, D"
                   />
                 </div>
-                {formData.quadras && formData.quadras.trim() !== "" && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                      Ruas sugeridas por quadra <span className="text-slate-300 normal-case font-normal">(opcional — usadas como sugestão ao cadastrar lotes)</span>
-                    </p>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      {formData.quadras.split(",").map((q) => {
-                        const quadra = q.trim();
-                        if (!quadra) return null;
-                        return (
-                          <div key={quadra} className="flex items-center gap-2">
-                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-100 px-2 py-1.5 rounded-lg min-w-[48px] text-center">Q. {quadra}</span>
-                            <input
-                              className="input-field flex-1 text-sm"
-                              placeholder="Ex: Rua 01, Rua 02"
-                              value={(formData.ruasPorQuadra || {})[quadra] || ""}
-                              onChange={(e) =>
-                                setFormData({
-                                  ...formData,
-                                  ruasPorQuadra: { ...(formData.ruasPorQuadra || {}), [quadra]: e.target.value },
-                                })
-                              }
-                            />
-                          </div>
-                        );
-                      })}
+                {/* Faixas de Rua por Lote */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Faixas de Rua por Lote
+                      </p>
+                      <p className="text-[10px] text-slate-300 normal-case font-normal mt-0.5">
+                        Ex: Q1 lotes 1–4 → Rua Principal · Q1 lotes 5–8 → Rua Amparo
+                      </p>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          ruasFaixas: [
+                            ...(formData.ruasFaixas || []),
+                            { quadra: formData.quadras?.split(",")[0]?.trim() || "", loteInicio: 1, loteFim: 4, rua: "" },
+                          ],
+                        })
+                      }
+                      className="flex items-center gap-1 text-[10px] font-bold text-primary-main hover:underline shrink-0"
+                    >
+                      <Plus size={11} /> Adicionar faixa
+                    </button>
                   </div>
-                )}
+                  {(formData.ruasFaixas || []).length === 0 && (
+                    <p className="text-[10px] text-slate-300 italic py-2">
+                      Nenhuma faixa definida. Clique em "Adicionar faixa" para mapear ruas por lote.
+                    </p>
+                  )}
+                  {(formData.ruasFaixas || []).map((faixa, idx) => (
+                    <div key={idx} className="flex flex-wrap items-end gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Quadra</label>
+                        <input
+                          list="faixa-quadras-list"
+                          className="input-field text-xs w-16 font-bold"
+                          placeholder="A"
+                          value={faixa.quadra}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, quadra: e.target.value };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                        <datalist id="faixa-quadras-list">
+                          {formData.quadras?.split(",").map((q) => <option key={q.trim()} value={q.trim()} />)}
+                        </datalist>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Lote início</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input-field text-xs w-20"
+                          placeholder="1"
+                          value={faixa.loteInicio || ""}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, loteInicio: Number(e.target.value) };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Lote fim</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input-field text-xs w-20"
+                          placeholder="4"
+                          value={faixa.loteFim || ""}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, loteFim: Number(e.target.value) };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Rua / Acesso</label>
+                        <input
+                          className="input-field text-xs"
+                          placeholder="Ex: Rua Principal"
+                          value={faixa.rua}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, rua: e.target.value };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (formData.ruasFaixas || []).filter((_, i) => i !== idx);
+                          setFormData({ ...formData, ruasFaixas: updated });
+                        }}
+                        className="p-2 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
               <div>
                 <label className="label">Total de Lotes</label>
@@ -1327,16 +1434,24 @@ const EmpreendimentosSection = ({
                   {dev.comunidade}
                 </p>
               )}
-              {dev.ruasPorQuadra && Object.keys(dev.ruasPorQuadra).length > 0 ? (
+              {dev.ruasFaixas && dev.ruasFaixas.length > 0 ? (
+                <div className="mb-1 space-y-0.5">
+                  {dev.ruasFaixas.slice(0, 3).map((f, i) => (
+                    <p key={i} className="text-xs text-slate-500 line-clamp-1">
+                      <span className="font-bold text-slate-700">Q.{f.quadra} ({f.loteInicio}–{f.loteFim}):</span>{" "}{f.rua}
+                    </p>
+                  ))}
+                  {dev.ruasFaixas.length > 3 && (
+                    <p className="text-[10px] text-slate-400">+{dev.ruasFaixas.length - 3} faixas</p>
+                  )}
+                </div>
+              ) : dev.ruasPorQuadra && Object.keys(dev.ruasPorQuadra).length > 0 ? (
                 <div className="mb-1">
                   {Object.entries(dev.ruasPorQuadra).slice(0, 2).map(([q, ruas]) => ruas ? (
                     <p key={q} className="text-xs text-slate-500 line-clamp-1">
                       <span className="font-bold text-slate-700">Q.{q}:</span>{" "}{ruas}
                     </p>
                   ) : null)}
-                  {Object.keys(dev.ruasPorQuadra).length > 2 && (
-                    <p className="text-[10px] text-slate-400">+{Object.keys(dev.ruasPorQuadra).length - 2} quadras</p>
-                  )}
                 </div>
               ) : dev.ruas ? (
                 <p className="text-xs text-slate-500 line-clamp-1 mb-1">
@@ -1546,9 +1661,8 @@ const EmpreendimentosSection = ({
                     <div>
                       {(() => {
                         const quadra = lotRegForm.quadra.trim();
-                        const sugestoes = quadra && lotRegDev.ruasPorQuadra?.[quadra]
-                          ? lotRegDev.ruasPorQuadra[quadra].split(",").map((r) => r.trim()).filter(Boolean)
-                          : [];
+                        const sugestoes = quadra ? getRuasSugeridas(lotRegDev, quadra, lotRegForm.numeroLote) : [];
+                        const exactRua = quadra && lotRegForm.numeroLote ? getRuaSugerida(lotRegDev, quadra, lotRegForm.numeroLote) : null;
                         return (
                           <>
                             <label className="label flex items-center gap-2">
@@ -1979,13 +2093,18 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
     }
   }, [saleData.valorLote]);
 
-  // Effect to auto-fill street if known
+  // Effect to auto-fill street if known (lotesInfo first, then ruasFaixas)
   useEffect(() => {
     if (saleData.empreendimentoId && saleData.quadra && saleData.numeroLote) {
       const dev = developments.find((d) => d.id === saleData.empreendimentoId);
       const key = `${saleData.quadra}-${saleData.numeroLote}`.toUpperCase();
-      if (dev?.lotesInfo?.[key]) {
-        setSaleData((prev) => ({ ...prev, rua: dev.lotesInfo![key].rua }));
+      if (dev?.lotesInfo?.[key]?.rua) {
+        setSaleData((prev) => ({ ...prev, rua: dev!.lotesInfo![key].rua }));
+      } else {
+        const ruaSugerida = dev ? getRuaSugerida(dev, saleData.quadra, saleData.numeroLote) : null;
+        if (ruaSugerida) {
+          setSaleData((prev) => ({ ...prev, rua: ruaSugerida }));
+        }
       }
     }
   }, [
@@ -2807,10 +2926,10 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     {(() => {
                       const dev = developments.find((d) => d.id === saleData.empreendimentoId);
                       const q = saleData.quadra?.trim();
-                      const sugestao = q && dev?.ruasPorQuadra?.[q] ? dev.ruasPorQuadra[q] : null;
+                      const sugestao = q && dev ? getRuaSugerida(dev, q, saleData.numeroLote) : null;
                       const fallback = dev?.ruas || null;
                       return sugestao ? (
-                        <p><span className="font-bold text-slate-500">Ruas (Q.{q}):</span>{" "}{sugestao}</p>
+                        <p><span className="font-bold text-slate-500">Rua prevista:</span>{" "}<span className="text-primary-main font-bold">{sugestao}</span></p>
                       ) : fallback ? (
                         <p><span className="font-bold text-slate-500">Ruas:</span>{" "}{fallback}</p>
                       ) : null;
@@ -2857,9 +2976,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 {(() => {
                   const dev = developments.find((d) => d.id === saleData.empreendimentoId);
                   const q = saleData.quadra?.trim();
-                  const sugestoes = q && dev?.ruasPorQuadra?.[q]
-                    ? dev.ruasPorQuadra[q].split(",").map((r) => r.trim()).filter(Boolean)
-                    : [];
+                  const sugestoes = q && dev ? getRuasSugeridas(dev, q, saleData.numeroLote) : [];
                   const fromLotesInfo = dev?.lotesInfo?.[`${q}-${saleData.numeroLote}`.toUpperCase()]?.rua;
                   return (
                     <>
