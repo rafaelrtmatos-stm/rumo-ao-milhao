@@ -3,7 +3,6 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth/index.js";
-import { GoogleGenAI } from "@google/genai";
 import { db } from "./db.js";
 import { empreendimentos, clientes, vendas, appConfig } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
@@ -20,13 +19,8 @@ app.use(express.urlencoded({ extended: true }));
 await setupAuth(app);
 registerAuthRoutes(app);
 
-const ai = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY,
-  httpOptions: {
-    apiVersion: "",
-    baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL,
-  },
-});
+const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
 function getUserId(req: any): string {
   return req.user?.claims?.sub;
@@ -173,25 +167,23 @@ app.post("/api/config", isAuthenticated, async (req: any, res) => {
 });
 
 // --- Gemini AI Proxy ---
-app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
+app.post("/api/gemini/extract-sale", isAuthenticated, async (req, res) => {
   try {
-    const { base64Data, mimeType } = req.body;
-    const prompt = `Analise este mapa de loteamento. Extraia lotes, quadras e ruas.
-Retorne APENAS JSON (sem markdown):
-{"lotes":[{"quadra":"A","lote":"01","rua":"Nome da Rua"}],"totalLotes":0,"ruasEncontradas":["Rua 1"]}`;
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [{ inlineData: { data: base64Data, mimeType } }, { text: prompt }],
-        },
-      ],
+    const { rawText } = req.body;
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: `Extraia os dados do texto abaixo e responda SOMENTE em JSON puro, sem markdown, sem explicações, no formato: {"nomeComprador":"","cpf":"","rg":"","nascimento":"","estadoCivil":"","profissao":"","nacionalidade":"","endereco":"","numero":"","bairro":"","cidade":"","estado":"","cep":"","telefone1":"","numeroLote":"","quadra":"","valorLote":null,"valorEntrada":null,"quantidadeParcelas":null,"valorParcela":null,"vendedor":""}. Campos não encontrados retorne "" ou null.\n\nTexto:\n${rawText}` }] }],
+      }),
     });
-    res.json(safeParseJson(response.text));
-  } catch (e: any) {
-    console.error("Gemini analyze-map error:", e?.message || e);
-    res.status(500).json({ error: e?.message || "Falha na análise do mapa" });
+    const data = await response.json() as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    const clean = text.replace(/```json|```/g, "").trim();
+    res.json(safeParseJson(clean));
+  } catch (err: any) {
+    console.error("Gemini extract-sale error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
   }
 });
 
@@ -201,47 +193,43 @@ app.post("/api/gemini/extract-files", isAuthenticated, async (req, res) => {
     if (!files || files.length === 0) {
       return res.status(400).json({ error: "Nenhum arquivo enviado" });
     }
-    const fileParts = files.map((f: any) => ({ inlineData: { data: f.base64, mimeType: f.mimeType } }));
-    const prompt = `Você é um assistente de extração de dados imobiliários brasileiros.
-Analise os documentos enviados e extraia todos os dados de cadastro.
-Retorne SOMENTE JSON puro (sem markdown, sem explicações):
-{"nome":null,"cpf":null,"rg":null,"nascimento":null,"estadoCivil":null,"profissao":null,"nacionalidade":null,"endereco":null,"numero":null,"bairro":null,"cidade":null,"estado":null,"cep":null,"telefone1":null,"numeroLote":null,"quadra":null,"empreendimentoNome":null,"valorLote":null,"valorEntrada":null,"valorParcela":null,"quantidadeParcelas":null,"dataVencimento":null,"vendedor":null}`;
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [...fileParts, { text: prompt }],
-        },
-      ],
+    const parts: any[] = files.map((f: any) => ({ inlineData: { mimeType: f.mimeType, data: f.base64 } }));
+    parts.push({ text: `Extraia os dados dos documentos e responda SOMENTE em JSON puro, sem markdown, sem explicações, no formato: {"nomeComprador":"","cpf":"","rg":"","nascimento":"","estadoCivil":"","profissao":"","nacionalidade":"","endereco":"","numero":"","bairro":"","cidade":"","estado":"","cep":"","telefone1":"","numeroLote":"","quadra":"","valorLote":null,"valorEntrada":null,"quantidadeParcelas":null,"valorParcela":null,"vendedor":""}. Campos não encontrados: "" ou null.` });
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts }] }),
     });
-    res.json(safeParseJson(response.text));
-  } catch (e: any) {
-    console.error("Gemini extract-files error:", e?.message || e);
-    res.status(500).json({ error: e?.message || "Falha na extração de dados" });
+    const data = await response.json() as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    const clean = text.replace(/```json|```/g, "").trim();
+    res.json(safeParseJson(clean));
+  } catch (err: any) {
+    console.error("Gemini extract-files error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
   }
 });
 
-app.post("/api/gemini/extract-sale", isAuthenticated, async (req, res) => {
+app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
   try {
-    const { rawText } = req.body;
-    const prompt = `Você é um assistente de extração de dados imobiliários brasileiros.
-Extraia todos os dados do texto abaixo. Retorne SOMENTE JSON puro (sem markdown):
-{"nomeComprador":null,"nacionalidade":null,"rg":null,"cpf":null,"estadoCivil":null,"profissao":null,"telefone1":null,"endereco":null,"numero":null,"bairro":null,"cidade":null,"estado":null,"cep":null,"numeroLote":null,"quadra":null,"empreendimentoNome":null,"valorLote":null,"valorEntrada":null,"valorParcela":null,"quantidadeParcelas":null,"dataVencimento":null,"vendedor":null}
-Texto: """${rawText}"""`;
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [
-        {
-          role: "user",
-          parts: [{ text: prompt }],
-        },
-      ],
+    const { base64Data, mimeType } = req.body;
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [
+          { inlineData: { mimeType, data: base64Data } },
+          { text: "Analise este mapa de loteamento e extraia as informações de lotes, quadras e ruas disponíveis. Retorne APENAS JSON puro (sem markdown), no formato: {\"lotes\":[{\"quadra\":\"A\",\"lote\":\"01\",\"rua\":\"Nome da Rua\"}],\"totalLotes\":0,\"ruasEncontradas\":[\"Rua 1\"]}" },
+        ]}],
+      }),
     });
-    res.json(safeParseJson(response.text));
-  } catch (e: any) {
-    console.error("Gemini extract-sale error:", e?.message || e);
-    res.status(500).json({ error: e?.message || "Falha na extração de dados" });
+    const data = await response.json() as any;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    const clean = text.replace(/```json|```/g, "").trim();
+    res.json(safeParseJson(clean));
+  } catch (err: any) {
+    console.error("Gemini analyze-map error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
   }
 });
 
