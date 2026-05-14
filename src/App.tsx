@@ -4930,7 +4930,9 @@ const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
                           <p className={`text-sm font-bold truncate leading-tight ${isToday ? "text-amber-700" : "text-slate-700"}`}>
                             {isToday && "🎂 "}{c.nome}
                           </p>
-                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">{c.telefone1}</p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            {today.getFullYear() - d.getFullYear()} anos · {c.telefone1}
+                          </p>
                         </div>
                         <a
                           href={waMsg(c, isToday)}
