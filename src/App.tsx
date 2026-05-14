@@ -119,8 +119,8 @@ const Sidebar = ({
 }) => {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
+    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
     { id: "contratos", label: "Contratos", icon: FileText },
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
@@ -988,17 +988,6 @@ const EmpreendimentosSection = ({
                 />
               </div>
 
-              <div className="md:col-span-2">
-                <label className="label">Localização / Bairro Geral</label>
-                <input
-                  className="input-field"
-                  value={formData.endereco}
-                  onChange={(e) =>
-                    setFormData({ ...formData, endereco: e.target.value })
-                  }
-                  placeholder="Rua / Travessa"
-                />
-              </div>
               <div>
                 <label className="label">Comunidade / Região</label>
                 <input
@@ -1047,22 +1036,6 @@ const EmpreendimentosSection = ({
                     })
                   }
                 />
-              </div>
-              <div className="md:col-span-2">
-                <label className="label">Destaque de Venda</label>
-                <input
-                  className="input-field"
-                  value={formData.descricao}
-                  onChange={(e) =>
-                    setFormData({ ...formData, descricao: e.target.value })
-                  }
-                  placeholder="Ex: Vista para o lago, Próximo ao centro"
-                />
-                <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 ml-1 opacity-60 flex items-center gap-1">
-                  <Info size={12} className="text-primary-main" />
-                  Nota: Quadras e Ruas podem ser separadas por vírgula para
-                  organização.
-                </p>
               </div>
               <div className="md:col-span-2 flex justify-end pt-4">
                 <button
