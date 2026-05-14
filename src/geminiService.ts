@@ -1,17 +1,28 @@
-async function apiPost(path: string, body: any): Promise<any> {
-  const res = await fetch(path, {
+// ---------------------------------------------------------------------------
+// geminiService.ts — chama a API do Gemini direto do frontend (sem servidor)
+// Coloque sua VITE_GEMINI_API_KEY no .env e nas variáveis de ambiente do Vercel
+// ---------------------------------------------------------------------------
+
+const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY as string;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
+
+async function callGemini(parts: object[]): Promise<string> {
+  const res = await fetch(GEMINI_URL, {
     method: 'POST',
-    credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ contents: [{ parts }] }),
   });
   if (!res.ok) {
-    let detail = '';
-    try { const j = await res.json(); detail = j.error || j.message || ''; } catch {}
-    throw new Error(detail || `Erro ${res.status} ao chamar ${path}`);
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error?.message || `Erro ${res.status} ao chamar Gemini`);
   }
-  return res.json();
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? '';
 }
+
+// ---------------------------------------------------------------------------
+// Extração local (fallback sem API)
+// ---------------------------------------------------------------------------
 
 function parseValue(s: string | undefined | null): number | null {
   if (!s) return null;
@@ -33,7 +44,7 @@ function extractLocallyFromText(rawText: string) {
     ? (() => {
         const [, d, m, y] = nascimentoMatch;
         const year = y.length === 2 ? `19${y}` : y;
-        return `${year}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        return `${year}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
       })()
     : null;
   const nomeMatch = text.match(/(?:nome|comprador|cliente)[:\s]+([A-ZÀ-Ú][a-zà-úA-ZÀ-Ú ]+?)(?=\s*(?:cpf|rg|fone|tel|cep|rua|av\.|nascimento|estado|solteiro|casado|,|\n|$))/i);
@@ -109,35 +120,87 @@ function extractLocallyFromText(rawText: string) {
   return { nomeComprador, cpf, rg, nascimento, cep, estadoCivil, telefone1, telefone2, endereco, numero, bairro, cidade, estado, numeroLote, quadra, empreendimentoNome, valorEntrada, valorParcela, quantidadeParcelas, valorLote, dataVencimento, vendedor, nacionalidade, profissao };
 }
 
+// ---------------------------------------------------------------------------
+// geminiService — agora sem servidor, tudo no frontend
+// ---------------------------------------------------------------------------
+
 export const geminiService = {
+
   async analyzeMap(file: File) {
     const base64Data = await new Promise<string>((resolve) => {
       const reader = new FileReader();
       reader.onload = () => resolve((reader.result as string).split(',')[1]);
       reader.readAsDataURL(file);
     });
-    return apiPost('/api/gemini/analyze-map', { base64Data, mimeType: file.type });
+
+    const text = await callGemini([
+      {
+        inline_data: { mime_type: file.type, data: base64Data },
+      },
+      {
+        text: 'Analise este mapa/planta de loteamento. Identifique quadras, lotes disponíveis e vendidos, áreas de preservação e infraestrutura. Retorne um JSON com: { quadras: [{ id, lotes: [{ numero, status: "disponivel"|"vendido"|"reservado" }] }], resumo: string }. Responda SOMENTE com o JSON, sem texto adicional.',
+      },
+    ]);
+
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      return JSON.parse(clean);
+    } catch {
+      return { quadras: [], resumo: text };
+    }
   },
 
   async extractFromFiles(files: File[]) {
-    const fileData = await Promise.all(
-      files.map(async (file) => {
-        const base64 = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = () => resolve((reader.result as string).split(',')[1]);
-          reader.readAsDataURL(file);
-        });
-        return { base64, mimeType: file.type === 'application/pdf' ? 'application/pdf' : file.type };
-      })
-    );
-    return apiPost('/api/gemini/extract-files', { files: fileData });
+    const parts: object[] = [];
+
+    for (const file of files) {
+      const base64 = await new Promise<string>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve((reader.result as string).split(',')[1]);
+        reader.readAsDataURL(file);
+      });
+      parts.push({ inline_data: { mime_type: file.type, data: base64 } });
+    }
+
+    parts.push({
+      text: `Extraia os dados de venda/contrato deste(s) documento(s). Retorne SOMENTE um JSON com os campos:
+nomeComprador, cpf, rg, nascimento (YYYY-MM-DD), cep, estadoCivil, telefone1, telefone2,
+endereco, numero, bairro, cidade, estado, numeroLote, quadra, empreendimentoNome,
+valorEntrada, valorParcela, quantidadeParcelas, valorLote, dataVencimento, vendedor,
+nacionalidade, profissao.
+Use null para campos não encontrados. Sem texto adicional, apenas o JSON.`,
+    });
+
+    const text = await callGemini(parts);
+
+    try {
+      const clean = text.replace(/```json|```/g, '').trim();
+      return JSON.parse(clean);
+    } catch {
+      return extractLocallyFromText(text);
+    }
   },
 
   async extractSaleData(rawText: string) {
+    if (!GEMINI_API_KEY) {
+      return extractLocallyFromText(rawText);
+    }
     try {
-      return await apiPost('/api/gemini/extract-sale', { rawText });
+      const text = await callGemini([{
+        text: `Extraia os dados de venda do texto abaixo. Retorne SOMENTE um JSON com os campos:
+nomeComprador, cpf, rg, nascimento (YYYY-MM-DD), cep, estadoCivil, telefone1, telefone2,
+endereco, numero, bairro, cidade, estado, numeroLote, quadra, empreendimentoNome,
+valorEntrada, valorParcela, quantidadeParcelas, valorLote, dataVencimento, vendedor,
+nacionalidade, profissao.
+Use null para campos não encontrados. Sem texto adicional, apenas o JSON.
+
+TEXTO:
+${rawText}`,
+      }]);
+      const clean = text.replace(/```json|```/g, '').trim();
+      return JSON.parse(clean);
     } catch {
       return extractLocallyFromText(rawText);
     }
-  }
+  },
 };
