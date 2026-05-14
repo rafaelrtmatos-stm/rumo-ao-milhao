@@ -27,6 +27,7 @@ import {
   ArrowLeft,
   User,
   List,
+  Check,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -426,9 +427,13 @@ const StatCard = ({
 const DashboardSection = ({
   sales,
   developments,
+  onNavigate,
+  onViewContract,
 }: {
   sales: Venda[];
   developments: Empreendimento[];
+  onNavigate?: (s: Section) => void;
+  onViewContract?: (v: Venda) => void;
 }) => {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
   const totalCommissions = sales.reduce(
@@ -650,7 +655,10 @@ const DashboardSection = ({
             <div className="w-1.5 h-6 bg-primary-main rounded-full" />
             Vendas Recentes
           </h3>
-          <button className="text-sm font-bold text-primary-main hover:underline">
+          <button
+            onClick={() => onNavigate?.("contratos")}
+            className="text-sm font-bold text-primary-main hover:underline"
+          >
             Ver tudo
           </button>
         </div>
@@ -668,7 +676,11 @@ const DashboardSection = ({
             </thead>
             <tbody className="text-sm">
               {sales.slice(0, 5).map((venda) => (
-                <tr key={venda.id} className="group">
+                <tr
+                  key={venda.id}
+                  className="group cursor-pointer"
+                  onClick={() => onViewContract?.(venda)}
+                >
                   <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors font-semibold">
                     {venda.clienteNome}
                   </td>
@@ -5071,10 +5083,12 @@ const ClientesSection = ({
   );
 };
 
-const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
+const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sales?: Venda[] }) => {
   const today = new Date();
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
+  const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const MONTHS = [
     "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -5099,15 +5113,182 @@ const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
     return d.getMonth() === currentMonth && d.getDate() === currentDay;
   };
 
-  const waMsg = (c: Cliente, today: boolean) =>
-    `https://wa.me/55${c.telefone1.replace(/\D/g, "")}?text=${encodeURIComponent(
-      today
+  const getAge = (c: Cliente) => {
+    if (!c.nascimento) return null;
+    const d = new Date(c.nascimento);
+    return today.getFullYear() - d.getFullYear();
+  };
+
+  const waMsg = (c: Cliente, isBday: boolean) =>
+    `https://wa.me/55${(c.telefone1 || "").replace(/\D/g, "")}?text=${encodeURIComponent(
+      isBday
         ? `Olá ${c.nome}, FELIZ ANIVERSÁRIO! 🎉 Que este dia seja especial. Muita saúde, paz e realizações!`
-        : `Olá ${c.nome}, passando para te desejar um Feliz Aniversário antecipado! Muita saúde e paz. Parabéns!`
+        : `Olá ${c.nome}, tudo bem? Aqui é da equipe de vendas. Passando para desejar um Feliz Aniversário! 🎂`
     )}`;
+
+  const clientSales = selectedClient
+    ? sales.filter((s) => s.clienteId === selectedClient.id)
+    : [];
+
+  const copyPhone = (phone: string) => {
+    navigator.clipboard.writeText(phone.replace(/\D/g, ""));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   return (
     <div className="space-y-6">
+      {/* Client Detail Modal */}
+      <AnimatePresence>
+        {selectedClient && (
+          <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="bg-white w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className={`p-6 ${isTodayBirthday(selectedClient) ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-slate-800 to-slate-900"} text-white`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-3xl font-black">
+                    {selectedClient.nome?.charAt(0).toUpperCase()}
+                  </div>
+                  <button
+                    onClick={() => setSelectedClient(null)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <h3 className="text-xl font-display font-bold leading-tight">
+                  {isTodayBirthday(selectedClient) ? "🎂 " : ""}{selectedClient.nome}
+                </h3>
+                <div className="flex gap-3 mt-2 text-sm font-medium opacity-80 flex-wrap">
+                  {selectedClient.nascimento && (
+                    <span>{getAge(selectedClient)} anos · {new Date(selectedClient.nascimento).toLocaleDateString("pt-BR")}</span>
+                  )}
+                  {selectedClient.genero && (
+                    <span>{selectedClient.genero === "M" ? "Masculino" : "Feminino"}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Contact */}
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contato</p>
+                  {selectedClient.telefone1 && (
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                      <div>
+                        <p className="text-xs text-slate-400 font-medium">Telefone / WhatsApp</p>
+                        <p className="font-bold text-slate-800">{selectedClient.telefone1}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => copyPhone(selectedClient.telefone1)}
+                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors text-xs font-bold"
+                          title="Copiar número"
+                        >
+                          {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                        </button>
+                        <a
+                          href={waMsg(selectedClient, isTodayBirthday(selectedClient))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
+                          title="Abrir WhatsApp"
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {selectedClient.telefone2 && (
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                      <div>
+                        <p className="text-xs text-slate-400 font-medium">Telefone 2</p>
+                        <p className="font-bold text-slate-800">{selectedClient.telefone2}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => copyPhone(selectedClient.telefone2 || "")}
+                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <a
+                          href={`https://wa.me/55${(selectedClient.telefone2 || "").replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Personal info */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dados Pessoais</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedClient.cpf && (
+                      <div className="p-3 bg-slate-50 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">CPF</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.cpf}</p>
+                      </div>
+                    )}
+                    {selectedClient.rg && (
+                      <div className="p-3 bg-slate-50 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">RG</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.rg}</p>
+                      </div>
+                    )}
+                    {selectedClient.profissao && (
+                      <div className="p-3 bg-slate-50 rounded-2xl col-span-2">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">Profissão</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.profissao}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Purchases */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Compras ({clientSales.length})
+                  </p>
+                  {clientSales.length === 0 ? (
+                    <p className="text-sm text-slate-400 italic p-3">Nenhuma compra registrada.</p>
+                  ) : (
+                    clientSales.map((s) => (
+                      <div key={s.id} className="p-3 bg-slate-50 rounded-2xl flex justify-between items-start gap-3">
+                        <div>
+                          <p className="font-bold text-slate-800 text-sm">{s.empreendimentoNome}</p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            Quadra {s.quadra} / Lote {s.numeroLote} · {new Date(s.dataVenda).toLocaleDateString("pt-BR")}
+                          </p>
+                        </div>
+                        <div className="text-right flex-shrink-0">
+                          <p className="font-display font-bold text-primary-main text-sm">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(s.valorLote)}
+                          </p>
+                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${s.status === "pago" ? "bg-green-100 text-green-700" : s.status === "cancelado" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
+                            {s.status}
+                          </span>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Header */}
       <div className="flex items-center gap-4 px-1">
         <div className="p-3 bg-chumbo-base/10 text-chumbo-base rounded-2xl">
@@ -5174,9 +5355,10 @@ const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
                     return (
                       <div
                         key={c.id}
-                        className={`flex items-center gap-3 px-4 py-3 group ${
-                          isToday ? "bg-amber-50" : "hover:bg-slate-50"
+                        className={`flex items-center gap-3 px-4 py-3 group cursor-pointer ${
+                          isToday ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-slate-50"
                         }`}
+                        onClick={() => setSelectedClient(c)}
                       >
                         <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center text-center leading-none flex-shrink-0 ${
                           isToday
@@ -5191,22 +5373,31 @@ const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
                             {isToday && "🎂 "}{c.nome}
                           </p>
                           <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                            {today.getFullYear() - d.getFullYear()} anos · {c.telefone1}
+                            {getAge(c)} anos · {c.telefone1}
                           </p>
                         </div>
-                        <a
-                          href={waMsg(c, isToday)}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={`p-2 rounded-xl transition-all flex-shrink-0 ${
-                            isToday
-                              ? "bg-success-main text-white shadow-md shadow-success-main/30"
-                              : "text-slate-300 hover:bg-success-main hover:text-white opacity-0 group-hover:opacity-100"
-                          }`}
-                          title="Enviar parabéns via WhatsApp"
-                        >
-                          <MessageCircle size={15} />
-                        </a>
+                        <div className="flex gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => copyPhone(c.telefone1 || "")}
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Copiar número"
+                          >
+                            <Copy size={13} />
+                          </button>
+                          <a
+                            href={waMsg(c, isToday)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`p-2 rounded-xl transition-all ${
+                              isToday
+                                ? "bg-success-main text-white shadow-md shadow-success-main/30"
+                                : "text-slate-300 hover:bg-success-main hover:text-white opacity-0 group-hover:opacity-100"
+                            }`}
+                            title="Enviar parabéns via WhatsApp"
+                          >
+                            <MessageCircle size={13} />
+                          </a>
+                        </div>
                       </div>
                     );
                   })
@@ -6281,7 +6472,14 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
   const renderSection = () => {
     switch (section) {
       case "dashboard":
-        return <DashboardSection sales={sales} developments={developments} />;
+        return (
+          <DashboardSection
+            sales={sales}
+            developments={developments}
+            onNavigate={(s) => setSection(s)}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+          />
+        );
       case "empreendimentos":
         return (
           <EmpreendimentosSection
@@ -6348,7 +6546,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
           />
         );
       case "aniversarios":
-        return <AniversariosSection clients={clients} />;
+        return <AniversariosSection clients={clients} sales={sales} />;
       case "calculadora":
         return <CalculatorSection />;
       case "config":
