@@ -1897,6 +1897,8 @@ const VendasSection = ({
   const [rgErr, setRgErr] = useState<string | null>(null);
   const [cpf2Err, setCpf2Err] = useState<string | null>(null);
   const [rg2Err, setRg2Err] = useState<string | null>(null);
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const [showCpfDropdown, setShowCpfDropdown] = useState(false);
   const [cpfMatch, setCpfMatch] = useState<Cliente | null>(null);
   const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
@@ -2667,15 +2669,51 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             <div className="md:col-span-2 flex flex-col sm:flex-row gap-4">
               <div className="flex-1">
                 <label className="label">Nome Completo do Comprador</label>
-                <input
-                  required
-                  className="input-field"
-                  value={clientData.nome}
-                  onChange={(e) =>
-                    setClientData({ ...clientData, nome: e.target.value })
-                  }
-                  placeholder="Nome Completo"
-                />
+                <div className="relative">
+                  <input
+                    required
+                    className="input-field"
+                    value={clientData.nome}
+                    onChange={(e) => {
+                      setClientData({ ...clientData, nome: e.target.value });
+                      setShowNameDropdown(true);
+                    }}
+                    onFocus={() => setShowNameDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowNameDropdown(false), 150)}
+                    placeholder="Nome Completo"
+                    autoComplete="off"
+                  />
+                  {showNameDropdown && clientData.nome.length >= 2 && (() => {
+                    const matches = clients.filter((c) =>
+                      c.nome?.toLowerCase().includes(clientData.nome.toLowerCase())
+                    ).slice(0, 6);
+                    if (!matches.length) return null;
+                    return (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                        {matches.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={() => {
+                              setClientData({ ...clientData, ...c });
+                              setShowNameDropdown(false);
+                              setShowCpfDropdown(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                              {c.nome?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                              {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
               </div>
               <div className="w-full sm:w-auto">
                 <label className="label">Gênero / Tratamento</label>
@@ -2743,18 +2781,55 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
             <div>
               <label className="label">CPF</label>
-              <input
-                required
-                className={`input-field font-mono ${cpfErr ? "border-red-400 focus:ring-red-400" : cpfStatus(clientData.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
-                value={clientData.cpf}
-                onChange={(e) => {
-                  const masked = maskCPF(e.target.value);
-                  setClientData({ ...clientData, cpf: masked });
-                  const st = cpfStatus(masked);
-                  setCpfErr(st === "invalid" ? "CPF inválido" : null);
-                }}
-                placeholder="000.000.000-00"
-              />
+              <div className="relative">
+                <input
+                  required
+                  className={`input-field font-mono ${cpfErr ? "border-red-400 focus:ring-red-400" : cpfStatus(clientData.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                  value={clientData.cpf}
+                  onChange={(e) => {
+                    const masked = maskCPF(e.target.value);
+                    setClientData({ ...clientData, cpf: masked });
+                    const st = cpfStatus(masked);
+                    setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                    setShowCpfDropdown(true);
+                  }}
+                  onFocus={() => setShowCpfDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCpfDropdown(false), 150)}
+                  placeholder="000.000.000-00"
+                  autoComplete="off"
+                />
+                {showCpfDropdown && clientData.cpf.replace(/\D/g, "").length >= 3 && (() => {
+                  const query = clientData.cpf.replace(/\D/g, "");
+                  const matches = clients.filter((c) =>
+                    c.cpf?.replace(/\D/g, "").includes(query)
+                  ).slice(0, 6);
+                  if (!matches.length) return null;
+                  return (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                      {matches.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setClientData({ ...clientData, ...c });
+                            setShowCpfDropdown(false);
+                            setShowNameDropdown(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                            {c.nome?.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                            {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
               {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
               {cpfMatch && (
                 <motion.div
