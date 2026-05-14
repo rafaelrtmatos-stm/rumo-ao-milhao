@@ -1813,6 +1813,7 @@ const VendasSection = ({
   developments,
   onSaveVenda,
   onGoToContracts,
+  onGoToContractsRecibo,
   initialSaleData,
   onSaveDev,
   vendedores = [],
@@ -1820,6 +1821,7 @@ const VendasSection = ({
   developments: Empreendimento[];
   onSaveVenda: (v: Venda, c: Cliente) => Venda;
   onGoToContracts: (v: Venda) => void;
+  onGoToContractsRecibo?: (v: Venda) => void;
   initialSaleData?: Partial<Venda>;
   onSaveDev: (d: Empreendimento) => void;
   vendedores?: Vendedor[];
@@ -2286,21 +2288,28 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center pt-8">
-          <button onClick={handleCopySummary} className="btn-ghost px-8">
+        <div className="flex flex-col sm:flex-row gap-3 justify-center pt-8 flex-wrap">
+          <button onClick={handleCopySummary} className="btn-ghost px-6">
             <Copy size={18} />
-            <span>Copiar Resumo Texto</span>
+            <span>Copiar Resumo</span>
           </button>
           <button
             onClick={() => onGoToContracts(lastSavedVenda)}
-            className="btn-primary px-8"
+            className="btn-primary px-6"
           >
             <FileText size={18} />
-            <span>Gerar Contrato Agora</span>
+            <span>Gerar Contrato</span>
+          </button>
+          <button
+            onClick={() => onGoToContractsRecibo?.(lastSavedVenda)}
+            className="btn-ghost px-6"
+          >
+            <FileCheck size={18} />
+            <span>Gerar Recibo</span>
           </button>
           <button
             onClick={() => setLastSavedVenda(null)}
-            className="btn-ghost px-8"
+            className="btn-ghost px-6"
           >
             <span>Novo Cadastro</span>
           </button>
@@ -3293,10 +3302,13 @@ const ContratosSection = ({
   onUpdateVenda: (v: Venda) => void;
   vendedores?: Vendedor[];
   proprietarios?: Proprietario[];
+  initialMode?: 'recibo';
+  onUpdateProprietario?: (p: Proprietario) => void;
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
   );
+  const [showReciboModal, setShowReciboModal] = useState(() => initialVenda != null && false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -3351,12 +3363,42 @@ const ContratosSection = ({
     rua: "", comunidade: "", formaPagamento: "Dinheiro",
     medidaFrente: "", medidaLateralDir: "", medidaLateralEsq: "", medidaFundos: "", areaTotal: "",
   });
+  const [gerarEmp, setGerarEmp] = useState({ nome: "", comunidade: "", cidade: "", estado: "" });
+  const [gerarSalvarProp, setGerarSalvarProp] = useState(false);
+  const [fetchingCep, setFetchingCep] = useState(false);
+
+  const fetchCepGerar = async (cep: string) => {
+    const clean = cep.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setFetchingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setGerarVendedor((prev) => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          estado: data.uf || prev.estado,
+        }));
+      }
+    } catch { /* ignore */ } finally {
+      setFetchingCep(false);
+    }
+  };
 
   const handleOpenGerarContrato = () => {
     if (!selectedVenda) return;
     const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     setGerarProprietarioId("");
     setGerarVendedor(emptyGerarVendedor);
+    setGerarEmp({
+      nome: dev?.nome || "",
+      comunidade: dev?.comunidade || "",
+      cidade: dev?.cidade || "",
+      estado: dev?.estado || "",
+    });
     setGerarExtra({
       rua: selectedVenda.rua || "",
       comunidade: dev?.comunidade || "",
@@ -3367,6 +3409,7 @@ const ContratosSection = ({
       medidaFundos: selectedVenda.medidaFundos || "",
       areaTotal: selectedVenda.areaTotal || "",
     });
+    setGerarSalvarProp(false);
     setShowGerarModal(true);
   };
 
@@ -3399,6 +3442,12 @@ const ContratosSection = ({
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (gerarSalvarProp && gerarProprietarioId && onUpdateProprietario) {
+      const prop = proprietarios.find((p) => p.id === gerarProprietarioId);
+      if (prop) {
+        onUpdateProprietario({ ...prop, nome: gerarVendedor.nome, rg: gerarVendedor.rg, cpf: gerarVendedor.cpf, endereco: gerarVendedor.endereco, numero: gerarVendedor.numero, bairro: gerarVendedor.bairro, cidade: gerarVendedor.cidade, estado: gerarVendedor.estado, cep: gerarVendedor.cep, nacionalidade: gerarVendedor.nacionalidade, estadoCivil: gerarVendedor.estadoCivil });
+      }
+    }
     setShowGerarModal(false);
     setDownloadingDocx(true);
     try {
@@ -3409,7 +3458,7 @@ const ContratosSection = ({
         body: JSON.stringify({
           vendedor: gerarVendedor,
           cliente,
-          empreendimento: { nome: desenvolvimento.nome, comunidade: gerarExtra.comunidade, cidade: desenvolvimento.cidade, estado: desenvolvimento.estado },
+          empreendimento: { nome: gerarEmp.nome || desenvolvimento.nome, comunidade: gerarEmp.comunidade || gerarExtra.comunidade, cidade: gerarEmp.cidade || desenvolvimento.cidade, estado: gerarEmp.estado || desenvolvimento.estado },
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
@@ -4075,450 +4124,267 @@ const ContratosSection = ({
               initial={{ opacity: 0, y: 50 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 50 }}
-              className="bg-surface-card w-full max-w-5xl h-full lg:h-auto lg:max-h-[85vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
+              className="bg-surface-card w-full max-w-3xl h-full lg:h-auto lg:max-h-[85vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
             >
-              <div className="p-6 lg:p-8 border-b border-border-subtle flex justify-between items-center bg-surface-card">
-                <div className="flex items-center gap-4">
-                  <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast">
-                    {viewMode === "contract" ? (
-                      <FileText size={24} />
-                    ) : (
-                      <FileCheck size={24} />
-                    )}
+              <div className="p-6 border-b border-border-subtle flex justify-between items-start bg-surface-card">
+                <div className="flex items-start gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <FileText size={20} />
                   </div>
                   <div>
-                    <h4 className="font-display font-bold text-slate-800 text-lg">
-                      {viewMode === "contract"
-                        ? "Visualização de Contrato"
-                        : "Visualização de Recibo"}
-                    </h4>
-                    <div className="flex items-center gap-2">
+                    <h4 className="font-display font-bold text-slate-800">Resumo da Venda</h4>
+                    <div className="flex items-center gap-2 mt-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
                         {selectedVenda.numeroContrato}
                       </p>
                       <span className="text-slate-300">•</span>
                       <div className="flex gap-1">
-                        {(["pendente", "pago", "cancelado"] as const).map(
-                          (status) => (
-                            <button
-                              key={status}
-                              onClick={() =>
-                                onUpdateStatus(selectedVenda.id, status)
-                              }
-                              className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${selectedVenda.status === status ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
-                            >
-                              {status}
-                            </button>
-                          ),
-                        )}
+                        {(["pendente", "pago", "cancelado"] as const).map((status) => (
+                          <button
+                            key={status}
+                            onClick={() => onUpdateStatus(selectedVenda.id, status)}
+                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${selectedVenda.status === status ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
+                          >
+                            {status}
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
                 </div>
-                <div className="flex gap-3">
-                  <div className="hidden sm:flex self-center items-center gap-4 mr-4 border-r border-slate-200 pr-4">
-                    <button
-                      onClick={() =>
-                        setViewMode(
-                          viewMode === "contract" ? "receipt" : "contract",
-                        )
-                      }
-                      className="px-4 py-2 border border-border-subtle rounded-xl text-[10px] font-bold uppercase tracking-widest hover:bg-slate-50 transition-colors"
-                    >
-                      Mudar para{" "}
-                      {viewMode === "contract" ? "Recibo" : "Contrato"}
-                    </button>
-                  </div>
-                  {viewMode === "contract" && (
-                    <button
-                      onClick={handleOpenGerarContrato}
-                      disabled={downloadingDocx}
-                      className="btn-ghost h-12 px-5 disabled:opacity-50"
-                      title="Gerar contrato parcelado padrão (.docx)"
-                    >
-                      {downloadingDocx ? (
-                        <span className="text-xs font-bold">Gerando...</span>
-                      ) : (
-                        <>
-                          <FileDown size={18} />
-                          <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest">.docx</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                <div className="flex items-center gap-2">
                   <button
-                    onClick={handlePrint}
-                    className="btn-primary h-12 px-6"
+                    onClick={handleOpenGerarContrato}
+                    disabled={downloadingDocx}
+                    className="btn-ghost h-9 px-3 text-xs disabled:opacity-50"
                   >
-                    <Printer size={18} />{" "}
-                    <span className="hidden sm:inline">Imprimir</span>
+                    <FileDown size={15} />
+                    <span className="hidden sm:inline">Gerar Contrato</span>
+                  </button>
+                  <button
+                    onClick={() => setShowReciboModal(true)}
+                    className="btn-ghost h-9 px-3 text-xs"
+                  >
+                    <FileCheck size={15} />
+                    <span className="hidden sm:inline">Gerar Recibo</span>
                   </button>
                   <button
                     onClick={() => setSelectedVenda(null)}
-                    className="h-12 w-12 flex items-center justify-center text-slate-400 hover:bg-slate-50 rounded-2xl transition-colors"
+                    className="h-9 w-9 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
                   >
-                    <X size={24} />
+                    <X size={20} />
                   </button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-4 sm:p-8 lg:p-12 bg-slate-100/50">
-                {viewMode === "contract" ? (
-                  <div
-                    id="contract-content"
-                    className="bg-white shadow-2xl p-8 sm:p-20 mx-auto w-full max-w-[21cm] min-h-[29.7cm] text-black text-[13px] leading-[1.8] font-serif border border-slate-200"
-                  >
-                    <div className="text-center space-y-3 mb-16">
-                      <h1 className="text-2xl font-bold underline underline-offset-8 decoration-1 mb-8 uppercase">
-                        Instrumento Particular de Promessa de Compra e Venda
-                      </h1>
-                      <div className="flex justify-center gap-12 font-mono text-[10px] text-slate-400">
-                        <span>CONT Nº: {selectedVenda.numeroContrato}</span>
-                        <span>
-                          DATA:{" "}
-                          {new Date(selectedVenda.dataVenda).toLocaleDateString(
-                            "pt-BR",
-                          )}
-                        </span>
-                      </div>
+              <div className="flex-1 overflow-y-auto p-5 lg:p-8 bg-slate-50/50 space-y-4">
+                {/* Client Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Nome</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.clienteNome}</p>
                     </div>
-
-                    <section className="mb-10">
-                      <h2 className="font-bold mb-4 uppercase tracking-wider border-b border-slate-800 py-1 text-sm bg-slate-50 px-2 italic">
-                        1. QUALIFICAÇÃO DAS PARTES
-                      </h2>
-                      <div className="px-2 space-y-4 leading-relaxed text-justify">
-                        <p>
-                          <span className="font-bold">
-                            PROMITENTE VENDEDOR:
-                          </span>{" "}
-                          <span className="uppercase font-bold">
-                            GENILSON PEREIRA MOREIRA
-                          </span>
-                          , brasileiro, solteiro, portador do CPF nº
-                          632.939.002-91, residente e domiciliado em
-                          Santarém/PA.
-                        </p>
-                        <p>
-                          <span className="font-bold">
-                            {client?.genero === "F"
-                              ? "PROMISSÁRIA COMPRADORA"
-                              : client?.genero === "O"
-                                ? "PROMISSÁRIO(A) COMPRADOR(A)"
-                                : "PROMISSÁRIO COMPRADOR"}
-                            :
-                          </span>{" "}
-                          <span className="font-bold uppercase underline">
-                            {client?.nome}
-                          </span>
-                          ,{" "}
-                          {client?.genero === "F"
-                            ? "brasileira"
-                            : client?.genero === "O"
-                              ? "brasileiro(a)"
-                              : "brasileiro"}
-                          , {genderizeEstadoCivil(client?.estadoCivil || "", client?.genero || "M").toLowerCase()},{" "}
-                          {client?.profissao ? client.profissao + ", " : ""}
-                          {client?.genero === "F"
-                            ? "portadora"
-                            : client?.genero === "O"
-                              ? "portador(a)"
-                              : "portador"}{" "}
-                          da carteira de identidade nº {client?.rg} e do CPF nº{" "}
-                          {client?.cpf},{" "}
-                          {client?.genero === "F"
-                            ? "residente e domiciliada"
-                            : client?.genero === "O"
-                              ? "residente e domiciliado(a)"
-                              : "residente e domiciliado"}{" "}
-                          na {client?.endereco}, nº {client?.numero},{" "}
-                          {client?.bairro}, {client?.cidade}/{client?.estado},
-                          CEP {client?.cep}.
-                        </p>
-                        {selectedVenda.comprador2 && (
-                          <p>
-                            <span className="font-bold">
-                              {selectedVenda.comprador2.genero === "F"
-                                ? "SEGUNDA PROMISSÁRIA"
-                                : selectedVenda.comprador2.genero === "O"
-                                  ? "SEGUNDO(A) PROMISSÁRIO(A)"
-                                  : "SEGUNDO PROMISSÁRIO"}
-                              :
-                            </span>{" "}
-                            <span className="font-bold uppercase underline">
-                              {selectedVenda.comprador2.nome}
-                            </span>
-                            ,{" "}
-                            {selectedVenda.comprador2.genero === "F"
-                              ? "brasileira"
-                              : selectedVenda.comprador2.genero === "O"
-                                ? "brasileiro(a)"
-                                : "brasileiro"}
-                            ,{" "}
-                            {genderizeEstadoCivil(selectedVenda.comprador2.estadoCivil, selectedVenda.comprador2.genero || "M").toLowerCase()}
-                            ,{" "}
-                            {selectedVenda.comprador2.profissao
-                              ? selectedVenda.comprador2.profissao + ", "
-                              : ""}
-                            {selectedVenda.comprador2.genero === "F"
-                              ? "portadora"
-                              : selectedVenda.comprador2.genero === "O"
-                                ? "portador(a)"
-                                : "portador"}{" "}
-                            da carteira de identidade nº{" "}
-                            {selectedVenda.comprador2.rg} e do CPF nº{" "}
-                            {selectedVenda.comprador2.cpf}.
-                          </p>
-                        )}
+                    {client?.cpf && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">CPF</p>
+                        <p className="font-mono font-semibold text-slate-700">{client.cpf}</p>
                       </div>
-                    </section>
+                    )}
+                    {client?.rg && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">RG</p>
+                        <p className="font-mono font-semibold text-slate-700">{client.rg}</p>
+                      </div>
+                    )}
+                    {client?.estadoCivil && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Estado Civil</p>
+                        <p className="font-semibold text-slate-700">{client.estadoCivil}</p>
+                      </div>
+                    )}
+                    {client?.telefone1 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Telefone</p>
+                        <p className="font-semibold text-slate-700">{client.telefone1}</p>
+                      </div>
+                    )}
+                    {selectedVenda.comprador2?.nome && (
+                      <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">2º Comprador</p>
+                        <p className="font-bold text-slate-800">{selectedVenda.comprador2.nome}</p>
+                        {selectedVenda.comprador2.cpf && <p className="font-mono text-sm text-slate-600">{selectedVenda.comprador2.cpf}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                    <section className="mb-10">
-                      <h2 className="font-bold mb-4 uppercase tracking-wider border-b border-slate-800 py-1 text-sm bg-slate-50 px-2 italic">
-                        2. OBJETO DO NEGÓCIO
-                      </h2>
-                      <p className="px-2 leading-relaxed text-justify">
-                        Constitui objeto deste contrato a alienação do{" "}
-                        <span className="font-bold text-lg underline">
-                          LOTE Nº {selectedVenda.numeroLote}
-                        </span>
-                        , integrante da{" "}
-                        <span className="font-bold">
-                          QUADRA {selectedVenda.quadra}
-                        </span>
-                        , situado na{" "}
-                        <span className="font-bold font-mono tracking-tight underline">
-                          {selectedVenda.rua || "___________________"}
-                        </span>
-                        , no empreendimento{" "}
-                        <span className="font-bold uppercase italic underline decoration-slate-300">
-                          {selectedVenda.empreendimentoNome}
-                        </span>
-                        {development?.comunidade
-                          ? `, localizado na comunidade/região ${development.comunidade}`
-                          : ""}
-                        . O referido imóvel faz parte do projeto aprovado pelos
-                        órgãos competentes.
+                {/* Property Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Imóvel</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Empreendimento</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.empreendimentoNome}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Quadra</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.quadra}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Lote</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.numeroLote}</p>
+                    </div>
+                    {selectedVenda.rua && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Logradouro</p>
+                        <p className="font-semibold text-slate-700">{selectedVenda.rua}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Financial Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Financeiro</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
+                      <p className="font-bold text-primary-main text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
+                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
+                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
+                      <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Pagamento</p>
+                      <p className="font-semibold text-slate-700">{selectedVenda.formaPagamento || "—"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Seller and date */}
+                <div className="flex flex-col sm:flex-row gap-3">
+                  <div className="flex-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vendedor</p>
+                    <p className="font-bold text-slate-800">{selectedVenda.vendedor || "—"}</p>
+                  </div>
+                  <div className="flex-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                    <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Data da Venda</p>
+                    <p className="font-bold text-slate-800">{new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Gerar Recibo */}
+      <AnimatePresence>
+        {showReciboModal && selectedVenda && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 lg:p-8 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              className="bg-white w-full max-w-3xl h-full lg:h-auto lg:max-h-[90vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-900 rounded-xl text-white">
+                    <FileCheck size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-slate-800">Gerar Recibo</h4>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={handlePrint} className="btn-ghost h-9 px-4 text-xs">
+                    <Printer size={15} />
+                    <span className="hidden sm:inline">Imprimir</span>
+                  </button>
+                  <button onClick={() => setShowReciboModal(false)} className="h-9 w-9 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/50">
+                <div className="bg-white shadow-2xl p-8 sm:p-16 mx-auto w-full max-w-[21cm] min-h-[15cm] text-black font-sans border border-slate-200">
+                  <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-12">
+                    <div>
+                      <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Instrumento de Quitação de Valores</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Valor do Recibo</p>
+                      <p className="text-3xl font-bold bg-slate-900 text-white px-4 py-1 rounded-xl">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}
                       </p>
-                    </section>
-
-                    <section className="mb-12">
-                      <h2 className="font-bold mb-4 uppercase tracking-wider border-b border-slate-800 py-1 text-sm bg-slate-50 px-2 italic">
-                        3. DO VALOR E FORMA DE PAGAMENTO
-                      </h2>
-                      <div className="bg-slate-50 p-6 rounded-2xl space-y-4 border border-slate-100">
-                        <p>
-                          O preço certo e ajustado da venda ora prometido é de{" "}
-                          <span className="font-bold text-xl text-primary-dark">
-                            {new Intl.NumberFormat("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            }).format(selectedVenda.valorLote)}
-                          </span>
-                          , que será pago via{" "}
-                          <span className="font-bold underline">
-                            {selectedVenda.formaPagamento}
-                          </span>{" "}
-                          da seguinte forma:
-                        </p>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                          <div className="p-4 border border-slate-200 bg-white rounded-xl shadow-sm">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">
-                              Sinal / Entrada
-                            </p>
-                            <p className="font-bold text-black text-lg">
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(selectedVenda.valorEntrada)}
-                            </p>
-                            <p className="text-[9px] text-slate-400 mt-1 font-bold">
-                              PAGO NO ATO DA ASSINATURA
-                            </p>
-                          </div>
-                          <div className="p-4 border border-slate-200 bg-white rounded-xl shadow-sm">
-                            <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">
-                              Saldo Remanescente
-                            </p>
-                            <p className="font-bold text-black text-lg">
-                              {new Intl.NumberFormat("pt-BR", {
-                                style: "currency",
-                                currency: "BRL",
-                              }).format(
-                                selectedVenda.valorLote -
-                                  selectedVenda.valorEntrada,
-                              )}
-                            </p>
-                            <p className="text-[9px] text-slate-400 mt-1 font-bold">
-                              FINANCIAMENTO PRÓPRIO
-                            </p>
-                          </div>
-                        </div>
-
-                        <p className="text-sm font-medium leading-relaxed">
-                          O saldo remanescente será quitado em{" "}
-                          <span className="font-bold">
-                            {selectedVenda.quantidadeParcelas} parcelas fixas
-                          </span>
-                          , no valor de{" "}
-                          <span className="font-bold underline">
-                            {new Intl.NumberFormat("pt-BR", {
-                              style: "currency",
-                              currency: "BRL",
-                            }).format(selectedVenda.valorParcela)}
-                          </span>{" "}
-                          cada uma, com vencimento no dia{" "}
-                          <span className="font-bold underline">
-                            {new Date(selectedVenda.dataVencimento).getDate()}
-                          </span>{" "}
-                          de cada mês, ficando a primeira parcela para o dia{" "}
-                          <span className="font-bold underline">
-                            {new Date(
-                              selectedVenda.dataVencimento,
-                            ).toLocaleDateString("pt-BR")}
-                          </span>
-                          .
-                        </p>
+                    </div>
+                  </div>
+                  <div className="space-y-8 text-lg leading-loose">
+                    <p className="text-justify">
+                      Recebemos de{" "}
+                      <span className="font-bold uppercase underline underline-offset-4">{selectedVenda.clienteNome}</span>
+                      , inscrito(a) no CPF nº{" "}
+                      <span className="font-bold">{client?.cpf || "___.___.___-__"}</span>
+                      , a importância supra de{" "}
+                      <span className="font-bold italic">
+                        ({new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)})
+                      </span>
+                      , referente ao{" "}
+                      <span className="font-bold">SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)</span>{" "}
+                      para aquisição do imóvel:
+                    </p>
+                    <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-dashed border-slate-200 grid grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Empreendimento</p>
+                        <p className="font-bold text-slate-800">{selectedVenda.empreendimentoNome}</p>
                       </div>
-                    </section>
-
-                    <section className="mt-32">
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-16 px-10">
-                        <div className="text-center">
-                          <div className="h-px bg-slate-900 mb-2" />
-                          <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">
-                            Representante Vendedor
-                          </p>
-                          <p className="font-bold text-slate-800 tracking-tight">
-                            {selectedVenda.vendedor || "GENILSON P. MOREIRA"}
-                          </p>
-                        </div>
-                        <div className="text-center">
-                          <div className="h-px bg-slate-900 mb-2" />
-                          <p className="text-[10px] font-bold uppercase text-slate-400 mb-1">
-                            Promitente Comprador
-                          </p>
-                          <p className="font-bold text-slate-800 tracking-tight text-sm uppercase">
-                            {selectedVenda.clienteNome}
-                          </p>
-                        </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Localização</p>
+                        <p className="font-bold text-slate-800">Q:{selectedVenda.quadra} / L:{selectedVenda.numeroLote}</p>
                       </div>
-                      <div className="text-center mt-20 text-[9px] text-slate-300 font-bold tracking-widest uppercase">
+                      {selectedVenda.rua && (
+                        <div className="col-span-2">
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Logradouro</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.rua}</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium italic text-slate-500">
+                      Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
+                    </p>
+                  </div>
+                  <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between items-end">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
                         Santarém/PA,{" "}
-                        {new Date(selectedVenda.dataVenda).toLocaleDateString(
-                          "pt-BR",
-                          { day: "2-digit", month: "long", year: "numeric" },
-                        )}
-                      </div>
-                    </section>
-                  </div>
-                ) : (
-                  <div className="bg-white shadow-2xl p-8 sm:p-20 mx-auto w-full max-w-[21cm] min-h-[15cm] text-black font-sans border border-slate-200">
-                    <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-12">
-                      <div>
-                        <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">
-                          RECIBO
-                        </h1>
-                        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">
-                          Instrumento de Quitação de Valores
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                          Valor do Recibo
-                        </p>
-                        <p className="text-3xl font-bold bg-slate-900 text-white px-4 py-1 rounded-xl">
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          }).format(selectedVenda.valorEntrada)}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="space-y-8 text-lg leading-loose">
-                      <p className="text-justify">
-                        Recebemos de{" "}
-                        <span className="font-bold uppercase underline underline-offset-4">
-                          {selectedVenda.clienteNome}
-                        </span>
-                        , inscrito(a) no CPF nº{" "}
-                        <span className="font-bold">{client?.cpf}</span>, a
-                        importância supra de{" "}
-                        <span className="font-bold italic">
-                          (
-                          {new Intl.NumberFormat("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          }).format(selectedVenda.valorEntrada)}
-                          )
-                        </span>
-                        , referente ao{" "}
-                        <span className="font-bold">
-                          SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)
-                        </span>{" "}
-                        para aquisição do imóvel:
-                      </p>
-
-                      <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-dashed border-slate-200 grid grid-cols-2 gap-6">
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                            Empreendimento
-                          </p>
-                          <p className="font-bold text-slate-800">
-                            {selectedVenda.empreendimentoNome}
-                          </p>
-                        </div>
-                        <div>
-                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                            Localização
-                          </p>
-                          <p className="font-bold text-slate-800">
-                            Q:{selectedVenda.quadra} / L:
-                            {selectedVenda.numeroLote}
-                          </p>
-                        </div>
-                        {selectedVenda.rua && (
-                          <div className="col-span-2">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">
-                              Logradouro
-                            </p>
-                            <p className="font-bold text-slate-800">
-                              {selectedVenda.rua}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-
-                      <p className="text-sm font-medium italic text-slate-500">
-                        Pelo que damos plena, geral e irrevogável quitação do
-                        referido valor, para que nada mais se reclame.
+                        {new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
                       </p>
                     </div>
-
-                    <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between items-end">
-                      <div>
-                        <p className="text-sm font-bold text-slate-800">
-                          Santarém/PA,{" "}
-                          {new Date(selectedVenda.dataVenda).toLocaleDateString(
-                            "pt-BR",
-                            { day: "2-digit", month: "long", year: "numeric" },
-                          )}
-                        </p>
-                      </div>
-                      <div className="w-64 text-center">
-                        <div className="h-px bg-slate-900 mb-2" />
-                        <p className="text-[10px] font-bold uppercase text-slate-400">
-                          Assinatura do Vendedor
-                        </p>
-                        <p className="font-bold text-slate-900">
-                          {selectedVenda.vendedor || "GENILSON P. MOREIRA"}
-                        </p>
-                      </div>
+                    <div className="w-64 text-center">
+                      <div className="h-px bg-slate-900 mb-2" />
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Assinatura do Vendedor</p>
+                      <p className="font-bold text-slate-900">{selectedVenda.vendedor || "___________________________"}</p>
                     </div>
                   </div>
-                )}
+                </div>
               </div>
             </motion.div>
           </div>
@@ -4570,71 +4436,147 @@ const ContratosSection = ({
                       Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.
                     </p>
                   )}
+                  {gerarProprietarioId && onUpdateProprietario && (
+                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
+                      <input type="checkbox" className="rounded" checked={gerarSalvarProp} onChange={(e) => setGerarSalvarProp(e.target.checked)} />
+                      <span className="text-xs font-semibold text-slate-600">Salvar alterações neste proprietário</span>
+                    </label>
+                  )}
                 </div>
 
-                {/* Campos editáveis do vendedor */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {[
-                    { label: "Nome Completo *", field: "nome" },
-                    { label: "Nacionalidade", field: "nacionalidade" },
-                    { label: "Estado Civil", field: "estadoCivil" },
-                    { label: "RG", field: "rg" },
-                    { label: "CPF", field: "cpf" },
-                    { label: "Endereço", field: "endereco" },
-                    { label: "Número", field: "numero" },
-                    { label: "Bairro", field: "bairro" },
-                    { label: "Cidade", field: "cidade" },
-                    { label: "Estado", field: "estado" },
-                    { label: "CEP", field: "cep" },
-                  ].map(({ label, field }) => (
-                    <div key={field} className={field === "nome" || field === "endereco" ? "sm:col-span-2" : ""}>
-                      <label className="label">{label}</label>
+                {/* Dados do Vendedor / Proprietário */}
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Vendedor</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="label">Nome Completo *</label>
+                      <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Nacionalidade</label>
+                      <input className="input-field" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Estado Civil</label>
+                      <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
+                        {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">RG</label>
+                      <input className="input-field" placeholder="0000000" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: maskRG(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="label">CPF</label>
+                      <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: maskCPF(e.target.value) })} />
+                    </div>
+                    <div>
+                      <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
                       <input
                         className="input-field"
-                        value={(gerarVendedor as any)[field] || ""}
-                        onChange={(e) => setGerarVendedor({ ...gerarVendedor, [field]: e.target.value })}
+                        placeholder="00000-000"
+                        value={gerarVendedor.cep}
+                        onChange={(e) => {
+                          const val = maskCEP(e.target.value);
+                          setGerarVendedor({ ...gerarVendedor, cep: val });
+                          if (val.replace(/\D/g, "").length === 8) fetchCepGerar(val);
+                        }}
                       />
                     </div>
-                  ))}
+                    <div className="sm:col-span-2">
+                      <label className="label">Endereço</label>
+                      <input className="input-field" value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Número</label>
+                      <input className="input-field" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Bairro</label>
+                      <input className="input-field" value={gerarVendedor.bairro} onChange={(e) => setGerarVendedor({ ...gerarVendedor, bairro: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Cidade</label>
+                      <input className="input-field" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Estado (UF)</label>
+                      <input className="input-field" maxLength={2} value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value.toUpperCase() })} />
+                    </div>
+                  </div>
                 </div>
 
-                {/* Dados extras do contrato */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-                  <p className="sm:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Contrato</p>
-                  <div className="sm:col-span-2">
-                    <label className="label">Rua do Lote</label>
-                    <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Comunidade / Região</label>
-                    <input className="input-field" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} />
-                  </div>
-                  <div>
-                    <label className="label">Forma de Pagamento</label>
-                    <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
-                      {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
-                    </select>
-                  </div>
-                  {[
-                    { label: "Medida Frente (m)", field: "medidaFrente" },
-                    { label: "Lateral Direita (m)", field: "medidaLateralDir" },
-                    { label: "Lateral Esquerda (m)", field: "medidaLateralEsq" },
-                    { label: "Fundos (m)", field: "medidaFundos" },
-                    { label: "Área Total (m²)", field: "areaTotal" },
-                  ].map(({ label, field }) => (
-                    <div key={field}>
-                      <label className="label">{label}</label>
-                      <input className="input-field" value={(gerarExtra as any)[field] || ""} onChange={(e) => setGerarExtra({ ...gerarExtra, [field]: e.target.value })} />
+                {/* Empreendimento */}
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empreendimento</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="label">Nome do Empreendimento</label>
+                      <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: e.target.value })} />
                     </div>
-                  ))}
+                    <div className="sm:col-span-2">
+                      <label className="label">Comunidade / Região</label>
+                      <input className="input-field" value={gerarEmp.comunidade} onChange={(e) => setGerarEmp({ ...gerarEmp, comunidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Cidade</label>
+                      <input className="input-field" value={gerarEmp.cidade} onChange={(e) => setGerarEmp({ ...gerarEmp, cidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Estado (UF)</label>
+                      <input className="input-field" maxLength={2} value={gerarEmp.estado} onChange={(e) => setGerarEmp({ ...gerarEmp, estado: e.target.value.toUpperCase() })} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Dados do Lote */}
+                <div className="space-y-3 pt-2 border-t border-slate-100">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Lote e Pagamento</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="label">Rua do Lote</label>
+                      <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Forma de Pagamento</label>
+                      <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
+                        {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Frente (m)</label>
+                      <input className="input-field" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Lateral Direita (m)</label>
+                      <input className="input-field" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Lateral Esquerda (m)</label>
+                      <input className="input-field" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Fundos (m)</label>
+                      <input className="input-field" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Área Total (m²)</label>
+                      <input className="input-field" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} />
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+              <div className="p-6 border-t border-slate-100 flex justify-between gap-3">
                 <button onClick={() => setShowGerarModal(false)} className="btn-secondary px-6">Cancelar</button>
-                <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 disabled:opacity-50">
-                  {downloadingDocx ? "Gerando..." : <><FileDown size={16} /> Baixar .docx</>}
-                </button>
+                <div className="flex gap-3">
+                  <button onClick={handlePrint} className="btn-ghost px-5">
+                    <Printer size={16} /> Imprimir
+                  </button>
+                  <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 disabled:opacity-50">
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={16} /> Baixar .docx</>}
+                  </button>
+                </div>
               </div>
             </motion.div>
           </div>
@@ -5980,9 +5922,25 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
+  const [contractInitialMode, setContractInitialMode] = React.useState<'recibo' | undefined>(undefined);
+
   const handleGoToContracts = (v: Venda) => {
     setSection("contratos");
     setContractToOpen(v);
+    setContractInitialMode(undefined);
+  };
+
+  const handleGoToContractsRecibo = (v: Venda) => {
+    setSection("contratos");
+    setContractToOpen(v);
+    setContractInitialMode('recibo');
+  };
+
+  const handleUpdateProprietario = (p: Proprietario) => {
+    const updated = (config.proprietarios || []).map((x) => x.id === p.id ? p : x);
+    const newConfig = { ...config, proprietarios: updated };
+    setConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
   const handleStartSale = (data: Partial<Venda>) => {
@@ -6043,6 +6001,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
             developments={developments}
             onSaveVenda={saveSale}
             onGoToContracts={handleGoToContracts}
+            onGoToContractsRecibo={handleGoToContractsRecibo}
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
             vendedores={config.vendedores || []}
@@ -6061,6 +6020,8 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
             onUpdateVenda={updateVenda}
             vendedores={config.vendedores || []}
             proprietarios={config.proprietarios || []}
+            initialMode={contractInitialMode}
+            onUpdateProprietario={handleUpdateProprietario}
           />
         );
       case "clientes":

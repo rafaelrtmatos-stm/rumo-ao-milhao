@@ -1,0 +1,52 @@
+Preciso que você faça as seguintes alterações no src/App.tsx:
+1. Após clicar em "Gerar Venda", os botões devem ser:
+
+Copiar Resumo
+Gerar Contrato
+Gerar Recibo
+Novo Cadastro
+
+2. Remover o "Instrumento Particular de Promessa de Compra e Venda" da tela de visualização da venda. Essa tela deve mostrar apenas o resumo da venda com os dados do cliente e do lote.
+3. Botão "Gerar Contrato" deve abrir um modal com:
+Seção Vendedor/Proprietário:
+
+Busca por proprietário já cadastrado no sistema (dropdown)
+Campos editáveis: Nome, CPF (com máscara e validação), RG (com máscara e validação), Nacionalidade, Estado Civil, Endereço, Número, Bairro, Cidade, Estado, CEP (com busca automática via ViaCEP)
+Os dados do proprietário selecionado preenchem os campos automaticamente, mas podem ser editados
+Salvar alterações no proprietário cadastrado ao confirmar
+
+Seção Empreendimento:
+
+Mostra o empreendimento da venda
+Campos editáveis: Nome, Comunidade/Região, Cidade, Estado
+Salvar alterações no empreendimento cadastrado ao confirmar
+
+Seção Lote:
+
+Quadra, Lote e Rua já preenchidos da venda (editáveis)
+Medida Frente (metros)
+Medida Lateral Direita (metros)
+Medida Lateral Esquerda (metros)
+Medida Fundos (metros)
+Área Total (m²)
+
+Botões do modal:
+
+Cancelar
+Baixar .docx (chama /api/contrato/parcelado-padrao e baixa o arquivo)
+Imprimir (abre janela de impressão do .docx)
+
+4. Botão "Gerar Recibo" deve abrir um modal separado mostrando o recibo da venda com:
+
+Logo/cabeçalho
+Dados do vendedor, comprador, lote e valor pago (entrada)
+Botões: Baixar Imagem e Imprimir
+
+5. Regras para campos do Vendedor/Proprietário (igual ao cadastro de clientes):
+
+CPF: máscara 000.000.000-00 e validação dos dígitos
+RG: máscara e validação
+CEP: busca automática via https://viacep.com.br/ws/{cep}/json/ preenchendo endereço, bairro, cidade e estado automaticamente
+Nenhum nome fixo como padrão (remover "GENILSON PEREIRA MOREIRA" hardcoded)
+
+6. No server/contratoParceladoPadrao.ts, o vendedor deve vir sempre dos dados enviados pelo frontend, nunca usar nome fixo padrão. O template Word em attached_assets/contrato_template.docx deve ser usado como base, substituindo todos os dados reais.
