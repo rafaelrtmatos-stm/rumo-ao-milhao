@@ -36,8 +36,7 @@ import {
   AppConfig,
   AppTheme,
 } from "./types";
-import { storageService } from "./storageService"; // mantido apenas para compatibilidade de migração
-import { dbService } from "./dbService";
+import { supabaseDataService } from "./supabaseDataService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
@@ -3787,9 +3786,7 @@ const ConfigSection = ({
 
   const handleMigrate = async () => {
     setMigrating(true);
-    setMigrateMsg('');
-    const result = await dbService.migrateFromLocalStorage();
-    setMigrateMsg(result.msg);
+    setMigrateMsg('Dados agora salvos diretamente no Supabase. Nenhuma migração necessária.');
     setMigrating(false);
   };
 
@@ -4265,11 +4262,30 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   >(undefined);
 
   useEffect(() => {
-    setDevelopments(storageService.getEmpreendimentos());
-    setClients(storageService.getClientes());
-    setSales(storageService.getVendas());
-    setConfig(storageService.getAppConfig());
-    setIsLoaded(true);
+    const load = async () => {
+      const [devs, cls, sls, cfg] = await Promise.all([
+        supabaseDataService.getEmpreendimentos(),
+        supabaseDataService.getClientes(),
+        supabaseDataService.getVendas(),
+        supabaseDataService.getAppConfig(),
+      ]);
+      setDevelopments(devs);
+      setClients(cls);
+      setSales(sls);
+      setConfig(cfg);
+      setIsLoaded(true);
+    };
+    load().catch(console.error);
+
+    const subDevs = supabaseDataService.subscribeToEmpreendimentos((d) => setDevelopments(d));
+    const subClientes = supabaseDataService.subscribeToClientes((d) => setClients(d));
+    const subVendas = supabaseDataService.subscribeToVendas((d) => setSales(d));
+
+    return () => {
+      subDevs.unsubscribe();
+      subClientes.unsubscribe();
+      subVendas.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -4280,13 +4296,13 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (!isLoaded) return;
     const updated = [...developments, newDev];
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
@@ -4298,14 +4314,14 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      storageService.saveClientes(updatedClients);
+      supabaseDataService.saveClientes(updatedClients).catch(console.error);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    storageService.saveVendas(updatedSales);
+    supabaseDataService.saveVendas(updatedSales).catch(console.error);
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -4323,7 +4339,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       return d;
     });
     setDevelopments(updatedDevs);
-    storageService.saveEmpreendimentos(updatedDevs);
+    supabaseDataService.saveEmpreendimentos(updatedDevs).catch(console.error);
 
     return newSale;
   };
@@ -4338,12 +4354,12 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         : d,
     );
     setDevelopments(updated);
-    storageService.saveEmpreendimentos(updated);
+    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    storageService.saveAppConfig(newConfig);
+    supabaseDataService.saveAppConfig(newConfig).catch(console.error);
   };
 
   const handleGoToContracts = (v: Venda) => {
@@ -4364,7 +4380,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       s.id === vendaId ? { ...s, status: newStatus } : s,
     );
     setSales(updated);
-    storageService.saveVendas(updated);
+    supabaseDataService.saveVendas(updated).catch(console.error);
     if (contractToOpen && contractToOpen.id === vendaId) {
       setContractToOpen({ ...contractToOpen, status: newStatus });
     }

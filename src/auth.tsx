@@ -1,12 +1,7 @@
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { supabase } from "./supabaseClient";
 import { motion } from "motion/react";
 import { Building2, Lock } from "lucide-react";
-
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
 
 export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState("");
@@ -18,10 +13,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       setError("Credenciais inválidas. Verifique seu email e senha.");
     } else {
@@ -64,16 +56,14 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 Acesso do Corretor
               </label>
               <div className="relative">
-                <Building2
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
-                />
+                <Building2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                 <input
                   type="email"
                   className="w-full h-14 pl-12 pr-4 bg-slate-50 border-none rounded-2xl text-sm font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-[#2d5016]/20 transition-all"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="seu@email.com"
+                  autoComplete="email"
                   required
                 />
               </div>
@@ -84,16 +74,14 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 Senha Segura
               </label>
               <div className="relative">
-                <Lock
-                  size={18}
-                  className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
-                />
+                <Lock size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
                 <input
                   type="password"
                   className="w-full h-14 pl-12 pr-4 bg-slate-50 border-none rounded-2xl text-sm font-bold placeholder:text-slate-300 focus:ring-2 focus:ring-[#2d5016]/20 transition-all"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
+                  autoComplete="current-password"
                   required
                 />
               </div>

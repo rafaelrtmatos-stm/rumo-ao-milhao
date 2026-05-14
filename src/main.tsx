@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { LoginScreen, supabase } from "./auth";
+import { LoginScreen } from "./auth";
+import { supabase } from "./supabaseClient";
 import "./index.css";
 
 function Root() {
