@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 await setupAuth(app);
 
 const geminiAI = new GoogleGenAI({
-  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY,
+  apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
   ...(process.env.AI_INTEGRATIONS_GEMINI_BASE_URL ? {
     httpOptions: { apiVersion: "", baseUrl: process.env.AI_INTEGRATIONS_GEMINI_BASE_URL },
   } : {}),
