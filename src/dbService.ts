@@ -1,118 +1,178 @@
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
+import { supabase } from './lib/supabase';
 
-async function apiGet(path: string): Promise<any> {
-  const res = await fetch(path, { credentials: 'include' });
-  if (!res.ok) {
-    if (res.status === 401) throw new Error('Unauthorized');
-    throw new Error(`Erro ${res.status} ao buscar ${path}`);
-  }
-  return res.json();
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function toRows<T extends { id: string }>(items: T[], userId: string) {
+  return items.map((item) => ({ id: item.id, user_id: userId, data: item }));
 }
 
-async function apiPost(path: string, body: any): Promise<any> {
-  const res = await fetch(path, {
-    method: 'POST',
-    credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    if (res.status === 401) throw new Error('Unauthorized');
-    let detail = '';
-    try { const j = await res.json(); detail = j.error || j.message || ''; } catch {}
-    throw new Error(detail || `Erro ${res.status} ao salvar em ${path}`);
-  }
-  return res.json();
+async function getUserId(): Promise<string> {
+  const { data } = await supabase.auth.getUser();
+  if (!data.user) throw new Error('Unauthorized');
+  return data.user.id;
 }
 
-/**
- * Polling simples para simular realtime.
- * O banco é Postgres puro (sem Supabase Realtime), então fazemos
- * polling a cada 15s. Só chama o callback se os dados mudaram.
- */
-function createPoller<T>(
+// ---------------------------------------------------------------------------
+// Realtime subscriptions (substitui o polling de 15s)
+// ---------------------------------------------------------------------------
+
+function subscribeTable<T>(
+  table: string,
   fetchFn: () => Promise<T>,
   callback: (data: T) => void,
-  intervalMs = 15000,
 ) {
-  let stopped = false;
-  let lastJson = '';
+  // Busca imediata ao assinar
+  fetchFn().then(callback).catch(() => {});
 
-  const poll = async () => {
-    if (stopped) return;
-    try {
-      const data = await fetchFn();
-      const json = JSON.stringify(data);
-      if (json !== lastJson) {
-        lastJson = json;
-        callback(data);
-      }
-    } catch {
-      // ignora erros silenciosamente (ex: usuário não autenticado ainda)
-    }
-    if (!stopped) setTimeout(poll, intervalMs);
-  };
+  const channel = supabase
+    .channel(`realtime:${table}`)
+    .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
+      fetchFn().then(callback).catch(() => {});
+    })
+    .subscribe();
 
-  // Começa depois do load inicial para não conflitar
-  setTimeout(poll, intervalMs);
-
-  return { unsubscribe: () => { stopped = true; } };
+  return { unsubscribe: () => supabase.removeChannel(channel) };
 }
+
+// ---------------------------------------------------------------------------
+// dbService
+// ---------------------------------------------------------------------------
 
 export const dbService = {
 
+  // ---- Empreendimentos ----
+
   async getEmpreendimentos(): Promise<Empreendimento[]> {
-    return apiGet('/api/empreendimentos');
+    const { data, error } = await supabase
+      .from('empreendimentos')
+      .select('data')
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => r.data as Empreendimento);
   },
 
   async saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
-    await apiPost('/api/empreendimentos', items);
+    const userId = await getUserId();
+    const rows = toRows(items, userId);
+
+    // Apaga tudo do usuário e reinsepe (comportamento original do servidor)
+    const { error: delErr } = await supabase
+      .from('empreendimentos')
+      .delete()
+      .eq('user_id', userId);
+    if (delErr) throw new Error(delErr.message);
+
+    if (rows.length === 0) return;
+
+    const { error: insErr } = await supabase
+      .from('empreendimentos')
+      .insert(rows);
+    if (insErr) throw new Error(insErr.message);
   },
 
   async deleteEmpreendimento(id: string): Promise<void> {
-    const all = await dbService.getEmpreendimentos();
-    await dbService.saveEmpreendimentos(all.filter((e) => e.id !== id));
+    const { error } = await supabase
+      .from('empreendimentos')
+      .delete()
+      .eq('id', id);
+    if (error) throw new Error(error.message);
   },
 
+  // ---- Clientes ----
+
   async getClientes(): Promise<Cliente[]> {
-    return apiGet('/api/clientes');
+    const { data, error } = await supabase
+      .from('clientes')
+      .select('data')
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => r.data as Cliente);
   },
 
   async saveClientes(items: Cliente[]): Promise<void> {
-    await apiPost('/api/clientes', items);
+    const userId = await getUserId();
+    const rows = toRows(items, userId);
+
+    const { error: delErr } = await supabase
+      .from('clientes')
+      .delete()
+      .eq('user_id', userId);
+    if (delErr) throw new Error(delErr.message);
+
+    if (rows.length === 0) return;
+
+    const { error: insErr } = await supabase
+      .from('clientes')
+      .insert(rows);
+    if (insErr) throw new Error(insErr.message);
   },
 
+  // ---- Vendas ----
+
   async getVendas(): Promise<Venda[]> {
-    return apiGet('/api/vendas');
+    const { data, error } = await supabase
+      .from('vendas')
+      .select('data')
+      .order('created_at', { ascending: true });
+    if (error) throw new Error(error.message);
+    return (data ?? []).map((r) => r.data as Venda);
   },
 
   async saveVendas(items: Venda[]): Promise<void> {
-    await apiPost('/api/vendas', items);
+    const userId = await getUserId();
+    const rows = toRows(items, userId);
+
+    const { error: delErr } = await supabase
+      .from('vendas')
+      .delete()
+      .eq('user_id', userId);
+    if (delErr) throw new Error(delErr.message);
+
+    if (rows.length === 0) return;
+
+    const { error: insErr } = await supabase
+      .from('vendas')
+      .insert(rows);
+    if (insErr) throw new Error(insErr.message);
   },
 
+  // ---- Config ----
+
   async getAppConfig(): Promise<AppConfig> {
-    try {
-      return await apiGet('/api/config');
-    } catch {
-      return { theme: 'standard' };
-    }
+    const { data, error } = await supabase
+      .from('app_config')
+      .select('data')
+      .maybeSingle();
+    if (error) return { theme: 'standard' };
+    return (data?.data as AppConfig) ?? { theme: 'standard' };
   },
 
   async saveAppConfig(config: AppConfig): Promise<void> {
-    await apiPost('/api/config', config);
+    const userId = await getUserId();
+    const { error } = await supabase
+      .from('app_config')
+      .upsert({ user_id: userId, data: config }, { onConflict: 'user_id' });
+    if (error) throw new Error(error.message);
   },
 
+  // ---- Subscriptions (agora com Realtime de verdade) ----
+
   subscribeToVendas(callback: (vendas: Venda[]) => void) {
-    return createPoller(() => dbService.getVendas(), callback);
+    return subscribeTable('vendas', () => dbService.getVendas(), callback);
   },
 
   subscribeToEmpreendimentos(callback: (devs: Empreendimento[]) => void) {
-    return createPoller(() => dbService.getEmpreendimentos(), callback);
+    return subscribeTable('empreendimentos', () => dbService.getEmpreendimentos(), callback);
   },
 
   subscribeToClientes(callback: (clientes: Cliente[]) => void) {
-    return createPoller(() => dbService.getClientes(), callback);
+    return subscribeTable('clientes', () => dbService.getClientes(), callback);
   },
+
+  // ---- Migração do localStorage ----
 
   async migrateFromLocalStorage(): Promise<{ ok: boolean; msg: string }> {
     try {
