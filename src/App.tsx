@@ -1190,11 +1190,13 @@ const VendasSection = ({
   onSaveVenda,
   onGoToContracts,
   initialSaleData,
+  onSaveDev,
 }: {
   developments: Empreendimento[];
   onSaveVenda: (v: Venda, c: Cliente) => Venda;
   onGoToContracts: (v: Venda) => void;
   initialSaleData?: Partial<Venda>;
+  onSaveDev: (d: Empreendimento) => void;
 }) => {
   const [clientData, setClientData] = useState<Partial<Cliente>>({
     nome: "",
@@ -1241,6 +1243,29 @@ const VendasSection = ({
     formaPagamento: "Boleto",
     ...initialSaleData,
   });
+  const [showNovoDev, setShowNovoDev] = useState(false);
+  const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", ruas: "", totalLotes: 0 });
+
+  const handleSalvarNovoDev = () => {
+    if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
+    const novo: Empreendimento = {
+      id: `dev-${Date.now()}`,
+      nome: novoDevData.nome,
+      endereco: "",
+      cidade: "",
+      estado: "",
+      totalLotes: novoDevData.totalLotes || 0,
+      descricao: "",
+      lotesVendidos: 0,
+      comunidade: novoDevData.comunidade,
+      quadras: novoDevData.quadras,
+      ruas: novoDevData.ruas,
+    };
+    onSaveDev(novo);
+    setSaleData({ ...saleData, empreendimentoId: novo.id });
+    setShowNovoDev(false);
+    setNovoDevData({ nome: "", comunidade: "", quadras: "", ruas: "", totalLotes: 0 });
+  };
 
   // Update saleData if initialSaleData changes (e.g. coming from Dashboard)
   useEffect(() => {
@@ -2103,7 +2128,16 @@ Vendedor: ${lastSavedVenda.vendedor}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="sm:col-span-2 space-y-4">
-              <label className="label">Empreendimento Alvo</label>
+              <div className="flex items-center justify-between">
+                <label className="label">Empreendimento Alvo</label>
+                <button
+                  type="button"
+                  onClick={() => setShowNovoDev(true)}
+                  className="text-[11px] font-bold text-primary-main hover:underline flex items-center gap-1"
+                >
+                  <Plus size={13} /> Cadastrar novo
+                </button>
+              </div>
               <select
                 required
                 className="input-field font-bold text-primary-main"
@@ -2119,6 +2153,58 @@ Vendedor: ${lastSavedVenda.vendedor}
                   </option>
                 ))}
               </select>
+
+              {/* Mini modal: cadastrar empreendimento inline */}
+              <AnimatePresence>
+                {showNovoDev && (
+                  <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+                    >
+                      <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                            <Building2 size={20} />
+                          </div>
+                          <h3 className="text-lg font-display font-bold text-slate-800">Novo Empreendimento</h3>
+                        </div>
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                          <X size={20} className="text-slate-500" />
+                        </button>
+                      </div>
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome do Empreendimento *</label>
+                          <input className="input-field" placeholder="Ex: Loteamento Villa Nova" value={novoDevData.nome} onChange={(e) => setNovoDevData({ ...novoDevData, nome: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Comunidade / Região</label>
+                          <input className="input-field" placeholder="Ex: Centro, Vila Nova" value={novoDevData.comunidade} onChange={(e) => setNovoDevData({ ...novoDevData, comunidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Total de Lotes</label>
+                          <input type="number" className="input-field" placeholder="0" value={novoDevData.totalLotes || ""} onChange={(e) => setNovoDevData({ ...novoDevData, totalLotes: Number(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">Quadras</label>
+                          <input className="input-field" placeholder="Ex: A, B, C" value={novoDevData.quadras} onChange={(e) => setNovoDevData({ ...novoDevData, quadras: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Ruas / Acessos</label>
+                          <input className="input-field" placeholder="Ex: Rua 01, Av. Principal" value={novoDevData.ruas} onChange={(e) => setNovoDevData({ ...novoDevData, ruas: e.target.value })} />
+                        </div>
+                      </div>
+                      <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="btn-secondary px-6">Cancelar</button>
+                        <button type="button" onClick={handleSalvarNovoDev} className="btn-primary px-8">Salvar e Selecionar</button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
 
               {saleData.empreendimentoId && (
                 <motion.div
@@ -3967,6 +4053,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             onSaveVenda={saveSale}
             onGoToContracts={handleGoToContracts}
             initialSaleData={prefilledSale}
+            onSaveDev={saveDev}
           />
         );
       case "contratos":
