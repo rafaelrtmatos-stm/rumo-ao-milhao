@@ -32,7 +32,7 @@ import {
   AppConfig,
   AppTheme,
 } from "./types";
-import { storageService } from "./storageService";
+import { storageService } from "./storageService"; // mantido apenas para compatibilidade de migração
 import { dbService } from "./dbService";
 import { maskCPF, maskCEP, maskPhone } from "./lib/masks";
 import { geminiService } from "./geminiService";
@@ -3251,6 +3251,16 @@ const ConfigSection = ({
   onSave: (c: AppConfig) => void;
 }) => {
   const [formData, setFormData] = useState(config);
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState('');
+
+  const handleMigrate = async () => {
+    setMigrating(true);
+    setMigrateMsg('');
+    const result = await dbService.migrateFromLocalStorage();
+    setMigrateMsg(result.msg);
+    setMigrating(false);
+  };
 
   const themes: { id: AppTheme; label: string; color: string }[] = [
     { id: "standard", label: "Padrão (Verde)", color: "bg-[#2d5016]" },
@@ -3310,6 +3320,33 @@ const ConfigSection = ({
             Salvar Alterações
           </button>
         </div>
+      </div>
+
+      {/* Migração de dados */}
+      <div className="card-premium space-y-4">
+        <h4 className="font-bold text-slate-800 flex items-center gap-2">
+          <Download size={18} className="text-primary-main" />
+          Migração de Dados
+        </h4>
+        <p className="text-sm text-slate-500">
+          Se você tinha dados salvos anteriormente no navegador (localStorage), clique abaixo para migrá-los para o Supabase de forma permanente.
+        </p>
+        {migrateMsg && (
+          <div className={`p-4 rounded-2xl text-sm font-semibold ${migrateMsg.includes('Erro') || migrateMsg.includes('Nenhum') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
+            {migrateMsg}
+          </div>
+        )}
+        <button
+          onClick={handleMigrate}
+          disabled={migrating}
+          className="btn-ghost px-8 disabled:opacity-40"
+        >
+          {migrating ? (
+            <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
+          ) : (
+            <><Download size={16} /> Migrar dados do navegador para o Supabase</>
+          )}
+        </button>
       </div>
     </div>
   );
@@ -3567,25 +3604,29 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
 
   useEffect(() => {
     const load = async () => {
-      try {
-        const [devs, cls, sls, cfg] = await Promise.all([
-          dbService.getEmpreendimentos(),
-          dbService.getClientes(),
-          dbService.getVendas(),
-          dbService.getAppConfig(),
-        ]);
-        setDevelopments(devs);
-        setClients(cls);
-        setSales(sls);
-        setConfig(cfg);
-      } catch {
-        setDevelopments(storageService.getEmpreendimentos());
-        setClients(storageService.getClientes());
-        setSales(storageService.getVendas());
-        setConfig(storageService.getAppConfig());
-      }
+      const [devs, cls, sls, cfg] = await Promise.all([
+        dbService.getEmpreendimentos(),
+        dbService.getClientes(),
+        dbService.getVendas(),
+        dbService.getAppConfig(),
+      ]);
+      setDevelopments(devs);
+      setClients(cls);
+      setSales(sls);
+      setConfig(cfg);
     };
     load();
+
+    // Realtime: atualiza automaticamente quando outro usuário muda os dados
+    const subVendas = dbService.subscribeToVendas((vendas) => setSales(vendas));
+    const subDevs = dbService.subscribeToEmpreendimentos((devs) => setDevelopments(devs));
+    const subClientes = dbService.subscribeToClientes((clientes) => setClients(clientes));
+
+    return () => {
+      subVendas.unsubscribe();
+      subDevs.unsubscribe();
+      subClientes.unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
