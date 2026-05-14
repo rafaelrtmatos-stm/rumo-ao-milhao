@@ -41,7 +41,11 @@ function extractLocallyFromText(rawText: string) {
     .replace(/solteira/, 'solteiro').replace(/casada/, 'casado')
     .replace(/divorciada/, 'divorciado').replace(/vi[uú]va/, 'viúvo')
     .replace(/vi[uú]vo/, 'viúvo').replace(/separada/, 'separado') : null;
-  const allPhones = [...text.matchAll(/(?:(?:fone|tel\.?|celular|whatsapp|contato)[\s:]*)?(?:\+55[\s-]?)?\(?\d{2}\)?[\s]?\d{4,5}[-\s]?\d{4}/gi)];
+  // Extract all phone numbers (handles CONTATO(3): 92 99072-5820 / 92 99628-0988)
+  const allPhones = [...text.matchAll(/(?:\+55[\s-]?)?\(?\d{2}\)?[\s.-]?\d{4,5}[-\s.]?\d{4}/g)].filter(m => {
+    const digits = m[0].replace(/\D/g, '');
+    return digits.length >= 10 && digits.length <= 11;
+  });
   const telefone1 = allPhones[0] ? allPhones[0][0].replace(/[^\d]/g, '') : null;
   const telefone2 = allPhones[1] ? allPhones[1][0].replace(/[^\d]/g, '') : null;
   const enderecoFullMatch = text.match(/\b(rua|r\.|av\.?|avenida|travessa|trav\.?|alameda|al\.?)\s+([^,\n\d]+?),?\s*n[º°.]?\s*(\d+)/i);
@@ -68,8 +72,9 @@ function extractLocallyFromText(rawText: string) {
   const empMatch = text.match(/(?:empreendimento|loteamento|terreno|residencial|fazenda|parque)[:\s]+([^\n,;]+)/i);
   const empreendimentoNome = empMatch ? empMatch[1].trim() : null;
   const pagamentoMatch = text.match(/entrada\s*R?\$?\s*([\d.,]+)\s+(\d+)\s*[xX]\s*R?\$?\s*([\d.,]+)/i);
-  const parcelasMatch = text.match(/(\d+)\s*[xX]\s*R?\$?\s*([\d.,]+)/i);
-  const entradaMatch = text.match(/entrada\s*(?:de\s*)?R?\$?\s*([\d.,]+)/i);
+  // Handles: "50X DE R$ 350,00" or "50x de R$350,00" or "50 x R$ 350,00"
+  const parcelasMatch = text.match(/(\d+)\s*[xX]\s*(?:de\s*)?R?\$?\s*([\d.,]+)/i);
+  const entradaMatch = text.match(/entrada\s*(?:[:\s]*)?R?\$?\s*([\d.,]+)/i);
   const valorTotalMatch = text.match(/(?:valor\s*(?:do\s*)?(?:lote|total|imóvel))\s*[:\s]*R?\$?\s*([\d.,]+)/i);
   let valorEntrada: number | null = null;
   let quantidadeParcelas: number | null = null;

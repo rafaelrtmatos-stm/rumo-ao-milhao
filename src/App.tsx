@@ -1940,20 +1940,71 @@ const VendasSection = ({
 
   const [pasteSuccess, setPasteSuccess] = useState(false);
 
-  const extractAndApply = async (text: string) => {
+  const applyDataToState = (
+    data: Record<string, any>,
+    devList: Empreendimento[]
+  ) => {
+    // Match empreendimento by name
+    const nomeLower = (data.empreendimentoNome || "").toLowerCase().trim();
+    let empreendimentoId: string | undefined;
+    if (nomeLower) {
+      const match = devList.find(
+        (d) =>
+          d.nome.toLowerCase().includes(nomeLower) ||
+          nomeLower.includes(d.nome.toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+
+    setClientData((prev) => ({
+      ...prev,
+      ...(data.nomeComprador || data.nome ? { nome: data.nomeComprador || data.nome } : {}),
+      ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
+      ...(data.rg ? { rg: data.rg } : {}),
+      ...(data.cpf ? { cpf: maskCPF(data.cpf) } : {}),
+      ...(data.estadoCivil ? { estadoCivil: data.estadoCivil } : {}),
+      ...(data.profissao ? { profissao: data.profissao } : {}),
+      ...(data.nascimento ? { nascimento: data.nascimento } : {}),
+      ...(data.telefone1 ? { telefone1: maskPhone(data.telefone1) } : {}),
+      ...(data.telefone2 ? { telefone2: maskPhone(data.telefone2) } : {}),
+      ...(data.endereco ? { endereco: data.endereco } : {}),
+      ...(data.numero ? { numero: data.numero } : {}),
+      ...(data.bairro ? { bairro: data.bairro } : {}),
+      ...(data.cidade ? { cidade: data.cidade } : {}),
+      ...(data.estado ? { estado: data.estado } : {}),
+      ...(data.cep ? { cep: maskCEP(data.cep) } : {}),
+    }));
+
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      ...(data.numeroLote ? { numeroLote: data.numeroLote } : {}),
+      ...(data.quadra ? { quadra: data.quadra } : {}),
+      ...(data.valorLote ? { valorLote: data.valorLote } : {}),
+      ...(data.valorEntrada ? { valorEntrada: data.valorEntrada } : {}),
+      ...(data.valorParcela ? { valorParcela: data.valorParcela } : {}),
+      ...(data.quantidadeParcelas ? { quantidadeParcelas: data.quantidadeParcelas } : {}),
+      ...(data.dataVencimento ? { dataVencimento: data.dataVencimento } : {}),
+      ...(data.vendedor ? { vendedor: data.vendedor } : {}),
+    }));
+  };
+
+  const runExtraction = async (text: string) => {
     setIsExtracting(true);
     setPasteSuccess(false);
     try {
       const data = await geminiService.extractSaleData(text);
-      applyExtractedData(data, developments);
-      // Also fill telefone2 which applyExtractedData doesn't cover
-      if (data.telefone2) {
-        setClientData((prev) => ({ ...prev, telefone2: maskPhone(data.telefone2) }));
+      const filled = !!(
+        data.nomeComprador || data.nome || data.cpf || data.rg ||
+        data.numeroLote || data.valorLote || data.telefone1
+      );
+      if (filled) {
+        applyDataToState(data, developments);
+        setPasteSuccess(true);
+        setTimeout(() => setPasteSuccess(false), 3500);
       }
-      setPasteSuccess(true);
-      setTimeout(() => setPasteSuccess(false), 3000);
     } catch (err) {
-      // silent — text stays in textarea, user can still click button manually
+      console.error("Extraction error:", err);
     } finally {
       setIsExtracting(false);
     }
@@ -1961,15 +2012,14 @@ const VendasSection = ({
 
   const handleExtractIA = async () => {
     if (!rawText.trim()) return;
-    await extractAndApply(rawText);
+    await runExtraction(rawText);
   };
 
-  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const pastedText = e.clipboardData.getData("text");
     if (!pastedText.trim()) return;
     setRawText(pastedText);
-    // Small timeout so textarea renders the text first
-    setTimeout(() => extractAndApply(pastedText), 50);
+    setTimeout(() => runExtraction(pastedText), 80);
   };
 
   const handleCopySummary = () => {
