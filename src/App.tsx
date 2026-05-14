@@ -32,6 +32,7 @@ import {
   Cliente,
   Venda,
   Vendedor,
+  Proprietario,
   Address,
   AppConfig,
   AppTheme,
@@ -152,6 +153,7 @@ const Sidebar = ({
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
+    { id: "proprietarios", label: "Proprietários", icon: UserCheck },
     { id: "contratos", label: "Contratos", icon: FileText },
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
@@ -842,6 +844,7 @@ const EmpreendimentosSection = ({
   onDelete,
   onUpdateLotesInfo,
   onStartSale,
+  proprietarios = [],
 }: {
   developments: Empreendimento[];
   sales: Venda[];
@@ -852,6 +855,7 @@ const EmpreendimentosSection = ({
     info: Record<string, { rua: string }>,
   ) => void;
   onStartSale: (v: Partial<Venda>) => void;
+  proprietarios?: Proprietario[];
 }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [formData, setFormData] = useState<Partial<Empreendimento>>({
@@ -864,6 +868,7 @@ const EmpreendimentosSection = ({
     comunidade: "",
     quadras: "",
     ruas: "",
+    proprietarioId: "",
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedDevForMap, setSelectedDevForMap] =
@@ -1068,6 +1073,23 @@ const EmpreendimentosSection = ({
                   }
                 />
               </div>
+              <div className="md:col-span-2">
+                <label className="label">Proprietário (Vendedor no Contrato)</label>
+                <select
+                  className="input-field"
+                  value={formData.proprietarioId || ""}
+                  onChange={(e) => setFormData({ ...formData, proprietarioId: e.target.value })}
+                >
+                  <option value="">Selecionar proprietário...</option>
+                  {proprietarios.map((p) => (
+                    <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
+                  ))}
+                </select>
+                {proprietarios.length === 0 && (
+                  <p className="text-[10px] text-amber-500 font-bold mt-1">Cadastre proprietários na aba "Proprietários" primeiro.</p>
+                )}
+              </div>
+
               <div className="md:col-span-2 flex justify-end pt-4">
                 <button
                   type="submit"
@@ -1133,6 +1155,19 @@ const EmpreendimentosSection = ({
                 </p>
               )}
             </div>
+
+            {(() => {
+              const prop = proprietarios.find(p => p.id === dev.proprietarioId);
+              return prop ? (
+                <div className="mb-3 px-1">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Proprietário</p>
+                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <UserCheck size={12} className="text-primary-main" />
+                    {prop.nome}
+                  </p>
+                </div>
+              ) : null;
+            })()}
 
             <div className="mt-auto space-y-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
               <div className="flex justify-between items-end">
@@ -2553,6 +2588,7 @@ const ContratosSection = ({
   onUpdateStatus,
   onSaveVenda,
   vendedores = [],
+  proprietarios = [],
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -2561,6 +2597,7 @@ const ContratosSection = ({
   onUpdateStatus: (id: string, s: "pendente" | "pago" | "cancelado") => void;
   onSaveVenda: (v: Venda, c: Cliente) => void;
   vendedores?: Vendedor[];
+  proprietarios?: Proprietario[];
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -2586,9 +2623,9 @@ const ContratosSection = ({
     if (!selectedVenda) return;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    const vendedor = vendedores.find((v) => v.id === selectedVenda.vendedorId);
+    const proprietario = proprietarios.find((p) => p.id === desenvolvimento?.proprietarioId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
-    if (!vendedor) { alert("Selecione um vendedor antes de gerar o .docx."); return; }
+    if (!proprietario) { alert("O empreendimento não tem um proprietário vinculado. Acesse a aba Empreendimentos e vincule um proprietário."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
     setDownloadingDocx(true);
     try {
@@ -2597,7 +2634,7 @@ const ContratosSection = ({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendedor,
+          vendedor: proprietario,
           cliente,
           empreendimento: { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade, cidade: desenvolvimento.cidade, estado: desenvolvimento.estado },
           venda: {
@@ -4243,6 +4280,199 @@ const CalculatorSection = () => {
   );
 };
 
+// --- Proprietarios Section ---
+
+const ProprietariosSection = ({
+  config,
+  onSave,
+}: {
+  config: AppConfig;
+  onSave: (c: AppConfig) => void;
+}) => {
+  const proprietarios = config.proprietarios || [];
+  const emptyProp: Omit<Proprietario, "id"> = {
+    nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "Santarém", estado: "PA", cep: "",
+  };
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<Omit<Proprietario, "id">>(emptyProp);
+
+  const handleSave = () => {
+    if (!form.nome.trim()) { alert("Nome é obrigatório."); return; }
+    let updated: Proprietario[];
+    if (editingId) {
+      updated = proprietarios.map((p) => p.id === editingId ? { ...form, id: editingId } : p);
+    } else {
+      updated = [...proprietarios, { ...form, id: `prop-${Date.now()}` }];
+    }
+    onSave({ ...config, proprietarios: updated });
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyProp);
+  };
+
+  const handleEdit = (p: Proprietario) => {
+    setEditingId(p.id);
+    setForm({ nome: p.nome, nacionalidade: p.nacionalidade, estadoCivil: p.estadoCivil, rg: p.rg, cpf: p.cpf, endereco: p.endereco, numero: p.numero, bairro: p.bairro, cidade: p.cidade, estado: p.estado, cep: p.cep });
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: string) => {
+    if (!confirm("Remover este proprietário?")) return;
+    onSave({ ...config, proprietarios: proprietarios.filter((p) => p.id !== id) });
+  };
+
+  return (
+    <div className="space-y-8 max-w-4xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast shadow-lg shadow-primary-main/20">
+            <UserCheck size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-display font-bold text-slate-800">Proprietários</h3>
+            <p className="text-sm text-slate-400 font-medium">Donos dos empreendimentos — aparecem como VENDEDOR nos contratos</p>
+          </div>
+        </div>
+        <button
+          className="btn-primary flex-none"
+          onClick={() => { setEditingId(null); setForm(emptyProp); setShowForm(true); }}
+        >
+          <Plus size={18} /> Novo Proprietário
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div className="card-premium space-y-6 bg-slate-50/50">
+              <h4 className="font-bold text-slate-800 text-base">{editingId ? "Editar Proprietário" : "Novo Proprietário"}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="label">Nome Completo *</label>
+                  <input className="input-field" placeholder="Ex: GENILSON PEREIRA MOREIRA" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Nacionalidade</label>
+                  <input className="input-field" value={form.nacionalidade} onChange={(e) => setForm({ ...form, nacionalidade: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Estado Civil</label>
+                  <select className="input-field" value={form.estadoCivil} onChange={(e) => setForm({ ...form, estadoCivil: e.target.value })}>
+                    <option value="solteiro">Solteiro(a)</option>
+                    <option value="casado">Casado(a)</option>
+                    <option value="divorciado">Divorciado(a)</option>
+                    <option value="viuvo">Viúvo(a)</option>
+                    <option value="uniao_estavel">União Estável</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">RG</label>
+                  <input className="input-field" placeholder="Ex: 3215776" value={form.rg} onChange={(e) => setForm({ ...form, rg: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">CPF *</label>
+                  <input className="input-field" placeholder="000.000.000-00" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: maskCPF(e.target.value) })} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">Endereço (Tipo + Nome)</label>
+                  <input className="input-field" placeholder="Ex: Travessa Maranhão" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Número</label>
+                  <input className="input-field" placeholder="Ex: 353" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Bairro</label>
+                  <input className="input-field" placeholder="Ex: Aeroporto Velho" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Cidade</label>
+                  <input className="input-field" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Estado (UF)</label>
+                  <input className="input-field" maxLength={2} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <label className="label">CEP</label>
+                  <input className="input-field" placeholder="00000-000" value={form.cep} onChange={(e) => setForm({ ...form, cep: maskCEP(e.target.value) })} />
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button className="btn-ghost h-10 px-6" onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyProp); }}>Cancelar</button>
+                <button className="btn-primary h-10 px-10" onClick={handleSave}>Salvar Proprietário</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {proprietarios.length === 0 && !showForm && (
+        <div className="py-20 text-center flex flex-col items-center gap-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+          <div className="p-4 bg-surface-card rounded-full text-slate-300 shadow-sm">
+            <UserCheck size={48} strokeWidth={1} />
+          </div>
+          <div>
+            <p className="text-slate-600 font-bold">Nenhum proprietário cadastrado</p>
+            <p className="text-slate-400 text-sm mt-1">Proprietários são os donos dos terrenos e aparecem como VENDEDOR nos contratos.</p>
+          </div>
+          <button onClick={() => setShowForm(true)} className="btn-ghost text-sm font-bold px-8 mt-2">
+            Cadastrar Primeiro Proprietário
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {proprietarios.map((p) => (
+          <motion.div
+            key={p.id}
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="card-premium flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-4 flex-1">
+              <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl flex-none">
+                <UserCheck size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-slate-800 text-base">{p.nome}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {p.estadoCivil} · CPF {p.cpf} · RG {p.rg}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {p.endereco}, nº {p.numero} · {p.bairro} · {p.cidade}/{p.estado} · CEP {p.cep}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-none">
+              <button
+                className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"
+                onClick={() => handleEdit(p)}
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-red-50 text-red-400 transition-colors"
+                onClick={() => handleDelete(p.id)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App({ onLogout }: { onLogout?: () => void }) {
@@ -4399,8 +4629,11 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             onDelete={deleteDev}
             onUpdateLotesInfo={updateLotesInfo}
             onStartSale={handleStartSale}
+            proprietarios={config.proprietarios || []}
           />
         );
+      case "proprietarios":
+        return <ProprietariosSection config={config} onSave={saveAppConfig} />;
       case "vendas":
         return (
           <VendasSection
@@ -4422,6 +4655,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             onUpdateStatus={updateVendaStatus}
             onSaveVenda={saveSale}
             vendedores={config.vendedores || []}
+            proprietarios={config.proprietarios || []}
           />
         );
       case "clientes":
@@ -4441,6 +4675,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     const titles: Record<Section, string> = {
       dashboard: "Dashboard Geral",
       empreendimentos: "Empreendimentos",
+      proprietarios: "Proprietários",
       vendas: "Registro de Novas Vendas",
       contratos: "Contratos e Documentação",
       clientes: "Gestão de Clientes",

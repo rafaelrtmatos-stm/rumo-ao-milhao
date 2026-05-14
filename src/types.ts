@@ -20,6 +20,7 @@ export interface Empreendimento {
   quadras?: string;
   ruas?: string;
   lotesInfo?: Record<string, { rua: string }>; // Chave: 'QUADRA-LOTE', Valor: { rua: 'Nome da Rua' }
+  proprietarioId?: string;
 }
 
 export interface Cliente {
@@ -44,6 +45,21 @@ export interface Cliente {
 }
 
 export interface Vendedor {
+  id: string;
+  nome: string;
+  nacionalidade: string;
+  estadoCivil: string;
+  rg: string;
+  cpf: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+}
+
+export interface Proprietario {
   id: string;
   nome: string;
   nacionalidade: string;
@@ -102,6 +118,7 @@ export type AppTheme = 'standard' | 'blue-gradient' | 'dark';
 export interface AppConfig {
   theme: AppTheme;
   vendedores?: Vendedor[];
+  proprietarios?: Proprietario[];
 }
 
-export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config';
+export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config' | 'proprietarios';
