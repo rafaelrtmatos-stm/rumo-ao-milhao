@@ -43,6 +43,21 @@ export interface Cliente {
   dataCadastro: string;
 }
 
+export interface Vendedor {
+  id: string;
+  nome: string;
+  nacionalidade: string;
+  estadoCivil: string;
+  rg: string;
+  cpf: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  cep: string;
+}
+
 export interface Venda {
   id: string;
   numeroContrato: string;
@@ -59,6 +74,7 @@ export interface Venda {
   valorParcela: number;
   dataVencimento: string;
   vendedor: string;
+  vendedorId?: string;
   dataVenda: string;
   custo: number;
   comissao: number;
@@ -74,12 +90,18 @@ export interface Venda {
     nascimento: string;
     profissao: string;
   };
+  medidaFrente?: string;
+  medidaLateralDir?: string;
+  medidaLateralEsq?: string;
+  medidaFundos?: string;
+  areaTotal?: string;
 }
 
 export type AppTheme = 'standard' | 'blue-gradient' | 'dark';
 
 export interface AppConfig {
   theme: AppTheme;
+  vendedores?: Vendedor[];
 }
 
 export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config';

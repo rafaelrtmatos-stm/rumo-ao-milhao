@@ -21,6 +21,9 @@ import {
   X,
   Settings,
   Info,
+  FileDown,
+  UserCheck,
+  Pencil,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -28,6 +31,7 @@ import {
   Empreendimento,
   Cliente,
   Venda,
+  Vendedor,
   Address,
   AppConfig,
   AppTheme,
@@ -1219,12 +1223,14 @@ const VendasSection = ({
   onGoToContracts,
   initialSaleData,
   onSaveDev,
+  vendedores = [],
 }: {
   developments: Empreendimento[];
   onSaveVenda: (v: Venda, c: Cliente) => Venda;
   onGoToContracts: (v: Venda) => void;
   initialSaleData?: Partial<Venda>;
   onSaveDev: (d: Empreendimento) => void;
+  vendedores?: Vendedor[];
 }) => {
   const [clientData, setClientData] = useState<Partial<Cliente>>({
     nome: "",
@@ -2445,6 +2451,24 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     />
                   </div>
                 </div>
+                {vendedores.length > 0 && (
+                  <div>
+                    <label className="label">Vendedor</label>
+                    <select
+                      className="input-field font-semibold"
+                      value={saleData.vendedorId || ""}
+                      onChange={(e) => {
+                        const v = vendedores.find(x => x.id === e.target.value);
+                        setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                      }}
+                    >
+                      <option value="">Selecionar vendedor...</option>
+                      {vendedores.map((v) => (
+                        <option key={v.id} value={v.id}>{v.nome}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2525,6 +2549,7 @@ const ContratosSection = ({
   initialVenda,
   onUpdateStatus,
   onSaveVenda,
+  vendedores = [],
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -2532,6 +2557,7 @@ const ContratosSection = ({
   initialVenda?: Venda | null;
   onUpdateStatus: (id: string, s: "pendente" | "pago" | "cancelado") => void;
   onSaveVenda: (v: Venda, c: Cliente) => void;
+  vendedores?: Vendedor[];
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -2547,10 +2573,70 @@ const ContratosSection = ({
   const emptyContrato = {
     empreendimentoId: "", quadra: "", numeroLote: "", rua: "",
     valorLote: 0, valorEntrada: 0, quantidadeParcelas: 1, valorParcela: 0,
-    dataVencimento: "", formaPagamento: "Dinheiro", vendedor: "",
+    dataVencimento: "", formaPagamento: "Dinheiro", vendedor: "", vendedorId: "",
     dataVenda: new Date().toISOString().split("T")[0],
   };
   const [contratoData, setContratoData] = useState(emptyContrato);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
+
+  const handleDownloadDocx = async () => {
+    if (!selectedVenda) return;
+    const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    const vendedor = vendedores.find((v) => v.id === selectedVenda.vendedorId);
+    if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
+    if (!vendedor) { alert("Selecione um vendedor antes de gerar o .docx."); return; }
+    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    setDownloadingDocx(true);
+    try {
+      const res = await fetch("/api/contrato/parcelado-padrao", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          vendedor,
+          cliente,
+          empreendimento: { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade, cidade: desenvolvimento.cidade, estado: desenvolvimento.estado },
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: selectedVenda.rua,
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            medidaFrente: selectedVenda.medidaFrente,
+            medidaLateralDir: selectedVenda.medidaLateralDir,
+            medidaLateralEsq: selectedVenda.medidaLateralEsq,
+            medidaFundos: selectedVenda.medidaFundos,
+            areaTotal: selectedVenda.areaTotal,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        alert("Erro: " + (err.error || "Falha ao gerar contrato."));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      a.href = url;
+      a.download = `contrato_parcelado_padrao_-_${nomeCliente}_-_${nomeEmp}_-_L_${Date.now()}.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Erro ao gerar contrato: " + e.message);
+    } finally {
+      setDownloadingDocx(false);
+    }
+  };
 
   const handleSalvarContrato = () => {
     let cliente: Cliente;
@@ -2597,6 +2683,7 @@ const ContratosSection = ({
       valorParcela: contratoData.valorParcela,
       dataVencimento: contratoData.dataVencimento,
       vendedor: contratoData.vendedor,
+      vendedorId: contratoData.vendedorId,
       dataVenda: contratoData.dataVenda,
       custo: 0,
       comissao: 0,
@@ -2847,7 +2934,23 @@ const ContratosSection = ({
                     </div>
                     <div>
                       <label className="label">Vendedor</label>
-                      <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: e.target.value })} />
+                      {vendedores.length > 0 ? (
+                        <select
+                          className="input-field font-semibold"
+                          value={contratoData.vendedorId || ""}
+                          onChange={(e) => {
+                            const v = vendedores.find(x => x.id === e.target.value);
+                            setContratoData({ ...contratoData, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                          }}
+                        >
+                          <option value="">Selecionar vendedor...</option>
+                          {vendedores.map((v) => (
+                            <option key={v.id} value={v.id}>{v.nome}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: e.target.value })} />
+                      )}
                     </div>
                   </div>
                 </div>
@@ -3005,6 +3108,23 @@ const ContratosSection = ({
                       {viewMode === "contract" ? "Recibo" : "Contrato"}
                     </button>
                   </div>
+                  {viewMode === "contract" && (
+                    <button
+                      onClick={handleDownloadDocx}
+                      disabled={downloadingDocx}
+                      className="btn-ghost h-12 px-5 disabled:opacity-50"
+                      title="Baixar contrato parcelado padrão (.docx)"
+                    >
+                      {downloadingDocx ? (
+                        <span className="text-xs font-bold">Gerando...</span>
+                      ) : (
+                        <>
+                          <FileDown size={18} />
+                          <span className="hidden sm:inline text-xs font-bold uppercase tracking-widest">.docx</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                   <button
                     onClick={handlePrint}
                     className="btn-primary h-12 px-6"
@@ -3629,9 +3749,37 @@ const ConfigSection = ({
   config: AppConfig;
   onSave: (c: AppConfig) => void;
 }) => {
-  const [formData, setFormData] = useState(config);
+  const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
   const [migrating, setMigrating] = useState(false);
   const [migrateMsg, setMigrateMsg] = useState('');
+  const [showVendedorForm, setShowVendedorForm] = useState(false);
+  const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
+  const emptyVendedor: Omit<Vendedor, "id"> = {
+    nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
+  };
+  const [vendedorForm, setVendedorForm] = useState<Omit<Vendedor, "id">>(emptyVendedor);
+
+  const handleSaveVendedor = () => {
+    if (!vendedorForm.nome.trim()) { alert("Nome é obrigatório."); return; }
+    let updated: Vendedor[];
+    if (editingVendedor) {
+      updated = (formData.vendedores || []).map((v) =>
+        v.id === editingVendedor.id ? { ...vendedorForm, id: editingVendedor.id } : v
+      );
+    } else {
+      updated = [...(formData.vendedores || []), { ...vendedorForm, id: `vend-${Date.now()}` }];
+    }
+    setFormData({ ...formData, vendedores: updated });
+    setShowVendedorForm(false);
+    setEditingVendedor(null);
+    setVendedorForm(emptyVendedor);
+  };
+
+  const handleDeleteVendedor = (id: string) => {
+    if (!confirm("Remover este vendedor?")) return;
+    setFormData({ ...formData, vendedores: (formData.vendedores || []).filter((v) => v.id !== id) });
+  };
 
   const handleMigrate = async () => {
     setMigrating(true);
@@ -3699,6 +3847,135 @@ const ConfigSection = ({
             Salvar Alterações
           </button>
         </div>
+      </div>
+
+      {/* Vendedores */}
+      <div className="card-premium space-y-4">
+        <div className="flex items-center justify-between">
+          <h4 className="font-bold text-slate-800 flex items-center gap-2">
+            <UserCheck size={18} className="text-primary-main" />
+            Vendedores (Contratos)
+          </h4>
+          <button
+            className="btn-primary h-9 px-4 text-sm"
+            onClick={() => {
+              setEditingVendedor(null);
+              setVendedorForm(emptyVendedor);
+              setShowVendedorForm(true);
+            }}
+          >
+            <Plus size={15} /> Adicionar
+          </button>
+        </div>
+
+        {(formData.vendedores || []).length === 0 && !showVendedorForm && (
+          <p className="text-slate-400 text-sm text-center py-4">
+            Nenhum vendedor cadastrado. Adicione o(s) vendedor(es) que assinarão os contratos.
+          </p>
+        )}
+
+        {(formData.vendedores || []).map((v) => (
+          <div key={v.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-border-subtle">
+            <div>
+              <p className="font-bold text-slate-800 text-sm">{v.nome}</p>
+              <p className="text-xs text-slate-400">{v.estadoCivil} · CPF {v.cpf} · {v.cidade}/{v.estado}</p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                className="h-8 w-8 flex items-center justify-center rounded-xl hover:bg-slate-200 text-slate-500 transition-colors"
+                onClick={() => {
+                  setEditingVendedor(v);
+                  setVendedorForm({ nome: v.nome, nacionalidade: v.nacionalidade, estadoCivil: v.estadoCivil, rg: v.rg, cpf: v.cpf, endereco: v.endereco, numero: v.numero, bairro: v.bairro, cidade: v.cidade, estado: v.estado, cep: v.cep });
+                  setShowVendedorForm(true);
+                }}
+              >
+                <Pencil size={14} />
+              </button>
+              <button
+                className="h-8 w-8 flex items-center justify-center rounded-xl hover:bg-red-50 text-red-400 transition-colors"
+                onClick={() => handleDeleteVendedor(v.id)}
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          </div>
+        ))}
+
+        {showVendedorForm && (
+          <div className="border border-border-subtle rounded-2xl p-6 space-y-4 bg-slate-50/50">
+            <h5 className="font-bold text-slate-700 text-sm">{editingVendedor ? "Editar Vendedor" : "Novo Vendedor"}</h5>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="label">Nome Completo</label>
+                <input className="input-field" placeholder="Ex: GENILSON PEREIRA MOREIRA" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Nacionalidade</label>
+                <input className="input-field" value={vendedorForm.nacionalidade} onChange={(e) => setVendedorForm({ ...vendedorForm, nacionalidade: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Estado Civil</label>
+                <select className="input-field" value={vendedorForm.estadoCivil} onChange={(e) => setVendedorForm({ ...vendedorForm, estadoCivil: e.target.value })}>
+                  <option value="solteiro">Solteiro(a)</option>
+                  <option value="casado">Casado(a)</option>
+                  <option value="divorciado">Divorciado(a)</option>
+                  <option value="viuvo">Viúvo(a)</option>
+                  <option value="uniao_estavel">União Estável</option>
+                </select>
+              </div>
+              <div>
+                <label className="label">RG</label>
+                <input className="input-field" value={vendedorForm.rg} onChange={(e) => setVendedorForm({ ...vendedorForm, rg: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">CPF</label>
+                <input className="input-field" value={vendedorForm.cpf} onChange={(e) => setVendedorForm({ ...vendedorForm, cpf: e.target.value })} />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Endereço</label>
+                <input className="input-field" placeholder="Rua/Av." value={vendedorForm.endereco} onChange={(e) => setVendedorForm({ ...vendedorForm, endereco: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Número</label>
+                <input className="input-field" value={vendedorForm.numero} onChange={(e) => setVendedorForm({ ...vendedorForm, numero: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Bairro</label>
+                <input className="input-field" value={vendedorForm.bairro} onChange={(e) => setVendedorForm({ ...vendedorForm, bairro: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Cidade</label>
+                <input className="input-field" value={vendedorForm.cidade} onChange={(e) => setVendedorForm({ ...vendedorForm, cidade: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Estado (UF)</label>
+                <input className="input-field" maxLength={2} value={vendedorForm.estado} onChange={(e) => setVendedorForm({ ...vendedorForm, estado: e.target.value.toUpperCase() })} />
+              </div>
+              <div>
+                <label className="label">CEP</label>
+                <input className="input-field" value={vendedorForm.cep} onChange={(e) => setVendedorForm({ ...vendedorForm, cep: e.target.value })} />
+              </div>
+            </div>
+            <div className="flex gap-3 justify-end pt-2">
+              <button className="btn-ghost h-10 px-5" onClick={() => { setShowVendedorForm(false); setEditingVendedor(null); setVendedorForm(emptyVendedor); }}>Cancelar</button>
+              <button className="btn-primary h-10 px-8" onClick={handleSaveVendedor}>Salvar Vendedor</button>
+            </div>
+          </div>
+        )}
+
+        {(formData.vendedores || []).length > 0 && (
+          <div className="pt-2 flex justify-end">
+            <button
+              onClick={() => {
+                onSave(formData);
+                alert("Vendedores salvos com sucesso!");
+              }}
+              className="btn-primary px-10"
+            >
+              Salvar Alterações
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Migração de dados */}
@@ -3974,6 +4251,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const [sales, setSales] = useState<Venda[]>([]);
   const [config, setConfig] = useState<AppConfig>({
     theme: "standard",
+    vendedores: [],
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -4131,6 +4409,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             onGoToContracts={handleGoToContracts}
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
+            vendedores={config.vendedores || []}
           />
         );
       case "contratos":
@@ -4142,6 +4421,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             initialVenda={contractToOpen}
             onUpdateStatus={updateVendaStatus}
             onSaveVenda={saveSale}
+            vendedores={config.vendedores || []}
           />
         );
       case "clientes":

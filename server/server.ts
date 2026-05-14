@@ -8,6 +8,7 @@ import { db } from "./db.js";
 import { empreendimentos, clientes, vendas, appConfig, localUsers } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
 import type { RequestHandler } from "express";
+import { gerarContratoParceladoPadrao } from "./contratoParceladoPadrao.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -296,6 +297,26 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
     res.json(safeParseJson(clean));
   } catch (err: any) {
     console.error("Gemini analyze-map error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// --- Contrato Parcelado Padrão ---
+app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => {
+  try {
+    const { vendedor, cliente, empreendimento, venda } = req.body;
+    if (!vendedor || !cliente || !empreendimento || !venda) {
+      return res.status(400).json({ error: "Dados incompletos para gerar o contrato." });
+    }
+    const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
+    const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
+    const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
+    const filename = `contrato_parcelado_padrao_-_${nomeCliente}_-_${nomeEmp}_-_L_${Date.now()}.docx`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.send(buffer);
+  } catch (err: any) {
+    console.error("Contrato generation error:", err?.message || err);
     res.status(500).json({ error: String(err?.message || err) });
   }
 });
