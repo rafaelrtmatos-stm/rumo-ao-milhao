@@ -41,6 +41,26 @@ import { dbService } from "./dbService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
+function validarCPF(cpf: string): boolean {
+  const c = cpf.replace(/\D/g, "");
+  if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(c[i]) * (10 - i);
+  let r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  if (r !== parseInt(c[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(c[i]) * (11 - i);
+  r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  return r === parseInt(c[10]);
+}
+
+function validarRG(rg: string): boolean {
+  const r = rg.replace(/\D/g, "");
+  return r.length >= 7 && r.length <= 10;
+}
+
 function genderizeEstadoCivil(raw: string, genero: string): string {
   const base = (raw || "")
     .toLowerCase()
@@ -2670,7 +2690,27 @@ const ContratosSection = ({
   const handleOpenGerarContrato = () => {
     if (!selectedVenda) return;
     const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    setGerarVendedor(emptyGerarVendedor);
+    // Auto-fill vendedor from the proprietário linked to the empreendimento
+    const prop = dev?.proprietarioId
+      ? proprietarios.find((p) => p.id === dev.proprietarioId)
+      : undefined;
+    setGerarVendedor(
+      prop
+        ? {
+            nome: prop.nome,
+            nacionalidade: prop.nacionalidade || "brasileiro",
+            estadoCivil: prop.estadoCivil || "Solteiro(a)",
+            rg: prop.rg || "",
+            cpf: prop.cpf || "",
+            endereco: prop.endereco || "",
+            numero: prop.numero || "",
+            bairro: prop.bairro || "",
+            cidade: prop.cidade || "",
+            estado: prop.estado || "",
+            cep: prop.cep || "",
+          }
+        : emptyGerarVendedor
+    );
     setGerarExtra({
       rua: selectedVenda.rua || "",
       comunidade: dev?.comunidade || "",
@@ -3627,14 +3667,33 @@ const ClientesSection = ({
 }) => {
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [editForm, setEditForm] = useState<Partial<Cliente>>({});
+  const [fieldErrors, setFieldErrors] = useState<{ cpf?: string; rg?: string }>({});
 
   const openEdit = (c: Cliente) => {
     setEditingCliente(c);
     setEditForm({ ...c });
+    setFieldErrors({});
+  };
+
+  const handleBlurCPF = () => {
+    const cpf = editForm.cpf || "";
+    if (cpf && !validarCPF(cpf))
+      setFieldErrors((e) => ({ ...e, cpf: "CPF inválido" }));
+    else
+      setFieldErrors((e) => ({ ...e, cpf: undefined }));
+  };
+
+  const handleBlurRG = () => {
+    const rg = editForm.rg || "";
+    if (rg && !validarRG(rg))
+      setFieldErrors((e) => ({ ...e, rg: "RG inválido (mínimo 7 dígitos)" }));
+    else
+      setFieldErrors((e) => ({ ...e, rg: undefined }));
   };
 
   const saveEdit = () => {
     if (!editingCliente) return;
+    if (fieldErrors.cpf || fieldErrors.rg) return;
     const updated: Cliente = { ...editingCliente, ...editForm } as Cliente;
     onUpdateCliente(updated);
     setEditingCliente(null);
@@ -3732,8 +3791,6 @@ const ClientesSection = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   { label: "Nome Completo", field: "nome" },
-                  { label: "CPF", field: "cpf" },
-                  { label: "RG", field: "rg" },
                   { label: "Profissão", field: "profissao" },
                   { label: "Nacionalidade", field: "nacionalidade" },
                   { label: "Telefone 1", field: "telefone1" },
@@ -3754,6 +3811,28 @@ const ClientesSection = ({
                     />
                   </div>
                 ))}
+                <div>
+                  <label className="label">CPF</label>
+                  <input
+                    className={`input-field ${fieldErrors.cpf ? "border-red-400 focus:ring-red-400" : ""}`}
+                    value={editForm.cpf || ""}
+                    onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
+                    onBlur={handleBlurCPF}
+                    placeholder="000.000.000-00"
+                  />
+                  {fieldErrors.cpf && <p className="text-red-500 text-xs mt-1 font-medium">{fieldErrors.cpf}</p>}
+                </div>
+                <div>
+                  <label className="label">RG</label>
+                  <input
+                    className={`input-field ${fieldErrors.rg ? "border-red-400 focus:ring-red-400" : ""}`}
+                    value={editForm.rg || ""}
+                    onChange={(e) => setEditForm({ ...editForm, rg: e.target.value })}
+                    onBlur={handleBlurRG}
+                    placeholder="0000000"
+                  />
+                  {fieldErrors.rg && <p className="text-red-500 text-xs mt-1 font-medium">{fieldErrors.rg}</p>}
+                </div>
                 <div>
                   <label className="label">Aniversário (Data Nascimento)</label>
                   <input
