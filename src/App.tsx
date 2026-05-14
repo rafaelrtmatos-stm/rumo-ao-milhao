@@ -90,8 +90,22 @@ function validarCPF(cpf: string): boolean {
 }
 
 function validarRG(rg: string): boolean {
-  const r = rg.replace(/\D/g, "");
-  return r.length >= 7 && r.length <= 10;
+  const clean = rg.replace(/\s+/g, "").trim();
+  if (clean.length < 5 || clean.length > 14) return false;
+  return /^[a-zA-Z0-9.\-/]+$/.test(clean);
+}
+
+function cpfStatus(v: string): "empty" | "valid" | "invalid" {
+  const digits = v.replace(/\D/g, "");
+  if (!digits.length) return "empty";
+  if (digits.length < 11) return "invalid";
+  return validarCPF(v) ? "valid" : "invalid";
+}
+
+function rgStatus(v: string): "empty" | "valid" | "invalid" {
+  const clean = v.replace(/\s+/g, "").trim();
+  if (!clean.length) return "empty";
+  return validarRG(clean) ? "valid" : "invalid";
 }
 
 function genderizeEstadoCivil(raw: string, genero: string): string {
@@ -1882,6 +1896,10 @@ const VendasSection = ({
   });
   const [showNovoDev, setShowNovoDev] = useState(false);
   const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
+  const [cpfErr, setCpfErr] = useState<string | null>(null);
+  const [rgErr, setRgErr] = useState<string | null>(null);
+  const [cpf2Err, setCpf2Err] = useState<string | null>(null);
+  const [rg2Err, setRg2Err] = useState<string | null>(null);
 
   const handleSalvarNovoDev = () => {
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
@@ -2174,8 +2192,20 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       alert("Por favor, preencha os campos obrigatórios.");
       return;
     }
-    if (clientData.cpf && !validateCPF(clientData.cpf)) {
-      alert("CPF inválido. Verifique os dígitos informados.");
+    if (clientData.cpf && cpfStatus(clientData.cpf) === "invalid") {
+      setCpfErr("CPF inválido");
+      return;
+    }
+    if (clientData.rg && rgStatus(clientData.rg) === "invalid") {
+      setRgErr("RG inválido ou incompleto");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.cpf && cpfStatus(secondBuyerData.cpf) === "invalid") {
+      setCpf2Err("CPF inválido");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.rg && rgStatus(secondBuyerData.rg) === "invalid") {
+      setRg2Err("RG inválido ou incompleto");
       return;
     }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
@@ -2472,25 +2502,33 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
               <label className="label">CPF</label>
               <input
                 required
-                className="input-field font-mono"
+                className={`input-field font-mono ${cpfErr ? "border-red-400 focus:ring-red-400" : cpfStatus(clientData.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                 value={clientData.cpf}
-                onChange={(e) =>
-                  setClientData({ ...clientData, cpf: maskCPF(e.target.value) })
-                }
+                onChange={(e) => {
+                  const masked = maskCPF(e.target.value);
+                  setClientData({ ...clientData, cpf: masked });
+                  const st = cpfStatus(masked);
+                  setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                }}
                 placeholder="000.000.000-00"
               />
+              {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
             </div>
             <div>
               <label className="label">RG</label>
               <input
                 required
-                className="input-field font-mono"
+                className={`input-field font-mono ${rgErr ? "border-red-400 focus:ring-red-400" : rgStatus(clientData.rg) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                 value={clientData.rg}
-                onChange={(e) =>
-                  setClientData({ ...clientData, rg: maskRG(e.target.value) })
-                }
-                placeholder="00.000.000-0"
+                onChange={(e) => {
+                  const masked = maskRG(e.target.value);
+                  setClientData({ ...clientData, rg: masked });
+                  const st = rgStatus(masked);
+                  setRgErr(st === "invalid" ? "RG inválido ou incompleto" : null);
+                }}
+                placeholder="Ex: 12.345.678-9"
               />
+              {rgErr && <p className="text-red-500 text-xs mt-1 font-medium">{rgErr}</p>}
             </div>
             <div>
               <label className="label">Estado Civil</label>
@@ -2708,31 +2746,33 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     <label className="label">CPF</label>
                     <input
                       required
-                      className="input-field font-mono"
+                      className={`input-field font-mono ${cpf2Err ? "border-red-400 focus:ring-red-400" : cpfStatus(secondBuyerData?.cpf || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                       value={secondBuyerData?.cpf}
-                      onChange={(e) =>
-                        setSecondBuyerData({
-                          ...secondBuyerData!,
-                          cpf: maskCPF(e.target.value),
-                        })
-                      }
+                      onChange={(e) => {
+                        const masked = maskCPF(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, cpf: masked });
+                        const st = cpfStatus(masked);
+                        setCpf2Err(st === "invalid" ? "CPF inválido" : null);
+                      }}
                       placeholder="000.000.000-00"
                     />
+                    {cpf2Err && <p className="text-red-500 text-xs mt-1 font-medium">{cpf2Err}</p>}
                   </div>
                   <div>
                     <label className="label">RG</label>
                     <input
                       required
-                      className="input-field font-mono"
+                      className={`input-field font-mono ${rg2Err ? "border-red-400 focus:ring-red-400" : rgStatus(secondBuyerData?.rg || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                       value={secondBuyerData?.rg}
-                      onChange={(e) =>
-                        setSecondBuyerData({
-                          ...secondBuyerData!,
-                          rg: e.target.value,
-                        })
-                      }
-                      placeholder="00.000.000-0"
+                      onChange={(e) => {
+                        const masked = maskRG(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, rg: masked });
+                        const st = rgStatus(masked);
+                        setRg2Err(st === "invalid" ? "RG inválido ou incompleto" : null);
+                      }}
+                      placeholder="Ex: 12.345.678-9"
                     />
+                    {rg2Err && <p className="text-red-500 text-xs mt-1 font-medium">{rg2Err}</p>}
                   </div>
                   <div>
                     <label className="label">Nacionalidade</label>
@@ -4476,7 +4516,7 @@ const ClientesSection = ({
 
   const handleBlurCPF = () => {
     const cpf = editForm.cpf || "";
-    if (cpf && !validarCPF(cpf))
+    if (cpf && cpfStatus(cpf) === "invalid")
       setFieldErrors((e) => ({ ...e, cpf: "CPF inválido" }));
     else
       setFieldErrors((e) => ({ ...e, cpf: undefined }));
@@ -4484,8 +4524,8 @@ const ClientesSection = ({
 
   const handleBlurRG = () => {
     const rg = editForm.rg || "";
-    if (rg && !validarRG(rg))
-      setFieldErrors((e) => ({ ...e, rg: "RG inválido (mínimo 7 dígitos)" }));
+    if (rg && rgStatus(rg) === "invalid")
+      setFieldErrors((e) => ({ ...e, rg: "RG inválido ou incompleto" }));
     else
       setFieldErrors((e) => ({ ...e, rg: undefined }));
   };
@@ -4613,9 +4653,14 @@ const ClientesSection = ({
                 <div>
                   <label className="label">CPF</label>
                   <input
-                    className={`input-field ${fieldErrors.cpf ? "border-red-400 focus:ring-red-400" : ""}`}
+                    className={`input-field font-mono ${fieldErrors.cpf ? "border-red-400 focus:ring-red-400" : cpfStatus(editForm.cpf || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                     value={editForm.cpf || ""}
-                    onChange={(e) => setEditForm({ ...editForm, cpf: e.target.value })}
+                    onChange={(e) => {
+                      const masked = maskCPF(e.target.value);
+                      setEditForm({ ...editForm, cpf: masked });
+                      const st = cpfStatus(masked);
+                      setFieldErrors((err) => ({ ...err, cpf: st === "invalid" ? "CPF inválido" : undefined }));
+                    }}
                     onBlur={handleBlurCPF}
                     placeholder="000.000.000-00"
                   />
@@ -4624,11 +4669,16 @@ const ClientesSection = ({
                 <div>
                   <label className="label">RG</label>
                   <input
-                    className={`input-field ${fieldErrors.rg ? "border-red-400 focus:ring-red-400" : ""}`}
+                    className={`input-field font-mono ${fieldErrors.rg ? "border-red-400 focus:ring-red-400" : rgStatus(editForm.rg || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                     value={editForm.rg || ""}
-                    onChange={(e) => setEditForm({ ...editForm, rg: e.target.value })}
+                    onChange={(e) => {
+                      const masked = maskRG(e.target.value);
+                      setEditForm({ ...editForm, rg: masked });
+                      const st = rgStatus(masked);
+                      setFieldErrors((err) => ({ ...err, rg: st === "invalid" ? "RG inválido ou incompleto" : undefined }));
+                    }}
                     onBlur={handleBlurRG}
-                    placeholder="0000000"
+                    placeholder="Ex: 12.345.678-9"
                   />
                   {fieldErrors.rg && <p className="text-red-500 text-xs mt-1 font-medium">{fieldErrors.rg}</p>}
                 </div>

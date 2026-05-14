@@ -8,18 +8,13 @@ export const maskCPF = (value: string) => {
 };
 
 export const maskRG = (value: string) => {
-  const digits = value.replace(/\D/g, '');
-  if (digits.length <= 9) {
-    return digits
-      .replace(/(\d{2})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d)/, '$1.$2')
-      .replace(/(\d{3})(\d{1,2})/, '$1-$2')
-      .replace(/(-\d{1})\d+?$/, '$1');
-  }
-  return digits.slice(0, 9)
-    .replace(/(\d{2})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d)/, '$1.$2')
-    .replace(/(\d{3})(\d{1})/, '$1-$2');
+  return value.replace(/\s+/g, '').slice(0, 14);
+};
+
+export const validateRG = (rg: string): boolean => {
+  const clean = rg.replace(/\s+/g, '').trim();
+  if (clean.length < 5 || clean.length > 14) return false;
+  return /^[a-zA-Z0-9.\-/]+$/.test(clean);
 };
 
 export const maskCEP = (value: string) => {
