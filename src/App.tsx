@@ -2644,6 +2644,8 @@ const ContratosSection = ({
   initialVenda,
   onUpdateStatus,
   onSaveVenda,
+  onDeleteVenda,
+  onUpdateVenda,
   vendedores = [],
   proprietarios = [],
 }: {
@@ -2653,6 +2655,8 @@ const ContratosSection = ({
   initialVenda?: Venda | null;
   onUpdateStatus: (id: string, s: "pendente" | "pago" | "cancelado") => void;
   onSaveVenda: (v: Venda, c: Cliente) => void;
+  onDeleteVenda: (id: string) => void;
+  onUpdateVenda: (v: Venda) => void;
   vendedores?: Vendedor[];
   proprietarios?: Proprietario[];
 }) => {
@@ -2664,6 +2668,8 @@ const ContratosSection = ({
   const [showNovoContrato, setShowNovoContrato] = useState(false);
   const [clienteMode, setClienteMode] = useState<"existente" | "novo">("existente");
   const [clienteSelecionadoId, setClienteSelecionadoId] = useState("");
+  const [editingVenda, setEditingVenda] = useState<Venda | null>(null);
+  const [editVendaForm, setEditVendaForm] = useState<Partial<Venda>>({});
   const [novoCliente, setNovoCliente] = useState<Partial<Cliente>>({
     genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro",
   });
@@ -3111,6 +3117,129 @@ const ContratosSection = ({
         )}
       </AnimatePresence>
 
+      {/* Modal: Editar Contrato */}
+      <AnimatePresence>
+        {editingVenda && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 rounded-xl text-white">
+                    <Pencil size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-slate-800">Editar Contrato</h4>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{editingVenda.numeroContrato} — {editingVenda.clienteNome}</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingVenda(null)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Empreendimento</label>
+                    <select
+                      className="input-field"
+                      value={editVendaForm.empreendimentoId || ""}
+                      onChange={(e) => {
+                        const dev = developments.find(d => d.id === e.target.value);
+                        setEditVendaForm({ ...editVendaForm, empreendimentoId: e.target.value, empreendimentoNome: dev?.nome || editVendaForm.empreendimentoNome });
+                      }}
+                    >
+                      <option value="">Selecionar...</option>
+                      {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Vendedor</label>
+                    {vendedores.length > 0 ? (
+                      <select
+                        className="input-field"
+                        value={editVendaForm.vendedorId || ""}
+                        onChange={(e) => {
+                          const v = vendedores.find(x => x.id === e.target.value);
+                          setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                        }}
+                      >
+                        <option value="">Selecionar...</option>
+                        {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                      </select>
+                    ) : (
+                      <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: e.target.value })} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Quadra</label>
+                    <input className="input-field" value={editVendaForm.quadra || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quadra: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Nº Lote</label>
+                    <input className="input-field" value={editVendaForm.numeroLote || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, numeroLote: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Rua</label>
+                    <input className="input-field" value={editVendaForm.rua || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, rua: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Valor do Lote (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorLote ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorLote: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label">Valor de Entrada (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorEntrada ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorEntrada: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label">Qtd. Parcelas</label>
+                    <input type="number" min={1} className="input-field" value={editVendaForm.quantidadeParcelas ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: parseInt(e.target.value) || 1 })} />
+                  </div>
+                  <div>
+                    <label className="label">Valor da Parcela (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorParcela ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorParcela: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label">Vencimento</label>
+                    <input className="input-field" placeholder="Ex: todo dia 10" value={editVendaForm.dataVencimento || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVencimento: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Data do Contrato</label>
+                    <input type="date" className="input-field" value={editVendaForm.dataVenda || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVenda: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Forma de Pagamento</label>
+                    <select className="input-field" value={editVendaForm.formaPagamento || "Dinheiro"} onChange={(e) => setEditVendaForm({ ...editVendaForm, formaPagamento: e.target.value })}>
+                      <option>Dinheiro</option>
+                      <option>Boleto</option>
+                      <option>PIX</option>
+                      <option>Transferência</option>
+                      <option>Cheque</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setEditingVenda(null)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  onClick={() => {
+                    onUpdateVenda({ ...editingVenda, ...editVendaForm } as Venda);
+                    setEditingVenda(null);
+                  }}
+                  className="btn-primary px-8"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div className="card-premium">
         <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
           <table className="w-full text-left border-separate border-spacing-y-2">
@@ -3170,6 +3299,27 @@ const ContratosSection = ({
                           title="Recibo"
                         >
                           <FileCheck size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingVenda(venda);
+                            setEditVendaForm({ ...venda });
+                          }}
+                          className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                          title="Editar contrato"
+                        >
+                          <Pencil size={18} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) {
+                              onDeleteVenda(venda.id);
+                            }
+                          }}
+                          className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                          title="Excluir contrato"
+                        >
+                          <Trash2 size={18} />
                         </button>
                       </div>
                     </td>
@@ -4849,6 +4999,18 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     }
   };
 
+  const deleteVenda = (id: string) => {
+    const updated = sales.filter((s) => s.id !== id);
+    setSales(updated);
+    dbService.saveVendas(updated).catch(console.error);
+  };
+
+  const updateVenda = (venda: Venda) => {
+    const updated = sales.map((s) => (s.id === venda.id ? venda : s));
+    setSales(updated);
+    dbService.saveVendas(updated).catch(console.error);
+  };
+
   const renderSection = () => {
     switch (section) {
       case "dashboard":
@@ -4887,6 +5049,8 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             initialVenda={contractToOpen}
             onUpdateStatus={updateVendaStatus}
             onSaveVenda={saveSale}
+            onDeleteVenda={deleteVenda}
+            onUpdateVenda={updateVenda}
             vendedores={config.vendedores || []}
             proprietarios={config.proprietarios || []}
           />
