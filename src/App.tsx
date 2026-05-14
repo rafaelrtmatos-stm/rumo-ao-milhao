@@ -38,7 +38,7 @@ import {
 } from "./types";
 import { storageService } from "./storageService"; // mantido apenas para compatibilidade de migração
 import { dbService } from "./dbService";
-import { maskCPF, maskCEP, maskPhone } from "./lib/masks";
+import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
 function genderizeEstadoCivil(raw: string, genero: string): string {
@@ -1567,6 +1567,10 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       alert("Por favor, preencha os campos obrigatórios.");
       return;
     }
+    if (clientData.cpf && !validateCPF(clientData.cpf)) {
+      alert("CPF inválido. Verifique os dígitos informados.");
+      return;
+    }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
     const cliente: Cliente = {
       ...(clientData as Cliente),
@@ -1876,7 +1880,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 className="input-field font-mono"
                 value={clientData.rg}
                 onChange={(e) =>
-                  setClientData({ ...clientData, rg: e.target.value })
+                  setClientData({ ...clientData, rg: maskRG(e.target.value) })
                 }
                 placeholder="00.000.000-0"
               />
@@ -4261,31 +4265,11 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   >(undefined);
 
   useEffect(() => {
-    const load = async () => {
-      const [devs, cls, sls, cfg] = await Promise.all([
-        dbService.getEmpreendimentos(),
-        dbService.getClientes(),
-        dbService.getVendas(),
-        dbService.getAppConfig(),
-      ]);
-      setDevelopments(devs);
-      setClients(cls);
-      setSales(sls);
-      setConfig(cfg);
-      setIsLoaded(true);
-    };
-    load();
-
-    // Realtime: atualiza automaticamente quando outro usuário muda os dados
-    const subVendas = dbService.subscribeToVendas((vendas) => setSales(vendas));
-    const subDevs = dbService.subscribeToEmpreendimentos((devs) => setDevelopments(devs));
-    const subClientes = dbService.subscribeToClientes((clientes) => setClients(clientes));
-
-    return () => {
-      subVendas.unsubscribe();
-      subDevs.unsubscribe();
-      subClientes.unsubscribe();
-    };
+    setDevelopments(storageService.getEmpreendimentos());
+    setClients(storageService.getClientes());
+    setSales(storageService.getVendas());
+    setConfig(storageService.getAppConfig());
+    setIsLoaded(true);
   }, []);
 
   useEffect(() => {
@@ -4296,13 +4280,13 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (!isLoaded) return;
     const updated = [...developments, newDev];
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    storageService.saveEmpreendimentos(updated);
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    storageService.saveEmpreendimentos(updated);
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
@@ -4314,14 +4298,14 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      dbService.saveClientes(updatedClients).catch(console.error);
+      storageService.saveClientes(updatedClients);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    dbService.saveVendas(updatedSales).catch(console.error);
+    storageService.saveVendas(updatedSales);
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -4339,7 +4323,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       return d;
     });
     setDevelopments(updatedDevs);
-    dbService.saveEmpreendimentos(updatedDevs).catch(console.error);
+    storageService.saveEmpreendimentos(updatedDevs);
 
     return newSale;
   };
@@ -4354,12 +4338,12 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         : d,
     );
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    storageService.saveEmpreendimentos(updated);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    dbService.saveAppConfig(newConfig).catch(console.error);
+    storageService.saveAppConfig(newConfig);
   };
 
   const handleGoToContracts = (v: Venda) => {
@@ -4380,7 +4364,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       s.id === vendaId ? { ...s, status: newStatus } : s,
     );
     setSales(updated);
-    dbService.saveVendas(updated).catch(console.error);
+    storageService.saveVendas(updated);
     if (contractToOpen && contractToOpen.id === vendaId) {
       setContractToOpen({ ...contractToOpen, status: newStatus });
     }
