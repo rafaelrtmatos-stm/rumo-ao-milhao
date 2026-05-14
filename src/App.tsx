@@ -2640,14 +2640,42 @@ const ContratosSection = ({
   const [contratoData, setContratoData] = useState(emptyContrato);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
 
+  const emptyGerarVendedor = {
+    nome: "", nacionalidade: "brasileiro", estadoCivil: "Solteiro(a)",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
+  };
+  const [showGerarModal, setShowGerarModal] = useState(false);
+  const [gerarVendedor, setGerarVendedor] = useState(emptyGerarVendedor);
+  const [gerarExtra, setGerarExtra] = useState({
+    rua: "", comunidade: "", formaPagamento: "Dinheiro",
+    medidaFrente: "", medidaLateralDir: "", medidaLateralEsq: "", medidaFundos: "", areaTotal: "",
+  });
+
+  const handleOpenGerarContrato = () => {
+    if (!selectedVenda) return;
+    const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    setGerarVendedor(emptyGerarVendedor);
+    setGerarExtra({
+      rua: selectedVenda.rua || "",
+      comunidade: dev?.comunidade || "",
+      formaPagamento: selectedVenda.formaPagamento || "Dinheiro",
+      medidaFrente: selectedVenda.medidaFrente || "",
+      medidaLateralDir: selectedVenda.medidaLateralDir || "",
+      medidaLateralEsq: selectedVenda.medidaLateralEsq || "",
+      medidaFundos: selectedVenda.medidaFundos || "",
+      areaTotal: selectedVenda.areaTotal || "",
+    });
+    setShowGerarModal(true);
+  };
+
   const handleDownloadDocx = async () => {
     if (!selectedVenda) return;
+    if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    const proprietario = proprietarios.find((p) => p.id === desenvolvimento?.proprietarioId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
-    if (!proprietario) { alert("O empreendimento não tem um proprietário vinculado. Acesse a aba Empreendimentos e vincule um proprietário."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    setShowGerarModal(false);
     setDownloadingDocx(true);
     try {
       const res = await fetch("/api/contrato/parcelado-padrao", {
@@ -2655,24 +2683,25 @@ const ContratosSection = ({
         credentials: "include",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          vendedor: proprietario,
+          vendedor: gerarVendedor,
           cliente,
-          empreendimento: { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade, cidade: desenvolvimento.cidade, estado: desenvolvimento.estado },
+          empreendimento: { nome: desenvolvimento.nome, comunidade: gerarExtra.comunidade, cidade: desenvolvimento.cidade, estado: desenvolvimento.estado },
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
-            rua: selectedVenda.rua,
+            rua: gerarExtra.rua,
             valorLote: selectedVenda.valorLote,
             valorEntrada: selectedVenda.valorEntrada,
             quantidadeParcelas: selectedVenda.quantidadeParcelas,
             valorParcela: selectedVenda.valorParcela,
             dataVencimento: selectedVenda.dataVencimento,
             dataVenda: selectedVenda.dataVenda,
-            medidaFrente: selectedVenda.medidaFrente,
-            medidaLateralDir: selectedVenda.medidaLateralDir,
-            medidaLateralEsq: selectedVenda.medidaLateralEsq,
-            medidaFundos: selectedVenda.medidaFundos,
-            areaTotal: selectedVenda.areaTotal,
+            formaPagamento: gerarExtra.formaPagamento,
+            medidaFrente: gerarExtra.medidaFrente,
+            medidaLateralDir: gerarExtra.medidaLateralDir,
+            medidaLateralEsq: gerarExtra.medidaLateralEsq,
+            medidaFundos: gerarExtra.medidaFundos,
+            areaTotal: gerarExtra.areaTotal,
           },
         }),
       });
@@ -3026,6 +3055,133 @@ const ContratosSection = ({
         )}
       </AnimatePresence>
 
+      {/* Modal: Gerar Contrato (.docx) */}
+      <AnimatePresence>
+        {showGerarModal && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <FileDown size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Gerar Contrato</h3>
+                    <p className="text-xs text-slate-400 font-medium">Preencha os dados para gerar o .docx</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowGerarModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto p-6 space-y-6">
+                {/* Vendedor */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Vendedor (Promitente Vendedor)</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="label">Nome Completo *</label>
+                      <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Nacionalidade</label>
+                      <input className="input-field" placeholder="Ex: brasileiro" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Estado Civil</label>
+                      <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
+                        {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">CPF</label>
+                      <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">RG</label>
+                      <input className="input-field" placeholder="RG" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Endereço</label>
+                      <input className="input-field" placeholder="Rua / Av." value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Número</label>
+                      <input className="input-field" placeholder="Nº" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Cidade</label>
+                      <input className="input-field" placeholder="Cidade" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Estado (UF)</label>
+                      <input className="input-field" placeholder="PA" value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Imóvel */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Imóvel</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="label">Rua do Lote</label>
+                      <input className="input-field" placeholder="Nome da rua" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="label">Comunidade / Região</label>
+                      <input className="input-field" placeholder="Ex: Comunidade Boa Vista" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Medida Frente (m)</label>
+                      <input className="input-field" placeholder="Ex: 10,00" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Lateral Direita (m)</label>
+                      <input className="input-field" placeholder="Ex: 25,00" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Lateral Esquerda (m)</label>
+                      <input className="input-field" placeholder="Ex: 25,00" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Fundos (m)</label>
+                      <input className="input-field" placeholder="Ex: 10,00" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="label">Área Total (m²)</label>
+                      <input className="input-field" placeholder="Ex: 250,00" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pagamento */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Forma de Pagamento das Parcelas</p>
+                  <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
+                    {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowGerarModal(false)} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 gap-2">
+                  <FileDown size={18} />
+                  {downloadingDocx ? "Gerando..." : "Gerar .docx"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       <div className="card-premium">
         <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
           <table className="w-full text-left border-separate border-spacing-y-2">
@@ -3171,10 +3327,10 @@ const ContratosSection = ({
                   </div>
                   {viewMode === "contract" && (
                     <button
-                      onClick={handleDownloadDocx}
+                      onClick={handleOpenGerarContrato}
                       disabled={downloadingDocx}
                       className="btn-ghost h-12 px-5 disabled:opacity-50"
-                      title="Baixar contrato parcelado padrão (.docx)"
+                      title="Gerar contrato parcelado padrão (.docx)"
                     >
                       {downloadingDocx ? (
                         <span className="text-xs font-bold">Gerando...</span>
