@@ -20,7 +20,11 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
+      const text = await res.text();
+      let data: any = {};
+      try { data = JSON.parse(text); } catch {
+        throw new Error("Servidor indisponível. Verifique as variáveis de ambiente no Vercel (DATABASE_URL, SESSION_SECRET, GEMINI_API_KEY).");
+      }
       if (!res.ok) throw new Error(data.error || "Erro ao autenticar.");
       onLogin();
     } catch (err: any) {

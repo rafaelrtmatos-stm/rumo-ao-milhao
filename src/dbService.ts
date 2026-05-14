@@ -5,11 +5,13 @@ async function apiFetch(path: string, options?: RequestInit) {
     ...options,
     headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
   });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err?.error || `Erro ${res.status}`);
+  const text = await res.text();
+  let data: any;
+  try { data = JSON.parse(text); } catch {
+    throw new Error('Servidor indisponível. Verifique as variáveis de ambiente no Vercel.');
   }
-  return res.json();
+  if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
+  return data;
 }
 
 export const dbService = {
