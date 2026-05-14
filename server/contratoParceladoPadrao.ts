@@ -104,6 +104,8 @@ interface ContratoParams {
     rg: string;
     cpf: string;
     profissao?: string;
+    telefone1?: string;
+    telefone2?: string;
     endereco: string;
     numero: string;
     bairro: string;
@@ -208,7 +210,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
           run(vendedor.nome.toUpperCase(), true),
           run(", " + vendedor.nacionalidade + ", " + vendedor.estadoCivil.toLowerCase() + ", portador da carteira de identidade nº " + vendedor.rg + " e do CPF nº " + vendedor.cpf + ", residente e domiciliado na " + vendedor.endereco + ", n° " + vendedor.numero + ", " + vendedor.bairro + ", " + vendedor.cidade + ", " + vendedor.estado + ", CEP " + vendedor.cep + ", ora em diante chamado simplesmente de VENDEDOR de outro " + (isF ? "a Sra. " : "o Sr. ")),
           run(cliente.nome.toUpperCase(), true),
-          run(", " + brasileiroLabel + ", " + cliente.estadoCivil.toLowerCase() + ", " + portadorLabel + " da carteira de identidade nº " + cliente.rg + " e do CPF nº " + cliente.cpf + (cliente.profissao ? ", " + cliente.profissao : "") + ", " + residenteLabel + " na " + cliente.endereco + ", nº " + cliente.numero + ", " + cliente.bairro + ", " + cliente.cidade + "/" + cliente.estado + ", CEP " + cliente.cep + ", ora em diante chamado simplesmente de " + compradorLabel + ":"),
+          run(", " + brasileiroLabel + ", " + cliente.estadoCivil.toLowerCase() + ", " + portadorLabel + " da carteira de identidade nº " + cliente.rg + " e do CPF nº " + cliente.cpf + (cliente.telefone1 ? ", Telefone " + cliente.telefone1 : "") + (cliente.telefone2 ? " " + cliente.telefone2 : "") + (cliente.profissao ? ", " + cliente.profissao : "") + ", " + residenteLabel + " na " + cliente.endereco + ", n° " + cliente.numero + ", " + cliente.bairro + ", " + cliente.cidade + ", " + cliente.estado + ", CEP " + cliente.cep + ", ora em diante chamad" + (isF ? "a" : "o") + " simplesmente de " + compradorLabel + ", têm, entre si, como justo e contratado o que se segue:"),
         ]),
 
         blank(),
@@ -240,7 +242,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
           run(venda.quantidadeParcelas + " (" + capitalizar(inteiroExtenso(venda.quantidadeParcelas)) + ")", true),
           run(" parcelas fixas, no valor de "),
           run(brl(venda.valorParcela) + " (" + capitalizar(valorExtenso(venda.valorParcela)) + ")", true),
-          run(" cada uma, com vencimento todo dia " + diaDoMes(venda.dataVencimento) + " de cada mês subsequente, ficando a primeira parcela para " + primeiraParcela(venda.dataVencimento) + "."),
+          run(" cada, não sujeitas a reajuste anual ou a qualquer forma de correção monetária, a serem pagas por meio de Boletos Bancários, com vencimento no dia " + diaDoMes(venda.dataVencimento) + " de cada mês, ficando a primeira parcela para o dia " + primeiraParcela(venda.dataVencimento) + ", e as demais nos meses subsequentes."),
         ]),
 
         blank(),
@@ -263,7 +265,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
         heading("5º DA RESCISÃO CONTRATUAL E CONSEQUÊNCIAS"),
 
         par([
-          run("O presente contrato será rescindido automaticamente 90 (noventa) dias após " + aLabel + compradorLabel + " deixar de pagar qualquer das parcelas pactuadas neste instrumento na data do respectivo vencimento, operando-se a rescisão em favor do VENDEDOR, independentemente de aviso judicial ou extrajudicial. Em consequência, perderá " + aLabel + compradorLabel + ", desde logo, a posse do imóvel prometido. Do valor total efetivamente pago até a data do inadimplemento será retida multa compensatória correspondente a 30% (trinta por cento), sem prejuízo da multa de mora e dos juros, conforme previsto na cláusula anterior, além das custas processuais e honorários advocatícios, se houver."),
+          run("O presente contrato será rescindido automaticamente 90 (noventa) dias após " + aLabel + compradorLabel + " deixar de pagar qualquer das parcelas pactuadas neste instrumento na data do respectivo vencimento, operando-se a rescisão em favor do VENDEDOR, independentemente de aviso judicial ou extrajudicial. Em consequência, perderá " + aLabel + compradorLabel + ", desde logo, a posse do imóvel prometido. Do valor total efetivamente pago até a data do inadimplemento será retida multa compensatória correspondente a 25% (vinte e cinco por cento), sendo o saldo remanescente devolvido de forma parcelada pelo VENDEDOR, conforme disposto na cláusula 3ª deste contrato."),
         ]),
 
         par([

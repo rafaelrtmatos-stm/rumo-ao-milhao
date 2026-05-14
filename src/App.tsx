@@ -3097,39 +3097,6 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     ))}
                 </datalist>
               </div>
-              <div className="sm:col-span-2">
-                {(() => {
-                  const dev = developments.find((d) => d.id === saleData.empreendimentoId);
-                  const q = saleData.quadra?.trim();
-                  const sugestoes = q && dev ? getRuasSugeridas(dev, q, saleData.numeroLote) : [];
-                  const fromLotesInfo = dev?.lotesInfo?.[`${q}-${saleData.numeroLote}`.toUpperCase()]?.rua;
-                  return (
-                    <>
-                      <label className="label flex items-center gap-2">
-                        Rua / Acesso do Lote
-                        {fromLotesInfo && (
-                          <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Pré-cadastrada</span>
-                        )}
-                        {!fromLotesInfo && sugestoes.length > 0 && (
-                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{sugestoes.length} sugestão(ões)</span>
-                        )}
-                      </label>
-                      <input
-                        list="rua-suggestions"
-                        className="input-field"
-                        placeholder={sugestoes.length > 0 ? `Sugestão: ${sugestoes[0]}` : "Nome da rua ou acesso"}
-                        value={saleData.rua || ""}
-                        onChange={(e) => setSaleData({ ...saleData, rua: e.target.value })}
-                      />
-                      {sugestoes.length > 0 && (
-                        <datalist id="rua-suggestions">
-                          {sugestoes.map((r) => <option key={r} value={r} />)}
-                        </datalist>
-                      )}
-                    </>
-                  );
-                })()}
-              </div>
             </div>
 
             <div className="space-y-6 lg:col-span-2">
