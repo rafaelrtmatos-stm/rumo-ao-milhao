@@ -28,6 +28,14 @@ function extractLocallyFromText(rawText: string) {
   const cep = cepMatch ? cepMatch[0].replace(/[^\d]/g, '') : null;
   const rgMatch = text.match(/\bRG[:\s#]*([0-9.\-\/]{5,15})/i);
   const rg = rgMatch ? rgMatch[1].trim() : null;
+  const nascimentoMatch = text.match(/(?:nascimento|data\s*de\s*nasc\.?|aniversário|nasc\.?)[:\s]*(\d{2})[\/\-](\d{2})[\/\-](\d{2,4})/i);
+  const nascimento = nascimentoMatch
+    ? (() => {
+        const [, d, m, y] = nascimentoMatch;
+        const year = y.length === 2 ? `19${y}` : y;
+        return `${year}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+      })()
+    : null;
   const nomeMatch = text.match(/(?:nome|comprador|cliente)[:\s]+([A-ZÀ-Ú][a-zà-úA-ZÀ-Ú ]+?)(?=\s*(?:cpf|rg|fone|tel|cep|rua|av\.|nascimento|estado|solteiro|casado|,|\n|$))/i);
   const nomeComprador = nomeMatch ? nomeMatch[1].trim() : null;
   const estadoCivilMatch = text.match(/\b(solteiro|solteira|casado|casada|divorciado|divorciada|vi[uú]vo|vi[uú]va|separado|separada|uni[aã]o est[aá]vel)\b/i);
@@ -35,8 +43,9 @@ function extractLocallyFromText(rawText: string) {
     .replace(/solteira/, 'solteiro').replace(/casada/, 'casado')
     .replace(/divorciada/, 'divorciado').replace(/vi[uú]va/, 'viúvo')
     .replace(/vi[uú]vo/, 'viúvo').replace(/separada/, 'separado') : null;
-  const telMatch = text.match(/(?:fone|tel\.?|celular|whatsapp|contato)?[\s:]*\(?\d{2}\)?\s*\d{4,5}[-\s]?\d{4}/i);
-  const telefone1 = telMatch ? telMatch[0].replace(/[^\d]/g, '') : null;
+  const allPhones = [...text.matchAll(/(?:(?:fone|tel\.?|celular|whatsapp|contato)[\s:]*)?(?:\+55[\s-]?)?\(?\d{2}\)?[\s]?\d{4,5}[-\s]?\d{4}/gi)];
+  const telefone1 = allPhones[0] ? allPhones[0][0].replace(/[^\d]/g, '') : null;
+  const telefone2 = allPhones[1] ? allPhones[1][0].replace(/[^\d]/g, '') : null;
   const enderecoFullMatch = text.match(/\b(rua|r\.|av\.?|avenida|travessa|trav\.?|alameda|al\.?)\s+([^,\n\d]+?),?\s*n[º°.]?\s*(\d+)/i);
   let endereco: string | null = null;
   let numero: string | null = null;
@@ -97,7 +106,7 @@ function extractLocallyFromText(rawText: string) {
   const nacionalidade = nacionalidadeMatch ? nacionalidadeMatch[1].trim() : null;
   const profissaoMatch = text.match(/(?:profiss[aã]o|ocupa[çc][aã]o)[:\s]+([^\n,;]+)/i);
   const profissao = profissaoMatch ? profissaoMatch[1].trim() : null;
-  return { nomeComprador, cpf, rg, cep, estadoCivil, telefone1, endereco, numero, bairro, cidade, estado, numeroLote, quadra, empreendimentoNome, valorEntrada, valorParcela, quantidadeParcelas, valorLote, dataVencimento, vendedor, nacionalidade, profissao };
+  return { nomeComprador, cpf, rg, nascimento, cep, estadoCivil, telefone1, telefone2, endereco, numero, bairro, cidade, estado, numeroLote, quadra, empreendimentoNome, valorEntrada, valorParcela, quantidadeParcelas, valorLote, dataVencimento, vendedor, nacionalidade, profissao };
 }
 
 export const geminiService = {

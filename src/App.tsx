@@ -1321,6 +1321,10 @@ const VendasSection = ({
         rg: data.rg || prev.rg,
         cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
         estadoCivil: data.estadoCivil || prev.estadoCivil,
+        profissao: data.profissao || prev.profissao,
+        nascimento: data.nascimento || prev.nascimento,
+        telefone1: data.telefone1 ? maskPhone(data.telefone1) : prev.telefone1,
+        telefone2: data.telefone2 ? maskPhone(data.telefone2) : prev.telefone2,
         endereco: data.endereco || prev.endereco,
         numero: data.numero || prev.numero,
         bairro: data.bairro || prev.bairro,
@@ -1334,7 +1338,9 @@ const VendasSection = ({
         quadra: data.quadra || prev.quadra,
         valorLote: data.valorLote || prev.valorLote,
         valorEntrada: data.valorEntrada || prev.valorEntrada,
+        valorParcela: data.valorParcela || prev.valorParcela,
         quantidadeParcelas: data.quantidadeParcelas || prev.quantidadeParcelas,
+        dataVencimento: data.dataVencimento || prev.dataVencimento,
         vendedor: data.vendedor || prev.vendedor,
       }));
       alert("IA preencheu os campos identificados!");
@@ -3969,6 +3975,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   const [config, setConfig] = useState<AppConfig>({
     theme: "standard",
   });
+  const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [prefilledSale, setPrefilledSale] = useState<
@@ -3987,6 +3994,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       setClients(cls);
       setSales(sls);
       setConfig(cfg);
+      setIsLoaded(true);
     };
     load();
 
@@ -4007,6 +4015,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   }, [config.theme]);
 
   const saveDev = (newDev: Empreendimento) => {
+    if (!isLoaded) return;
     const updated = [...developments, newDev];
     setDevelopments(updated);
     dbService.saveEmpreendimentos(updated).catch(console.error);
@@ -4019,6 +4028,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
+    if (!isLoaded) return newSale;
     let updatedClients = [...clients];
     const existingClientIndex = clients.findIndex(
       (c) => c.cpf === newClient.cpf,

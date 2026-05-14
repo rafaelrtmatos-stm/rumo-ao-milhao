@@ -25,6 +25,40 @@ async function apiPost(path: string, body: any): Promise<any> {
   return res.json();
 }
 
+/**
+ * Polling simples para simular realtime.
+ * O banco é Postgres puro (sem Supabase Realtime), então fazemos
+ * polling a cada 15s. Só chama o callback se os dados mudaram.
+ */
+function createPoller<T>(
+  fetchFn: () => Promise<T>,
+  callback: (data: T) => void,
+  intervalMs = 15000,
+) {
+  let stopped = false;
+  let lastJson = '';
+
+  const poll = async () => {
+    if (stopped) return;
+    try {
+      const data = await fetchFn();
+      const json = JSON.stringify(data);
+      if (json !== lastJson) {
+        lastJson = json;
+        callback(data);
+      }
+    } catch {
+      // ignora erros silenciosamente (ex: usuário não autenticado ainda)
+    }
+    if (!stopped) setTimeout(poll, intervalMs);
+  };
+
+  // Começa depois do load inicial para não conflitar
+  setTimeout(poll, intervalMs);
+
+  return { unsubscribe: () => { stopped = true; } };
+}
+
 export const dbService = {
 
   async getEmpreendimentos(): Promise<Empreendimento[]> {
@@ -68,16 +102,16 @@ export const dbService = {
     await apiPost('/api/config', config);
   },
 
-  subscribeToVendas(_callback: (vendas: Venda[]) => void) {
-    return { unsubscribe: () => {} };
+  subscribeToVendas(callback: (vendas: Venda[]) => void) {
+    return createPoller(() => dbService.getVendas(), callback);
   },
 
-  subscribeToEmpreendimentos(_callback: (devs: Empreendimento[]) => void) {
-    return { unsubscribe: () => {} };
+  subscribeToEmpreendimentos(callback: (devs: Empreendimento[]) => void) {
+    return createPoller(() => dbService.getEmpreendimentos(), callback);
   },
 
-  subscribeToClientes(_callback: (clientes: Cliente[]) => void) {
-    return { unsubscribe: () => {} };
+  subscribeToClientes(callback: (clientes: Cliente[]) => void) {
+    return createPoller(() => dbService.getClientes(), callback);
   },
 
   async migrateFromLocalStorage(): Promise<{ ok: boolean; msg: string }> {
