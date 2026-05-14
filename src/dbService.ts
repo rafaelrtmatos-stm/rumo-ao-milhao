@@ -1,178 +1,75 @@
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
-import { supabase } from './lib/supabase';
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
-function toRows<T extends { id: string }>(items: T[], userId: string) {
-  return items.map((item) => ({ id: item.id, user_id: userId, data: item }));
+async function apiFetch(path: string, options?: RequestInit) {
+  const res = await fetch(path, {
+    ...options,
+    headers: { 'Content-Type': 'application/json', ...(options?.headers || {}) },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err?.error || `Erro ${res.status}`);
+  }
+  return res.json();
 }
-
-async function getUserId(): Promise<string> {
-  const { data } = await supabase.auth.getUser();
-  if (!data.user) throw new Error('Unauthorized');
-  return data.user.id;
-}
-
-// ---------------------------------------------------------------------------
-// Realtime subscriptions (substitui o polling de 15s)
-// ---------------------------------------------------------------------------
-
-function subscribeTable<T>(
-  table: string,
-  fetchFn: () => Promise<T>,
-  callback: (data: T) => void,
-) {
-  // Busca imediata ao assinar
-  fetchFn().then(callback).catch(() => {});
-
-  const channel = supabase
-    .channel(`realtime:${table}`)
-    .on('postgres_changes', { event: '*', schema: 'public', table }, () => {
-      fetchFn().then(callback).catch(() => {});
-    })
-    .subscribe();
-
-  return { unsubscribe: () => supabase.removeChannel(channel) };
-}
-
-// ---------------------------------------------------------------------------
-// dbService
-// ---------------------------------------------------------------------------
 
 export const dbService = {
 
-  // ---- Empreendimentos ----
-
   async getEmpreendimentos(): Promise<Empreendimento[]> {
-    const { data, error } = await supabase
-      .from('empreendimentos')
-      .select('data')
-      .order('created_at', { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.data as Empreendimento);
+    return apiFetch('/api/empreendimentos');
   },
 
   async saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
-    const userId = await getUserId();
-    const rows = toRows(items, userId);
-
-    // Apaga tudo do usuário e reinsepe (comportamento original do servidor)
-    const { error: delErr } = await supabase
-      .from('empreendimentos')
-      .delete()
-      .eq('user_id', userId);
-    if (delErr) throw new Error(delErr.message);
-
-    if (rows.length === 0) return;
-
-    const { error: insErr } = await supabase
-      .from('empreendimentos')
-      .insert(rows);
-    if (insErr) throw new Error(insErr.message);
+    await apiFetch('/api/empreendimentos', { method: 'POST', body: JSON.stringify(items) });
   },
 
   async deleteEmpreendimento(id: string): Promise<void> {
-    const { error } = await supabase
-      .from('empreendimentos')
-      .delete()
-      .eq('id', id);
-    if (error) throw new Error(error.message);
+    const all = await dbService.getEmpreendimentos();
+    const filtered = all.filter((e) => e.id !== id);
+    await dbService.saveEmpreendimentos(filtered);
   },
 
-  // ---- Clientes ----
-
   async getClientes(): Promise<Cliente[]> {
-    const { data, error } = await supabase
-      .from('clientes')
-      .select('data')
-      .order('created_at', { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.data as Cliente);
+    return apiFetch('/api/clientes');
   },
 
   async saveClientes(items: Cliente[]): Promise<void> {
-    const userId = await getUserId();
-    const rows = toRows(items, userId);
-
-    const { error: delErr } = await supabase
-      .from('clientes')
-      .delete()
-      .eq('user_id', userId);
-    if (delErr) throw new Error(delErr.message);
-
-    if (rows.length === 0) return;
-
-    const { error: insErr } = await supabase
-      .from('clientes')
-      .insert(rows);
-    if (insErr) throw new Error(insErr.message);
+    await apiFetch('/api/clientes', { method: 'POST', body: JSON.stringify(items) });
   },
 
-  // ---- Vendas ----
-
   async getVendas(): Promise<Venda[]> {
-    const { data, error } = await supabase
-      .from('vendas')
-      .select('data')
-      .order('created_at', { ascending: true });
-    if (error) throw new Error(error.message);
-    return (data ?? []).map((r) => r.data as Venda);
+    return apiFetch('/api/vendas');
   },
 
   async saveVendas(items: Venda[]): Promise<void> {
-    const userId = await getUserId();
-    const rows = toRows(items, userId);
-
-    const { error: delErr } = await supabase
-      .from('vendas')
-      .delete()
-      .eq('user_id', userId);
-    if (delErr) throw new Error(delErr.message);
-
-    if (rows.length === 0) return;
-
-    const { error: insErr } = await supabase
-      .from('vendas')
-      .insert(rows);
-    if (insErr) throw new Error(insErr.message);
+    await apiFetch('/api/vendas', { method: 'POST', body: JSON.stringify(items) });
   },
 
-  // ---- Config ----
-
   async getAppConfig(): Promise<AppConfig> {
-    const { data, error } = await supabase
-      .from('app_config')
-      .select('data')
-      .maybeSingle();
-    if (error) return { theme: 'standard' };
-    return (data?.data as AppConfig) ?? { theme: 'standard' };
+    try {
+      return await apiFetch('/api/config');
+    } catch {
+      return { theme: 'standard' };
+    }
   },
 
   async saveAppConfig(config: AppConfig): Promise<void> {
-    const userId = await getUserId();
-    const { error } = await supabase
-      .from('app_config')
-      .upsert({ user_id: userId, data: config }, { onConflict: 'user_id' });
-    if (error) throw new Error(error.message);
+    await apiFetch('/api/config', { method: 'POST', body: JSON.stringify(config) });
   },
 
-  // ---- Subscriptions (agora com Realtime de verdade) ----
-
   subscribeToVendas(callback: (vendas: Venda[]) => void) {
-    return subscribeTable('vendas', () => dbService.getVendas(), callback);
+    dbService.getVendas().then(callback).catch(() => {});
+    return { unsubscribe: () => {} };
   },
 
   subscribeToEmpreendimentos(callback: (devs: Empreendimento[]) => void) {
-    return subscribeTable('empreendimentos', () => dbService.getEmpreendimentos(), callback);
+    dbService.getEmpreendimentos().then(callback).catch(() => {});
+    return { unsubscribe: () => {} };
   },
 
   subscribeToClientes(callback: (clientes: Cliente[]) => void) {
-    return subscribeTable('clientes', () => dbService.getClientes(), callback);
+    dbService.getClientes().then(callback).catch(() => {});
+    return { unsubscribe: () => {} };
   },
-
-  // ---- Migração do localStorage ----
 
   async migrateFromLocalStorage(): Promise<{ ok: boolean; msg: string }> {
     try {

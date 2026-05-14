@@ -1,23 +1,27 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Building2, Lock } from "lucide-react";
-import { supabase } from "./lib/supabase";
-
-export { supabase };
 
 export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isRegister, setIsRegister] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
-      if (authError) throw new Error(authError.message);
+      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao autenticar.");
       onLogin();
     } catch (err: any) {
       setError(err.message || "Erro ao autenticar.");
@@ -106,7 +110,15 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               disabled={loading}
               className="w-full h-16 bg-[#1c1c1e] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-black/30 hover:bg-[#2c2c2e] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading ? "Aguarde..." : "Entrar no Sistema"}
+              {loading ? "Aguarde..." : isRegister ? "Criar Conta" : "Entrar no Sistema"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setIsRegister(!isRegister); setError(""); }}
+              className="w-full text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
+            >
+              {isRegister ? "Já tenho uma conta → Entrar" : "Novo usuário → Criar conta"}
             </button>
           </form>
         </div>

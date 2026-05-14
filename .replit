@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "postgresql-16"]
+modules = ["nodejs-20", "web"]
 [agent]
 expertMode = true
 stack = "BEST_EFFORT_FALLBACK"
@@ -42,5 +42,5 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["node", "dist/server.cjs"]
+run = ["node", "dist/server.mjs"]
 build = ["npm", "run", "build"]
