@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Building2,
@@ -1889,6 +1889,7 @@ const VendasSection = ({
   const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState<string>("");
+  const [hasDraft, setHasDraft] = useState(() => !!localStorage.getItem('venda_rascunho'));
 
   const handleSalvarNovoDev = () => {
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
@@ -3461,33 +3462,35 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <button type="button" className="btn-ghost w-full" onClick={() => {
                   const key = 'venda_rascunho';
-                  const saved = localStorage.getItem(key);
-                  if (saved) {
-                    const { clientData: cd, saleData: sd } = JSON.parse(saved);
-                    if (window.confirm('Restaurar rascunho salvo?')) {
-                      if (cd) setClientData((prev) => ({ ...prev, ...cd }));
-                      if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
-                    } else {
-                      localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
-                      alert('Rascunho salvo!');
-                    }
-                  } else {
-                    localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
-                    alert('Rascunho salvo!');
-                  }
+                  localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
+                  setHasDraft(true);
+                  alert('Rascunho salvo!');
                 }}>
                   <FileText size={18} />
-                  <span>Rascunho</span>
+                  <span>Salvar Rascunho</span>
                 </button>
+                {hasDraft && (
+                  <button type="button" className="btn-ghost w-full border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => {
+                    const key = 'venda_rascunho';
+                    const saved = localStorage.getItem(key);
+                    if (!saved) return;
+                    const { clientData: cd, saleData: sd } = JSON.parse(saved);
+                    if (cd) setClientData((prev) => ({ ...prev, ...cd }));
+                    if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
+                  }}>
+                    <FileText size={18} />
+                    <span>Restaurar</span>
+                  </button>
+                )}
                 <button
                   type="submit"
-                  className="btn-primary w-full shadow-lg shadow-primary-main/20"
+                  className={`btn-primary w-full shadow-lg shadow-primary-main/20 ${hasDraft ? '' : 'sm:col-span-2'}`}
                 >
                   <ShoppingCart size={18} />
-                  <span>Finalizar Venda</span>
+                  <span>{editingEntry ? 'Salvar Alterações' : 'Finalizar Venda'}</span>
                 </button>
               </div>
             </div>
@@ -3789,7 +3792,32 @@ const ContratosSection = ({
     }
   }, [initialVenda]);
 
+  const reciboRef = useRef<HTMLDivElement>(null);
   const handlePrint = () => window.print();
+
+  const handleDownloadImage = async () => {
+    if (!reciboRef.current) return;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(reciboRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    const link = document.createElement('a');
+    link.download = `recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!reciboRef.current) return;
+    const html2canvas = (await import('html2canvas')).default;
+    const { jsPDF } = await import('jspdf');
+    const canvas = await html2canvas(reciboRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
+    const imgData = canvas.toDataURL('image/png');
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+    const pdfWidth = pdf.internal.pageSize.getWidth();
+    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+    pdf.save(`recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.pdf`);
+  };
+
   const client = selectedVenda
     ? clients.find((c) => c.id === selectedVenda.clienteId)
     : null;
@@ -4537,8 +4565,16 @@ const ContratosSection = ({
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={handlePrint} className="btn-ghost h-9 px-4 text-xs">
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={handleDownloadImage} className="btn-ghost h-9 px-3 text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    <span className="hidden sm:inline">Imagem</span>
+                  </button>
+                  <button onClick={handleDownloadPdf} className="btn-ghost h-9 px-3 text-xs">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                    <span className="hidden sm:inline">PDF</span>
+                  </button>
+                  <button onClick={handlePrint} className="btn-ghost h-9 px-3 text-xs">
                     <Printer size={15} />
                     <span className="hidden sm:inline">Imprimir</span>
                   </button>
@@ -4548,7 +4584,7 @@ const ContratosSection = ({
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/50">
-                <div className="bg-white shadow-2xl p-8 sm:p-16 mx-auto w-full max-w-[21cm] min-h-[15cm] text-black font-sans border border-slate-200">
+                <div ref={reciboRef} className="bg-white shadow-2xl p-8 sm:p-16 mx-auto w-full max-w-[21cm] min-h-[15cm] text-black font-sans border border-slate-200">
                   <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-12">
                     <div>
                       <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>

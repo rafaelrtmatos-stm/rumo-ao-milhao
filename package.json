@@ -31,6 +31,8 @@
     "drizzle-zod": "^0.8.3",
     "express": "^4.21.2",
     "express-session": "^1.19.0",
+    "html2canvas": "^1.4.1",
+    "jspdf": "^4.2.1",
     "lucide-react": "^0.546.0",
     "memoizee": "^0.4.17",
     "motion": "^12.23.24",
