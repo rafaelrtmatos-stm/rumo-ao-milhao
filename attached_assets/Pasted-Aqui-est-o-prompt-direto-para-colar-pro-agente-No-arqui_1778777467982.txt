@@ -1,0 +1,38 @@
+Aqui está o prompt direto para colar pro agente:
+
+---
+
+No arquivo `App.tsx`, dentro do componente `ContratosSection`, implemente a seguinte lógica:
+
+**1. Novo estado:**
+```ts
+const [ruaWarning, setRuaWarning] = useState<string | null>(null);
+```
+
+**2. useEffect de auto-preenchimento da rua** (adicionar logo após o estado `contratoData`):
+
+Quando o usuário selecionar empreendimento + quadra + lote no formulário de Novo Contrato:
+- Se o `lotesInfo` do empreendimento já tiver uma rua cadastrada para aquele lote (`key = "${quadra}-${numeroLote}".toUpperCase()`), preencher o campo `rua` automaticamente se ele estiver vazio
+- Se o campo `rua` já tiver um valor diferente do que está no sistema, setar `ruaWarning` com a mensagem: `A rua do sistema para este lote é "${ruaSistema}". Verifique se está correta.`
+- Se bater com o sistema, limpar o warning
+- Se o lote não tiver rua cadastrada, limpar o warning (a rua será salva automaticamente ao confirmar o contrato, pois `saveSale` no App já persiste `lotesInfo`)
+
+O `useEffect` deve ter como dependências: `contratoData.empreendimentoId`, `contratoData.quadra`, `contratoData.numeroLote`, `contratoData.rua`, `developments`
+
+**3. No formulário de Novo Contrato — campos de Imóvel:**
+- Ao trocar o `empreendimentoId`, resetar `quadra`, `numeroLote` e `rua` para vazio
+- Ao trocar `quadra`, resetar `rua` para vazio
+- Ao trocar `numeroLote`, resetar `rua` para vazio
+- O campo `Rua` deve:
+  - Ter borda âmbar (`border-amber-400`) quando houver `ruaWarning`
+  - Mostrar badge verde "✓ Confirmada pelo sistema" na label quando a rua bater com o sistema
+  - Mostrar badge âmbar "Nova — será salva no sistema" na label quando o lote não tiver rua cadastrada mas o campo estiver preenchido
+  - Exibir o texto de `ruaWarning` abaixo do input com ícone `AlertCircle` quando houver divergência
+
+**4. No modal de Editar Contrato — campo Rua:**
+- Ao renderizar o campo Rua, calcular inline se a rua digitada diverge do `lotesInfo` do empreendimento/quadra/lote selecionado
+- Se divergir: mostrar borda âmbar no input e texto de aviso abaixo com `AlertCircle`
+- Se bater: mostrar badge verde "✓ Confirmada" na label
+- Se o lote não tiver rua cadastrada: mostrar badge âmbar "Nova — será salva" na label
+
+O ícone `AlertCircle` já está importado no arquivo. Não alterar nenhum outro componente.

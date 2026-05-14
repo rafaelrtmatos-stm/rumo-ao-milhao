@@ -2680,7 +2680,31 @@ const ContratosSection = ({
     dataVenda: new Date().toISOString().split("T")[0],
   };
   const [contratoData, setContratoData] = useState(emptyContrato);
+  const [ruaWarning, setRuaWarning] = useState<string | null>(null);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+
+  useEffect(() => {
+    if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) {
+      setRuaWarning(null);
+      return;
+    }
+    const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+    const key = `${contratoData.quadra}-${contratoData.numeroLote}`.toUpperCase();
+    const lotInfo = dev?.lotesInfo?.[key];
+    if (lotInfo?.rua) {
+      const ruaSistema = lotInfo.rua;
+      if (!contratoData.rua) {
+        setContratoData((prev) => ({ ...prev, rua: ruaSistema }));
+        setRuaWarning(null);
+      } else if (contratoData.rua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase()) {
+        setRuaWarning(`A rua do sistema para este lote é "${ruaSistema}". Verifique se está correta.`);
+      } else {
+        setRuaWarning(null);
+      }
+    } else {
+      setRuaWarning(null);
+    }
+  }, [contratoData.empreendimentoId, contratoData.quadra, contratoData.numeroLote, contratoData.rua, developments]);
 
   const emptyGerarVendedor = {
     nome: "", nacionalidade: "brasileiro", estadoCivil: "Solteiro(a)",
@@ -3037,21 +3061,53 @@ const ContratosSection = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="sm:col-span-2">
                       <label className="label">Empreendimento</label>
-                      <select className="input-field" value={contratoData.empreendimentoId} onChange={(e) => setContratoData({ ...contratoData, empreendimentoId: e.target.value })}>
+                      <select className="input-field" value={contratoData.empreendimentoId} onChange={(e) => setContratoData({ ...contratoData, empreendimentoId: e.target.value, quadra: "", numeroLote: "", rua: "" })}>
                         <option value="">Selecione...</option>
                         {developments.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
                       </select>
                     </div>
-                    {[
-                      { label: "Quadra", field: "quadra", placeholder: "Ex: A" },
-                      { label: "Lote", field: "numeroLote", placeholder: "Ex: 01" },
-                      { label: "Rua", field: "rua", placeholder: "Nome da rua" },
-                    ].map(({ label, field, placeholder }) => (
-                      <div key={field}>
-                        <label className="label">{label}</label>
-                        <input className="input-field" placeholder={placeholder} value={(contratoData as any)[field]} onChange={(e) => setContratoData({ ...contratoData, [field]: e.target.value })} />
-                      </div>
-                    ))}
+                    <div>
+                      <label className="label">Quadra</label>
+                      <input className="input-field" placeholder="Ex: A" value={contratoData.quadra} onChange={(e) => setContratoData({ ...contratoData, quadra: e.target.value, rua: "" })} />
+                    </div>
+                    <div>
+                      <label className="label">Lote</label>
+                      <input className="input-field" placeholder="Ex: 01" value={contratoData.numeroLote} onChange={(e) => setContratoData({ ...contratoData, numeroLote: e.target.value, rua: "" })} />
+                    </div>
+                    <div>
+                      {(() => {
+                        const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+                        const key = `${contratoData.quadra}-${contratoData.numeroLote}`.toUpperCase();
+                        const lotInfo = dev?.lotesInfo?.[key];
+                        const ruaSistema = lotInfo?.rua;
+                        const isConfirmed = ruaSistema && contratoData.rua && contratoData.rua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                        const isNew = !ruaSistema && contratoData.rua && contratoData.rua.trim() !== "";
+                        return (
+                          <>
+                            <label className="label flex items-center gap-2">
+                              Rua
+                              {isConfirmed && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Confirmada pelo sistema</span>
+                              )}
+                              {isNew && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Nova — será salva no sistema</span>
+                              )}
+                            </label>
+                            <input
+                              className={`input-field ${ruaWarning ? "border-amber-400" : ""}`}
+                              placeholder="Nome da rua"
+                              value={contratoData.rua}
+                              onChange={(e) => setContratoData({ ...contratoData, rua: e.target.value })}
+                            />
+                            {ruaWarning && (
+                              <p className="mt-1 text-[11px] text-amber-600 font-semibold flex items-center gap-1">
+                                <AlertCircle size={13} /> {ruaWarning}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
 
@@ -3184,8 +3240,39 @@ const ContratosSection = ({
                     <input className="input-field" value={editVendaForm.numeroLote || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, numeroLote: e.target.value })} />
                   </div>
                   <div>
-                    <label className="label">Rua</label>
-                    <input className="input-field" value={editVendaForm.rua || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, rua: e.target.value })} />
+                    {(() => {
+                      const dev = developments.find((d) => d.id === (editVendaForm.empreendimentoId || editingVenda?.empreendimentoId));
+                      const key = `${editVendaForm.quadra || editingVenda?.quadra}-${editVendaForm.numeroLote || editingVenda?.numeroLote}`.toUpperCase();
+                      const lotInfo = dev?.lotesInfo?.[key];
+                      const ruaSistema = lotInfo?.rua;
+                      const currentRua = editVendaForm.rua || "";
+                      const isDivergent = ruaSistema && currentRua.trim() !== "" && currentRua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase();
+                      const isConfirmed = ruaSistema && currentRua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                      const isNew = !ruaSistema && currentRua.trim() !== "";
+                      return (
+                        <>
+                          <label className="label flex items-center gap-2">
+                            Rua
+                            {isConfirmed && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Confirmada</span>
+                            )}
+                            {isNew && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Nova — será salva</span>
+                            )}
+                          </label>
+                          <input
+                            className={`input-field ${isDivergent ? "border-amber-400" : ""}`}
+                            value={currentRua}
+                            onChange={(e) => setEditVendaForm({ ...editVendaForm, rua: e.target.value })}
+                          />
+                          {isDivergent && (
+                            <p className="mt-1 text-[11px] text-amber-600 font-semibold flex items-center gap-1">
+                              <AlertCircle size={13} /> A rua do sistema para este lote é "{ruaSistema}". Verifique se está correta.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label className="label">Valor do Lote (R$)</label>
