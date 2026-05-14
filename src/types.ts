@@ -19,6 +19,7 @@ export interface Empreendimento {
   comunidade?: string;
   quadras?: string;
   ruas?: string;
+  ruasPorQuadra?: Record<string, string>; // Chave: quadra, Valor: ruas sugeridas separadas por vírgula (ex: "Rua 01, Rua 02")
   lotesInfo?: Record<string, { rua: string }>; // Chave: 'QUADRA-LOTE', Valor: { rua: 'Nome da Rua' }
   proprietarioId?: string;
 }

@@ -879,14 +879,26 @@ const EmpreendimentosSection = ({
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
-    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "",
+    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "", ruasPorQuadra: {},
   };
   const [isAdding, setIsAdding] = useState(false);
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [selectedDevForMap, setSelectedDevForMap] =
-    useState<Empreendimento | null>(null);
+  const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
+  const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
+  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "" });
+
+  const handleSalvarLote = () => {
+    if (!lotRegDev || !lotRegForm.quadra || !lotRegForm.numeroLote) {
+      alert("Preencha a quadra e o número do lote.");
+      return;
+    }
+    const key = `${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase();
+    onUpdateLotesInfo(lotRegDev.id, { [key]: { rua: lotRegForm.rua } });
+    setLotRegForm({ quadra: "", numeroLote: "", rua: "" });
+    setLotRegDev(null);
+  };
 
   const openAddForm = () => {
     setEditingDev(null);
@@ -900,6 +912,7 @@ const EmpreendimentosSection = ({
       nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
       totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
       quadras: dev.quadras, ruas: dev.ruas, proprietarioId: dev.proprietarioId || "",
+      ruasPorQuadra: dev.ruasPorQuadra || {},
     });
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1067,29 +1080,47 @@ const EmpreendimentosSection = ({
                   placeholder="Ex: Centro, Vila Nova"
                 />
               </div>
-              <div className="md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-6">
+              <div className="md:col-span-2 space-y-4">
                 <div>
                   <label className="label">Quadras Disponíveis</label>
                   <input
                     className="input-field"
                     value={formData.quadras}
                     onChange={(e) =>
-                      setFormData({ ...formData, quadras: e.target.value })
+                      setFormData({ ...formData, quadras: e.target.value, ruasPorQuadra: {} })
                     }
                     placeholder="Ex: A, B, C, D"
                   />
                 </div>
-                <div>
-                  <label className="label">Ruas / Acessos</label>
-                  <input
-                    className="input-field"
-                    value={formData.ruas}
-                    onChange={(e) =>
-                      setFormData({ ...formData, ruas: e.target.value })
-                    }
-                    placeholder="Ex: Rua 01, Rua 02, Av. Principal"
-                  />
-                </div>
+                {formData.quadras && formData.quadras.trim() !== "" && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                      Ruas sugeridas por quadra <span className="text-slate-300 normal-case font-normal">(opcional — usadas como sugestão ao cadastrar lotes)</span>
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      {formData.quadras.split(",").map((q) => {
+                        const quadra = q.trim();
+                        if (!quadra) return null;
+                        return (
+                          <div key={quadra} className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 bg-slate-100 px-2 py-1.5 rounded-lg min-w-[48px] text-center">Q. {quadra}</span>
+                            <input
+                              className="input-field flex-1 text-sm"
+                              placeholder="Ex: Rua 01, Rua 02"
+                              value={(formData.ruasPorQuadra || {})[quadra] || ""}
+                              onChange={(e) =>
+                                setFormData({
+                                  ...formData,
+                                  ruasPorQuadra: { ...(formData.ruasPorQuadra || {}), [quadra]: e.target.value },
+                                })
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
               <div>
                 <label className="label">Total de Lotes</label>
@@ -1183,12 +1214,22 @@ const EmpreendimentosSection = ({
                   {dev.comunidade}
                 </p>
               )}
-              {dev.ruas && (
+              {dev.ruasPorQuadra && Object.keys(dev.ruasPorQuadra).length > 0 ? (
+                <div className="mb-1">
+                  {Object.entries(dev.ruasPorQuadra).slice(0, 2).map(([q, ruas]) => ruas ? (
+                    <p key={q} className="text-xs text-slate-500 line-clamp-1">
+                      <span className="font-bold text-slate-700">Q.{q}:</span>{" "}{ruas}
+                    </p>
+                  ) : null)}
+                  {Object.keys(dev.ruasPorQuadra).length > 2 && (
+                    <p className="text-[10px] text-slate-400">+{Object.keys(dev.ruasPorQuadra).length - 2} quadras</p>
+                  )}
+                </div>
+              ) : dev.ruas ? (
                 <p className="text-xs text-slate-500 line-clamp-1 mb-1">
-                  <span className="font-bold text-slate-700">Ruas:</span>{" "}
-                  {dev.ruas}
+                  <span className="font-bold text-slate-700">Ruas:</span>{" "}{dev.ruas}
                 </p>
-              )}
+              ) : null}
               {dev.quadras && (
                 <p className="text-xs text-slate-500 line-clamp-1">
                   <span className="font-bold text-slate-700">Quadras:</span>{" "}
@@ -1247,13 +1288,22 @@ const EmpreendimentosSection = ({
                 </span>
               </div>
 
-              <button
-                onClick={() => setSelectedDevForMap(dev)}
-                className="w-full flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
-              >
-                <LayoutDashboard size={14} />
-                <span>Dashboard de Lotes</span>
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setSelectedDevForMap(dev)}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
+                >
+                  <LayoutDashboard size={14} />
+                  <span>Dashboard</span>
+                </button>
+                <button
+                  onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "" }); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
+                >
+                  <Plus size={14} />
+                  <span>Cadastrar Lote</span>
+                </button>
+              </div>
             </div>
           </motion.div>
         ))}
@@ -1286,6 +1336,111 @@ const EmpreendimentosSection = ({
             }}
             onClose={() => setSelectedDevForMap(null)}
           />
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Cadastrar Lote */}
+      <AnimatePresence>
+        {lotRegDev && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <MapPin size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Cadastrar Lote</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lotRegDev.nome}</p>
+                  </div>
+                </div>
+                <button onClick={() => setLotRegDev(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Quadra *</label>
+                    <input
+                      list="lot-reg-quadras"
+                      className="input-field"
+                      placeholder="Ex: A"
+                      value={lotRegForm.quadra}
+                      onChange={(e) => setLotRegForm({ ...lotRegForm, quadra: e.target.value, rua: "" })}
+                    />
+                    <datalist id="lot-reg-quadras">
+                      {lotRegDev.quadras?.split(",").map((q) => (
+                        <option key={q.trim()} value={q.trim()} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="label">Nº do Lote *</label>
+                    <input
+                      className="input-field"
+                      placeholder="Ex: 01"
+                      value={lotRegForm.numeroLote}
+                      onChange={(e) => setLotRegForm({ ...lotRegForm, numeroLote: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div>
+                  {(() => {
+                    const quadra = lotRegForm.quadra.trim();
+                    const sugestoes = quadra && lotRegDev.ruasPorQuadra?.[quadra]
+                      ? lotRegDev.ruasPorQuadra[quadra].split(",").map((r) => r.trim()).filter(Boolean)
+                      : [];
+                    return (
+                      <>
+                        <label className="label flex items-center gap-2">
+                          Rua / Acesso do Lote
+                          {sugestoes.length > 0 && (
+                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full normal-case">
+                              {sugestoes.length} sugestão(ões) disponível(is)
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          list="lot-reg-ruas"
+                          className="input-field"
+                          placeholder={sugestoes.length > 0 ? `Ex: ${sugestoes[0]}` : "Nome da rua ou acesso"}
+                          value={lotRegForm.rua}
+                          onChange={(e) => setLotRegForm({ ...lotRegForm, rua: e.target.value })}
+                        />
+                        {sugestoes.length > 0 && (
+                          <datalist id="lot-reg-ruas">
+                            {sugestoes.map((r) => <option key={r} value={r} />)}
+                          </datalist>
+                        )}
+                        {sugestoes.length > 0 && (
+                          <p className="text-[10px] text-slate-400 mt-1">Sugestões para Quadra {quadra}: {sugestoes.join(", ")}</p>
+                        )}
+                      </>
+                    );
+                  })()}
+                </div>
+                {lotRegForm.quadra && lotRegForm.numeroLote && (
+                  <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
+                    <span className="font-bold text-slate-700">Chave do lote:</span>{" "}
+                    {`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()}
+                    {lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] && (
+                      <span className="ml-2 text-amber-600 font-bold">⚠ Lote já cadastrado — será atualizado</span>
+                    )}
+                  </div>
+                )}
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleSalvarLote} className="btn-primary px-8">Salvar Lote</button>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
     </div>
@@ -1353,7 +1508,7 @@ const VendasSection = ({
     ...initialSaleData,
   });
   const [showNovoDev, setShowNovoDev] = useState(false);
-  const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", ruas: "", totalLotes: 0 });
+  const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
 
   const handleSalvarNovoDev = () => {
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
@@ -1368,12 +1523,11 @@ const VendasSection = ({
       lotesVendidos: 0,
       comunidade: novoDevData.comunidade,
       quadras: novoDevData.quadras,
-      ruas: novoDevData.ruas,
     };
     onSaveDev(novo);
     setSaleData({ ...saleData, empreendimentoId: novo.id });
     setShowNovoDev(false);
-    setNovoDevData({ nome: "", comunidade: "", quadras: "", ruas: "", totalLotes: 0 });
+    setNovoDevData({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
   };
 
   // Update saleData if initialSaleData changes (e.g. coming from Dashboard)
@@ -2346,13 +2500,10 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                           <label className="label">Total de Lotes</label>
                           <input type="number" className="input-field" placeholder="0" value={novoDevData.totalLotes || ""} onChange={(e) => setNovoDevData({ ...novoDevData, totalLotes: Number(e.target.value) })} />
                         </div>
-                        <div>
+                        <div className="sm:col-span-2">
                           <label className="label">Quadras</label>
                           <input className="input-field" placeholder="Ex: A, B, C" value={novoDevData.quadras} onChange={(e) => setNovoDevData({ ...novoDevData, quadras: e.target.value })} />
-                        </div>
-                        <div>
-                          <label className="label">Ruas / Acessos</label>
-                          <input className="input-field" placeholder="Ex: Rua 01, Av. Principal" value={novoDevData.ruas} onChange={(e) => setNovoDevData({ ...novoDevData, ruas: e.target.value })} />
+                          <p className="text-[10px] text-slate-400 mt-1">As ruas por quadra podem ser definidas no cadastro completo do empreendimento.</p>
                         </div>
                       </div>
                       <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
@@ -2392,16 +2543,19 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   <div className="grid grid-cols-2 gap-4 text-xs">
                     <p>
                       <span className="font-bold text-slate-500">Quadras:</span>{" "}
-                      {developments.find(
-                        (d) => d.id === saleData.empreendimentoId,
-                      )?.quadras || "Não informada"}
+                      {developments.find((d) => d.id === saleData.empreendimentoId)?.quadras || "Não informada"}
                     </p>
-                    <p>
-                      <span className="font-bold text-slate-500">Ruas:</span>{" "}
-                      {developments.find(
-                        (d) => d.id === saleData.empreendimentoId,
-                      )?.ruas || "Não informada"}
-                    </p>
+                    {(() => {
+                      const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                      const q = saleData.quadra?.trim();
+                      const sugestao = q && dev?.ruasPorQuadra?.[q] ? dev.ruasPorQuadra[q] : null;
+                      const fallback = dev?.ruas || null;
+                      return sugestao ? (
+                        <p><span className="font-bold text-slate-500">Ruas (Q.{q}):</span>{" "}{sugestao}</p>
+                      ) : fallback ? (
+                        <p><span className="font-bold text-slate-500">Ruas:</span>{" "}{fallback}</p>
+                      ) : null;
+                    })()}
                   </div>
                 </motion.div>
               )}
@@ -2439,6 +2593,41 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                       <option key={q.trim()} value={q.trim()} />
                     ))}
                 </datalist>
+              </div>
+              <div className="sm:col-span-2">
+                {(() => {
+                  const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                  const q = saleData.quadra?.trim();
+                  const sugestoes = q && dev?.ruasPorQuadra?.[q]
+                    ? dev.ruasPorQuadra[q].split(",").map((r) => r.trim()).filter(Boolean)
+                    : [];
+                  const fromLotesInfo = dev?.lotesInfo?.[`${q}-${saleData.numeroLote}`.toUpperCase()]?.rua;
+                  return (
+                    <>
+                      <label className="label flex items-center gap-2">
+                        Rua / Acesso do Lote
+                        {fromLotesInfo && (
+                          <span className="text-[9px] font-bold text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Pré-cadastrada</span>
+                        )}
+                        {!fromLotesInfo && sugestoes.length > 0 && (
+                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">{sugestoes.length} sugestão(ões)</span>
+                        )}
+                      </label>
+                      <input
+                        list="rua-suggestions"
+                        className="input-field"
+                        placeholder={sugestoes.length > 0 ? `Sugestão: ${sugestoes[0]}` : "Nome da rua ou acesso"}
+                        value={saleData.rua || ""}
+                        onChange={(e) => setSaleData({ ...saleData, rua: e.target.value })}
+                      />
+                      {sugestoes.length > 0 && (
+                        <datalist id="rua-suggestions">
+                          {sugestoes.map((r) => <option key={r} value={r} />)}
+                        </datalist>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             </div>
 
@@ -3658,9 +3847,6 @@ const ContratosSection = ({
                         </span>
                         {development?.comunidade
                           ? `, localizado na comunidade/região ${development.comunidade}`
-                          : ""}
-                        {development?.ruas
-                          ? `, próximo à(s) rua(s) ${development.ruas}`
                           : ""}
                         . O referido imóvel faz parte do projeto aprovado pelos
                         órgãos competentes.
