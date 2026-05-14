@@ -1,27 +1,30 @@
 import { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { LoginScreen, supabase } from "./auth";
+import { LoginScreen } from "./auth";
 import "./index.css";
 
 function Root() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState<{ id: string; email: string } | null>(null);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setLoggedIn(!!data.session);
-      setChecking(false);
-    });
+    fetch("/api/auth/user", { credentials: "include" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((u) => {
+        setUser(u || null);
+        setChecking(false);
+      })
+      .catch(() => setChecking(false));
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    setLoggedIn(false);
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    setUser(null);
   };
 
   if (checking) return null;
-  if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
+  if (!user) return <LoginScreen onLogin={(u) => setUser(u)} />;
   return <App onLogout={handleLogout} />;
 }
 

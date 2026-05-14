@@ -3708,7 +3708,7 @@ const ConfigSection = ({
           Migração de Dados
         </h4>
         <p className="text-sm text-slate-500">
-          Se você tinha dados salvos anteriormente no navegador (localStorage), clique abaixo para migrá-los para o Supabase de forma permanente.
+          Se você tinha dados salvos anteriormente no navegador (localStorage), clique abaixo para migrá-los para o banco de dados de forma permanente.
         </p>
         {migrateMsg && (
           <div className={`p-4 rounded-2xl text-sm font-semibold ${migrateMsg.includes('Erro') || migrateMsg.includes('Nenhum') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
@@ -3723,7 +3723,7 @@ const ConfigSection = ({
           {migrating ? (
             <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
           ) : (
-            <><Download size={16} /> Migrar dados do navegador para o Supabase</>
+            <><Download size={16} /> Migrar dados do navegador para o banco de dados</>
           )}
         </button>
       </div>

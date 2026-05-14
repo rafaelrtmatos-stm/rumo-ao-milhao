@@ -1,31 +1,41 @@
 import { useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import { motion } from "motion/react";
-import { Building2, RefreshCw } from "lucide-react";
+import { Building2, Lock } from "lucide-react";
 
-export const supabase = createClient(
-  import.meta.env.VITE_SUPABASE_URL,
-  import.meta.env.VITE_SUPABASE_ANON_KEY,
-);
+interface AuthUser {
+  id: string;
+  email: string;
+}
 
-export function LoginScreen({ onLogin }: { onLogin: () => void }) {
+export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [isRegister, setIsRegister] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-    if (error) {
-      setError("Credenciais inválidas. Verifique seu email e senha.");
-    } else {
-      onLogin();
+
+    const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Erro ao autenticar.");
+      } else {
+        onLogin({ id: data.id, email: data.email });
+      }
+    } catch {
+      setError("Erro de conexão. Tente novamente.");
     }
     setLoading(false);
   };
@@ -84,7 +94,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                 Senha Segura
               </label>
               <div className="relative">
-                <RefreshCw
+                <Lock
                   size={18}
                   className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300"
                 />
@@ -114,8 +124,24 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               disabled={loading}
               className="w-full h-16 bg-[#2d5016] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-[#2d5016]/20 hover:bg-[#1a300d] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading ? "Entrando..." : "Entrar no Sistema"}
+              {loading
+                ? "Aguarde..."
+                : isRegister
+                ? "Criar Conta"
+                : "Entrar no Sistema"}
             </button>
+
+            <div className="text-center">
+              <button
+                type="button"
+                onClick={() => { setIsRegister(!isRegister); setError(""); }}
+                className="text-[10px] uppercase font-black text-slate-400 tracking-widest hover:text-[#2d5016] transition-colors"
+              >
+                {isRegister
+                  ? "Já tenho uma conta"
+                  : "Criar nova conta"}
+              </button>
+            </div>
           </form>
         </div>
 
