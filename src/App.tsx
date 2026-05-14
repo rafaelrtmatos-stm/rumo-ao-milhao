@@ -1951,10 +1951,12 @@ const VendasSection = ({
     setClientData((prev) => ({
       ...prev,
       ...(data.nome ? { nome: data.nome } : {}),
+      ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
       ...(data.rg ? { rg: data.rg } : {}),
       ...(data.cpf ? { cpf: maskCPF(String(data.cpf)) } : {}),
       ...(estadoCivil ? { estadoCivil } : {}),
       ...(generoDetectado ? { genero: generoDetectado } : {}),
+      ...(data.profissao ? { profissao: data.profissao } : {}),
       ...(data.nascimento ? { nascimento: data.nascimento } : {}),
       ...(data.telefone1 ? { telefone1: maskPhone(String(data.telefone1)) } : {}),
       ...(data.telefone2 ? { telefone2: maskPhone(String(data.telefone2)) } : {}),
@@ -2343,17 +2345,20 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             )}
           </div>
 
-          {pasteSuccess && (
-            <motion.div
-              initial={{ opacity: 0, y: -6 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              className="flex items-center gap-2 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
-            >
-              <CheckCircle2 size={16} />
-              Campos preenchidos automaticamente!
-            </motion.div>
-          )}
+          <AnimatePresence>
+            {pasteSuccess && (
+              <motion.div
+                key="paste-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <CheckCircle2 size={16} />
+                Campos preenchidos automaticamente!
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           <button
             type="button"
@@ -2369,7 +2374,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             ) : (
               <>
                 <Sparkles size={18} />
-                <span>Preencher Manualmente</span>
+                <span>Preencher com IA</span>
               </>
             )}
           </button>

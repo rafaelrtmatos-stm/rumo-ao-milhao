@@ -311,9 +311,11 @@ ${rawText}
 Retorne exatamente neste formato:
 {
   "nome": "",
+  "nacionalidade": "",
   "rg": "",
   "cpf": "",
   "estadoCivil": "",
+  "profissao": "",
   "nascimento": "YYYY-MM-DD",
   "endereco": "",
   "numero": "",
@@ -340,6 +342,8 @@ Regras:
 - telefone1 e telefone2: apenas dígitos (sem formatação), ex: 92990725820
 - cep: apenas dígitos, ex: 69085190
 - estadoCivil: normalize para Solteiro, Solteira, Casado, Casada, Divorciado, Divorciada, Viúvo, Viúva ou União Estável
+- nacionalidade: ex: Brasileira, Brasileira nata, Portuguesa (capitalize primeira letra)
+- profissao: texto simples, ex: Agricultor, Vendedor, Autônomo
 - valorTotal, entrada, valorParcela: apenas número decimal, sem R$ ou pontos, ex: 18000.00
 - numeroParcelas: apenas o número inteiro
 - diaVencimento: apenas o número do dia, ex: 20
