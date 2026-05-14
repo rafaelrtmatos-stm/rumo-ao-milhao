@@ -450,9 +450,47 @@ if (process.env.NODE_ENV === "production") {
   app.use(vite.middlewares);
 }
 
+// --- Auto-seed first admin user on startup ---
+async function seedAdminIfNeeded() {
+  try {
+    const existing = await db.select({ id: localUsers.id }).from(localUsers);
+    if (existing.length === 0) {
+      const email = process.env.ADMIN_EMAIL || "admin@rumaoaomilhao.com";
+      const password = process.env.ADMIN_PASSWORD || "admin123";
+      const passwordHash = await bcrypt.hash(password, 10);
+      const id = `lu-admin-${Date.now()}`;
+      await db.insert(localUsers).values({ id, email, passwordHash, isAdmin: true });
+      console.log(`[Setup] Admin user created: ${email} (change password after first login)`);
+    }
+  } catch (e: any) {
+    console.error("[Setup] Failed to seed admin:", e?.message);
+  }
+}
+
+// POST /api/auth/setup — create first admin (only works if no users exist)
+app.post("/api/auth/setup", async (req: any, res) => {
+  try {
+    const existing = await db.select({ id: localUsers.id }).from(localUsers);
+    if (existing.length > 0) {
+      return res.status(403).json({ error: "Setup já realizado. Use o painel de administração." });
+    }
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6) {
+      return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const id = `lu-admin-${Date.now()}`;
+    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash, isAdmin: true });
+    res.json({ ok: true, message: "Administrador criado com sucesso." });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao criar administrador." });
+  }
+});
+
 const PORT = parseInt(process.env.PORT || "5000");
-httpServer.listen(PORT, "0.0.0.0", () => {
+httpServer.listen(PORT, "0.0.0.0", async () => {
   console.log(`Server running on port ${PORT}`);
+  await seedAdminIfNeeded();
 });
 
 export default app;

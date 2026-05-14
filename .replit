@@ -48,4 +48,3 @@ build = ["npm", "run", "build"]
 [userenv]
 
 [userenv.shared]
-VITE_SUPABASE_URL = "https://uftxcwcryqpkfdfxzlno.supabase.co"
