@@ -21,8 +21,11 @@ app.use(express.urlencoded({ extended: true }));
 
 await setupAuth(app);
 
-const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
+const GEMINI_KEY = process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY;
+const GEMINI_BASE = process.env.AI_INTEGRATIONS_GEMINI_API_KEY
+  ? `https://generativelanguage.googleapis.com/v1beta`
+  : `https://generativelanguage.googleapis.com/v1beta`;
+const GEMINI_URL = `${GEMINI_BASE}/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
 // --- Local Auth ---
 const isAuthenticated: RequestHandler = (req: any, res, next) => {
