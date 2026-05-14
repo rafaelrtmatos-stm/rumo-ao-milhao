@@ -311,7 +311,7 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
     const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    const filename = `contrato_parcelado_padrao_-_${nomeCliente}_-_${nomeEmp}_-_L_${Date.now()}.docx`;
+    const filename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.send(buffer);

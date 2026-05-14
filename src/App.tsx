@@ -642,18 +642,14 @@ const LotDashboard = ({
   sales,
   onStartSale,
   onClose,
-  onUpdateLotesInfo,
 }: {
   dev: Empreendimento;
   sales: Venda[];
   onStartSale: (v: Partial<Venda>) => void;
   onClose: () => void;
-  onUpdateLotesInfo?: (id: string, info: Record<string, { rua: string }>) => void;
 }) => {
   const quadras = dev.quadras?.split(",").map((q) => q.trim()) || [];
   const soldLots = sales.filter((s) => s.empreendimentoId === dev.id);
-  const [editingKey, setEditingKey] = useState<string | null>(null);
-  const [editingRua, setEditingRua] = useState("");
 
   const isSold = (q: string, l: string) => {
     return soldLots.some(
@@ -731,120 +727,68 @@ const LotDashboard = ({
                     {displayLots.map((l) => {
                       const soldData = getSale(q, l);
                       const sold = !!soldData;
-                      const lotKey = `${q}-${l}`.toUpperCase();
-                      const lotInfo = dev.lotesInfo?.[lotKey];
-                      const isEditing = editingKey === lotKey;
+                      const lotInfo =
+                        dev.lotesInfo?.[`${q}-${l}`.toUpperCase()];
 
                       return (
                         <div
                           key={l}
-                          className={`group relative p-3 rounded-2xl border flex flex-col items-center justify-center transition-all min-h-[80px] ${
+                          className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${
                             sold
                               ? "bg-red-50 border-red-100 text-red-600"
                               : "bg-white border-slate-100 hover:border-primary-main hover:shadow-xl hover:shadow-primary-main/5 text-slate-400"
                           }`}
                         >
-                          <span className="text-[9px] font-bold uppercase tracking-widest opacity-50 mb-0.5">
+                          <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">
                             Lote
                           </span>
                           <span className="text-lg font-display font-bold leading-none">
                             {l}
                           </span>
 
-                          {isEditing ? (
-                            <div className="absolute inset-0 z-20 bg-white rounded-2xl border-2 border-primary-main p-2 flex flex-col gap-1.5 shadow-xl">
-                              <p className="text-[9px] font-bold text-primary-main uppercase tracking-widest text-center">Rua do Lote</p>
-                              <input
-                                autoFocus
-                                className="w-full text-[10px] border border-slate-200 rounded-lg px-1.5 py-1 text-center focus:outline-none focus:border-primary-main"
-                                value={editingRua}
-                                onChange={(e) => setEditingRua(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    onUpdateLotesInfo?.(dev.id, { [lotKey]: { rua: editingRua } });
-                                    setEditingKey(null);
-                                  }
-                                  if (e.key === "Escape") setEditingKey(null);
-                                }}
-                                placeholder="Nome da rua"
-                              />
-                              <div className="flex gap-1">
-                                <button
-                                  className="flex-1 text-[9px] bg-primary-main text-white rounded-lg py-1 font-bold"
-                                  onClick={() => {
-                                    onUpdateLotesInfo?.(dev.id, { [lotKey]: { rua: editingRua } });
-                                    setEditingKey(null);
-                                  }}
-                                >OK</button>
-                                <button
-                                  className="flex-1 text-[9px] bg-slate-100 text-slate-500 rounded-lg py-1 font-bold"
-                                  onClick={() => setEditingKey(null)}
-                                >✕</button>
-                              </div>
+                          {sold ? (
+                            <div className="mt-2 p-1 bg-red-100 rounded-full text-[8px] font-bold uppercase tracking-widest">
+                              Vendido
                             </div>
                           ) : (
-                            <>
-                              {lotInfo?.rua && (
-                                <p className="text-[8px] text-center text-slate-400 leading-tight mt-1 line-clamp-2 px-0.5">
-                                  {lotInfo.rua}
-                                </p>
-                              )}
-
-                              {onUpdateLotesInfo && (
-                                <button
-                                  onClick={() => { setEditingKey(lotKey); setEditingRua(lotInfo?.rua || ""); }}
-                                  className="absolute top-1 right-1 p-1 bg-slate-100 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity text-slate-400 hover:text-primary-main hover:bg-primary-main/10"
-                                  title="Editar rua deste lote"
-                                >
-                                  <Pencil size={10} />
-                                </button>
-                              )}
-
-                              {sold ? (
-                                <div className="mt-1 p-1 bg-red-100 rounded-full text-[8px] font-bold uppercase tracking-widest">
-                                  Vendido
-                                </div>
-                              ) : (
-                                <button
-                                  onClick={() =>
-                                    onStartSale({
-                                      empreendimentoId: dev.id,
-                                      quadra: q,
-                                      numeroLote: l,
-                                      rua: lotInfo?.rua,
-                                    })
-                                  }
-                                  className="absolute inset-0 flex items-center justify-center bg-primary-main/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0"
-                                >
-                                  Vender
-                                </button>
-                              )}
-
-                              {/* Hover Tooltip */}
-                              {!sold && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-10 shadow-xl">
-                                  <p className="font-bold border-b border-white/10 pb-1.5 mb-1.5 uppercase tracking-widest">
-                                    Q{q} · L{l}
-                                  </p>
-                                  <p>
-                                    <span className="text-white/40">Rua:</span>{" "}
-                                    {lotInfo?.rua || "—"}
-                                  </p>
-                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
-                                </div>
-                              )}
-                              {sold && soldData && (
-                                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-10 shadow-xl">
-                                  <p className="font-bold border-b border-white/10 pb-1.5 mb-1.5 uppercase tracking-widest">
-                                    Q{q} · L{l}
-                                  </p>
-                                  <p><span className="text-white/40">Rua:</span> {soldData.rua || lotInfo?.rua || "—"}</p>
-                                  <p><span className="text-white/40">Cliente:</span> {soldData.clienteNome}</p>
-                                  <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
-                                </div>
-                              )}
-                            </>
+                            <button
+                              onClick={() =>
+                                onStartSale({
+                                  empreendimentoId: dev.id,
+                                  quadra: q,
+                                  numeroLote: l,
+                                  rua: lotInfo?.rua,
+                                })
+                              }
+                              className="absolute inset-0 flex items-center justify-center bg-primary-main/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0"
+                            >
+                              Vender
+                            </button>
                           )}
+
+                          {/* Hover Tooltip */}
+                          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-3 bg-slate-900 text-white text-[10px] rounded-xl opacity-0 group-hover:opacity-100 pointer-events-none transition-all z-10 shadow-xl">
+                            <p className="font-bold border-b border-white/10 pb-1.5 mb-1.5 uppercase tracking-widest">
+                              Detalhes do Lote
+                            </p>
+                            <p>
+                              <span className="text-white/40">Status:</span>{" "}
+                              {sold ? "Vendido" : "Disponível"}
+                            </p>
+                            {lotInfo?.rua && (
+                              <p>
+                                <span className="text-white/40">Rua:</span>{" "}
+                                {lotInfo.rua}
+                              </p>
+                            )}
+                            {soldData && (
+                              <p>
+                                <span className="text-white/40">Cliente:</span>{" "}
+                                {soldData.clienteNome}
+                              </p>
+                            )}
+                            <div className="absolute top-full left-1/2 -translate-x-1/2 border-8 border-transparent border-t-slate-900" />
+                          </div>
                         </div>
                       );
                     })}
@@ -1321,12 +1265,6 @@ const EmpreendimentosSection = ({
               setSelectedDevForMap(null);
             }}
             onClose={() => setSelectedDevForMap(null)}
-            onUpdateLotesInfo={(id, info) => {
-              onUpdateLotesInfo(id, info);
-              setSelectedDevForMap((prev) =>
-                prev ? { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), ...info } } : prev
-              );
-            }}
           />
         )}
       </AnimatePresence>
@@ -2643,7 +2581,23 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button type="button" className="btn-ghost w-full">
+                <button type="button" className="btn-ghost w-full" onClick={() => {
+                  const key = 'venda_rascunho';
+                  const saved = localStorage.getItem(key);
+                  if (saved) {
+                    const { clientData: cd, saleData: sd } = JSON.parse(saved);
+                    if (window.confirm('Restaurar rascunho salvo?')) {
+                      if (cd) setClientData((prev) => ({ ...prev, ...cd }));
+                      if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
+                    } else {
+                      localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
+                      alert('Rascunho salvo!');
+                    }
+                  } else {
+                    localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
+                    alert('Rascunho salvo!');
+                  }
+                }}>
                   <FileText size={18} />
                   <span>Rascunho</span>
                 </button>
@@ -2778,7 +2732,7 @@ const ContratosSection = ({
       const nomeCliente = cliente.nome.replace(/\s+/g, "_");
       const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
       a.href = url;
-      a.download = `contrato_parcelado_padrao_-_${nomeCliente}_-_${nomeEmp}_-_L_${Date.now()}.docx`;
+      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra__${selectedVenda.quadra}_.docx`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -3111,133 +3065,6 @@ const ContratosSection = ({
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
                 <button onClick={() => setShowNovoContrato(false)} className="btn-secondary px-6">Cancelar</button>
                 <button onClick={handleSalvarContrato} className="btn-primary px-8">Gerar Contrato</button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      {/* Modal: Gerar Contrato (.docx) */}
-      <AnimatePresence>
-        {showGerarModal && (
-          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
-            >
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
-                    <FileDown size={20} />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-display font-bold text-slate-800">Gerar Contrato</h3>
-                    <p className="text-xs text-slate-400 font-medium">Preencha os dados para gerar o .docx</p>
-                  </div>
-                </div>
-                <button onClick={() => setShowGerarModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-500" />
-                </button>
-              </div>
-
-              <div className="overflow-y-auto p-6 space-y-6">
-                {/* Vendedor */}
-                <div className="space-y-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Vendedor (Promitente Vendedor)</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <label className="label">Nome Completo *</label>
-                      <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Nacionalidade</label>
-                      <input className="input-field" placeholder="Ex: brasileiro" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Estado Civil</label>
-                      <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
-                        {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="label">CPF</label>
-                      <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">RG</label>
-                      <input className="input-field" placeholder="RG" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Endereço</label>
-                      <input className="input-field" placeholder="Rua / Av." value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Número</label>
-                      <input className="input-field" placeholder="Nº" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Cidade</label>
-                      <input className="input-field" placeholder="Cidade" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Estado (UF)</label>
-                      <input className="input-field" placeholder="PA" value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Imóvel */}
-                <div className="space-y-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Imóvel</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="sm:col-span-2">
-                      <label className="label">Rua do Lote</label>
-                      <input className="input-field" placeholder="Nome da rua" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="label">Comunidade / Região</label>
-                      <input className="input-field" placeholder="Ex: Comunidade Boa Vista" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Medida Frente (m)</label>
-                      <input className="input-field" placeholder="Ex: 10,00" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Lateral Direita (m)</label>
-                      <input className="input-field" placeholder="Ex: 25,00" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Lateral Esquerda (m)</label>
-                      <input className="input-field" placeholder="Ex: 25,00" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Fundos (m)</label>
-                      <input className="input-field" placeholder="Ex: 10,00" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="label">Área Total (m²)</label>
-                      <input className="input-field" placeholder="Ex: 250,00" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Pagamento */}
-                <div className="space-y-4">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Forma de Pagamento das Parcelas</p>
-                  <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
-                    {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
-                  </select>
-                </div>
-              </div>
-
-              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-                <button onClick={() => setShowGerarModal(false)} className="btn-secondary px-6">Cancelar</button>
-                <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 gap-2">
-                  <FileDown size={18} />
-                  {downloadingDocx ? "Gerando..." : "Gerar .docx"}
-                </button>
               </div>
             </motion.div>
           </div>
@@ -4763,24 +4590,15 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
 
   const saveDev = (newDev: Empreendimento) => {
     if (!isLoaded) return;
-    const exists = developments.some((d) => d.id === newDev.id);
-    const updated = exists
-      ? developments.map((d) => (d.id === newDev.id ? newDev : d))
-      : [...developments, newDev];
+    const updated = [...developments, newDev];
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch((err) => {
-      console.error(err);
-      alert("Erro ao salvar empreendimento no banco: " + (err?.message || err));
-    });
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch((err) => {
-      console.error(err);
-      alert("Erro ao excluir empreendimento: " + (err?.message || err));
-    });
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
@@ -4792,20 +4610,14 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      dbService.saveClientes(updatedClients).catch((err) => {
-        console.error(err);
-        alert("Erro ao salvar cliente no banco: " + (err?.message || err));
-      });
+      dbService.saveClientes(updatedClients).catch(console.error);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    dbService.saveVendas(updatedSales).catch((err) => {
-      console.error(err);
-      alert("Erro ao salvar venda no banco: " + (err?.message || err));
-    });
+    dbService.saveVendas(updatedSales).catch(console.error);
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -4823,10 +4635,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       return d;
     });
     setDevelopments(updatedDevs);
-    dbService.saveEmpreendimentos(updatedDevs).catch((err) => {
-      console.error(err);
-      alert("Erro ao atualizar empreendimento no banco: " + (err?.message || err));
-    });
+    dbService.saveEmpreendimentos(updatedDevs).catch(console.error);
 
     return newSale;
   };
@@ -4841,17 +4650,12 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         : d,
     );
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch((err) => {
-      console.error(err);
-      alert("Erro ao salvar rua do lote: " + (err?.message || err));
-    });
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    dbService.saveAppConfig(newConfig).catch((err) => {
-      console.error(err);
-    });
+    dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
   const handleGoToContracts = (v: Venda) => {
