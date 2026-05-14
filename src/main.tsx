@@ -2,28 +2,34 @@ import { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LoginScreen } from "./auth";
-import { supabase } from "./supabaseClient";
 import "./index.css";
+
+async function checkSession(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/auth/user", { credentials: "include" });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function logout(): Promise<void> {
+  await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+}
 
 function Root() {
   const [loggedIn, setLoggedIn] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      setLoggedIn(!!data.session);
+    checkSession().then((ok) => {
+      setLoggedIn(ok);
       setChecking(false);
     });
-
-    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
-      setLoggedIn(!!session);
-    });
-
-    return () => listener.subscription.unsubscribe();
   }, []);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    await logout();
     setLoggedIn(false);
   };
 

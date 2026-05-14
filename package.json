@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@google/genai": "^1.52.0",
-    "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.1.14",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express-session": "^1.19.0",

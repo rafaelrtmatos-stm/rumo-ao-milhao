@@ -36,7 +36,7 @@ import {
   AppConfig,
   AppTheme,
 } from "./types";
-import { supabaseDataService } from "./supabaseDataService";
+import { dbService } from "./dbService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
@@ -4264,10 +4264,10 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
   useEffect(() => {
     const load = async () => {
       const [devs, cls, sls, cfg] = await Promise.all([
-        supabaseDataService.getEmpreendimentos(),
-        supabaseDataService.getClientes(),
-        supabaseDataService.getVendas(),
-        supabaseDataService.getAppConfig(),
+        dbService.getEmpreendimentos(),
+        dbService.getClientes(),
+        dbService.getVendas(),
+        dbService.getAppConfig(),
       ]);
       setDevelopments(devs);
       setClients(cls);
@@ -4277,9 +4277,9 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     };
     load().catch(console.error);
 
-    const subDevs = supabaseDataService.subscribeToEmpreendimentos((d) => setDevelopments(d));
-    const subClientes = supabaseDataService.subscribeToClientes((d) => setClients(d));
-    const subVendas = supabaseDataService.subscribeToVendas((d) => setSales(d));
+    const subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
+    const subClientes = dbService.subscribeToClientes((d) => setClients(d));
+    const subVendas = dbService.subscribeToVendas((d) => setSales(d));
 
     return () => {
       subDevs.unsubscribe();
@@ -4296,13 +4296,13 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (!isLoaded) return;
     const updated = [...developments, newDev];
     setDevelopments(updated);
-    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
@@ -4314,14 +4314,14 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      supabaseDataService.saveClientes(updatedClients).catch(console.error);
+      dbService.saveClientes(updatedClients).catch(console.error);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    supabaseDataService.saveVendas(updatedSales).catch(console.error);
+    dbService.saveVendas(updatedSales).catch(console.error);
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -4339,7 +4339,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       return d;
     });
     setDevelopments(updatedDevs);
-    supabaseDataService.saveEmpreendimentos(updatedDevs).catch(console.error);
+    dbService.saveEmpreendimentos(updatedDevs).catch(console.error);
 
     return newSale;
   };
@@ -4354,12 +4354,12 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         : d,
     );
     setDevelopments(updated);
-    supabaseDataService.saveEmpreendimentos(updated).catch(console.error);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
-    supabaseDataService.saveAppConfig(newConfig).catch(console.error);
+    dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
   const handleGoToContracts = (v: Venda) => {
@@ -4380,7 +4380,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       s.id === vendaId ? { ...s, status: newStatus } : s,
     );
     setSales(updated);
-    supabaseDataService.saveVendas(updated).catch(console.error);
+    dbService.saveVendas(updated).catch(console.error);
     if (contractToOpen && contractToOpen.id === vendaId) {
       setContractToOpen({ ...contractToOpen, status: newStatus });
     }

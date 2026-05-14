@@ -1,9 +1,21 @@
 import { useState } from "react";
-import { supabase } from "./supabaseClient";
 import { motion } from "motion/react";
-import { Building2, Lock } from "lucide-react";
+import { Building2, Lock, UserPlus, LogIn } from "lucide-react";
+
+async function apiPost(path: string, body: any) {
+  const res = await fetch(path, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
+  return data;
+}
 
 export function LoginScreen({ onLogin }: { onLogin: () => void }) {
+  const [tab, setTab] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -13,13 +25,18 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
     e.preventDefault();
     setLoading(true);
     setError("");
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) {
-      setError("Credenciais inválidas. Verifique seu email e senha.");
-    } else {
+    try {
+      if (tab === "login") {
+        await apiPost("/api/auth/login", { email, password });
+      } else {
+        await apiPost("/api/auth/register", { email, password });
+      }
       onLogin();
+    } catch (err: any) {
+      setError(err.message || "Erro ao autenticar.");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -50,10 +67,27 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         </div>
 
         <div className="bg-white/95 backdrop-blur-xl p-8 sm:p-12 rounded-[40px] shadow-2xl border border-white/20">
+          <div className="flex gap-2 mb-8 bg-slate-100 p-1 rounded-2xl">
+            <button
+              type="button"
+              onClick={() => { setTab("login"); setError(""); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tab === "login" ? "bg-white shadow text-[#2d5016]" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              <LogIn size={14} /> Entrar
+            </button>
+            <button
+              type="button"
+              onClick={() => { setTab("register"); setError(""); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-xs font-black uppercase tracking-widest transition-all ${tab === "register" ? "bg-white shadow text-[#2d5016]" : "text-slate-400 hover:text-slate-600"}`}
+            >
+              <UserPlus size={14} /> Cadastrar
+            </button>
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-2">
               <label className="text-[10px] uppercase font-black text-slate-400 tracking-widest ml-1">
-                Acesso do Corretor
+                {tab === "login" ? "Acesso do Corretor" : "Seu E-mail"}
               </label>
               <div className="relative">
                 <Building2 size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" />
@@ -81,10 +115,13 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  autoComplete="current-password"
+                  autoComplete={tab === "login" ? "current-password" : "new-password"}
                   required
                 />
               </div>
+              {tab === "register" && (
+                <p className="text-[10px] text-slate-400 ml-1">Mínimo 6 caracteres</p>
+              )}
             </div>
 
             {error && (
@@ -102,7 +139,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               disabled={loading}
               className="w-full h-16 bg-[#2d5016] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-[#2d5016]/20 hover:bg-[#1a300d] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading ? "Entrando..." : "Entrar no Sistema"}
+              {loading ? "Aguarde..." : tab === "login" ? "Entrar no Sistema" : "Criar Conta"}
             </button>
           </form>
         </div>
