@@ -1,11 +1,10 @@
-import {
-  Document,
-  Packer,
-  Paragraph,
-  TextRun,
-  AlignmentType,
-  UnderlineType,
-} from "docx";
+import AdmZip from "adm-zip";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// ─── Utilitários numéricos ────────────────────────────────────────────────────
 
 function inteiroExtenso(n: number): string {
   if (n === 0) return "zero";
@@ -15,7 +14,6 @@ function inteiroExtenso(n: number): string {
   ];
   const dezenas = ["", "", "vinte", "trinta", "quarenta", "cinquenta", "sessenta", "setenta", "oitenta", "noventa"];
   const centenas = ["", "cento", "duzentos", "trezentos", "quatrocentos", "quinhentos", "seiscentos", "setecentos", "oitocentos", "novecentos"];
-
   if (n === 100) return "cem";
   if (n === 1000) return "mil";
   if (n < 20) return unidades[n];
@@ -29,7 +27,7 @@ function inteiroExtenso(n: number): string {
     const rest = n % 100;
     return centenas[cent] + (rest > 0 ? " e " + inteiroExtenso(rest) : "");
   }
-  if (n < 1000000) {
+  if (n < 1_000_000) {
     const mil = Math.floor(n / 1000);
     const rest = n % 1000;
     const milText = mil === 1 ? "mil" : inteiroExtenso(mil) + " mil";
@@ -37,11 +35,16 @@ function inteiroExtenso(n: number): string {
     const useE = rest < 100 || rest % 100 === 0;
     return milText + (useE ? " e " : " ") + inteiroExtenso(rest);
   }
-  const mi = Math.floor(n / 1000000);
-  const rest = n % 1000000;
+  const mi = Math.floor(n / 1_000_000);
+  const rest = n % 1_000_000;
   const miText = mi === 1 ? "um milhão" : inteiroExtenso(mi) + " milhões";
   if (rest === 0) return miText;
   return miText + " e " + inteiroExtenso(rest);
+}
+
+function capitalizar(s: string): string {
+  if (!s) return "";
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
 function valorExtenso(n: number): string {
@@ -50,39 +53,110 @@ function valorExtenso(n: number): string {
   const intText = inteiroExtenso(intPart);
   const label = intPart === 1 ? "Real" : "Reais";
   if (cents === 0) return intText + " " + label;
-  const centsText = inteiroExtenso(cents);
-  const centsLabel = cents === 1 ? "centavo" : "centavos";
-  return intText + " " + label + " e " + centsText + " " + centsLabel;
+  return intText + " " + label + " e " + inteiroExtenso(cents) + (cents === 1 ? " centavo" : " centavos");
 }
 
-function capitalizar(s: string): string {
-  if (!s) return "";
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function brlNum(n: number): string {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function brl(n: number): string {
-  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function numExt(n: number): string {
+  return `${brlNum(n)} (${capitalizar(valorExtenso(n))})`;
 }
 
 function dataExtenso(date: Date): string {
-  const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho",
-    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
   return `${date.getDate()} de ${meses[date.getMonth()]} de ${date.getFullYear()}`;
-}
-
-function diaDoMes(dateStr: string): number {
-  if (!dateStr) return 1;
-  const d = new Date(dateStr + "T12:00:00");
-  return d.getDate();
 }
 
 function primeiraParcela(dateStr: string): string {
   if (!dateStr) return "___/___/______";
   const d = new Date(dateStr + "T12:00:00");
+  d.setMonth(d.getMonth() + 1);
   return d.toLocaleDateString("pt-BR");
 }
 
-interface ContratoParams {
+function diaDoMes(dateStr: string): number {
+  if (!dateStr) return 1;
+  return new Date(dateStr + "T12:00:00").getDate();
+}
+
+// ─── XML replacement ──────────────────────────────────────────────────────────
+
+function xmlEscape(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/**
+ * Substitui texto que pode estar fragmentado em múltiplos <w:r> runs.
+ * Cria um regex onde entre cada caractere pode haver tags XML arbitrárias.
+ */
+function rep(xml: string, search: string, replacement: string): string {
+  if (!search) return xml;
+  const safe = xmlEscape(replacement);
+  const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const pattern = chars.join("(?:<[^>]*>\\s*)*");
+  try {
+    return xml.replace(new RegExp(pattern, "g"), safe);
+  } catch {
+    return xml.split(search).join(safe);
+  }
+}
+
+// ─── Valores do template original ────────────────────────────────────────────
+// (contrato_template.docx = contrato da Monique / DEUS DA PAZ)
+
+const T = {
+  // Vendedor
+  VEND_NOME:   "GENILSON PEREIRA MOREIRA",
+  VEND_NAC:    "brasileiro",
+  VEND_CIVIL:  "solteiro",
+  VEND_RG:     "3215776",
+  VEND_CPF:    "632.939.002-91",
+  // Endereço vendedor - contexto completo para evitar matches errados
+  VEND_ADDR:   "Travessa Maranhão, n° 353, Aeroporto Velho, Santarém, PA, CEP 68020-070",
+
+  // Comprador
+  COMP_INTRO:  "a Sra. ",
+  COMP_NOME:   "MONIQUE DE NAZARE CASTRO VALENTE",
+  COMP_NAC:    "brasileira",
+  COMP_CIVIL:  "solteira",
+  COMP_RG:     "4478817 PC PA",
+  COMP_CPF:    "747.909.512-00",
+  COMP_FONES:  "(91) 98294-8762 (91) 98888-6169",
+  // Endereço comprador - contexto completo
+  COMP_ADDR:   "Rua Oliveira Belo, n° 10, Umarizal, Belém, PA, CEP 66050-380",
+
+  // Imóvel
+  EMP_NOME:    "DEUS DA PAZ",
+  EMP_COM:     "Caranazal",
+  EMP_SLASH:   "Santarém/PA",          // formato "Cidade/UF" no corpo
+  LOTE_QUADRA: "Lote 35 da Quadra (C)",
+  RUA:         "Rua Existente",
+  DIM:         "10,54 metros de frente, lateral direita medindo 42,07 metros, pela lateral esquerda medindo 45,39 e medindo 10,00 metros de fundos, com área total de 437,31 metros quadrados",
+
+  // Financeiro (número + extenso sem "R$ " — o "R$" está em run separado)
+  VALOR_NUM:   "38.800,00 (Trinta e oito mil e oitocentos Reais)",
+  ENT_NUM:     "1.000,00 (Mil Reais)",
+  SALDO_NUM:   "37.800,00 (Trinta e sete mil e oitocentos Reais)",
+  PARC_CTX:    "63 (Sessenta e três)",   // contexto p/ evitar match em outros nºs
+  VALPAR_NUM:  "600,00 (Seiscentos Reais)",
+  DIA_CTX:     "vencimento no dia 20 de cada mês",
+  PRIMEIRA:    "20/06/2026",
+  CORR_NUM:    "3.104,00 (Três mil cento e quatro Reais)",
+
+  // Fórum / data
+  FORUM:       "Santarém-PA",
+  DATA:        "12 de Maio de 2026",
+};
+
+// ─── Interface de parâmetros ──────────────────────────────────────────────────
+
+export interface ContratoParams {
   vendedor: {
     nome: string;
     nacionalidade: string;
@@ -137,282 +211,112 @@ interface ContratoParams {
   };
 }
 
+// ─── Geração do contrato ──────────────────────────────────────────────────────
+
 export async function gerarContratoParceladoPadrao(params: ContratoParams): Promise<Buffer> {
   const { vendedor, cliente, empreendimento, venda } = params;
 
-  const isF = cliente.genero === "F";
-  const compradorLabel = isF ? "COMPRADORA" : "COMPRADOR";
-  const brasileiroLabel = isF ? "brasileira" : "brasileiro";
-  const portadorLabel = isF ? "portadora" : "portador";
-  const residenteLabel = isF ? "residente e domiciliada" : "residente e domiciliado";
-  const aLabel = isF ? "a " : "o ";
-  const daLabel = isF ? "da " : "do ";
+  // Carregar template
+  const templatePath = path.join(process.cwd(), "attached_assets", "contrato_template.docx");
+  const zip = new AdmZip(templatePath);
+  let xml = zip.readAsText("word/document.xml");
 
-  const saldoDevedor = venda.valorLote - venda.valorEntrada;
-  const corretagem = venda.valorLote * 0.08;
-  const desistencia = venda.valorLote * 0.17;
+  // ── Valores calculados ──────────────────────────────────────────────────────
+  const isF         = cliente.genero === "F";
+  const compLabel   = isF ? "COMPRADORA" : "COMPRADOR";
+  const saldo       = venda.valorLote - venda.valorEntrada;
+  const corretagem  = venda.valorLote * 0.08;
+  const dataVenda   = new Date((venda.dataVenda || new Date().toISOString()).split("T")[0] + "T12:00:00");
+  const forumCidade = `${empreendimento.cidade || "Santarém"}-${empreendimento.estado || "PA"}`;
+  const empSlash    = `${empreendimento.cidade || "Santarém"}/${empreendimento.estado || "PA"}`;
 
-  const cidade = empreendimento.cidade || "Santarém";
-  const estado = empreendimento.estado || "PA";
-  const localidade = `${cidade}-${estado}`;
-
-  const dataVendaDate = new Date((venda.dataVenda || new Date().toISOString()).split("T")[0] + "T12:00:00");
+  const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" ");
 
   const dimStr = venda.medidaFrente
-    ? `medindo ${venda.medidaFrente} metros de frente, lateral direita medindo ${venda.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${venda.medidaLateralEsq || "___"} e medindo ${venda.medidaFundos || "___"} metros de fundos, com área total de ${venda.areaTotal || "___"} metros quadrados`
-    : `medindo ___ metros de frente, lateral direita medindo ___ metros, pela lateral esquerda medindo ___ e medindo ___ metros de fundos, com área total de ___ metros quadrados`;
+    ? `${venda.medidaFrente} metros de frente, lateral direita medindo ${venda.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${venda.medidaLateralEsq || "___"} e medindo ${venda.medidaFundos || "___"} metros de fundos, com área total de ${venda.areaTotal || "___"} metros quadrados`
+    : `___ metros de frente, lateral direita medindo ___ metros, pela lateral esquerda medindo ___ e medindo ___ metros de fundos, com área total de ___ metros quadrados`;
 
-  const font = "Times New Roman";
-  const sz = 24;
+  const parcelasExt = capitalizar(inteiroExtenso(venda.quantidadeParcelas));
+  const diaVenc     = String(diaDoMes(venda.dataVencimento));
+  const primeiraPag = primeiraParcela(venda.dataVencimento);
 
-  const run = (text: string, bold = false, underline = false) =>
-    new TextRun({
-      text,
-      bold,
-      underline: underline ? { type: UnderlineType.SINGLE } : undefined,
-      font,
-      size: sz,
-    });
+  // ── 1. Vendedor ─────────────────────────────────────────────────────────────
+  xml = rep(xml, T.VEND_NOME,  vendedor.nome.toUpperCase());
+  xml = rep(xml, T.VEND_NAC,   vendedor.nacionalidade.toLowerCase());
+  xml = rep(xml, T.VEND_CIVIL, vendedor.estadoCivil.toLowerCase());
+  xml = rep(xml, T.VEND_RG,    vendedor.rg);
+  // CPF aparece no corpo E na assinatura — substitui ambas as ocorrências
+  xml = rep(xml, T.VEND_CPF, vendedor.cpf);
 
-  const par = (children: TextRun[], align = AlignmentType.JUSTIFIED, spacingAfter = 200) =>
-    new Paragraph({
-      alignment: align,
-      spacing: { after: spacingAfter },
-      children,
-    });
+  // Endereço completo em contexto para não colidir com outros valores
+  const vendAddr = `${vendedor.endereco}, n° ${vendedor.numero}, ${vendedor.bairro}, ${vendedor.cidade}, ${vendedor.estado}, CEP ${vendedor.cep}`;
+  xml = rep(xml, T.VEND_ADDR, vendAddr);
 
-  const heading = (text: string) =>
-    new Paragraph({
-      alignment: AlignmentType.LEFT,
-      spacing: { before: 280, after: 160 },
-      children: [run(text, true)],
-    });
+  // ── 2. Comprador ────────────────────────────────────────────────────────────
+  xml = rep(xml, T.COMP_INTRO, isF ? "a Sra. " : "o Sr. ");
+  xml = rep(xml, T.COMP_NOME,  cliente.nome.toUpperCase());
+  xml = rep(xml, T.COMP_NAC,   (cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase());
+  xml = rep(xml, T.COMP_CIVIL, cliente.estadoCivil.toLowerCase());
+  xml = rep(xml, T.COMP_RG,    cliente.rg);
+  // CPF aparece no corpo E na assinatura
+  xml = rep(xml, T.COMP_CPF, cliente.cpf);
 
-  const blank = () =>
-    new Paragraph({ children: [run("")], spacing: { after: 0 } });
+  // Telefones: substitui os dois juntos, ou remove "Telefone ..." se não houver
+  if (phones) {
+    xml = rep(xml, T.COMP_FONES, phones);
+  } else {
+    xml = rep(xml, `Telefone ${T.COMP_FONES}, `, "");
+  }
 
-  const centered = (children: TextRun[], spacingAfter = 160) =>
-    new Paragraph({ alignment: AlignmentType.CENTER, spacing: { after: spacingAfter }, children });
+  // Endereço completo
+  const compAddr = `${cliente.endereco}, n° ${cliente.numero}, ${cliente.bairro}, ${cliente.cidade}, ${cliente.estado}, CEP ${cliente.cep}`;
+  xml = rep(xml, T.COMP_ADDR, compAddr);
 
-  const doc = new Document({
-    sections: [{
-      properties: {
-        page: {
-          margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
-        },
-      },
-      children: [
-        centered([run("COMPROMISSO DE COMPRA E VENDA DE IMÓVEL", true, true)], 200),
-        centered([run("DADOS/ VENDEDOR/ COMPRADOR", true)], 320),
+  // Pronomes de gênero específicos na descrição do comprador
+  if (!isF) {
+    xml = rep(xml, "portadora da", "portador da");
+    xml = rep(xml, "residente e domiciliada", "residente e domiciliado");
+    xml = rep(xml, "chamada simplesmente de", "chamado simplesmente de");
+  }
 
-        par([
-          run("Pelo presente instrumento particular de compra e venda de imóvel, de um lado o Sr. "),
-          run(vendedor.nome.toUpperCase(), true),
-          run(", " + vendedor.nacionalidade + ", " + vendedor.estadoCivil.toLowerCase() + ", portador da carteira de identidade nº " + vendedor.rg + " e do CPF nº " + vendedor.cpf + ", residente e domiciliado na " + vendedor.endereco + ", n° " + vendedor.numero + ", " + vendedor.bairro + ", " + vendedor.cidade + ", " + vendedor.estado + ", CEP " + vendedor.cep + ", ora em diante chamado simplesmente de VENDEDOR de outro " + (isF ? "a Sra. " : "o Sr. ")),
-          run(cliente.nome.toUpperCase(), true),
-          run(", " + brasileiroLabel + ", " + cliente.estadoCivil.toLowerCase() + ", " + portadorLabel + " da carteira de identidade nº " + cliente.rg + " e do CPF nº " + cliente.cpf + (cliente.telefone1 ? ", Telefone " + cliente.telefone1 : "") + (cliente.telefone2 ? " " + cliente.telefone2 : "") + (cliente.profissao ? ", " + cliente.profissao : "") + ", " + residenteLabel + " na " + cliente.endereco + ", n° " + cliente.numero + ", " + cliente.bairro + ", " + cliente.cidade + ", " + cliente.estado + ", CEP " + cliente.cep + ", ora em diante chamad" + (isF ? "a" : "o") + " simplesmente de " + compradorLabel + ", têm, entre si, como justo e contratado o que se segue:"),
-        ]),
+  // ── 3. COMPRADORA → COMPRADOR (se masculino) — artigos primeiro ────────────
+  if (!isF) {
+    xml = rep(xml, "da COMPRADORA",  "do COMPRADOR");
+    xml = rep(xml, "pela COMPRADORA","pelo COMPRADOR");
+    xml = rep(xml, "pel a COMPRADORA","pelo COMPRADOR");  // versão fragmentada
+    xml = rep(xml, "A COMPRADORA",   "O COMPRADOR");
+    xml = rep(xml, "a COMPRADORA",   "o COMPRADOR");
+    xml = rep(xml, "COMPRADORA",     "COMPRADOR");        // restantes
+  }
 
-        blank(),
-        heading("1º DO OBJETO"),
+  // ── 4. Imóvel / Empreendimento ───────────────────────────────────────────────
+  xml = rep(xml, T.EMP_NOME, empreendimento.nome.toUpperCase());
+  if (empreendimento.comunidade) {
+    xml = rep(xml, T.EMP_COM, empreendimento.comunidade);
+  }
+  xml = rep(xml, T.EMP_SLASH, empSlash);
+  xml = rep(xml, T.LOTE_QUADRA, `Lote ${venda.numeroLote} da Quadra (${venda.quadra})`);
+  if (venda.rua) {
+    xml = rep(xml, T.RUA, venda.rua);
+  }
+  xml = rep(xml, T.DIM, dimStr);
 
-        par([
-          run("A posse que exerce sobre 1 (Um) Terreno Rural, extraído de uma área localizada " + (empreendimento.comunidade ? "na " + empreendimento.comunidade + ", " : "") + "no desmembramento do lote Empreendimento "),
-          run(empreendimento.nome.toUpperCase(), true),
-          run(" no município de " + cidade + "/" + estado + ", de forma regular. Denominado "),
-          run("Lote " + venda.numeroLote + " da Quadra (" + venda.quadra + ")", true),
-          run(", " + (venda.rua ? venda.rua + ", " : "") + dimStr + "."),
-        ]),
+  // ── 5. Valores financeiros ───────────────────────────────────────────────────
+  xml = rep(xml, T.VALOR_NUM,  numExt(venda.valorLote));
+  xml = rep(xml, T.ENT_NUM,    numExt(venda.valorEntrada));
+  xml = rep(xml, T.SALDO_NUM,  numExt(saldo));
+  // Parcelas — contexto evita match em outros números do documento
+  xml = rep(xml, T.PARC_CTX, `${venda.quantidadeParcelas} (${parcelasExt})`);
+  xml = rep(xml, T.VALPAR_NUM, numExt(venda.valorParcela));
+  xml = rep(xml, T.DIA_CTX,   `vencimento no dia ${diaVenc} de cada mês`);
+  xml = rep(xml, T.PRIMEIRA,   primeiraPag);
+  xml = rep(xml, T.CORR_NUM,   numExt(corretagem));
 
-        par([
-          run("§ Parágrafo único - Pelo presente instrumento e na melhor forma de direito, o VENDEDOR, têm ajustado vender conforme promete " + daLabel + compradorLabel + ", e este a comprar-lhe o imóvel descrito e caracterizado na cláusula anterior, de forma livre e desembaraçado de quaisquer ônus (real, pessoal, fiscal ou extrajudicial), dívidas, arrestos ou sequestros, ou ainda de restrições de qualquer natureza, pelo preço e de conformidade com as cláusulas e condições adiante estabelecidas."),
-        ]),
+  // ── 6. Fórum e data ──────────────────────────────────────────────────────────
+  xml = rep(xml, T.FORUM, forumCidade);
+  xml = rep(xml, T.DATA,  dataExtenso(dataVenda));
 
-        blank(),
-        heading("2º DO VALOR"),
-
-        par([
-          run("O preço certo e ajustado da venda ora prometido é de "),
-          run(brl(venda.valorLote) + " (" + capitalizar(valorExtenso(venda.valorLote)) + ")", true),
-          run(", sendo que o valor de "),
-          run(brl(venda.valorEntrada) + " (" + capitalizar(valorExtenso(venda.valorEntrada)) + ")", true),
-          run(", será pago a título de sinal na data da assinatura deste contrato, e o restante do valor, "),
-          run(brl(saldoDevedor) + " (" + capitalizar(valorExtenso(saldoDevedor)) + ")", true),
-          run(", será quitado, assinando 1 (uma) nota promissória no valor total do parcelamento fracionado através de "),
-          run(venda.quantidadeParcelas + " (" + capitalizar(inteiroExtenso(venda.quantidadeParcelas)) + ")", true),
-          run(" parcelas fixas, no valor de "),
-          run(brl(venda.valorParcela) + " (" + capitalizar(valorExtenso(venda.valorParcela)) + ")", true),
-          run(" cada, não sujeitas a reajuste anual ou a qualquer forma de correção monetária, a serem pagas por meio de Boletos Bancários, com vencimento no dia " + diaDoMes(venda.dataVencimento) + " de cada mês, ficando a primeira parcela para o dia " + primeiraParcela(venda.dataVencimento) + ", e as demais nos meses subsequentes."),
-        ]),
-
-        blank(),
-        heading("3º DO INADIMPLEMENTO DA OBRIGAÇÃO"),
-
-        par([
-          run("A " + compradorLabel + " obriga-se a pagar pontualmente cada uma das " + venda.quantidadeParcelas + " (" + capitalizar(inteiroExtenso(venda.quantidadeParcelas)) + ") parcelas ao VENDEDOR, sob pena de, não o fazendo e sem prejuízo das demais sanções previstas em caso de inadimplemento, ficar sujeito ao pagamento de multa moratória de 2% (dois por cento) e juros moratórios de 1% (um por cento) ao mês, calculados por dia (pro rata die) a partir do vencimento, sobre o valor da parcela em atraso. Além disso, após 90 (noventa) dias de inadimplemento, poderá ser caracterizado o inadimplemento total, com as consequências previstas na cláusula seguinte."),
-        ]),
-
-        blank(),
-        heading("4º DA CORRETAGEM"),
-
-        par([
-          run("Caso alguma parte vier a arrepender-se da presente transação, o valor correspondente a 8% (oito por cento) do valor pactuado total do objeto, equivalente a "),
-          run(brl(corretagem) + " (" + capitalizar(valorExtenso(corretagem)) + ")", true),
-          run(", destinado ao pagamento de honorários de corretagem, não integrará qualquer valor passível de restituição."),
-        ]),
-
-        blank(),
-        heading("5º DA RESCISÃO CONTRATUAL E CONSEQUÊNCIAS"),
-
-        par([
-          run("O presente contrato será rescindido automaticamente 90 (noventa) dias após " + aLabel + compradorLabel + " deixar de pagar qualquer das parcelas pactuadas neste instrumento na data do respectivo vencimento, operando-se a rescisão em favor do VENDEDOR, independentemente de aviso judicial ou extrajudicial. Em consequência, perderá " + aLabel + compradorLabel + ", desde logo, a posse do imóvel prometido. Do valor total efetivamente pago até a data do inadimplemento será retida multa compensatória correspondente a 25% (vinte e cinco por cento), sendo o saldo remanescente devolvido de forma parcelada pelo VENDEDOR, conforme disposto na cláusula 3ª deste contrato."),
-        ]),
-
-        par([
-          run("§1º - As benfeitorias e construções que " + aLabel + compradorLabel + " vier a realizar no imóvel deverão fazer parte integrante do mesmo, e em caso de rescisão do presente contrato, não terá " + aLabel + compradorLabel + ", direito a indenização, reembolso em obra ou benfeitorias feitas no terreno."),
-        ]),
-
-        blank(),
-        heading("6º DO ARREPENDIMENTO"),
-
-        par([
-          run("Em caso de arrependimento " + daLabel + compradorLabel + ", mesmo obedecerá, o código de defesa do consumidor (lei Nº 8.078, DE 11 DE SETEMBRO DE 1990) de acordo com artigo 49, ou seja, prazo 07 (dias)."),
-        ]),
-
-        blank(),
-        heading("7º DA DESISTÊNCIA"),
-
-        par([
-          run("A parte que desistir do negócio ou der causa à rescisão deste contrato arcará com multa de 17% (dezessete por cento) do valor do presente contrato, equivalente a "),
-          run(brl(desistencia) + " (" + capitalizar(valorExtenso(desistencia)) + ")", true),
-          run(", a ser pago a outra parte, sem prejuízo das perdas e danos decorrentes do ato."),
-        ]),
-
-        blank(),
-        heading("8º DA POSSE E SUAS OBRIGAÇÕES"),
-
-        par([
-          run("A posse do imóvel, objeto deste contrato, é transmitida pelo VENDEDOR " + aLabel + compradorLabel + " após a assinatura deste contrato."),
-        ]),
-
-        par([
-          run("§ 1º A partir da posse do imóvel, correrão por conta exclusiva " + daLabel + compradorLabel + ", todos os impostos, taxas ou contribuições fiscais de qualquer natureza incidentes sobre o imóvel objeto deste contrato e por estes deverão ser pagos nas épocas próprias e nas repartições competentes, ainda que lançados em nome do VENDEDOR ou de terceiros, assim como serão, desde já, de sua inteira responsabilidade, as despesas com o registro deste contrato e outras de qualquer natureza e espécie."),
-        ]),
-
-        par([
-          run("§ 2º Fica advertido " + aLabel + compradorLabel + " que a responsabilidade de limpeza do seu lote é de estrita obrigação sua, devendo a mesma retirar entulhos (ex: árvore, resto de material de construção e matos), para não prejudicar outros lotes."),
-        ]),
-
-        par([
-          run("Conforme cláusula 9º §2º, será o dever " + daLabel + compradorLabel + " ressarcir os serviços prestados pelo VENDEDOR, para resolver o conflito."),
-        ]),
-
-        blank(),
-        heading("09º DA ANUÊNCIA DO VENDEDOR"),
-
-        par([
-          run(aLabel.charAt(0).toUpperCase() + aLabel.slice(1) + compradorLabel + " poderá ceder e transferir os direitos que lhes decorrem deste contrato apenas com anuência do VENDEDOR, caso o mesmo faça a transferência sem comunicar, será considerado má-fé contratual, fazendo nulidade absoluta a terceiros."),
-        ]),
-
-        blank(),
-        heading("10º DA IRREVOGABILIDADE E IRRETRATABILIDADE"),
-
-        par([
-          run("O presente contrato é celebrado em caráter irrevogável e irretratável pelo VENDEDOR e " + compradorLabel + ", seus herdeiros e sucessores excluídos ficam expressamente a hipótese de arrependimento."),
-        ]),
-
-        blank(),
-        heading("11º DA VISTORIA"),
-
-        par([
-          run(aLabel.charAt(0).toUpperCase() + aLabel.slice(1) + compradorLabel + " viu, examinou e vistoriou o imóvel no local, e o aceita no estado que se encontra."),
-        ]),
-
-        blank(),
-        heading("12º DA NOTIFICAÇÃO E COBRANÇA"),
-
-        par([
-          run("O VENDEDOR fica autorizado pel" + (isF ? "a " : "o ") + compradorLabel + ", em caso de atraso, notificar extrajudicial, ou enviar mensagens de cobrança, em todas as vias disponíveis de comunicação (Ex: telefone, E-mail, WhatsApp, Facebook)."),
-        ]),
-
-        blank(),
-        heading("13º DA PROTEÇÃO DE DADOS"),
-
-        par([
-          run("A Lei Geral de Proteção de Dados será obedecida, em todos os seus termos, pelo vendedor, obrigando-se ele a tratar os dados " + daLabel + compradorLabel + " que forem eventualmente coletados, conforme sua necessidade ou obrigatoriedade."),
-        ]),
-
-        par([
-          run("§1º Conforme prevê a Lei Geral de Proteção de Dados, obriga-se o vendedor a executar os seus trabalhos e tratar os dados " + daLabel + compradorLabel + " respeitando os princípios da finalidade, adequação, transparência, livre acesso, segurança, prevenção e não discriminação. (Art. 6o, LGPD)."),
-        ]),
-
-        par([
-          run("§2º Conforme prevê a Lei Geral de Proteção de Dados, obriga-se o VENDEDOR a executar os seus trabalhos e tratar os dados " + daLabel + compradorLabel + " respeitando os princípios da finalidade, adequação, transparência, livre acesso, segurança, prevenção e não discriminação. (Art. 6o, LGPD)."),
-        ]),
-
-        par([
-          run("§3º Eventuais dados coletados pelo VENDEDOR serão arquivados somente pelo tempo necessário para a execução dos serviços contratados. Ao seu fim, os dados coletados serão permanentemente eliminados, excetuando-se os que se enquadrarem no disposto no artigo 16, I da Lei Geral de Proteção de Dados. (art. 15, LGPD)."),
-        ]),
-
-        blank(),
-        heading("14º DO FALECIMENTO"),
-
-        par([
-          run("Caso " + aLabel + compradorLabel + " venha a óbito no lapso de tempo do contrato, os herdeiros assumirão a dívida restante do objeto, no prazo de 30 (trinta) dias. Caso os mesmos fiquem inertes às obrigações, o VENDEDOR terá direito de reaver o imóvel, sem indenização de obras ou benfeitorias no terreno."),
-        ]),
-
-        blank(),
-        heading("15º DA COMPETÊNCIA DE FORO"),
-
-        par([
-          run("Para dirimir quaisquer questões que direta ou indiretamente decorrem deste contrato, as partes elegem o Foro da Comarca de " + localidade + ", com renúncia expressa de qualquer outro, por mais privilegiado que seja."),
-        ]),
-
-        par([
-          run("§1º Para todos os fins e efeitos de direito, os contratantes declaram aceitar o presente contrato nos expressos termos em que foi lavrado, obrigando-se a si, seus herdeiros e sucessores a bem e fielmente cumpri-lo. E, por estarem assim ajustados, firmam o presente instrumento particular em 02 (Duas) vias de igual teor e forma, na presença das testemunhas que também o assinam."),
-        ]),
-
-        blank(),
-        blank(),
-        blank(),
-
-        centered([run(localidade + ", " + dataExtenso(dataVendaDate))], 600),
-
-        blank(),
-        blank(),
-        blank(),
-        blank(),
-        blank(),
-
-        centered([run("_______________________________________")], 80),
-        centered([run("VENDEDOR – " + vendedor.nome.toUpperCase(), true)], 60),
-        centered([run("CPF nº " + vendedor.cpf)], 600),
-
-        blank(),
-        blank(),
-        blank(),
-        blank(),
-
-        centered([run("_______________________________________")], 80),
-        centered([run(compradorLabel + " – " + cliente.nome.toUpperCase(), true)], 60),
-        centered([run("CPF nº " + cliente.cpf)], 600),
-
-        blank(),
-        blank(),
-
-        par([run("Testemunhas:", true)], AlignmentType.LEFT, 400),
-
-        new Paragraph({
-          spacing: { after: 80 },
-          children: [
-            run("1º ___________________________"),
-            new TextRun({ text: "\t\t\t\t", font, size: sz }),
-            run("2º ___________________________"),
-          ],
-        }),
-      ],
-    }],
-  });
-
-  return await Packer.toBuffer(doc);
+  // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
+  zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
+  return zip.toBuffer();
 }
