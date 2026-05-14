@@ -36,6 +36,34 @@ import { storageService } from "./storageService"; // mantido apenas para compat
 import { dbService } from "./dbService";
 import { maskCPF, maskCEP, maskPhone } from "./lib/masks";
 import { geminiService } from "./geminiService";
+
+function genderizeEstadoCivil(raw: string, genero: string): string {
+  const base = (raw || "")
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/\ba\b/g, "")
+    .trim();
+  const masc: Record<string, string> = {
+    solteiro: "Solteiro", solteira: "Solteiro", casado: "Casado", casada: "Casado",
+    divorciado: "Divorciado", divorciada: "Divorciado", viúvo: "Viúvo", viuvo: "Viúvo",
+    viúva: "Viúvo", viuva: "Viúvo", separado: "Separado", separada: "Separado",
+    "união estável": "União Estável",
+  };
+  const fem: Record<string, string> = {
+    solteiro: "Solteira", solteira: "Solteira", casado: "Casada", casada: "Casada",
+    divorciado: "Divorciada", divorciada: "Divorciada", viúvo: "Viúva", viuvo: "Viúva",
+    viúva: "Viúva", viuva: "Viúva", separado: "Separada", separada: "Separada",
+    "união estável": "União Estável",
+  };
+  const outro: Record<string, string> = {
+    solteiro: "Solteiro(a)", solteira: "Solteiro(a)", casado: "Casado(a)", casada: "Casado(a)",
+    divorciado: "Divorciado(a)", divorciada: "Divorciado(a)", viúvo: "Viúvo(a)", viuvo: "Viúvo(a)",
+    viúva: "Viúvo(a)", viuva: "Viúvo(a)", separado: "Separado(a)", separada: "Separado(a)",
+    "união estável": "União Estável",
+  };
+  const map = genero === "F" ? fem : genero === "O" ? outro : masc;
+  return map[base] || raw;
+}
 import {
   Sparkles,
   Copy,
@@ -1355,7 +1383,7 @@ const VendasSection = ({
 NOME: ${(clientData.nome || "").toUpperCase()}
 RG: ${(clientData.rg || "").toUpperCase()}
 CPF: ${clientData.cpf || ""}
-ESTADO CIVIL: ${(clientData.estadoCivil || "").toUpperCase()}
+ESTADO CIVIL: ${genderizeEstadoCivil(clientData.estadoCivil || "", clientData.genero || "M").toUpperCase()}
 DATA DE ANIVERSÁRIO: ${fmtNasc(clientData.nascimento || "")}
 ENDEREÇO: ${(clientData.endereco || "").toUpperCase()}
 Nº: ${clientData.numero || ""}
@@ -3042,7 +3070,7 @@ const ContratosSection = ({
                             : client?.genero === "O"
                               ? "brasileiro(a)"
                               : "brasileiro"}
-                          , {client?.estadoCivil.toLowerCase()},{" "}
+                          , {genderizeEstadoCivil(client?.estadoCivil || "", client?.genero || "M").toLowerCase()},{" "}
                           {client?.profissao ? client.profissao + ", " : ""}
                           {client?.genero === "F"
                             ? "portadora"
@@ -3080,7 +3108,7 @@ const ContratosSection = ({
                                 ? "brasileiro(a)"
                                 : "brasileiro"}
                             ,{" "}
-                            {selectedVenda.comprador2.estadoCivil.toLowerCase()}
+                            {genderizeEstadoCivil(selectedVenda.comprador2.estadoCivil, selectedVenda.comprador2.genero || "M").toLowerCase()}
                             ,{" "}
                             {selectedVenda.comprador2.profissao
                               ? selectedVenda.comprador2.profissao + ", "
