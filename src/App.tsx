@@ -1817,6 +1817,10 @@ const VendasSection = ({
   initialSaleData,
   onSaveDev,
   vendedores = [],
+  clients = [],
+  editingEntry,
+  onUpdateVendaFull,
+  onMergeClients,
 }: {
   developments: Empreendimento[];
   onSaveVenda: (v: Venda, c: Cliente) => Venda;
@@ -1825,6 +1829,10 @@ const VendasSection = ({
   initialSaleData?: Partial<Venda>;
   onSaveDev: (d: Empreendimento) => void;
   vendedores?: Vendedor[];
+  clients?: Cliente[];
+  editingEntry?: { venda: Venda; cliente: Cliente | null } | null;
+  onUpdateVendaFull?: (v: Venda, c: Cliente) => void;
+  onMergeClients?: (masterId: string, duplicateIds: string[]) => void;
 }) => {
   const [clientData, setClientData] = useState<Partial<Cliente>>({
     nome: "",
@@ -1877,6 +1885,10 @@ const VendasSection = ({
   const [rgErr, setRgErr] = useState<string | null>(null);
   const [cpf2Err, setCpf2Err] = useState<string | null>(null);
   const [rg2Err, setRg2Err] = useState<string | null>(null);
+  const [cpfMatch, setCpfMatch] = useState<Cliente | null>(null);
+  const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
 
   const handleSalvarNovoDev = () => {
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
@@ -1904,6 +1916,49 @@ const VendasSection = ({
       setSaleData((prev) => ({ ...prev, ...initialSaleData }));
     }
   }, [initialSaleData]);
+
+  // Pre-fill all data when editing an existing sale
+  useEffect(() => {
+    if (editingEntry) {
+      if (editingEntry.cliente) {
+        setClientData({ ...editingEntry.cliente });
+      }
+      setSaleData({ ...editingEntry.venda });
+      if (editingEntry.venda.comprador2) {
+        setHasSecondBuyer(true);
+        setSecondBuyerData({ ...editingEntry.venda.comprador2 });
+      } else {
+        setHasSecondBuyer(false);
+      }
+      setLastSavedVenda(null);
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [editingEntry]);
+
+  // CPF duplicate detection
+  useEffect(() => {
+    const cpfRaw = (clientData.cpf || "").replace(/\D/g, "");
+    if (cpfRaw.length !== 11 || !validarCPF(clientData.cpf || "")) {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+      return;
+    }
+    const excludeId = editingEntry?.cliente?.id;
+    const matches = clients.filter(
+      (c) => c.cpf?.replace(/\D/g, "") === cpfRaw && c.id !== excludeId
+    );
+    if (matches.length === 1) {
+      setCpfMatch(matches[0]);
+      setCpfDuplicates([]);
+    } else if (matches.length > 1) {
+      setCpfMatch(null);
+      setCpfDuplicates(matches);
+    } else {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [clientData.cpf, clients, editingEntry]);
 
   const [rawText, setRawText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
@@ -2248,6 +2303,26 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       return;
     }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+
+    if (editingEntry && onUpdateVendaFull) {
+      const updatedCliente: Cliente = {
+        ...(editingEntry.cliente || ({ id: Date.now().toString(), dataCadastro: new Date().toISOString() } as Cliente)),
+        ...(clientData as Cliente),
+      };
+      const updatedVenda: Venda = {
+        ...editingEntry.venda,
+        ...(saleData as Venda),
+        clienteId: updatedCliente.id,
+        clienteNome: updatedCliente.nome,
+        empreendimentoNome: dev?.nome || editingEntry.venda.empreendimentoNome,
+        valorParcela: saleData.valorParcela || 0,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      onUpdateVendaFull(updatedVenda, updatedCliente);
+      setLastSavedVenda(updatedVenda);
+      return;
+    }
+
     const cliente: Cliente = {
       ...(clientData as Cliente),
       id: Date.now().toString(),
@@ -2270,6 +2345,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
   };
 
   if (lastSavedVenda) {
+    const wasEditing = !!editingEntry;
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -2281,10 +2357,10 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
         </div>
         <div className="space-y-2">
           <h2 className="text-3xl font-display font-bold text-slate-800">
-            Venda Registrada!
+            {wasEditing ? "Venda Atualizada!" : "Venda Registrada!"}
           </h2>
           <p className="text-slate-500">
-            O cadastro foi concluído e os dados estão salvos.
+            {wasEditing ? "As alterações foram salvas com sucesso." : "O cadastro foi concluído e os dados estão salvos."}
           </p>
         </div>
 
@@ -2320,6 +2396,89 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
 
   return (
     <div className="space-y-8 pb-32 lg:pb-0">
+      {/* Edit mode banner */}
+      {editingEntry && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-300 rounded-2xl"
+        >
+          <div className="p-2 bg-amber-500 rounded-xl text-white flex-shrink-0">
+            <Pencil size={16} />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-black text-amber-800 uppercase tracking-widest">Modo Edição</p>
+            <p className="text-sm font-semibold text-amber-700">
+              Editando venda de <strong>{editingEntry.venda.clienteNome}</strong> — {editingEntry.venda.empreendimentoNome}, Quadra {editingEntry.venda.quadra}, Lote {editingEntry.venda.numeroLote}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Merge Modal */}
+      <AnimatePresence>
+        {showMergeModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Mesclar Clientes Duplicados</h4>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Escolha o registro principal</p>
+                </div>
+                <button onClick={() => setShowMergeModal(false)} className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                <p className="text-sm text-slate-500 mb-4">
+                  Selecione qual registro manter como principal. Os outros serão excluídos e suas vendas serão transferidas para o registro principal.
+                </p>
+                {cpfDuplicates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setMergeTargetId(c.id)}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${mergeTargetId === c.id ? "border-primary-main bg-primary-main/5" : "border-slate-100 hover:border-slate-200"}`}
+                  >
+                    <p className="font-bold text-slate-800">{c.nome}</p>
+                    <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                      {c.cpf && <span>CPF: {c.cpf}</span>}
+                      {c.telefone1 && <span>Tel: {c.telefone1}</span>}
+                      {c.dataCadastro && <span>Cadastro: {new Date(c.dataCadastro).toLocaleDateString("pt-BR")}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowMergeModal(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  type="button"
+                  disabled={!mergeTargetId}
+                  onClick={() => {
+                    if (!mergeTargetId || !onMergeClients) return;
+                    const duplicateIds = cpfDuplicates.filter(c => c.id !== mergeTargetId).map(c => c.id);
+                    onMergeClients(mergeTargetId, duplicateIds);
+                    const master = cpfDuplicates.find(c => c.id === mergeTargetId);
+                    if (master) setClientData({ ...clientData, ...master });
+                    setCpfDuplicates([]);
+                    setCpfMatch(null);
+                    setShowMergeModal(false);
+                  }}
+                  className="btn-primary px-8 disabled:opacity-50"
+                >
+                  Mesclar e Manter Principal
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* IA Auto-fill Section */}
       <div className="card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10">
         <div className="flex items-center gap-3 mb-4">
@@ -2584,6 +2743,65 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 placeholder="000.000.000-00"
               />
               {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
+              {cpfMatch && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-blue-700 uppercase tracking-widest">
+                    👤 Cliente já cadastrado: {cpfMatch.nome}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setClientData({ ...clientData, ...cpfMatch })}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Usar dados existentes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCpfMatch(null)}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      Ignorar
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+              {cpfDuplicates.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-amber-700 uppercase tracking-widest">
+                    ⚠️ {cpfDuplicates.length} clientes com este CPF
+                  </p>
+                  <div className="space-y-1">
+                    {cpfDuplicates.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2">
+                        <span className="text-amber-800 font-semibold">{c.nome}</span>
+                        <button
+                          type="button"
+                          onClick={() => setClientData({ ...clientData, ...c })}
+                          className="text-[9px] font-bold uppercase tracking-widest bg-amber-600 text-white px-2 py-1 rounded-lg hover:bg-amber-700 transition-colors"
+                        >
+                          Usar este
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setMergeTargetId(cpfDuplicates[0].id); setShowMergeModal(true); }}
+                    className="text-[10px] font-bold uppercase tracking-widest bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors w-full text-center"
+                  >
+                    Mesclar clientes duplicados
+                  </button>
+                </motion.div>
+              )}
             </div>
             <div>
               <label className="label">RG</label>
@@ -3291,6 +3509,7 @@ const ContratosSection = ({
   onUpdateVenda,
   vendedores = [],
   proprietarios = [],
+  onEditVenda,
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -3304,6 +3523,7 @@ const ContratosSection = ({
   proprietarios?: Proprietario[];
   initialMode?: 'recibo';
   onUpdateProprietario?: (p: Proprietario) => void;
+  onEditVenda?: (v: Venda) => void;
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -4076,11 +4296,15 @@ const ContratosSection = ({
                         </button>
                         <button
                           onClick={() => {
-                            setEditingVenda(venda);
-                            setEditVendaForm({ ...venda });
+                            if (onEditVenda) {
+                              onEditVenda(venda);
+                            } else {
+                              setEditingVenda(venda);
+                              setEditVendaForm({ ...venda });
+                            }
                           }}
                           className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
-                          title="Editar contrato"
+                          title="Editar venda completa"
                         >
                           <Pencil size={18} />
                         </button>
@@ -5811,6 +6035,10 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
   const [prefilledSale, setPrefilledSale] = useState<
     Partial<Venda> | undefined
   >(undefined);
+  const [editingVendaEntry, setEditingVendaEntry] = useState<{
+    venda: Venda;
+    cliente: Cliente | null;
+  } | null>(null);
 
   useEffect(() => {
     const load = async () => {
@@ -5950,7 +6178,42 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
 
   const handleStartSale = (data: Partial<Venda>) => {
     setPrefilledSale(data);
+    setEditingVendaEntry(null);
     setSection("vendas");
+  };
+
+  const handleEditVenda = (venda: Venda) => {
+    const cliente = clients.find((c) => c.id === venda.clienteId) || null;
+    setEditingVendaEntry({ venda, cliente });
+    setPrefilledSale(undefined);
+    setSection("vendas");
+  };
+
+  const handleUpdateVendaFull = (updatedVenda: Venda, updatedCliente: Cliente) => {
+    const updatedSales = sales.map((s) =>
+      s.id === updatedVenda.id ? updatedVenda : s
+    );
+    setSales(updatedSales);
+    dbService.saveVendas(updatedSales).catch(console.error);
+    const updatedClients = clients.map((c) =>
+      c.id === updatedCliente.id ? updatedCliente : c
+    );
+    setClients(updatedClients);
+    dbService.saveClientes(updatedClients).catch(console.error);
+    setEditingVendaEntry(null);
+  };
+
+  const handleMergeClients = (masterId: string, duplicateIds: string[]) => {
+    const updatedSales = sales.map((s) =>
+      duplicateIds.includes(s.clienteId)
+        ? { ...s, clienteId: masterId, clienteNome: clients.find(c => c.id === masterId)?.nome || s.clienteNome }
+        : s
+    );
+    setSales(updatedSales);
+    dbService.saveVendas(updatedSales).catch(console.error);
+    const updatedClients = clients.filter((c) => !duplicateIds.includes(c.id));
+    setClients(updatedClients);
+    dbService.saveClientes(updatedClients).catch(console.error);
   };
 
   const updateVendaStatus = (
@@ -6010,6 +6273,10 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
             vendedores={config.vendedores || []}
+            clients={clients}
+            editingEntry={editingVendaEntry}
+            onUpdateVendaFull={handleUpdateVendaFull}
+            onMergeClients={handleMergeClients}
           />
         );
       case "contratos":
@@ -6027,6 +6294,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
             proprietarios={config.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
+            onEditVenda={handleEditVenda}
           />
         );
       case "clientes":
