@@ -150,4 +150,36 @@ export const geminiService = {
       return extractLocallyFromText(rawText);
     }
   },
+
+  async smartPaste(rawText: string): Promise<Record<string, any>> {
+    try {
+      return await apiFetch('/api/gemini/smart-paste', { rawText });
+    } catch {
+      // fallback: try to extract locally with the same field mapping
+      const local = extractLocallyFromText(rawText);
+      return {
+        nome: local.nomeComprador,
+        rg: local.rg,
+        cpf: local.cpf,
+        estadoCivil: local.estadoCivil,
+        nascimento: local.nascimento,
+        endereco: local.endereco,
+        numero: local.numero,
+        bairro: local.bairro,
+        cidade: local.cidade,
+        estado: local.estado,
+        cep: local.cep,
+        telefone1: local.telefone1,
+        telefone2: local.telefone2,
+        lote: local.numeroLote,
+        quadra: local.quadra,
+        empreendimento: local.empreendimentoNome,
+        valorTotal: local.valorLote,
+        entrada: local.valorEntrada,
+        numeroParcelas: local.quantidadeParcelas,
+        valorParcela: local.valorParcela,
+        diaVencimento: local.dataVencimento ? local.dataVencimento.split('-')[2]?.replace(/^0/, '') : '',
+      };
+    }
+  },
 };

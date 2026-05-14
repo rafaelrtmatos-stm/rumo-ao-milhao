@@ -297,6 +297,69 @@ app.post("/api/gemini/extract-sale", isAuthenticated, async (req, res) => {
   }
 });
 
+// Smart paste: structured prompt tuned for the CADASTRO DO COMPRADOR format
+app.post("/api/gemini/smart-paste", isAuthenticated, async (req, res) => {
+  try {
+    const { rawText } = req.body;
+    if (!rawText?.trim()) return res.status(400).json({ error: "Texto vazio." });
+
+    const prompt = `Extraia os dados do texto abaixo e retorne APENAS um JSON válido, sem markdown, sem explicação.
+
+Texto:
+${rawText}
+
+Retorne exatamente neste formato:
+{
+  "nome": "",
+  "rg": "",
+  "cpf": "",
+  "estadoCivil": "",
+  "nascimento": "YYYY-MM-DD",
+  "endereco": "",
+  "numero": "",
+  "bairro": "",
+  "cidade": "",
+  "estado": "",
+  "cep": "",
+  "telefone1": "",
+  "telefone2": "",
+  "lote": "",
+  "quadra": "",
+  "empreendimento": "",
+  "valorTotal": 0,
+  "entrada": 0,
+  "numeroParcelas": 0,
+  "valorParcela": 0,
+  "diaVencimento": ""
+}
+
+Regras:
+- nascimento: converta DD/MM/YYYY para YYYY-MM-DD
+- cpf: mantenha a máscara 000.000.000-00
+- rg: inclua órgão emissor se houver (ex: 35328010 SSP AM)
+- telefone1 e telefone2: apenas dígitos (sem formatação), ex: 92990725820
+- cep: apenas dígitos, ex: 69085190
+- estadoCivil: normalize para Solteiro, Solteira, Casado, Casada, Divorciado, Divorciada, Viúvo, Viúva ou União Estável
+- valorTotal, entrada, valorParcela: apenas número decimal, sem R$ ou pontos, ex: 18000.00
+- numeroParcelas: apenas o número inteiro
+- diaVencimento: apenas o número do dia, ex: 20
+- Se um campo não existir no texto, retorne string vazia ou 0`;
+
+    const response = await fetch(GEMINI_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ contents: [{ role: "user", parts: [{ text: prompt }] }] }),
+    });
+    const geminiData = await response.json() as any;
+    const rawResult = geminiData.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+    const clean = rawResult.replace(/```json|```/g, "").trim();
+    res.json(safeParseJson(clean));
+  } catch (err: any) {
+    console.error("Gemini smart-paste error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 app.post("/api/gemini/extract-files", isAuthenticated, async (req, res) => {
   try {
     const { files } = req.body;

@@ -1,0 +1,147 @@
+Como funciona a lógica de auto-preenchimento
+Você já tem o geminiService no projeto. O fluxo é:
+
+Usuário cola o texto no campo
+Chama o Gemini com um prompt estruturado pedindo JSON
+O retorno preenche setClientData() e setSaleData() que você já tem
+
+
+O mapeamento do seu texto para os campos do formulário fica assim:
+Texto coladoCampo do estadoNOME:clientData.nomeRG:clientData.rgCPF:clientData.cpf (já aplica maskCPF)ESTADO CIVIL:clientData.estadoCivil + detecta gêneroDATA DE ANIVERSÁRIO:clientData.dataNascimentoENDEREÇO:clientData.enderecoNº:clientData.numeroBAIRRO:clientData.bairroCEP:clientData.cepCONTATO:clientData.telefone1 e telefone2LOTE:saleData.numeroLoteQUADRA:saleData.quadraEMPREENDIMENTO:seleciona o empreendimento pelo nomeVALOR TOTAL:saleData.valorLoteENTRADA:saleData.entradaPARCELAS:saleData.numeroParcelas + saleData.valorParcelaDATA DE VENCIMENTO:saleData.diaVencimento
+
+Aqui está o código completo para adicionar na sua VendasSection:
+tsx// 1. Adicione este estado no topo da VendasSection:
+const [pasteText, setPasteText] = useState("");
+const [isParsing, setIsParsing] = useState(false);
+
+// 2. Esta função chama o Gemini e preenche tudo:
+const handleSmartPaste = async () => {
+  if (!pasteText.trim()) return;
+  setIsParsing(true);
+  try {
+    const prompt = `
+Extraia os dados do texto abaixo e retorne APENAS um JSON válido, sem markdown, sem explicação.
+
+Texto:
+${pasteText}
+
+Retorne exatamente neste formato:
+{
+  "nome": "",
+  "rg": "",
+  "cpf": "",
+  "estadoCivil": "",
+  "dataNascimento": "YYYY-MM-DD",
+  "endereco": "",
+  "numero": "",
+  "bairro": "",
+  "cep": "",
+  "telefone1": "",
+  "telefone2": "",
+  "lote": "",
+  "quadra": "",
+  "empreendimento": "",
+  "valorTotal": 0,
+  "entrada": 0,
+  "numeroParcelas": 0,
+  "valorParcela": 0,
+  "diaVencimento": ""
+}
+
+Regras:
+- dataNascimento: converta DD/MM/YYYY para YYYY-MM-DD
+- cpf: mantenha a máscara 000.000.000-00
+- telefone: formato (00) 00000-0000
+- estadoCivil: normalize para Solteiro/Solteira/Casado/Casada/Divorciado/Divorciada/Viúvo/Viúva/União Estável
+- valorTotal, entrada, valorParcela: apenas números, sem R$ ou pontos
+- Se um campo não existir no texto, deixe string vazia ou 0
+`;
+
+    const result = await geminiService.extractText(prompt);
+    const parsed = JSON.parse(result);
+
+    // Detecta gênero pelo estado civil
+    const genero = ["Solteira","Casada","Divorciada","Viúva"].includes(parsed.estadoCivil) ? "F" : "M";
+
+    // Preenche dados do cliente
+    setClientData(prev => ({
+      ...prev,
+      nome: parsed.nome || prev.nome,
+      rg: parsed.rg || prev.rg,
+      cpf: parsed.cpf || prev.cpf,
+      estadoCivil: parsed.estadoCivil || prev.estadoCivil,
+      dataNascimento: parsed.dataNascimento || prev.dataNascimento,
+      endereco: parsed.endereco || prev.endereco,
+      numero: parsed.numero || prev.numero,
+      bairro: parsed.bairro || prev.bairro,
+      cep: parsed.cep || prev.cep,
+      telefone1: parsed.telefone1 || prev.telefone1,
+      telefone2: parsed.telefone2 || prev.telefone2,
+      genero,
+    }));
+
+    // Preenche dados da venda
+    setSaleData(prev => ({
+      ...prev,
+      numeroLote: parsed.lote || prev.numeroLote,
+      quadra: parsed.quadra || prev.quadra,
+      valorLote: parsed.valorTotal || prev.valorLote,
+      entrada: parsed.entrada || prev.entrada,
+      numeroParcelas: parsed.numeroParcelas || prev.numeroParcelas,
+      valorParcela: parsed.valorParcela || prev.valorParcela,
+      diaVencimento: parsed.diaVencimento || prev.diaVencimento,
+    }));
+
+    // Tenta selecionar o empreendimento pelo nome
+    if (parsed.empreendimento) {
+      const found = developments.find(d =>
+        d.nome.toLowerCase().includes(parsed.empreendimento.toLowerCase())
+      );
+      if (found) setSelectedDevelopment(found);
+    }
+
+    setPasteText("");
+  } catch (err) {
+    console.error("Erro ao parsear:", err);
+    alert("Não foi possível extrair os dados. Verifique o formato do texto.");
+  } finally {
+    setIsParsing(false);
+  }
+};
+
+// 3. Cole este bloco de JSX ANTES do <form> na VendasSection:
+<div className="card-premium mb-6">
+  <div className="flex items-center gap-3 mb-4">
+    <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl">
+      <Sparkles size={20} />
+    </div>
+    <div>
+      <h3 className="font-display font-bold text-slate-800">
+        Preenchimento Inteligente
+      </h3>
+      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">
+        Cole o cadastro e a IA preenche tudo
+      </p>
+    </div>
+  </div>
+  <textarea
+    className="input-field w-full h-32 text-sm font-mono resize-none"
+    placeholder={"Cole aqui o cadastro do comprador...\n\nNOME: João Silva\nCPF: 000.000.000-00\n..."}
+    value={pasteText}
+    onChange={e => setPasteText(e.target.value)}
+  />
+  <button
+    type="button"
+    disabled={!pasteText.trim() || isParsing}
+    onClick={handleSmartPaste}
+    className="btn-primary mt-3 w-full sm:w-auto"
+  >
+    {isParsing ? (
+      <><RefreshCw size={16} className="animate-spin" /> Analisando...</>
+    ) : (
+      <><Sparkles size={16} /> Preencher automaticamente</>
+    )}
+  </button>
+</div>
+
+O ponto chave é usar o geminiService.extractText() que você já tem — só precisa ver qual método exato ele expõe. Me manda o geminiService.ts e encaixo o código perfeito sem precisar de nenhuma adaptação.

@@ -1944,48 +1944,66 @@ const VendasSection = ({
     data: Record<string, any>,
     devList: Empreendimento[]
   ) => {
-    // Match empreendimento by name
-    const nomeLower = (data.empreendimentoNome || "").toLowerCase().trim();
+    // Match empreendimento by name (field: "empreendimento")
+    const empNome = (data.empreendimento || data.empreendimentoNome || "").toLowerCase().trim();
     let empreendimentoId: string | undefined;
-    if (nomeLower) {
+    if (empNome) {
       const match = devList.find(
         (d) =>
-          d.nome.toLowerCase().includes(nomeLower) ||
-          nomeLower.includes(d.nome.toLowerCase())
+          d.nome.toLowerCase().includes(empNome) ||
+          empNome.includes(d.nome.toLowerCase())
       );
       if (match) empreendimentoId = match.id;
     }
 
+    // Detect gender from estadoCivil
+    const estadoCivil = data.estadoCivil || "";
+    const generoDetectado: "F" | "M" | undefined =
+      ["Solteira", "Casada", "Divorciada", "Viúva"].includes(estadoCivil) ? "F" :
+      ["Solteiro", "Casado", "Divorciado", "Viúvo"].includes(estadoCivil) ? "M" : undefined;
+
+    // Build dataVencimento date from diaVencimento day number
+    let dataVencimento: string | undefined;
+    const diaVenc = data.diaVencimento ? String(data.diaVencimento).replace(/\D/g, "") : "";
+    if (diaVenc) {
+      const now = new Date();
+      let year = now.getFullYear();
+      let month = now.getMonth() + 1;
+      const dia = parseInt(diaVenc);
+      if (dia <= now.getDate()) { month += 1; if (month > 12) { month = 1; year += 1; } }
+      dataVencimento = `${year}-${String(month).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    } else if (data.dataVencimento) {
+      dataVencimento = data.dataVencimento;
+    }
+
     setClientData((prev) => ({
       ...prev,
-      ...(data.nomeComprador || data.nome ? { nome: data.nomeComprador || data.nome } : {}),
-      ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
+      ...(data.nome ? { nome: data.nome } : {}),
       ...(data.rg ? { rg: data.rg } : {}),
-      ...(data.cpf ? { cpf: maskCPF(data.cpf) } : {}),
-      ...(data.estadoCivil ? { estadoCivil: data.estadoCivil } : {}),
-      ...(data.profissao ? { profissao: data.profissao } : {}),
+      ...(data.cpf ? { cpf: maskCPF(String(data.cpf)) } : {}),
+      ...(estadoCivil ? { estadoCivil } : {}),
+      ...(generoDetectado ? { genero: generoDetectado } : {}),
       ...(data.nascimento ? { nascimento: data.nascimento } : {}),
-      ...(data.telefone1 ? { telefone1: maskPhone(data.telefone1) } : {}),
-      ...(data.telefone2 ? { telefone2: maskPhone(data.telefone2) } : {}),
+      ...(data.telefone1 ? { telefone1: maskPhone(String(data.telefone1)) } : {}),
+      ...(data.telefone2 ? { telefone2: maskPhone(String(data.telefone2)) } : {}),
       ...(data.endereco ? { endereco: data.endereco } : {}),
-      ...(data.numero ? { numero: data.numero } : {}),
+      ...(data.numero ? { numero: String(data.numero) } : {}),
       ...(data.bairro ? { bairro: data.bairro } : {}),
       ...(data.cidade ? { cidade: data.cidade } : {}),
       ...(data.estado ? { estado: data.estado } : {}),
-      ...(data.cep ? { cep: maskCEP(data.cep) } : {}),
+      ...(data.cep ? { cep: maskCEP(String(data.cep)) } : {}),
     }));
 
     setSaleData((prev) => ({
       ...prev,
       ...(empreendimentoId ? { empreendimentoId } : {}),
-      ...(data.numeroLote ? { numeroLote: data.numeroLote } : {}),
-      ...(data.quadra ? { quadra: data.quadra } : {}),
-      ...(data.valorLote ? { valorLote: data.valorLote } : {}),
-      ...(data.valorEntrada ? { valorEntrada: data.valorEntrada } : {}),
-      ...(data.valorParcela ? { valorParcela: data.valorParcela } : {}),
-      ...(data.quantidadeParcelas ? { quantidadeParcelas: data.quantidadeParcelas } : {}),
-      ...(data.dataVencimento ? { dataVencimento: data.dataVencimento } : {}),
-      ...(data.vendedor ? { vendedor: data.vendedor } : {}),
+      ...(data.lote || data.numeroLote ? { numeroLote: String(data.lote || data.numeroLote) } : {}),
+      ...(data.quadra ? { quadra: String(data.quadra) } : {}),
+      ...(data.valorTotal || data.valorLote ? { valorLote: Number(data.valorTotal || data.valorLote) } : {}),
+      ...(data.entrada || data.valorEntrada ? { valorEntrada: Number(data.entrada || data.valorEntrada) } : {}),
+      ...(data.valorParcela ? { valorParcela: Number(data.valorParcela) } : {}),
+      ...(data.numeroParcelas || data.quantidadeParcelas ? { quantidadeParcelas: Number(data.numeroParcelas || data.quantidadeParcelas) } : {}),
+      ...(dataVencimento ? { dataVencimento } : {}),
     }));
   };
 
@@ -1993,10 +2011,10 @@ const VendasSection = ({
     setIsExtracting(true);
     setPasteSuccess(false);
     try {
-      const data = await geminiService.extractSaleData(text);
+      const data = await geminiService.smartPaste(text);
       const filled = !!(
-        data.nomeComprador || data.nome || data.cpf || data.rg ||
-        data.numeroLote || data.valorLote || data.telefone1
+        data.nome || data.cpf || data.rg ||
+        data.lote || data.valorTotal || data.telefone1
       );
       if (filled) {
         applyDataToState(data, developments);
