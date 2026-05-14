@@ -41,7 +41,7 @@ import {
   AppConfig,
   AppTheme,
 } from "./types";
-import { dbService } from "./dbService";
+import { dbService, setCurrentUser } from "./dbService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
@@ -6343,7 +6343,17 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
   } | null>(null);
 
   useEffect(() => {
+    let subDevs: { unsubscribe: () => void } | null = null;
+    let subClientes: { unsubscribe: () => void } | null = null;
+    let subVendas: { unsubscribe: () => void } | null = null;
+
     const load = async () => {
+      const userRes = await fetch('/api/auth/user');
+      if (!userRes.ok) return;
+      const user = await userRes.json();
+      if (!user?.id) return;
+      setCurrentUser(user.id);
+
       const [devs, cls, sls, cfg] = await Promise.all([
         dbService.getEmpreendimentos(),
         dbService.getClientes(),
@@ -6355,17 +6365,17 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
       setSales(sls);
       setConfig(cfg);
       setIsLoaded(true);
+
+      subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
+      subClientes = dbService.subscribeToClientes((d) => setClients(d));
+      subVendas = dbService.subscribeToVendas((d) => setSales(d));
     };
     load().catch(console.error);
 
-    const subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
-    const subClientes = dbService.subscribeToClientes((d) => setClients(d));
-    const subVendas = dbService.subscribeToVendas((d) => setSales(d));
-
     return () => {
-      subDevs.unsubscribe();
-      subClientes.unsubscribe();
-      subVendas.unsubscribe();
+      subDevs?.unsubscribe();
+      subClientes?.unsubscribe();
+      subVendas?.unsubscribe();
     };
   }, []);
 
