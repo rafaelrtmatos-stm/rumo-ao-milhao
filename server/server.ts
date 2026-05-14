@@ -2,7 +2,7 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth/index.js";
+import { setupAuth } from "./replit_integrations/auth/index.js";
 import bcrypt from "bcryptjs";
 import { db } from "./db.js";
 import { empreendimentos, clientes, vendas, appConfig, localUsers } from "../shared/schema.js";
