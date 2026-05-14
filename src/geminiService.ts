@@ -8,7 +8,9 @@ async function apiFetch(path: string, body: object): Promise<any> {
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.error || `Erro ${res.status}`);
   }
-  return res.json();
+  const data = await res.json();
+  if (data?.error) throw new Error(data.error);
+  return data;
 }
 
 function parseValue(s: string | undefined | null): number | null {
@@ -41,7 +43,6 @@ function extractLocallyFromText(rawText: string) {
     .replace(/solteira/, 'solteiro').replace(/casada/, 'casado')
     .replace(/divorciada/, 'divorciado').replace(/vi[uú]va/, 'viúvo')
     .replace(/vi[uú]vo/, 'viúvo').replace(/separada/, 'separado') : null;
-  // Extract all phone numbers (handles CONTATO(3): 92 99072-5820 / 92 99628-0988)
   const allPhones = [...text.matchAll(/(?:\+55[\s-]?)?\(?\d{2}\)?[\s.-]?\d{4,5}[-\s.]?\d{4}/g)].filter(m => {
     const digits = m[0].replace(/\D/g, '');
     return digits.length >= 10 && digits.length <= 11;
@@ -72,7 +73,6 @@ function extractLocallyFromText(rawText: string) {
   const empMatch = text.match(/(?:empreendimento|loteamento|terreno|residencial|fazenda|parque)[:\s]+([^\n,;]+)/i);
   const empreendimentoNome = empMatch ? empMatch[1].trim() : null;
   const pagamentoMatch = text.match(/entrada\s*R?\$?\s*([\d.,]+)\s+(\d+)\s*[xX]\s*R?\$?\s*([\d.,]+)/i);
-  // Handles: "50X DE R$ 350,00" or "50x de R$350,00" or "50 x R$ 350,00"
   const parcelasMatch = text.match(/(\d+)\s*[xX]\s*(?:de\s*)?R?\$?\s*([\d.,]+)/i);
   const entradaMatch = text.match(/entrada\s*(?:[:\s]*)?R?\$?\s*([\d.,]+)/i);
   const valorTotalMatch = text.match(/(?:valor\s*(?:do\s*)?(?:lote|total|imóvel))\s*[:\s]*R?\$?\s*([\d.,]+)/i);
@@ -121,8 +121,11 @@ export const geminiService = {
       reader.readAsDataURL(file);
     });
     try {
-      return await apiFetch('/api/gemini/analyze-map', { base64Data, mimeType: file.type });
-    } catch {
+      const result = await apiFetch('/api/gemini/analyze-map', { base64Data, mimeType: file.type });
+      console.log('Gemini analyze-map retornou:', result);
+      return result;
+    } catch (err) {
+      console.error('analyze-map error:', err);
       return { quadras: [], resumo: '' };
     }
   },
@@ -136,50 +139,31 @@ export const geminiService = {
       });
       return { base64, mimeType: file.type };
     }));
-    try {
-      return await apiFetch('/api/gemini/extract-files', { files: fileData });
-    } catch {
-      return extractLocallyFromText('');
+    const result = await apiFetch('/api/gemini/extract-files', { files: fileData });
+    console.log('Gemini extract-files retornou:', result);
+    if (!result || Object.keys(result).length === 0) {
+      throw new Error('A IA não retornou dados dos documentos. Verifique se os arquivos estão legíveis.');
     }
+    return result;
   },
 
   async extractSaleData(rawText: string) {
     try {
-      return await apiFetch('/api/gemini/extract-sale', { rawText });
-    } catch {
+      const result = await apiFetch('/api/gemini/extract-sale', { rawText });
+      console.log('Gemini extract-sale retornou:', result);
+      return result;
+    } catch (err) {
+      console.error('extract-sale fallback local:', err);
       return extractLocallyFromText(rawText);
     }
   },
 
   async smartPaste(rawText: string): Promise<Record<string, any>> {
-    try {
-      return await apiFetch('/api/gemini/smart-paste', { rawText });
-    } catch {
-      // fallback: try to extract locally with the same field mapping
-      const local = extractLocallyFromText(rawText);
-      return {
-        nome: local.nomeComprador,
-        rg: local.rg,
-        cpf: local.cpf,
-        estadoCivil: local.estadoCivil,
-        nascimento: local.nascimento,
-        endereco: local.endereco,
-        numero: local.numero,
-        bairro: local.bairro,
-        cidade: local.cidade,
-        estado: local.estado,
-        cep: local.cep,
-        telefone1: local.telefone1,
-        telefone2: local.telefone2,
-        lote: local.numeroLote,
-        quadra: local.quadra,
-        empreendimento: local.empreendimentoNome,
-        valorTotal: local.valorLote,
-        entrada: local.valorEntrada,
-        numeroParcelas: local.quantidadeParcelas,
-        valorParcela: local.valorParcela,
-        diaVencimento: local.dataVencimento ? local.dataVencimento.split('-')[2]?.replace(/^0/, '') : '',
-      };
+    const result = await apiFetch('/api/gemini/smart-paste', { rawText });
+    console.log('Gemini smart-paste retornou:', result);
+    if (!result || Object.keys(result).length === 0) {
+      throw new Error('A IA não retornou dados. Verifique se o texto contém informações de cadastro.');
     }
+    return result;
   },
 };

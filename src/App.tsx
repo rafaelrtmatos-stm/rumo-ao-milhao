@@ -75,6 +75,34 @@ function getRuasSugeridas(dev: Empreendimento, quadra: string, lote: string): st
   return [];
 }
 
+function getFilledFieldNames(data: Record<string, any>): string[] {
+  const map: Record<string, string> = {
+    nome: "Nome", nomeComprador: "Nome",
+    cpf: "CPF", rg: "RG", nascimento: "Nascimento",
+    estadoCivil: "Estado Civil", profissao: "Profissão",
+    nacionalidade: "Nacionalidade",
+    endereco: "Endereço", numero: "Número", bairro: "Bairro",
+    cidade: "Cidade", estado: "Estado", cep: "CEP",
+    telefone1: "Telefone 1", telefone2: "Telefone 2",
+    lote: "Lote", numeroLote: "Lote", quadra: "Quadra",
+    empreendimento: "Empreendimento", empreendimentoNome: "Empreendimento",
+    valorTotal: "Valor Total", valorLote: "Valor Total",
+    entrada: "Entrada", valorEntrada: "Entrada",
+    numeroParcelas: "Parcelas", quantidadeParcelas: "Parcelas",
+    valorParcela: "Valor Parcela",
+    diaVencimento: "Vencimento", vendedor: "Vendedor",
+  };
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (!map[k]) continue;
+    if (!v || v === 0 || v === "") continue;
+    const label = map[k];
+    if (!seen.has(label)) { seen.add(label); result.push(label); }
+  }
+  return result;
+}
+
 function defaultVencimento(): string {
   const d = new Date();
   d.setDate(d.getDate() + 30);
@@ -1989,6 +2017,11 @@ const VendasSection = ({
   const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
 
   const [pasteSuccess, setPasteSuccess] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteFilledFields, setPasteFilledFields] = useState<string[]>([]);
+  const [fileExtractSuccess, setFileExtractSuccess] = useState(false);
+  const [fileExtractError, setFileExtractError] = useState<string | null>(null);
+  const [fileFilledFields, setFileFilledFields] = useState<string[]>([]);
 
   const applyDataToState = (
     data: Record<string, any>,
@@ -2062,19 +2095,26 @@ const VendasSection = ({
   const runExtraction = async (text: string) => {
     setIsExtracting(true);
     setPasteSuccess(false);
+    setPasteError(null);
+    setPasteFilledFields([]);
     try {
       const data = await geminiService.smartPaste(text);
-      const filled = !!(
-        data.nome || data.cpf || data.rg ||
-        data.lote || data.valorTotal || data.telefone1
-      );
-      if (filled) {
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
         applyDataToState(data, developments);
+        setPasteFilledFields(fields);
         setPasteSuccess(true);
-        setTimeout(() => setPasteSuccess(false), 3500);
+        setRawText("");
+        setTimeout(() => { setPasteSuccess(false); setPasteFilledFields([]); }, 6000);
+      } else {
+        setPasteError("Não foi possível identificar dados. Verifique o texto.");
+        setTimeout(() => setPasteError(null), 5000);
       }
     } catch (err) {
       console.error("Extraction error:", err);
+      setPasteError((err as any)?.message || "Erro ao processar o texto. Tente novamente.");
+      setTimeout(() => setPasteError(null), 5000);
     } finally {
       setIsExtracting(false);
     }
@@ -2208,12 +2248,28 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
   const handleExtractFromFiles = async () => {
     if (attachedFiles.length === 0) return;
     setIsExtractingFiles(true);
+    setFileExtractSuccess(false);
+    setFileExtractError(null);
+    setFileFilledFields([]);
     try {
       const data = await geminiService.extractFromFiles(attachedFiles);
-      applyExtractedData(data, developments);
-      alert("IA preencheu os campos a partir dos documentos!");
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
+        applyExtractedData(data, developments);
+        setFileFilledFields(fields);
+        setFileExtractSuccess(true);
+        setAttachedFiles([]);
+        setTimeout(() => { setFileExtractSuccess(false); setFileFilledFields([]); }, 6000);
+      } else {
+        setFileExtractError("Não foi possível identificar dados nos documentos.");
+        setTimeout(() => setFileExtractError(null), 5000);
+      }
     } catch (err) {
-      alert("Erro ao extrair dados dos arquivos: " + ((err as any)?.message || "Tente novamente."));
+      const msg = (err as any)?.message || "Erro ao ler os documentos.";
+      console.error("File extraction error:", err);
+      setFileExtractError(msg);
+      setTimeout(() => setFileExtractError(null), 5000);
     } finally {
       setIsExtractingFiles(false);
     }
@@ -2541,10 +2597,29 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -4 }}
-                className="flex items-center gap-2 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
               >
-                <CheckCircle2 size={16} />
-                Campos preenchidos automaticamente!
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos automaticamente!
+                </div>
+                {pasteFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {pasteFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {pasteError && (
+              <motion.div
+                key="paste-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {pasteError}
               </motion.div>
             )}
           </AnimatePresence>
@@ -2558,7 +2633,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             {isExtracting ? (
               <>
                 <RefreshCw size={18} className="animate-spin" />
-                <span>Processando com IA...</span>
+                <span>🤖 Analisando...</span>
               </>
             ) : (
               <>
@@ -2642,7 +2717,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
               {isExtractingFiles ? (
                 <>
                   <RefreshCw size={18} className="animate-spin" />
-                  <span>Analisando documentos...</span>
+                  <span>🤖 Lendo documentos...</span>
                 </>
               ) : (
                 <>
@@ -2652,6 +2727,40 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
               )}
             </button>
           )}
+
+          <AnimatePresence>
+            {fileExtractSuccess && (
+              <motion.div
+                key="file-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos a partir dos documentos!
+                </div>
+                {fileFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {fileFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {fileExtractError && (
+              <motion.div
+                key="file-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {fileExtractError}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       </div>
 
