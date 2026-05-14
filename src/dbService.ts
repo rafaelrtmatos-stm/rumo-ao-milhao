@@ -8,7 +8,7 @@ async function apiFetch(path: string, options?: RequestInit) {
   const text = await res.text();
   let data: any;
   try { data = JSON.parse(text); } catch {
-    throw new Error('Servidor indisponível. Verifique as variáveis de ambiente no Vercel.');
+    throw new Error('Servidor indisponível. Tente novamente mais tarde.');
   }
   if (!res.ok) throw new Error(data?.error || `Erro ${res.status}`);
   return data;

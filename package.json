@@ -4,7 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "fuser -k 5000/tcp 2>/dev/null; fuser -k 24678/tcp 2>/dev/null; npx tsx server/server.ts",
+    "dev": "fuser -k 5000/tcp 2>/dev/null; fuser -k 24678/tcp 2>/dev/null; tsx server/server.ts",
     "build": "vite build && esbuild server/server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
     "start": "node dist/server.mjs",
     "db:push": "drizzle-kit push",
@@ -13,7 +13,6 @@
   },
   "dependencies": {
     "@google/genai": "^1.52.0",
-    "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.1.14",
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express-session": "^1.19.0",
@@ -53,7 +52,7 @@
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
-    "tsx": "^4.21.0",
+    "tsx": "^4.22.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.3"
   }
