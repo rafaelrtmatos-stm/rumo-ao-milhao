@@ -857,44 +857,53 @@ const EmpreendimentosSection = ({
   onStartSale: (v: Partial<Venda>) => void;
   proprietarios?: Proprietario[];
 }) => {
+  const emptyForm: Partial<Empreendimento> = {
+    nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
+    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "",
+  };
   const [isAdding, setIsAdding] = useState(false);
-  const [formData, setFormData] = useState<Partial<Empreendimento>>({
-    nome: "",
-    endereco: "",
-    cidade: "",
-    estado: "",
-    totalLotes: 0,
-    descricao: "",
-    comunidade: "",
-    quadras: "",
-    ruas: "",
-    proprietarioId: "",
-  });
+  const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
+  const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [selectedDevForMap, setSelectedDevForMap] =
     useState<Empreendimento | null>(null);
 
+  const openAddForm = () => {
+    setEditingDev(null);
+    setFormData(emptyForm);
+    setIsAdding(true);
+  };
+
+  const openEditForm = (dev: Empreendimento) => {
+    setEditingDev(dev);
+    setFormData({
+      nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
+      totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
+      quadras: dev.quadras, ruas: dev.ruas, proprietarioId: dev.proprietarioId || "",
+    });
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!formData.nome) return;
-    onSave({
-      ...(formData as Empreendimento),
-      id: Date.now().toString(),
-      lotesVendidos: 0,
-      lotesInfo: {},
-    });
+    if (editingDev) {
+      onSave({
+        ...editingDev,
+        ...formData,
+      } as Empreendimento);
+    } else {
+      onSave({
+        ...(formData as Empreendimento),
+        id: Date.now().toString(),
+        lotesVendidos: 0,
+        lotesInfo: {},
+      });
+    }
     setIsAdding(false);
-    setFormData({
-      nome: "",
-      endereco: "",
-      cidade: "",
-      estado: "",
-      totalLotes: 0,
-      descricao: "",
-      comunidade: "",
-      quadras: "",
-      ruas: "",
-    });
+    setEditingDev(null);
+    setFormData(emptyForm);
   };
 
   const handleMapUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -967,7 +976,10 @@ const EmpreendimentosSection = ({
             )}
           </label>
           <button
-            onClick={() => setIsAdding(!isAdding)}
+            onClick={() => {
+              if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
+              else openAddForm();
+            }}
             className="btn-primary flex-1 sm:flex-none"
           >
             {isAdding ? <X size={20} /> : <Plus size={20} />}
@@ -1090,12 +1102,15 @@ const EmpreendimentosSection = ({
                 )}
               </div>
 
-              <div className="md:col-span-2 flex justify-end pt-4">
+              <div className="md:col-span-2 flex justify-between items-center pt-4">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
+                </p>
                 <button
                   type="submit"
                   className="btn-primary w-full sm:w-auto px-12"
                 >
-                  Criar Empreendimento
+                  {editingDev ? "Salvar Alterações" : "Criar Empreendimento"}
                 </button>
               </div>
             </form>
@@ -1111,7 +1126,13 @@ const EmpreendimentosSection = ({
             whileHover={{ scale: 1.01, translateY: -4 }}
             className="card-premium flex flex-col group relative overflow-hidden"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+              <button
+                onClick={() => openEditForm(dev)}
+                className="p-2.5 bg-blue-50 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-sm"
+              >
+                <Pencil size={18} />
+              </button>
               <button
                 onClick={() => onDelete(dev.id)}
                 className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
@@ -3967,19 +3988,19 @@ const ConfigSection = ({
               </div>
               <div>
                 <label className="label">CPF</label>
-                <input className="input-field" value={vendedorForm.cpf} onChange={(e) => setVendedorForm({ ...vendedorForm, cpf: e.target.value })} />
+                <input className="input-field" placeholder="000.000.000-00" value={vendedorForm.cpf} onChange={(e) => setVendedorForm({ ...vendedorForm, cpf: maskCPF(e.target.value) })} />
               </div>
               <div className="sm:col-span-2">
-                <label className="label">Endereço</label>
-                <input className="input-field" placeholder="Rua/Av." value={vendedorForm.endereco} onChange={(e) => setVendedorForm({ ...vendedorForm, endereco: e.target.value })} />
+                <label className="label">Endereço (Tipo + Nome)</label>
+                <input className="input-field" placeholder="Ex: Travessa Maranhão" value={vendedorForm.endereco} onChange={(e) => setVendedorForm({ ...vendedorForm, endereco: e.target.value })} />
               </div>
               <div>
                 <label className="label">Número</label>
-                <input className="input-field" value={vendedorForm.numero} onChange={(e) => setVendedorForm({ ...vendedorForm, numero: e.target.value })} />
+                <input className="input-field" placeholder="Ex: 353" value={vendedorForm.numero} onChange={(e) => setVendedorForm({ ...vendedorForm, numero: e.target.value })} />
               </div>
               <div>
                 <label className="label">Bairro</label>
-                <input className="input-field" value={vendedorForm.bairro} onChange={(e) => setVendedorForm({ ...vendedorForm, bairro: e.target.value })} />
+                <input className="input-field" placeholder="Ex: Aeroporto Velho" value={vendedorForm.bairro} onChange={(e) => setVendedorForm({ ...vendedorForm, bairro: e.target.value })} />
               </div>
               <div>
                 <label className="label">Cidade</label>
@@ -3991,7 +4012,7 @@ const ConfigSection = ({
               </div>
               <div>
                 <label className="label">CEP</label>
-                <input className="input-field" value={vendedorForm.cep} onChange={(e) => setVendedorForm({ ...vendedorForm, cep: e.target.value })} />
+                <input className="input-field" placeholder="00000-000" value={vendedorForm.cep} onChange={(e) => setVendedorForm({ ...vendedorForm, cep: maskCEP(e.target.value) })} />
               </div>
             </div>
             <div className="flex gap-3 justify-end pt-2">
