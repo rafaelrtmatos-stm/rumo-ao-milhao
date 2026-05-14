@@ -2365,18 +2365,93 @@ const ContratosSection = ({
   developments,
   initialVenda,
   onUpdateStatus,
+  onSaveVenda,
 }: {
   sales: Venda[];
   clients: Cliente[];
   developments: Empreendimento[];
   initialVenda?: Venda | null;
   onUpdateStatus: (id: string, s: "pendente" | "pago" | "cancelado") => void;
+  onSaveVenda: (v: Venda, c: Cliente) => void;
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
+  const [showNovoContrato, setShowNovoContrato] = useState(false);
+  const [clienteMode, setClienteMode] = useState<"existente" | "novo">("existente");
+  const [clienteSelecionadoId, setClienteSelecionadoId] = useState("");
+  const [novoCliente, setNovoCliente] = useState<Partial<Cliente>>({
+    genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro",
+  });
+  const emptyContrato = {
+    empreendimentoId: "", quadra: "", numeroLote: "", rua: "",
+    valorLote: 0, valorEntrada: 0, quantidadeParcelas: 1, valorParcela: 0,
+    dataVencimento: "", formaPagamento: "Dinheiro", vendedor: "",
+    dataVenda: new Date().toISOString().split("T")[0],
+  };
+  const [contratoData, setContratoData] = useState(emptyContrato);
+
+  const handleSalvarContrato = () => {
+    let cliente: Cliente;
+    if (clienteMode === "existente") {
+      const found = clients.find((c) => c.id === clienteSelecionadoId);
+      if (!found) { alert("Selecione um cliente existente."); return; }
+      cliente = found;
+    } else {
+      if (!novoCliente.nome || !novoCliente.cpf) { alert("Preencha ao menos Nome e CPF do cliente."); return; }
+      cliente = {
+        id: `cli-${Date.now()}`,
+        nome: novoCliente.nome || "",
+        nacionalidade: novoCliente.nacionalidade || "brasileiro",
+        genero: (novoCliente.genero as "M" | "F" | "O") || "M",
+        rg: novoCliente.rg || "",
+        cpf: novoCliente.cpf || "",
+        estadoCivil: novoCliente.estadoCivil || "solteiro",
+        profissao: novoCliente.profissao || "",
+        nascimento: novoCliente.nascimento || "",
+        cep: novoCliente.cep || "",
+        endereco: novoCliente.endereco || "",
+        numero: novoCliente.numero || "",
+        bairro: novoCliente.bairro || "",
+        cidade: novoCliente.cidade || "",
+        estado: novoCliente.estado || "",
+        telefone1: novoCliente.telefone1 || "",
+        dataCadastro: new Date().toISOString(),
+      };
+    }
+    const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+    const venda: Venda = {
+      id: `venda-${Date.now()}`,
+      numeroContrato: `CONT-${Date.now()}`,
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      empreendimentoId: contratoData.empreendimentoId,
+      empreendimentoNome: dev?.nome || "",
+      numeroLote: contratoData.numeroLote,
+      quadra: contratoData.quadra,
+      rua: contratoData.rua,
+      valorLote: contratoData.valorLote,
+      valorEntrada: contratoData.valorEntrada,
+      quantidadeParcelas: contratoData.quantidadeParcelas,
+      valorParcela: contratoData.valorParcela,
+      dataVencimento: contratoData.dataVencimento,
+      vendedor: contratoData.vendedor,
+      dataVenda: contratoData.dataVenda,
+      custo: 0,
+      comissao: 0,
+      formaPagamento: contratoData.formaPagamento,
+      status: "pendente",
+    };
+    onSaveVenda(venda, cliente);
+    setShowNovoContrato(false);
+    setContratoData(emptyContrato);
+    setNovoCliente({ genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro" });
+    setClienteSelecionadoId("");
+    setSelectedVenda(venda);
+    setViewMode("contract");
+  };
 
   useEffect(() => {
     if (initialVenda) {
@@ -2441,20 +2516,192 @@ const ContratosSection = ({
           </p>
         </div>
 
-        <div className="relative w-full sm:w-80">
-          <Search
-            size={18}
-            className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-          />
-          <input
-            type="text"
-            placeholder="Pesquisar contratos..."
-            className="w-full h-12 pl-12 pr-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search
+              size={18}
+              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+            />
+            <input
+              type="text"
+              placeholder="Pesquisar contratos..."
+              className="w-full h-12 pl-12 pr-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <button
+            onClick={() => setShowNovoContrato(true)}
+            className="btn-primary flex items-center gap-2 h-12 px-6 whitespace-nowrap"
+          >
+            <Plus size={18} />
+            Novo Contrato
+          </button>
         </div>
       </div>
+
+      {/* Modal: Novo Contrato */}
+      <AnimatePresence>
+        {showNovoContrato && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-3xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <FileText size={20} />
+                  </div>
+                  <h3 className="text-lg font-display font-bold text-slate-800">Novo Contrato</h3>
+                </div>
+                <button onClick={() => setShowNovoContrato(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto p-6 space-y-6">
+                {/* Cliente */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Cliente</p>
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+                    {(["existente", "novo"] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setClienteMode(m)}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${clienteMode === m ? "bg-white shadow text-primary-main" : "text-slate-500"}`}
+                      >
+                        {m === "existente" ? "Cliente Existente" : "Novo Cliente"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {clienteMode === "existente" ? (
+                    <select
+                      className="input-field"
+                      value={clienteSelecionadoId}
+                      onChange={(e) => setClienteSelecionadoId(e.target.value)}
+                    >
+                      <option value="">Selecione um cliente...</option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome} — {c.cpf}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {[
+                        { label: "Nome Completo *", field: "nome", placeholder: "Nome do cliente" },
+                        { label: "CPF *", field: "cpf", placeholder: "000.000.000-00" },
+                        { label: "RG", field: "rg", placeholder: "RG" },
+                        { label: "Nascimento", field: "nascimento", placeholder: "DD/MM/AAAA" },
+                        { label: "Profissão", field: "profissao", placeholder: "Profissão" },
+                        { label: "Telefone", field: "telefone1", placeholder: "(00) 00000-0000" },
+                        { label: "Endereço", field: "endereco", placeholder: "Rua / Av." },
+                        { label: "Número", field: "numero", placeholder: "Nº" },
+                        { label: "Bairro", field: "bairro", placeholder: "Bairro" },
+                        { label: "Cidade", field: "cidade", placeholder: "Cidade" },
+                        { label: "Estado", field: "estado", placeholder: "UF" },
+                        { label: "CEP", field: "cep", placeholder: "00000-000" },
+                      ].map(({ label, field, placeholder }) => (
+                        <div key={field}>
+                          <label className="label">{label}</label>
+                          <input
+                            className="input-field"
+                            placeholder={placeholder}
+                            value={(novoCliente as any)[field] || ""}
+                            onChange={(e) => setNovoCliente({ ...novoCliente, [field]: e.target.value })}
+                          />
+                        </div>
+                      ))}
+                      <div>
+                        <label className="label">Estado Civil</label>
+                        <select className="input-field" value={novoCliente.estadoCivil || "solteiro"} onChange={(e) => setNovoCliente({ ...novoCliente, estadoCivil: e.target.value })}>
+                          {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Gênero</label>
+                        <select className="input-field" value={novoCliente.genero || "M"} onChange={(e) => setNovoCliente({ ...novoCliente, genero: e.target.value as "M" | "F" | "O" })}>
+                          <option value="M">Masculino</option>
+                          <option value="F">Feminino</option>
+                          <option value="O">Outro</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Imóvel */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Imóvel</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="label">Empreendimento</label>
+                      <select className="input-field" value={contratoData.empreendimentoId} onChange={(e) => setContratoData({ ...contratoData, empreendimentoId: e.target.value })}>
+                        <option value="">Selecione...</option>
+                        {developments.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                      </select>
+                    </div>
+                    {[
+                      { label: "Quadra", field: "quadra", placeholder: "Ex: A" },
+                      { label: "Lote", field: "numeroLote", placeholder: "Ex: 01" },
+                      { label: "Rua", field: "rua", placeholder: "Nome da rua" },
+                    ].map(({ label, field, placeholder }) => (
+                      <div key={field}>
+                        <label className="label">{label}</label>
+                        <input className="input-field" placeholder={placeholder} value={(contratoData as any)[field]} onChange={(e) => setContratoData({ ...contratoData, [field]: e.target.value })} />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Pagamento */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pagamento</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {[
+                      { label: "Valor do Lote (R$)", field: "valorLote", type: "number" },
+                      { label: "Entrada (R$)", field: "valorEntrada", type: "number" },
+                      { label: "Nº de Parcelas", field: "quantidadeParcelas", type: "number" },
+                      { label: "Valor da Parcela (R$)", field: "valorParcela", type: "number" },
+                    ].map(({ label, field, type }) => (
+                      <div key={field}>
+                        <label className="label">{label}</label>
+                        <input type={type} className="input-field" value={(contratoData as any)[field]} onChange={(e) => setContratoData({ ...contratoData, [field]: type === "number" ? Number(e.target.value) : e.target.value })} />
+                      </div>
+                    ))}
+                    <div>
+                      <label className="label">Forma de Pagamento</label>
+                      <select className="input-field" value={contratoData.formaPagamento} onChange={(e) => setContratoData({ ...contratoData, formaPagamento: e.target.value })}>
+                        {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Data de Vencimento das Parcelas</label>
+                      <input className="input-field" placeholder="Ex: todo dia 10" value={contratoData.dataVencimento} onChange={(e) => setContratoData({ ...contratoData, dataVencimento: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Data do Contrato</label>
+                      <input type="date" className="input-field" value={contratoData.dataVenda} onChange={(e) => setContratoData({ ...contratoData, dataVenda: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Vendedor</label>
+                      <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: e.target.value })} />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowNovoContrato(false)} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleSalvarContrato} className="btn-primary px-8">Gerar Contrato</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <div className="card-premium">
         <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
@@ -3730,6 +3977,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
             developments={developments}
             initialVenda={contractToOpen}
             onUpdateStatus={updateVendaStatus}
+            onSaveVenda={saveSale}
           />
         );
       case "clientes":
