@@ -1319,19 +1319,58 @@ const VendasSection = ({
 
   const handleCopySummary = () => {
     if (!lastSavedVenda) return;
-    const summary = `
-RESUMO DE VENDA - RUMO AO MILHÃO
---------------------------------
-Cliente: ${clientData.nome}
-CPF: ${clientData.cpf}
-Endereço: ${clientData.endereco}, nº ${clientData.numero} - ${clientData.bairro}
-Empreendimento: ${lastSavedVenda.empreendimentoNome}
-Lote: ${lastSavedVenda.numeroLote} | Quadra: ${lastSavedVenda.quadra}
-Valor Total: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(lastSavedVenda.valorLote)}
-Entrada: ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(lastSavedVenda.valorEntrada)}
-Parcelamento: ${lastSavedVenda.quantidadeParcelas}x de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(lastSavedVenda.valorParcela)}
-Vendedor: ${lastSavedVenda.vendedor}
-    `.trim();
+
+    const brl = (v: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+    // Format phone to +55 DD XXXXX-XXXX
+    const fmtPhone = (raw: string) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 11)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      return raw;
+    };
+
+    // Format nascimento YYYY-MM-DD → DD/MM/YYYY
+    const fmtNasc = (d: string) => {
+      if (!d) return "";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+
+    // Extract day from dataVencimento
+    const diaVenc = lastSavedVenda.dataVencimento
+      ? new Date(lastSavedVenda.dataVencimento + "T12:00:00").getDate()
+      : "";
+
+    // Build phone line
+    const phones = [clientData.telefone1, clientData.telefone2]
+      .filter(Boolean)
+      .map((p) => fmtPhone(p as string));
+    const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
+
+    const summary = `CADASTRO DO COMPRADOR
+NOME: ${(clientData.nome || "").toUpperCase()}
+RG: ${(clientData.rg || "").toUpperCase()}
+CPF: ${clientData.cpf || ""}
+ESTADO CIVIL: ${(clientData.estadoCivil || "").toUpperCase()}
+DATA DE ANIVERSÁRIO: ${fmtNasc(clientData.nascimento || "")}
+ENDEREÇO: ${(clientData.endereco || "").toUpperCase()}
+Nº: ${clientData.numero || ""}
+BAIRRO: ${(clientData.bairro || "").toUpperCase()}
+CEP: ${clientData.cep || ""}
+${phoneLabel}
+LOTE: ${lastSavedVenda.numeroLote}
+QUADRA: ${lastSavedVenda.quadra}
+EMPREENDIMENTO: ${lastSavedVenda.empreendimentoNome.toUpperCase()}
+VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
+ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
+QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
+DATA DE VENCIMENTO: ${diaVenc}
+VENDEDOR: ${lastSavedVenda.vendedor}`;
+
     navigator.clipboard.writeText(summary);
     alert("Resumo copiado para a área de transferência!");
   };
