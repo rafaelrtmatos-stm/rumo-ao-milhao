@@ -1938,46 +1938,38 @@ const VendasSection = ({
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
 
-  const handleExtractIA = async () => {
-    if (!rawText.trim()) return;
+  const [pasteSuccess, setPasteSuccess] = useState(false);
+
+  const extractAndApply = async (text: string) => {
     setIsExtracting(true);
+    setPasteSuccess(false);
     try {
-      const data = await geminiService.extractSaleData(rawText);
-      setClientData((prev) => ({
-        ...prev,
-        nome: data.nomeComprador || prev.nome,
-        nacionalidade: data.nacionalidade || prev.nacionalidade,
-        rg: data.rg || prev.rg,
-        cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
-        estadoCivil: data.estadoCivil || prev.estadoCivil,
-        profissao: data.profissao || prev.profissao,
-        nascimento: data.nascimento || prev.nascimento,
-        telefone1: data.telefone1 ? maskPhone(data.telefone1) : prev.telefone1,
-        telefone2: data.telefone2 ? maskPhone(data.telefone2) : prev.telefone2,
-        endereco: data.endereco || prev.endereco,
-        numero: data.numero || prev.numero,
-        bairro: data.bairro || prev.bairro,
-        cidade: data.cidade || prev.cidade,
-        estado: data.estado || prev.estado,
-        cep: data.cep ? maskCEP(data.cep) : prev.cep,
-      }));
-      setSaleData((prev) => ({
-        ...prev,
-        numeroLote: data.numeroLote || prev.numeroLote,
-        quadra: data.quadra || prev.quadra,
-        valorLote: data.valorLote || prev.valorLote,
-        valorEntrada: data.valorEntrada || prev.valorEntrada,
-        valorParcela: data.valorParcela || prev.valorParcela,
-        quantidadeParcelas: data.quantidadeParcelas || prev.quantidadeParcelas,
-        dataVencimento: data.dataVencimento || prev.dataVencimento,
-        vendedor: data.vendedor || prev.vendedor,
-      }));
-      alert("IA preencheu os campos identificados!");
+      const data = await geminiService.extractSaleData(text);
+      applyExtractedData(data, developments);
+      // Also fill telefone2 which applyExtractedData doesn't cover
+      if (data.telefone2) {
+        setClientData((prev) => ({ ...prev, telefone2: maskPhone(data.telefone2) }));
+      }
+      setPasteSuccess(true);
+      setTimeout(() => setPasteSuccess(false), 3000);
     } catch (err) {
-      alert("Erro ao extrair dados com IA.");
+      // silent — text stays in textarea, user can still click button manually
     } finally {
       setIsExtracting(false);
     }
+  };
+
+  const handleExtractIA = async () => {
+    if (!rawText.trim()) return;
+    await extractAndApply(rawText);
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData("text");
+    if (!pastedText.trim()) return;
+    setRawText(pastedText);
+    // Small timeout so textarea renders the text first
+    setTimeout(() => extractAndApply(pastedText), 50);
   };
 
   const handleCopySummary = () => {
@@ -2295,12 +2287,34 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
 
         <div className="space-y-4">
           {/* Textarea */}
-          <textarea
-            className="input-field min-h-[100px] resize-none"
-            placeholder="Cole aqui nome, CPF, endereço, lote, pagamento..."
-            value={rawText}
-            onChange={(e) => setRawText(e.target.value)}
-          />
+          <div className="relative">
+            <textarea
+              className="input-field min-h-[100px] resize-none"
+              placeholder="Cole o texto do cadastro aqui e os campos serão preenchidos automaticamente..."
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              onPaste={handlePaste}
+            />
+            {isExtracting && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex items-center justify-center gap-2 text-primary-main text-xs font-black uppercase tracking-widest">
+                <RefreshCw size={16} className="animate-spin" />
+                Preenchendo campos...
+              </div>
+            )}
+          </div>
+
+          {pasteSuccess && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center gap-2 text-emerald-600 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+            >
+              <CheckCircle2 size={16} />
+              Campos preenchidos automaticamente!
+            </motion.div>
+          )}
+
           <button
             type="button"
             disabled={isExtracting || !rawText.trim()}
@@ -2315,7 +2329,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             ) : (
               <>
                 <Sparkles size={18} />
-                <span>Preencher Automaticamente</span>
+                <span>Preencher Manualmente</span>
               </>
             )}
           </button>
