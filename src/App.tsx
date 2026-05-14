@@ -4812,145 +4812,148 @@ const ClientesSection = ({
 };
 
 const AniversariosSection = ({ clients }: { clients: Cliente[] }) => {
-  const currentMonth = new Date().getMonth();
   const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentDay = today.getDate();
 
-  const meshAniversariantes = clients.filter((c) => {
-    const bday = new Date(c.nascimento);
-    return bday.getMonth() === currentMonth;
-  });
+  const MONTHS = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  ];
+  const MONTHS_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
-  const proximos90Dias = clients
-    .filter((c) => {
-      const bday = new Date(c.nascimento);
-      const nextBday = new Date(
-        today.getFullYear(),
-        bday.getMonth(),
-        bday.getDate(),
-      );
-      if (nextBday < today) nextBday.setFullYear(today.getFullYear() + 1);
-      const diffTime = Math.abs(nextBday.getTime() - today.getTime());
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      return diffDays > 0 && diffDays <= 90 && bday.getMonth() !== currentMonth;
-    })
-    .sort((a, b) => {
-      const bdayA = new Date(a.nascimento);
-      const bdayB = new Date(b.nascimento);
-      return (
-        bdayA.getMonth() - bdayB.getMonth() || bdayA.getDate() - bdayB.getDate()
-      );
-    });
+  const byMonth: Cliente[][] = Array.from({ length: 12 }, (_, mi) =>
+    clients
+      .filter((c) => {
+        if (!c.nascimento) return false;
+        return new Date(c.nascimento).getMonth() === mi;
+      })
+      .sort((a, b) => new Date(a.nascimento).getDate() - new Date(b.nascimento).getDate())
+  );
+
+  const totalWithBirthday = clients.filter((c) => c.nascimento).length;
+
+  const isTodayBirthday = (c: Cliente) => {
+    if (!c.nascimento) return false;
+    const d = new Date(c.nascimento);
+    return d.getMonth() === currentMonth && d.getDate() === currentDay;
+  };
+
+  const waMsg = (c: Cliente, today: boolean) =>
+    `https://wa.me/55${c.telefone1.replace(/\D/g, "")}?text=${encodeURIComponent(
+      today
+        ? `Olá ${c.nome}, FELIZ ANIVERSÁRIO! 🎉 Que este dia seja especial. Muita saúde, paz e realizações!`
+        : `Olá ${c.nome}, passando para te desejar um Feliz Aniversário antecipado! Muita saúde e paz. Parabéns!`
+    )}`;
 
   return (
-    <div className="space-y-12">
-      <section>
-        <div className="flex items-center gap-3 mb-6 px-2">
-          <div className="p-3 bg-chumbo-base/10 text-chumbo-base rounded-2xl">
-            <Cake size={24} className="stroke-[2.5]" />
-          </div>
-          <h3 className="text-xl font-display font-bold text-slate-800 tracking-tight">
-            Celebrando este Mês
-          </h3>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center gap-4 px-1">
+        <div className="p-3 bg-chumbo-base/10 text-chumbo-base rounded-2xl">
+          <Cake size={24} className="stroke-[2.5]" />
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {meshAniversariantes.map((cliente) => (
-            <motion.div
-              whileHover={{ y: -5 }}
-              key={cliente.id}
-              className="card-premium bg-gradient-to-br from-chumbo-light/20 to-white flex gap-5 items-center border-chumbo-base/20"
-            >
-              <div className="p-4 bg-chumbo-base text-primary-contrast rounded-2xl shadow-lg shadow-chumbo-base/30">
-                <Cake size={28} />
-              </div>
-              <div>
-                <p className="font-display font-bold text-slate-800 text-lg leading-tight">
-                  {cliente.nome}
-                </p>
-                <div className="flex items-center gap-2 text-xs font-bold text-chumbo-base uppercase tracking-widest mt-1">
-                  <span>
-                    {new Date(cliente.nascimento).toLocaleDateString("pt-BR", {
-                      day: "2-digit",
-                      month: "long",
-                    })}
-                  </span>
-                  <span className="opacity-30">•</span>
-                  <span className="text-slate-400 font-mono">
-                    {cliente.telefone1}
-                  </span>
-                </div>
-              </div>
-              <div className="ml-auto">
-                <a
-                  href={`https://wa.me/55${cliente.telefone1.replace(/\D/g, "")}?text=${encodeURIComponent(`Olá ${cliente.nome}, passando para te desejar um Feliz Aniversário! Muita saúde, paz e realizações. Parabéns!`)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="p-3 bg-success-main/10 text-success-main rounded-xl hover:bg-success-main hover:text-white transition-all flex items-center justify-center shadow-lg shadow-success-main/10"
-                  title="Enviar parabéns via WhatsApp"
-                >
-                  <MessageCircle size={20} />
-                </a>
-              </div>
-            </motion.div>
-          ))}
-          {meshAniversariantes.length === 0 && (
-            <div className="col-span-full py-16 text-center text-slate-300 font-medium italic bg-slate-50 rounded-[32px] border-2 border-dashed border-slate-100">
-              Nenhuma comemoração prevista para este mês.
-            </div>
-          )}
+        <div>
+          <h3 className="text-xl font-display font-bold text-slate-800 tracking-tight">Calendário de Aniversariantes</h3>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">{totalWithBirthday} clientes com data de nascimento cadastrada</p>
         </div>
-      </section>
+      </div>
 
-      <section>
-        <div className="flex items-center gap-3 mb-6 px-2">
-          <div className="p-3 bg-slate-100 text-slate-400 rounded-2xl">
-            <ChevronRight size={24} className="stroke-[2.5]" />
-          </div>
-          <h3 className="text-xl font-display font-bold text-slate-800 tracking-tight">
-            Próximos 90 dias
-          </h3>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {proximos90Dias.map((cliente) => (
+      {/* Year grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {MONTHS.map((monthName, mi) => {
+          const isCurrentMonth = mi === currentMonth;
+          const people = byMonth[mi];
+          return (
             <div
-              key={cliente.id}
-              className="card-premium flex gap-5 items-center opacity-80 hover:opacity-100 transition-all"
+              key={mi}
+              className={`rounded-[24px] border overflow-hidden transition-all ${
+                isCurrentMonth
+                  ? "border-chumbo-base/40 shadow-lg shadow-chumbo-base/10"
+                  : "border-slate-100 shadow-sm"
+              }`}
             >
-              <div className="p-3.5 bg-slate-50 text-slate-300 rounded-2xl font-mono text-center leading-none">
-                <p className="text-[10px] uppercase font-bold text-slate-400">
-                  {new Date(cliente.nascimento).toLocaleDateString("pt-BR", {
-                    month: "short",
-                  })}
-                </p>
-                <p className="text-lg font-bold text-slate-600">
-                  {new Date(cliente.nascimento).getDate()}
-                </p>
+              {/* Month header */}
+              <div className={`px-5 py-3.5 flex items-center justify-between ${
+                isCurrentMonth
+                  ? "bg-chumbo-base text-white"
+                  : "bg-slate-50 text-slate-600"
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isCurrentMonth && <Cake size={15} className="opacity-80" />}
+                  <span className={`font-bold text-sm tracking-wide ${isCurrentMonth ? "text-white" : "text-slate-700"}`}>
+                    {monthName}
+                  </span>
+                  {isCurrentMonth && (
+                    <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                      Atual
+                    </span>
+                  )}
+                </div>
+                <span className={`text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center ${
+                  isCurrentMonth
+                    ? "bg-white/20 text-white"
+                    : people.length > 0
+                    ? "bg-chumbo-base/10 text-chumbo-base"
+                    : "text-slate-300"
+                }`}>
+                  {people.length}
+                </span>
               </div>
-              <div className="flex-1 min-w-0">
-                <p className="font-bold text-slate-700 truncate">
-                  {cliente.nome}
-                </p>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-0.5">
-                  {cliente.telefone1}
-                </p>
+
+              {/* People list */}
+              <div className="bg-white divide-y divide-slate-50">
+                {people.length === 0 ? (
+                  <p className="px-5 py-5 text-center text-[11px] text-slate-300 italic">
+                    Sem aniversariantes
+                  </p>
+                ) : (
+                  people.map((c) => {
+                    const d = new Date(c.nascimento);
+                    const isToday = isTodayBirthday(c);
+                    return (
+                      <div
+                        key={c.id}
+                        className={`flex items-center gap-3 px-4 py-3 group ${
+                          isToday ? "bg-amber-50" : "hover:bg-slate-50"
+                        }`}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center text-center leading-none flex-shrink-0 ${
+                          isToday
+                            ? "bg-amber-400 text-white shadow-md shadow-amber-200"
+                            : "bg-slate-100 text-slate-500"
+                        }`}>
+                          <span className="text-[8px] font-bold uppercase opacity-70">{MONTHS_SHORT[mi]}</span>
+                          <span className="text-sm font-bold leading-tight">{d.getDate()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate leading-tight ${isToday ? "text-amber-700" : "text-slate-700"}`}>
+                            {isToday && "🎂 "}{c.nome}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">{c.telefone1}</p>
+                        </div>
+                        <a
+                          href={waMsg(c, isToday)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={`p-2 rounded-xl transition-all flex-shrink-0 ${
+                            isToday
+                              ? "bg-success-main text-white shadow-md shadow-success-main/30"
+                              : "text-slate-300 hover:bg-success-main hover:text-white opacity-0 group-hover:opacity-100"
+                          }`}
+                          title="Enviar parabéns via WhatsApp"
+                        >
+                          <MessageCircle size={15} />
+                        </a>
+                      </div>
+                    );
+                  })
+                )}
               </div>
-              <a
-                href={`https://wa.me/55${cliente.telefone1.replace(/\D/g, "")}?text=${encodeURIComponent(`Olá ${cliente.nome}, passando para te desejar um Feliz Aniversário antecipado! Muita saúde, paz e realizações. Parabéns!`)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="p-2.5 bg-slate-50 text-slate-400 rounded-xl hover:bg-success-main hover:text-white transition-all shadow-sm"
-                title="Saldar via WhatsApp"
-              >
-                <MessageCircle size={18} />
-              </a>
             </div>
-          ))}
-          {proximos90Dias.length === 0 && (
-            <p className="col-span-full text-center text-slate-300 py-4 font-medium italic">
-              Sem aniversariantes no radar.
-            </p>
-          )}
-        </div>
-      </section>
+          );
+        })}
+      </div>
     </div>
   );
 };
