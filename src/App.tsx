@@ -227,8 +227,8 @@ const Sidebar = ({
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "calculadora", label: "Calculadora", icon: Calculator },
-    { id: "config", label: "Configurações", icon: Settings },
     ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
+    { id: "config", label: "Configurações", icon: Settings },
   ];
 
   return (
@@ -5801,7 +5801,10 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
 
   const saveDev = (newDev: Empreendimento) => {
     if (!isLoaded) return;
-    const updated = [...developments, newDev];
+    const exists = developments.some((d) => d.id === newDev.id);
+    const updated = exists
+      ? developments.map((d) => (d.id === newDev.id ? newDev : d))
+      : [...developments, newDev];
     setDevelopments(updated);
     dbService.saveEmpreendimentos(updated).catch(console.error);
   };
