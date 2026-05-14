@@ -24,6 +24,9 @@ import {
   FileDown,
   UserCheck,
   Pencil,
+  ArrowLeft,
+  User,
+  List,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -660,16 +663,21 @@ const DashboardSection = ({
 const LotDashboard = ({
   dev,
   sales,
+  clients,
   onStartSale,
   onClose,
+  onViewContract,
 }: {
   dev: Empreendimento;
   sales: Venda[];
+  clients: Cliente[];
   onStartSale: (v: Partial<Venda>) => void;
   onClose: () => void;
+  onViewContract: (v: Venda) => void;
 }) => {
   const quadras = dev.quadras?.split(",").map((q) => q.trim()) || [];
   const soldLots = sales.filter((s) => s.empreendimentoId === dev.id);
+  const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
 
   const isSold = (q: string, l: string) => {
     return soldLots.some(
@@ -753,9 +761,10 @@ const LotDashboard = ({
                       return (
                         <div
                           key={l}
+                          onClick={() => { if (sold && soldData) setSelectedLotSale(soldData); }}
                           className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${
                             sold
-                              ? "bg-red-50 border-red-100 text-red-600"
+                              ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100 hover:border-red-200 hover:shadow-lg"
                               : "bg-white border-slate-100 hover:border-primary-main hover:shadow-xl hover:shadow-primary-main/5 text-slate-400"
                           }`}
                         >
@@ -842,16 +851,113 @@ const LotDashboard = ({
           <div className="flex items-center gap-2">
             <div className="w-3 h-3 rounded-full bg-red-400" />
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Vendido
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-primary-main" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Selecionado
+              Vendido — clique para ver cliente
             </span>
           </div>
         </div>
+
+        {/* Client detail overlay — slides in from the right */}
+        <AnimatePresence>
+          {selectedLotSale && (
+            <motion.div
+              initial={{ x: "100%" }}
+              animate={{ x: 0 }}
+              exit={{ x: "100%" }}
+              transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[32px]"
+            >
+              <div className="p-6 sm:p-8 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                <button
+                  onClick={() => setSelectedLotSale(null)}
+                  className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400 transition-colors"
+                >
+                  <ArrowLeft size={20} />
+                </button>
+                <div className="flex-1">
+                  <h3 className="text-xl font-display font-bold text-slate-800">
+                    Quadra {selectedLotSale.quadra} · Lote {selectedLotSale.numeroLote}
+                  </h3>
+                  <p className="text-sm text-red-400 font-medium">{dev.nome} — Lote Vendido</p>
+                </div>
+                <span className={`text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-full ${
+                  selectedLotSale.status === "pago" ? "bg-green-100 text-green-700" :
+                  selectedLotSale.status === "cancelado" ? "bg-red-100 text-red-700" :
+                  "bg-amber-100 text-amber-700"
+                }`}>
+                  {selectedLotSale.status === "pago" ? "Pago" : selectedLotSale.status === "cancelado" ? "Cancelado" : "Pendente"}
+                </span>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-5">
+                {/* Comprador */}
+                <div className="card-premium space-y-4">
+                  <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                    <div className="p-2 bg-primary-main/10 rounded-xl text-primary-main">
+                      <User size={18} />
+                    </div>
+                    <h4 className="font-bold text-slate-800">Comprador</h4>
+                  </div>
+                  <p className="text-lg font-display font-bold text-slate-800">{selectedLotSale.clienteNome}</p>
+                  {(() => {
+                    const c = clients.find((c) => c.id === selectedLotSale!.clienteId);
+                    if (!c) return null;
+                    return (
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                        {c.cpf && <p><span className="text-slate-400">CPF:</span> <span className="font-medium">{c.cpf}</span></p>}
+                        {c.telefone1 && <p><span className="text-slate-400">Tel:</span> <span className="font-medium">{c.telefone1}</span></p>}
+                        {c.estadoCivil && <p><span className="text-slate-400">Est. Civil:</span> <span className="font-medium capitalize">{c.estadoCivil}</span></p>}
+                        {c.profissao && <p><span className="text-slate-400">Profissão:</span> <span className="font-medium">{c.profissao}</span></p>}
+                        {c.endereco && (
+                          <p className="col-span-2">
+                            <span className="text-slate-400">Endereço:</span>{" "}
+                            <span className="font-medium">{c.endereco}{c.numero ? `, ${c.numero}` : ""} — {c.bairro}, {c.cidade}/{c.estado}</span>
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Dados da Venda */}
+                <div className="card-premium space-y-4">
+                  <div className="flex items-center gap-3 pb-3 border-b border-slate-100">
+                    <div className="p-2 bg-slate-100 rounded-xl text-slate-600">
+                      <FileText size={18} />
+                    </div>
+                    <h4 className="font-bold text-slate-800">Dados da Venda</h4>
+                    <span className="ml-auto text-[10px] font-bold text-slate-400">Nº {selectedLotSale.numeroContrato}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
+                    {selectedLotSale.rua && <p className="col-span-2"><span className="text-slate-400">Rua:</span> <span className="font-medium">{selectedLotSale.rua}</span></p>}
+                    <p><span className="text-slate-400">Valor total:</span> <span className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorLote)}</span></p>
+                    <p><span className="text-slate-400">Entrada:</span> <span className="font-medium">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorEntrada)}</span></p>
+                    <p><span className="text-slate-400">Parcelas:</span> <span className="font-medium">{selectedLotSale.quantidadeParcelas}x {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorParcela)}</span></p>
+                    <p><span className="text-slate-400">Vencimento:</span> <span className="font-medium">dia {selectedLotSale.dataVencimento ? new Date(selectedLotSale.dataVencimento + "T12:00:00").getDate() : "—"}</span></p>
+                    <p><span className="text-slate-400">Data venda:</span> <span className="font-medium">{selectedLotSale.dataVenda ? new Date(selectedLotSale.dataVenda + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</span></p>
+                    {selectedLotSale.vendedor && <p><span className="text-slate-400">Vendedor:</span> <span className="font-medium">{selectedLotSale.vendedor}</span></p>}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 flex justify-between items-center">
+                <button
+                  onClick={() => setSelectedLotSale(null)}
+                  className="btn-secondary px-6 flex items-center gap-2"
+                >
+                  <ArrowLeft size={16} />
+                  Voltar ao Mapa
+                </button>
+                <button
+                  onClick={() => { onViewContract(selectedLotSale!); onClose(); }}
+                  className="btn-primary px-8 flex items-center gap-2"
+                >
+                  <FileText size={16} />
+                  Ver Contrato
+                </button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </motion.div>
     </div>
   );
@@ -860,21 +966,27 @@ const LotDashboard = ({
 const EmpreendimentosSection = ({
   developments,
   sales,
+  clients,
   onSave,
   onDelete,
   onUpdateLotesInfo,
+  onDeleteLot,
   onStartSale,
+  onViewContract,
   proprietarios = [],
 }: {
   developments: Empreendimento[];
   sales: Venda[];
+  clients: Cliente[];
   onSave: (d: Empreendimento) => void;
   onDelete: (id: string) => void;
   onUpdateLotesInfo: (
     id: string,
     info: Record<string, { rua: string }>,
   ) => void;
+  onDeleteLot: (devId: string, key: string) => void;
   onStartSale: (v: Partial<Venda>) => void;
+  onViewContract: (v: Venda) => void;
   proprietarios?: Proprietario[];
 }) => {
   const emptyForm: Partial<Empreendimento> = {
@@ -888,6 +1000,7 @@ const EmpreendimentosSection = ({
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "" });
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "gerenciar">("cadastrar");
 
   const handleSalvarLote = () => {
     if (!lotRegDev || !lotRegForm.quadra || !lotRegForm.numeroLote) {
@@ -1330,16 +1443,18 @@ const EmpreendimentosSection = ({
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
+            clients={clients}
             onStartSale={(v) => {
               onStartSale(v);
               setSelectedDevForMap(null);
             }}
             onClose={() => setSelectedDevForMap(null)}
+            onViewContract={onViewContract}
           />
         )}
       </AnimatePresence>
 
-      {/* Modal: Cadastrar Lote */}
+      {/* Modal: Cadastrar / Gerenciar Lotes */}
       <AnimatePresence>
         {lotRegDev && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
@@ -1347,15 +1462,16 @@ const EmpreendimentosSection = ({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
             >
+              {/* Header */}
               <div className="p-6 border-b border-slate-100 flex justify-between items-center">
                 <div className="flex items-center gap-3">
                   <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
                     <MapPin size={20} />
                   </div>
                   <div>
-                    <h3 className="text-lg font-display font-bold text-slate-800">Cadastrar Lote</h3>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Lotes do Empreendimento</h3>
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lotRegDev.nome}</p>
                   </div>
                 </div>
@@ -1363,82 +1479,225 @@ const EmpreendimentosSection = ({
                   <X size={20} className="text-slate-500" />
                 </button>
               </div>
-              <div className="p-6 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="label">Quadra *</label>
-                    <input
-                      list="lot-reg-quadras"
-                      className="input-field"
-                      placeholder="Ex: A"
-                      value={lotRegForm.quadra}
-                      onChange={(e) => setLotRegForm({ ...lotRegForm, quadra: e.target.value, rua: "" })}
-                    />
-                    <datalist id="lot-reg-quadras">
-                      {lotRegDev.quadras?.split(",").map((q) => (
-                        <option key={q.trim()} value={q.trim()} />
-                      ))}
-                    </datalist>
-                  </div>
-                  <div>
-                    <label className="label">Nº do Lote *</label>
-                    <input
-                      className="input-field"
-                      placeholder="Ex: 01"
-                      value={lotRegForm.numeroLote}
-                      onChange={(e) => setLotRegForm({ ...lotRegForm, numeroLote: e.target.value })}
-                    />
-                  </div>
-                </div>
-                <div>
-                  {(() => {
-                    const quadra = lotRegForm.quadra.trim();
-                    const sugestoes = quadra && lotRegDev.ruasPorQuadra?.[quadra]
-                      ? lotRegDev.ruasPorQuadra[quadra].split(",").map((r) => r.trim()).filter(Boolean)
-                      : [];
-                    return (
-                      <>
-                        <label className="label flex items-center gap-2">
-                          Rua / Acesso do Lote
-                          {sugestoes.length > 0 && (
-                            <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full normal-case">
-                              {sugestoes.length} sugestão(ões) disponível(is)
-                            </span>
-                          )}
-                        </label>
+
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100">
+                <button
+                  onClick={() => setLotRegTab("cadastrar")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                    lotRegTab === "cadastrar"
+                      ? "text-primary-main border-b-2 border-primary-main"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Plus size={14} />
+                  {lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()]
+                    ? "Editar Lote"
+                    : "Cadastrar Lote"}
+                </button>
+                <button
+                  onClick={() => setLotRegTab("gerenciar")}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                    lotRegTab === "gerenciar"
+                      ? "text-primary-main border-b-2 border-primary-main"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <List size={14} />
+                  Lotes Registrados
+                  {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
+                    <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                      {Object.keys(lotRegDev.lotesInfo || {}).length}
+                    </span>
+                  )}
+                </button>
+              </div>
+
+              {/* Tab: Cadastrar */}
+              {lotRegTab === "cadastrar" && (
+                <>
+                  <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="label">Quadra *</label>
                         <input
-                          list="lot-reg-ruas"
+                          list="lot-reg-quadras"
                           className="input-field"
-                          placeholder={sugestoes.length > 0 ? `Ex: ${sugestoes[0]}` : "Nome da rua ou acesso"}
-                          value={lotRegForm.rua}
-                          onChange={(e) => setLotRegForm({ ...lotRegForm, rua: e.target.value })}
+                          placeholder="Ex: A"
+                          value={lotRegForm.quadra}
+                          onChange={(e) => setLotRegForm({ ...lotRegForm, quadra: e.target.value, rua: "" })}
                         />
-                        {sugestoes.length > 0 && (
-                          <datalist id="lot-reg-ruas">
-                            {sugestoes.map((r) => <option key={r} value={r} />)}
-                          </datalist>
+                        <datalist id="lot-reg-quadras">
+                          {lotRegDev.quadras?.split(",").map((q) => (
+                            <option key={q.trim()} value={q.trim()} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="label">Nº do Lote *</label>
+                        <input
+                          className="input-field"
+                          placeholder="Ex: 01"
+                          value={lotRegForm.numeroLote}
+                          onChange={(e) => setLotRegForm({ ...lotRegForm, numeroLote: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      {(() => {
+                        const quadra = lotRegForm.quadra.trim();
+                        const sugestoes = quadra && lotRegDev.ruasPorQuadra?.[quadra]
+                          ? lotRegDev.ruasPorQuadra[quadra].split(",").map((r) => r.trim()).filter(Boolean)
+                          : [];
+                        return (
+                          <>
+                            <label className="label flex items-center gap-2">
+                              Rua / Acesso do Lote
+                              {sugestoes.length > 0 && (
+                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full normal-case">
+                                  {sugestoes.length} sugestão(ões)
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              list="lot-reg-ruas"
+                              className="input-field"
+                              placeholder={sugestoes.length > 0 ? `Ex: ${sugestoes[0]}` : "Nome da rua ou acesso"}
+                              value={lotRegForm.rua}
+                              onChange={(e) => setLotRegForm({ ...lotRegForm, rua: e.target.value })}
+                            />
+                            {sugestoes.length > 0 && (
+                              <datalist id="lot-reg-ruas">
+                                {sugestoes.map((r) => <option key={r} value={r} />)}
+                              </datalist>
+                            )}
+                            {sugestoes.length > 0 && (
+                              <p className="text-[10px] text-slate-400 mt-1">Sugestões para Q.{quadra}: {sugestoes.join(", ")}</p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    {lotRegForm.quadra && lotRegForm.numeroLote && (
+                      <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
+                        <span className="font-bold text-slate-700">Chave:</span>{" "}
+                        {`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()}
+                        {lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] && (
+                          <span className="ml-2 text-amber-600 font-bold">⚠ Será atualizado</span>
                         )}
-                        {sugestoes.length > 0 && (
-                          <p className="text-[10px] text-slate-400 mt-1">Sugestões para Quadra {quadra}: {sugestoes.join(", ")}</p>
-                        )}
-                      </>
-                    );
-                  })()}
-                </div>
-                {lotRegForm.quadra && lotRegForm.numeroLote && (
-                  <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
-                    <span className="font-bold text-slate-700">Chave do lote:</span>{" "}
-                    {`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()}
-                    {lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] && (
-                      <span className="ml-2 text-amber-600 font-bold">⚠ Lote já cadastrado — será atualizado</span>
+                      </div>
                     )}
                   </div>
-                )}
-              </div>
-              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-                <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
-                <button onClick={handleSalvarLote} className="btn-primary px-8">Salvar Lote</button>
-              </div>
+                  <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                    <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
+                    <button onClick={handleSalvarLote} className="btn-primary px-8">Salvar Lote</button>
+                  </div>
+                </>
+              )}
+
+              {/* Tab: Gerenciar */}
+              {lotRegTab === "gerenciar" && (
+                <>
+                  <div className="flex-1 overflow-y-auto">
+                    {Object.keys(lotRegDev.lotesInfo || {}).length === 0 ? (
+                      <div className="p-10 text-center text-slate-400 space-y-2">
+                        <MapPin size={32} className="mx-auto opacity-30" />
+                        <p className="font-medium text-sm">Nenhum lote cadastrado ainda.</p>
+                        <button onClick={() => setLotRegTab("cadastrar")} className="text-xs text-primary-main font-bold underline">
+                          Cadastrar primeiro lote
+                        </button>
+                      </div>
+                    ) : (
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
+                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
+                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Rua</th>
+                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
+                            <th className="px-4 py-3" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(lotRegDev.lotesInfo || {})
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, info]) => {
+                              const [quadra, ...loteParts] = key.split("-");
+                              const lote = loteParts.join("-");
+                              const venda = sales.find(
+                                (s) => s.empreendimentoId === lotRegDev.id &&
+                                  s.quadra.toUpperCase() === quadra &&
+                                  s.numeroLote === lote
+                              );
+                              return (
+                                <tr key={key} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                  <td className="px-4 py-3">
+                                    <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
+                                  <td className="px-4 py-3 text-slate-500 text-xs max-w-[120px] truncate">{info.rua || <span className="italic text-slate-300">sem rua</span>}</td>
+                                  <td className="px-4 py-3 text-xs">
+                                    {venda ? (
+                                      <span className="text-red-600 font-bold flex items-center gap-1">
+                                        <User size={11} />
+                                        {venda.clienteNome.split(" ")[0]}
+                                      </span>
+                                    ) : (
+                                      <span className="text-green-600 text-[10px] font-bold">Disponível</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-1">
+                                      <button
+                                        onClick={() => {
+                                          setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "" });
+                                          setLotRegTab("cadastrar");
+                                        }}
+                                        className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      {!venda && (
+                                        <button
+                                          onClick={() => {
+                                            if (confirm(`Remover lote ${key}?`)) {
+                                              onDeleteLot(lotRegDev.id, key);
+                                              setLotRegDev((prev) => {
+                                                if (!prev) return null;
+                                                const newInfo = { ...(prev.lotesInfo || {}) };
+                                                delete newInfo[key];
+                                                return { ...prev, lotesInfo: newInfo };
+                                              });
+                                            }
+                                          }}
+                                          className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
+                                          title="Remover"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-slate-100 flex justify-between items-center">
+                    <p className="text-[10px] text-slate-400">Lotes com comprador não podem ser removidos.</p>
+                    <button
+                      onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "" }); setLotRegTab("cadastrar"); }}
+                      className="btn-primary px-5 py-2 text-xs flex items-center gap-2"
+                    >
+                      <Plus size={13} />
+                      Novo Lote
+                    </button>
+                  </div>
+                </>
+              )}
             </motion.div>
           </div>
         )}
@@ -5243,6 +5502,17 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
     dbService.saveEmpreendimentos(updated).catch(console.error);
   };
 
+  const deleteLot = (devId: string, key: string) => {
+    const updated = developments.map((d) => {
+      if (d.id !== devId) return d;
+      const newLotesInfo = { ...(d.lotesInfo || {}) };
+      delete newLotesInfo[key];
+      return { ...d, lotesInfo: newLotesInfo };
+    });
+    setDevelopments(updated);
+    dbService.saveEmpreendimentos(updated).catch(console.error);
+  };
+
   const saveAppConfig = (newConfig: AppConfig) => {
     setConfig(newConfig);
     dbService.saveAppConfig(newConfig).catch(console.error);
@@ -5293,10 +5563,13 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
           <EmpreendimentosSection
             developments={developments}
             sales={sales}
+            clients={clients}
             onSave={saveDev}
             onDelete={deleteDev}
             onUpdateLotesInfo={updateLotesInfo}
+            onDeleteLot={deleteLot}
             onStartSale={handleStartSale}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
             proprietarios={config.proprietarios || []}
           />
         );
