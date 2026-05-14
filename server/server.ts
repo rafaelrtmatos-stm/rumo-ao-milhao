@@ -181,7 +181,12 @@ Retorne APENAS JSON (sem markdown):
 {"lotes":[{"quadra":"A","lote":"01","rua":"Nome da Rua"}],"totalLotes":0,"ruasEncontradas":["Rua 1"]}`;
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ parts: [{ text: prompt }, { inlineData: { data: base64Data, mimeType } }] }],
+      contents: [
+        {
+          role: "user",
+          parts: [{ inlineData: { data: base64Data, mimeType } }, { text: prompt }],
+        },
+      ],
     });
     res.json(safeParseJson(response.text));
   } catch (e: any) {
@@ -203,7 +208,12 @@ Retorne SOMENTE JSON puro (sem markdown, sem explicações):
 {"nome":null,"cpf":null,"rg":null,"nascimento":null,"estadoCivil":null,"profissao":null,"nacionalidade":null,"endereco":null,"numero":null,"bairro":null,"cidade":null,"estado":null,"cep":null,"telefone1":null,"numeroLote":null,"quadra":null,"empreendimentoNome":null,"valorLote":null,"valorEntrada":null,"valorParcela":null,"quantidadeParcelas":null,"dataVencimento":null,"vendedor":null}`;
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ parts: [{ text: prompt }, ...fileParts] }],
+      contents: [
+        {
+          role: "user",
+          parts: [...fileParts, { text: prompt }],
+        },
+      ],
     });
     res.json(safeParseJson(response.text));
   } catch (e: any) {
@@ -221,7 +231,12 @@ Extraia todos os dados do texto abaixo. Retorne SOMENTE JSON puro (sem markdown)
 Texto: """${rawText}"""`;
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
-      contents: [{ parts: [{ text: prompt }] }],
+      contents: [
+        {
+          role: "user",
+          parts: [{ text: prompt }],
+        },
+      ],
     });
     res.json(safeParseJson(response.text));
   } catch (e: any) {
