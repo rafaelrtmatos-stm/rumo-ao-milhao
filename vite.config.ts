@@ -11,6 +11,9 @@ export default defineConfig({
       '@shared': path.resolve(__dirname, 'shared'),
     },
   },
+  build: {
+    outDir: 'dist/public',
+  },
   server: {
     allowedHosts: true,
     hmr: process.env.DISABLE_HMR !== 'true',

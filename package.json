@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "fuser -k 5000/tcp 2>/dev/null; fuser -k 24678/tcp 2>/dev/null; tsx server/server.ts",
-    "build": "vite build && esbuild server/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
-    "start": "node dist/server.cjs",
+    "build": "vite build && esbuild server/server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.mjs",
+    "start": "node dist/server.mjs",
     "db:push": "drizzle-kit push",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit"
