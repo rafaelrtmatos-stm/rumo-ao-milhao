@@ -7,15 +7,13 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isRegister, setIsRegister] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
     try {
-      const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
-      const res = await fetch(endpoint, {
+      const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -23,7 +21,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
       const text = await res.text();
       let data: any = {};
       try { data = JSON.parse(text); } catch {
-        throw new Error("Servidor indisponível. Verifique as variáveis de ambiente no Vercel (DATABASE_URL, SESSION_SECRET, GEMINI_API_KEY).");
+        throw new Error("Servidor indisponível. Tente novamente mais tarde.");
       }
       if (!res.ok) throw new Error(data.error || "Erro ao autenticar.");
       onLogin();
@@ -114,15 +112,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
               disabled={loading}
               className="w-full h-16 bg-[#1c1c1e] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-black/30 hover:bg-[#2c2c2e] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading ? "Aguarde..." : isRegister ? "Criar Conta" : "Entrar no Sistema"}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => { setIsRegister(!isRegister); setError(""); }}
-              className="w-full text-center text-[10px] font-bold text-slate-400 uppercase tracking-widest hover:text-slate-600 transition-colors"
-            >
-              {isRegister ? "Já tenho uma conta → Entrar" : "Novo usuário → Criar conta"}
+              {loading ? "Aguarde..." : "Entrar no Sistema"}
             </button>
           </form>
         </div>

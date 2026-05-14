@@ -209,12 +209,14 @@ const Sidebar = ({
   isOpen,
   setIsOpen,
   onLogout,
+  isAdmin,
 }: {
   currentSection: Section;
   setSection: (s: Section) => void;
   isOpen: boolean;
   setIsOpen: (val: boolean) => void;
   onLogout?: () => void;
+  isAdmin?: boolean;
 }) => {
   const menuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -226,6 +228,7 @@ const Sidebar = ({
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "calculadora", label: "Calculadora", icon: Calculator },
     { id: "config", label: "Configurações", icon: Settings },
+    ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
   ];
 
   return (
@@ -5555,9 +5558,152 @@ const ProprietariosSection = ({
   );
 };
 
+// --- Usuários Section (admin only) ---
+
+const UsuariosSection = () => {
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/admin/users");
+      if (res.ok) setUsers(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao criar usuário.");
+      setSuccess(`Usuário ${newEmail} criado com sucesso!`);
+      setNewEmail("");
+      setNewPassword("");
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleDelete = async (id: string, email: string) => {
+    if (!confirm(`Excluir o usuário ${email}? Esta ação não pode ser desfeita.`)) return;
+    try {
+      const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await loadUsers();
+    } catch (err: any) {
+      alert(err.message);
+    }
+  };
+
+  return (
+    <div className="space-y-8">
+      {/* Create user card */}
+      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
+        <h2 className="text-lg font-bold text-primary-main mb-6 uppercase tracking-widest text-[11px]">
+          Criar Novo Usuário
+        </h2>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">E-mail</label>
+              <input
+                type="email"
+                required
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="corretor@email.com"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Senha (mín. 6 caracteres)</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+          </div>
+          {error && (
+            <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>
+          )}
+          {success && (
+            <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>
+          )}
+          <button
+            type="submit"
+            disabled={creating}
+            className="h-12 px-8 bg-primary-main text-primary-contrast rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-50"
+          >
+            {creating ? "Criando..." : "Criar Usuário"}
+          </button>
+        </form>
+      </div>
+
+      {/* User list card */}
+      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-6">
+          Usuários Cadastrados
+        </h2>
+        {loading ? (
+          <p className="text-slate-400 text-sm">Carregando...</p>
+        ) : (
+          <div className="space-y-3">
+            {users.map((u) => (
+              <div key={u.id} className="flex items-center justify-between p-4 rounded-2xl bg-surface-bg border border-border-subtle">
+                <div>
+                  <p className="text-sm font-bold text-slate-700">{u.email}</p>
+                  <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
+                    {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                  </p>
+                </div>
+                {!u.isAdmin && (
+                  <button
+                    onClick={() => handleDelete(u.id, u.email)}
+                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                    title="Excluir usuário"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 // --- Main App ---
 
-export default function App({ onLogout }: { onLogout?: () => void }) {
+export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAdmin?: boolean }) {
   const [section, setSection] = useState<Section>("dashboard");
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -5788,6 +5934,8 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         return <CalculatorSection />;
       case "config":
         return <ConfigSection config={config} onSave={saveAppConfig} />;
+      case "usuarios":
+        return isAdmin ? <UsuariosSection /> : <DashboardSection sales={sales} developments={developments} />;
       default:
         return <DashboardSection sales={sales} developments={developments} />;
     }
@@ -5804,6 +5952,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
       aniversarios: "Calendário de Aniversariantes",
       calculadora: "Simulador de Vendas",
       config: "Configurações do Sistema",
+      usuarios: "Gerenciar Usuários",
     };
     return titles[section];
   };
@@ -5816,6 +5965,7 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         onLogout={onLogout}
+        isAdmin={isAdmin}
       />
 
       <main className="flex-1 lg:ml-72 p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 pb-32 lg:pb-10 no-print transition-all duration-300">

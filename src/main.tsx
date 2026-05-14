@@ -4,34 +4,46 @@ import App from "./App";
 import { LoginScreen } from "./auth";
 import "./index.css";
 
-async function checkSession(): Promise<boolean> {
+interface UserInfo {
+  id: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+async function checkSession(): Promise<UserInfo | null> {
   try {
     const res = await fetch("/api/auth/user");
-    return res.ok;
+    if (!res.ok) return null;
+    return await res.json();
   } catch {
-    return false;
+    return null;
   }
 }
 
 function Root() {
-  const [loggedIn, setLoggedIn] = useState(false);
+  const [user, setUser] = useState<UserInfo | null>(null);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    checkSession().then((ok) => {
-      setLoggedIn(ok);
+    checkSession().then((u) => {
+      setUser(u);
       setChecking(false);
     });
   }, []);
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
-    setLoggedIn(false);
+    setUser(null);
+  };
+
+  const handleLogin = async () => {
+    const u = await checkSession();
+    setUser(u);
   };
 
   if (checking) return null;
-  if (!loggedIn) return <LoginScreen onLogin={() => setLoggedIn(true)} />;
-  return <App onLogout={handleLogout} />;
+  if (!user) return <LoginScreen onLogin={handleLogin} />;
+  return <App onLogout={handleLogout} isAdmin={user.isAdmin} />;
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(<Root />);

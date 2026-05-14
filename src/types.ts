@@ -123,4 +123,4 @@ export interface AppConfig {
   proprietarios?: Proprietario[];
 }
 
-export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config' | 'proprietarios';
+export type Section = 'dashboard' | 'empreendimentos' | 'vendas' | 'contratos' | 'clientes' | 'aniversarios' | 'calculadora' | 'config' | 'proprietarios' | 'usuarios';

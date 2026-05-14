@@ -35,8 +35,21 @@ function getUserId(req: any): string {
   return (req.session as any)?.localUser?.id || req.user?.claims?.sub;
 }
 
-// POST /api/auth/register
-app.post("/api/auth/register", async (req: any, res) => {
+// Middleware: only admin users can proceed
+const isAdminUser: RequestHandler = async (req: any, res, next) => {
+  const localUser = (req.session as any)?.localUser;
+  if (!localUser?.id) return res.status(401).json({ error: "Não autenticado." });
+  try {
+    const [user] = await db.select().from(localUsers).where(eq(localUsers.id, localUser.id));
+    if (!user?.isAdmin) return res.status(403).json({ error: "Acesso restrito ao administrador." });
+    next();
+  } catch {
+    res.status(500).json({ error: "Erro ao verificar permissão." });
+  }
+};
+
+// POST /api/auth/register — admin only
+app.post("/api/auth/register", isAuthenticated, isAdminUser, async (req: any, res) => {
   try {
     const { email, password } = req.body;
     if (!email || !password || password.length < 6) {
@@ -48,12 +61,34 @@ app.post("/api/auth/register", async (req: any, res) => {
     }
     const passwordHash = await bcrypt.hash(password, 10);
     const id = `lu-${Date.now()}`;
-    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash });
-    (req.session as any).localUser = { id, email: email.toLowerCase() };
+    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash, isAdmin: false });
     res.json({ id, email: email.toLowerCase() });
   } catch (e: any) {
     console.error("Register error:", e);
-    res.status(500).json({ error: e?.message || "Erro ao criar conta." });
+    res.status(500).json({ error: e?.message || "Erro ao criar usuário." });
+  }
+});
+
+// GET /api/admin/users — list all users (admin only)
+app.get("/api/admin/users", isAuthenticated, isAdminUser, async (_req, res) => {
+  try {
+    const rows = await db.select({ id: localUsers.id, email: localUsers.email, isAdmin: localUsers.isAdmin, createdAt: localUsers.createdAt }).from(localUsers);
+    res.json(rows);
+  } catch (e: any) {
+    res.status(500).json({ error: "Erro ao buscar usuários." });
+  }
+});
+
+// DELETE /api/admin/users/:id — delete user (admin only, cannot delete self)
+app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const selfId = (req.session as any)?.localUser?.id;
+    if (id === selfId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
+    await db.delete(localUsers).where(eq(localUsers.id, id));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: "Erro ao excluir usuário." });
   }
 });
 
@@ -89,9 +124,16 @@ app.post("/api/auth/logout", (req: any, res) => {
 // GET /api/auth/user — override the one from registerAuthRoutes
 app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
   const localUser = (req.session as any)?.localUser;
-  if (localUser) return res.json({ id: localUser.id, email: localUser.email });
+  if (localUser) {
+    try {
+      const [row] = await db.select({ isAdmin: localUsers.isAdmin }).from(localUsers).where(eq(localUsers.id, localUser.id));
+      return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.isAdmin ?? false });
+    } catch {
+      return res.json({ id: localUser.id, email: localUser.email, isAdmin: false });
+    }
+  }
   const userId = req.user?.claims?.sub;
-  res.json({ id: userId, email: req.user?.claims?.email });
+  res.json({ id: userId, email: req.user?.claims?.email, isAdmin: false });
 });
 
 function safeParseJson(text: string | undefined | null): any {

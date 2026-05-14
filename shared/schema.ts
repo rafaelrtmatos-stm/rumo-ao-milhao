@@ -1,12 +1,13 @@
 export * from "./models/auth";
 export * from "./models/chat";
 
-import { pgTable, text, jsonb, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, jsonb, timestamp, boolean } from "drizzle-orm/pg-core";
 
 export const localUsers = pgTable("local_users", {
   id: text("id").primaryKey(),
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
+  isAdmin: boolean("is_admin").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
