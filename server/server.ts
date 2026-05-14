@@ -455,8 +455,12 @@ async function seedAdminIfNeeded() {
   try {
     const existing = await db.select({ id: localUsers.id }).from(localUsers);
     if (existing.length === 0) {
-      const email = process.env.ADMIN_EMAIL || "admin@rumaoaomilhao.com";
-      const password = process.env.ADMIN_PASSWORD || "admin123";
+      const email = process.env.ADMIN_EMAIL;
+      const password = process.env.ADMIN_PASSWORD;
+      if (!email || !password) {
+        console.log("[Setup] Set ADMIN_EMAIL and ADMIN_PASSWORD secrets to auto-create the first admin user.");
+        return;
+      }
       const passwordHash = await bcrypt.hash(password, 10);
       const id = `lu-admin-${Date.now()}`;
       await db.insert(localUsers).values({ id, email, passwordHash, isAdmin: true });
