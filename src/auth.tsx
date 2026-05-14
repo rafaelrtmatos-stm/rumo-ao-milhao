@@ -12,14 +12,12 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [isRegister, setIsRegister] = useState(false);
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
-    const endpoint = isRegister ? "/api/auth/register" : "/api/auth/login";
+    const endpoint = "/api/auth/login";
 
     try {
       const res = await fetch(endpoint, {
@@ -124,24 +122,8 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
               disabled={loading}
               className="w-full h-16 bg-[#2d5016] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-[#2d5016]/20 hover:bg-[#1a300d] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading
-                ? "Aguarde..."
-                : isRegister
-                ? "Criar Conta"
-                : "Entrar no Sistema"}
+              {loading ? "Aguarde..." : "Entrar no Sistema"}
             </button>
-
-            <div className="text-center">
-              <button
-                type="button"
-                onClick={() => { setIsRegister(!isRegister); setError(""); }}
-                className="text-[10px] uppercase font-black text-slate-400 tracking-widest hover:text-[#2d5016] transition-colors"
-              >
-                {isRegister
-                  ? "Já tenho uma conta"
-                  : "Criar nova conta"}
-              </button>
-            </div>
           </form>
         </div>
 
