@@ -22,7 +22,7 @@ export interface Empreendimento {
   ruasPorQuadra?: Record<string, string>; // Legado — mantido para compatibilidade
   ruasFaixas?: Array<{ quadra: string; loteInicio: number; loteFim: number; rua: string }>; // Faixas de lotes por rua (ex: Q1, lotes 1-4 → Rua Principal)
   lotesInfo?: Record<string, { rua: string }>; // Chave: 'QUADRA-LOTE', Valor: { rua: 'Nome da Rua' }
-  proprietarioId?: string;
+
 }
 
 export interface Cliente {

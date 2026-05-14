@@ -1038,7 +1038,7 @@ const EmpreendimentosSection = ({
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
-    descricao: "", comunidade: "", quadras: "", ruas: "", proprietarioId: "", ruasPorQuadra: {}, ruasFaixas: [],
+    descricao: "", comunidade: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [],
   };
   const [isAdding, setIsAdding] = useState(false);
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
@@ -1071,7 +1071,7 @@ const EmpreendimentosSection = ({
     setFormData({
       nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
       totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
-      quadras: dev.quadras, ruas: dev.ruas, proprietarioId: dev.proprietarioId || "",
+      quadras: dev.quadras, ruas: dev.ruas,
       ruasPorQuadra: dev.ruasPorQuadra || {},
       ruasFaixas: dev.ruasFaixas || [],
     });
@@ -1373,22 +1373,6 @@ const EmpreendimentosSection = ({
                   }
                 />
               </div>
-              <div className="md:col-span-2">
-                <label className="label">Proprietário (Vendedor no Contrato)</label>
-                <select
-                  className="input-field"
-                  value={formData.proprietarioId || ""}
-                  onChange={(e) => setFormData({ ...formData, proprietarioId: e.target.value })}
-                >
-                  <option value="">Selecionar proprietário...</option>
-                  {proprietarios.map((p) => (
-                    <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
-                  ))}
-                </select>
-                {proprietarios.length === 0 && (
-                  <p className="text-[10px] text-amber-500 font-bold mt-1">Cadastre proprietários na aba "Proprietários" primeiro.</p>
-                )}
-              </div>
 
               <div className="md:col-span-2 flex justify-between items-center pt-4">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
@@ -1483,18 +1467,6 @@ const EmpreendimentosSection = ({
               )}
             </div>
 
-            {(() => {
-              const prop = proprietarios.find(p => p.id === dev.proprietarioId);
-              return prop ? (
-                <div className="mb-3 px-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Proprietário</p>
-                  <p className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
-                    <UserCheck size={12} className="text-primary-main" />
-                    {prop.nome}
-                  </p>
-                </div>
-              ) : null;
-            })()}
 
             <div className="mt-auto space-y-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
               <div className="flex justify-between items-end">
@@ -3368,6 +3340,7 @@ const ContratosSection = ({
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
   };
   const [showGerarModal, setShowGerarModal] = useState(false);
+  const [gerarProprietarioId, setGerarProprietarioId] = useState("");
   const [gerarVendedor, setGerarVendedor] = useState(emptyGerarVendedor);
   const [gerarExtra, setGerarExtra] = useState({
     rua: "", comunidade: "", formaPagamento: "Dinheiro",
@@ -3377,27 +3350,8 @@ const ContratosSection = ({
   const handleOpenGerarContrato = () => {
     if (!selectedVenda) return;
     const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    // Auto-fill vendedor from the proprietário linked to the empreendimento
-    const prop = dev?.proprietarioId
-      ? proprietarios.find((p) => p.id === dev.proprietarioId)
-      : undefined;
-    setGerarVendedor(
-      prop
-        ? {
-            nome: prop.nome,
-            nacionalidade: prop.nacionalidade || "brasileiro",
-            estadoCivil: prop.estadoCivil || "Solteiro(a)",
-            rg: prop.rg || "",
-            cpf: prop.cpf || "",
-            endereco: prop.endereco || "",
-            numero: prop.numero || "",
-            bairro: prop.bairro || "",
-            cidade: prop.cidade || "",
-            estado: prop.estado || "",
-            cep: prop.cep || "",
-          }
-        : emptyGerarVendedor
-    );
+    setGerarProprietarioId("");
+    setGerarVendedor(emptyGerarVendedor);
     setGerarExtra({
       rua: selectedVenda.rua || "",
       comunidade: dev?.comunidade || "",
@@ -3409,6 +3363,28 @@ const ContratosSection = ({
       areaTotal: selectedVenda.areaTotal || "",
     });
     setShowGerarModal(true);
+  };
+
+  const handleSelectProprietario = (propId: string) => {
+    setGerarProprietarioId(propId);
+    const prop = proprietarios.find((p) => p.id === propId);
+    if (prop) {
+      setGerarVendedor({
+        nome: prop.nome,
+        nacionalidade: prop.nacionalidade || "brasileiro",
+        estadoCivil: prop.estadoCivil || "Solteiro(a)",
+        rg: prop.rg || "",
+        cpf: prop.cpf || "",
+        endereco: prop.endereco || "",
+        numero: prop.numero || "",
+        bairro: prop.bairro || "",
+        cidade: prop.cidade || "",
+        estado: prop.estado || "",
+        cep: prop.cep || "",
+      });
+    } else {
+      setGerarVendedor(emptyGerarVendedor);
+    }
   };
 
   const handleDownloadDocx = async () => {
@@ -4538,6 +4514,122 @@ const ContratosSection = ({
                     </div>
                   </div>
                 )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Selecionar Proprietário para gerar .docx */}
+      <AnimatePresence>
+        {showGerarModal && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <FileDown size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-slate-800">Gerar Contrato (.docx)</h4>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecione o proprietário do lote</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowGerarModal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Seletor de proprietário */}
+                <div>
+                  <label className="label">Proprietário do Lote (Vendedor no Contrato)</label>
+                  {proprietarios.length > 0 ? (
+                    <select
+                      className="input-field font-semibold"
+                      value={gerarProprietarioId}
+                      onChange={(e) => handleSelectProprietario(e.target.value)}
+                    >
+                      <option value="">Selecionar proprietário...</option>
+                      {proprietarios.map((p) => (
+                        <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <p className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-2 rounded-xl">
+                      Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.
+                    </p>
+                  )}
+                </div>
+
+                {/* Campos editáveis do vendedor */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {[
+                    { label: "Nome Completo *", field: "nome" },
+                    { label: "Nacionalidade", field: "nacionalidade" },
+                    { label: "Estado Civil", field: "estadoCivil" },
+                    { label: "RG", field: "rg" },
+                    { label: "CPF", field: "cpf" },
+                    { label: "Endereço", field: "endereco" },
+                    { label: "Número", field: "numero" },
+                    { label: "Bairro", field: "bairro" },
+                    { label: "Cidade", field: "cidade" },
+                    { label: "Estado", field: "estado" },
+                    { label: "CEP", field: "cep" },
+                  ].map(({ label, field }) => (
+                    <div key={field} className={field === "nome" || field === "endereco" ? "sm:col-span-2" : ""}>
+                      <label className="label">{label}</label>
+                      <input
+                        className="input-field"
+                        value={(gerarVendedor as any)[field] || ""}
+                        onChange={(e) => setGerarVendedor({ ...gerarVendedor, [field]: e.target.value })}
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                {/* Dados extras do contrato */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                  <p className="sm:col-span-2 text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Contrato</p>
+                  <div className="sm:col-span-2">
+                    <label className="label">Rua do Lote</label>
+                    <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Comunidade / Região</label>
+                    <input className="input-field" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Forma de Pagamento</label>
+                    <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
+                      {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                    </select>
+                  </div>
+                  {[
+                    { label: "Medida Frente (m)", field: "medidaFrente" },
+                    { label: "Lateral Direita (m)", field: "medidaLateralDir" },
+                    { label: "Lateral Esquerda (m)", field: "medidaLateralEsq" },
+                    { label: "Fundos (m)", field: "medidaFundos" },
+                    { label: "Área Total (m²)", field: "areaTotal" },
+                  ].map(({ label, field }) => (
+                    <div key={field}>
+                      <label className="label">{label}</label>
+                      <input className="input-field" value={(gerarExtra as any)[field] || ""} onChange={(e) => setGerarExtra({ ...gerarExtra, [field]: e.target.value })} />
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowGerarModal(false)} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 disabled:opacity-50">
+                  {downloadingDocx ? "Gerando..." : <><FileDown size={16} /> Baixar .docx</>}
+                </button>
               </div>
             </motion.div>
           </div>
