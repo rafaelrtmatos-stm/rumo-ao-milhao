@@ -2,10 +2,12 @@ import express from "express";
 import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
-import { setupAuth, isAuthenticated, registerAuthRoutes } from "./replit_integrations/auth/index.js";
+import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth/index.js";
+import bcrypt from "bcryptjs";
 import { db } from "./db.js";
-import { empreendimentos, clientes, vendas, appConfig } from "../shared/schema.js";
+import { empreendimentos, clientes, vendas, appConfig, localUsers } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
+import type { RequestHandler } from "express";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -17,14 +19,79 @@ app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 await setupAuth(app);
-registerAuthRoutes(app);
 
 const GEMINI_KEY = process.env.GEMINI_API_KEY || process.env.AI_INTEGRATIONS_GEMINI_API_KEY;
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_KEY}`;
 
+// --- Local Auth ---
+const isAuthenticated: RequestHandler = (req: any, res, next) => {
+  if ((req.session as any)?.localUser?.id) return next();
+  if (req.isAuthenticated?.() && req.user?.claims?.sub) return next();
+  return res.status(401).json({ message: "Unauthorized" });
+};
+
 function getUserId(req: any): string {
-  return req.user?.claims?.sub;
+  return (req.session as any)?.localUser?.id || req.user?.claims?.sub;
 }
+
+// POST /api/auth/register
+app.post("/api/auth/register", async (req: any, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6) {
+      return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
+    }
+    const existing = await db.select().from(localUsers).where(eq(localUsers.email, email.toLowerCase()));
+    if (existing.length > 0) {
+      return res.status(400).json({ error: "Este e-mail já está cadastrado." });
+    }
+    const passwordHash = await bcrypt.hash(password, 10);
+    const id = `lu-${Date.now()}`;
+    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash });
+    (req.session as any).localUser = { id, email: email.toLowerCase() };
+    res.json({ id, email: email.toLowerCase() });
+  } catch (e: any) {
+    console.error("Register error:", e);
+    res.status(500).json({ error: e?.message || "Erro ao criar conta." });
+  }
+});
+
+// POST /api/auth/login
+app.post("/api/auth/login", async (req: any, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ error: "Preencha e-mail e senha." });
+    }
+    const [user] = await db.select().from(localUsers).where(eq(localUsers.email, email.toLowerCase()));
+    if (!user) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos." });
+    }
+    const match = await bcrypt.compare(password, user.passwordHash);
+    if (!match) {
+      return res.status(401).json({ error: "E-mail ou senha incorretos." });
+    }
+    (req.session as any).localUser = { id: user.id, email: user.email };
+    res.json({ id: user.id, email: user.email });
+  } catch (e: any) {
+    console.error("Login error:", e);
+    res.status(500).json({ error: e?.message || "Erro ao entrar." });
+  }
+});
+
+// POST /api/auth/logout
+app.post("/api/auth/logout", (req: any, res) => {
+  (req.session as any).localUser = null;
+  req.session.destroy(() => res.json({ ok: true }));
+});
+
+// GET /api/auth/user — override the one from registerAuthRoutes
+app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
+  const localUser = (req.session as any)?.localUser;
+  if (localUser) return res.json({ id: localUser.id, email: localUser.email });
+  const userId = req.user?.claims?.sub;
+  res.json({ id: userId, email: req.user?.claims?.email });
+});
 
 function safeParseJson(text: string | undefined | null): any {
   if (!text) return {};
