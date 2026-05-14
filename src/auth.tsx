@@ -1,18 +1,9 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { Building2, Lock } from "lucide-react";
+import { supabase } from "./lib/supabase";
 
-async function apiPost(path: string, body: any) {
-  const res = await fetch(path, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Erro ${res.status}`);
-  return data;
-}
+export { supabase };
 
 export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState("");
@@ -25,7 +16,8 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
     setLoading(true);
     setError("");
     try {
-      await apiPost("/api/auth/login", { email, password });
+      const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
+      if (authError) throw new Error(authError.message);
       onLogin();
     } catch (err: any) {
       setError(err.message || "Erro ao autenticar.");
