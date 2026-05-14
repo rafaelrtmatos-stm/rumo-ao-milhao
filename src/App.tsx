@@ -75,6 +75,12 @@ function getRuasSugeridas(dev: Empreendimento, quadra: string, lote: string): st
   return [];
 }
 
+function defaultVencimento(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split("T")[0];
+}
+
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -1883,7 +1889,7 @@ const VendasSection = ({
     valorLote: undefined,
     valorEntrada: undefined,
     quantidadeParcelas: undefined,
-    dataVencimento: "",
+    dataVencimento: defaultVencimento(),
     vendedor: "",
     valorParcela: 0,
     custo: 0,
@@ -3632,7 +3638,7 @@ const ContratosSection = ({
   const emptyContrato = {
     empreendimentoId: "", quadra: "", numeroLote: "", rua: "",
     valorLote: 0, valorEntrada: 0, quantidadeParcelas: 1, valorParcela: 0,
-    dataVencimento: "", formaPagamento: "Dinheiro", vendedor: "", vendedorId: "",
+    dataVencimento: defaultVencimento(), formaPagamento: "Dinheiro", vendedor: "", vendedorId: "",
     dataVenda: new Date().toISOString().split("T")[0],
   };
   const [contratoData, setContratoData] = useState(emptyContrato);
