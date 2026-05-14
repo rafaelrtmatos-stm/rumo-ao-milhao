@@ -1,39 +1,31 @@
 import { useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 import { motion } from "motion/react";
 import { Building2, Lock } from "lucide-react";
 
-interface AuthUser {
-  id: string;
-  email: string;
-}
+export const supabase = createClient(
+  import.meta.env.VITE_SUPABASE_URL,
+  import.meta.env.VITE_SUPABASE_ANON_KEY,
+);
 
-export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) {
+export function LoginScreen({ onLogin }: { onLogin: () => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError("");
-
-    const endpoint = "/api/auth/login";
-
-    try {
-      const res = await fetch(endpoint, {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setError(data.error || "Erro ao autenticar.");
-      } else {
-        onLogin({ id: data.id, email: data.email });
-      }
-    } catch {
-      setError("Erro de conexão. Tente novamente.");
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      setError("Credenciais inválidas. Verifique seu email e senha.");
+    } else {
+      onLogin();
     }
     setLoading(false);
   };
@@ -122,7 +114,7 @@ export function LoginScreen({ onLogin }: { onLogin: (user: AuthUser) => void }) 
               disabled={loading}
               className="w-full h-16 bg-[#2d5016] text-white rounded-2xl text-xs uppercase tracking-[0.2em] font-black shadow-xl shadow-[#2d5016]/20 hover:bg-[#1a300d] transition-all transform hover:-translate-y-1 active:scale-95"
             >
-              {loading ? "Aguarde..." : "Entrar no Sistema"}
+              {loading ? "Entrando..." : "Entrar no Sistema"}
             </button>
           </form>
         </div>
