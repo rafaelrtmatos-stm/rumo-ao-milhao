@@ -44,3 +44,8 @@ externalPort = 3000
 deploymentTarget = "autoscale"
 run = ["node", "dist/server.mjs"]
 build = ["npm", "run", "build"]
+
+[userenv]
+
+[userenv.shared]
+VITE_SUPABASE_URL = "https://uftxcwcryqpkfdfxzlno.supabase.co"
