@@ -3619,10 +3619,27 @@ const ContratosSection = ({
 const ClientesSection = ({
   clients,
   sales,
+  onUpdateCliente,
 }: {
   clients: Cliente[];
   sales: Venda[];
+  onUpdateCliente: (c: Cliente) => void;
 }) => {
+  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Cliente>>({});
+
+  const openEdit = (c: Cliente) => {
+    setEditingCliente(c);
+    setEditForm({ ...c });
+  };
+
+  const saveEdit = () => {
+    if (!editingCliente) return;
+    const updated: Cliente = { ...editingCliente, ...editForm } as Cliente;
+    onUpdateCliente(updated);
+    setEditingCliente(null);
+  };
+
   return (
     <div className="space-y-8">
       <div className="flex justify-between items-center px-2">
@@ -3641,12 +3658,11 @@ const ClientesSection = ({
             <thead>
               <tr className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">
                 <th className="pb-2 px-2 sm:px-4">Titular</th>
-                <th className="pb-2 px-2 sm:px-4 hidden sm:table-cell">
-                  Identificação
-                </th>
+                <th className="pb-2 px-2 sm:px-4 hidden sm:table-cell">Identificação</th>
+                <th className="pb-2 px-2 sm:px-4 hidden md:table-cell">Aniversário</th>
                 <th className="pb-2 px-2 sm:px-4">Contato</th>
                 <th className="pb-2 px-2 sm:px-4 text-right">Saldo</th>
-                <th className="pb-2 px-2 sm:px-4 text-center">Status</th>
+                <th className="pb-2 px-2 sm:px-4 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="text-sm">
@@ -3654,7 +3670,9 @@ const ClientesSection = ({
                 const totalInvestido = sales
                   .filter((v) => v.clienteId === cliente.id)
                   .reduce((acc, v) => acc + v.valorLote, 0);
-
+                const nascFormatted = cliente.nascimento
+                  ? (() => { try { return new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); } catch { return cliente.nascimento; } })()
+                  : "—";
                 return (
                   <tr key={cliente.id} className="group">
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors">
@@ -3668,30 +3686,31 @@ const ClientesSection = ({
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-mono text-xs text-slate-500 hidden sm:table-cell">
                       {cliente.cpf}
                     </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-xs text-slate-500 hidden md:table-cell">
+                      {nascFormatted}
+                    </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors">
                       <div className="text-[10px] sm:text-xs font-bold text-slate-600">
                         {cliente.telefone1}
                       </div>
                     </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main text-xs sm:text-sm">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                        maximumFractionDigits: 0,
-                      }).format(totalInvestido)}
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(totalInvestido)}
                     </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-xl sm:rounded-r-2xl transition-colors text-center">
-                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-success-main shadow-lg shadow-success-main/50" />
+                      <button
+                        onClick={() => openEdit(cliente)}
+                        className="text-[10px] font-bold text-primary-main hover:underline px-2 py-1 rounded-lg hover:bg-primary-main/10 transition-colors"
+                      >
+                        Editar
+                      </button>
                     </td>
                   </tr>
                 );
               })}
               {clients.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="py-16 text-center text-slate-300 italic font-medium"
-                  >
+                  <td colSpan={6} className="py-16 text-center text-slate-300 italic font-medium">
                     Nenhum cliente na base.
                   </td>
                 </tr>
@@ -3700,6 +3719,75 @@ const ClientesSection = ({
           </table>
         </div>
       </div>
+
+      {/* Modal de edição */}
+      {editingCliente && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-display font-bold text-slate-800 text-lg">Editar Cliente</h3>
+              <button onClick={() => setEditingCliente(null)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { label: "Nome Completo", field: "nome" },
+                  { label: "CPF", field: "cpf" },
+                  { label: "RG", field: "rg" },
+                  { label: "Profissão", field: "profissao" },
+                  { label: "Nacionalidade", field: "nacionalidade" },
+                  { label: "Telefone 1", field: "telefone1" },
+                  { label: "Telefone 2", field: "telefone2" },
+                  { label: "Endereço", field: "endereco" },
+                  { label: "Número", field: "numero" },
+                  { label: "Bairro", field: "bairro" },
+                  { label: "Cidade", field: "cidade" },
+                  { label: "Estado", field: "estado" },
+                  { label: "CEP", field: "cep" },
+                ].map(({ label, field }) => (
+                  <div key={field}>
+                    <label className="label">{label}</label>
+                    <input
+                      className="input-field"
+                      value={(editForm as any)[field] || ""}
+                      onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
+                    />
+                  </div>
+                ))}
+                <div>
+                  <label className="label">Aniversário (Data Nascimento)</label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={(editForm as any).nascimento || ""}
+                    onChange={(e) => setEditForm({ ...editForm, nascimento: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="label">Estado Civil</label>
+                  <select className="input-field" value={editForm.estadoCivil || "solteiro"} onChange={(e) => setEditForm({ ...editForm, estadoCivil: e.target.value })}>
+                    {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => (
+                      <option key={o} value={o.toLowerCase()}>{o}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Gênero</label>
+                  <select className="input-field" value={editForm.genero || "M"} onChange={(e) => setEditForm({ ...editForm, genero: e.target.value as "M" | "F" | "O" })}>
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                    <option value="O">Outro</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setEditingCliente(null)} className="btn-secondary px-6">Cancelar</button>
+              <button onClick={saveEdit} className="btn-primary px-6">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
@@ -4725,7 +4813,19 @@ export default function App({ onLogout }: { onLogout?: () => void }) {
           />
         );
       case "clientes":
-        return <ClientesSection clients={clients} sales={sales} />;
+        return (
+          <ClientesSection
+            clients={clients}
+            sales={sales}
+            onUpdateCliente={(updated) => {
+              const updatedList = clients.map((c) =>
+                c.id === updated.id ? updated : c
+              );
+              setClients(updatedList);
+              dbService.saveClientes(updatedList).catch(console.error);
+            }}
+          />
+        );
       case "aniversarios":
         return <AniversariosSection clients={clients} />;
       case "calculadora":
