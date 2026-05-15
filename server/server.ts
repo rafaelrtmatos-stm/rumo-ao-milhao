@@ -3,11 +3,11 @@ import { createServer } from "http";
 import path from "path";
 import { fileURLToPath } from "url";
 import { setupAuth } from "./replit_integrations/auth/index.js";
-import bcrypt from "bcryptjs";
 import { db } from "./db.js";
-import { empreendimentos, clientes, vendas, appConfig, localUsers } from "../shared/schema.js";
+import { empreendimentos, clientes, vendas, appConfig } from "../shared/schema.js";
 import { eq, and } from "drizzle-orm";
 import type { RequestHandler } from "express";
+import { localUsersService } from "./localUsersService.js";
 import { gerarContratoParceladoPadrao } from "./contratoParceladoPadrao.js";
 import { GoogleGenAI } from "@google/genai";
 
@@ -62,8 +62,8 @@ const isAdminUser: RequestHandler = async (req: any, res, next) => {
   const localUser = (req.session as any)?.localUser;
   if (!localUser?.id) return res.status(401).json({ error: "Não autenticado." });
   try {
-    const [user] = await db.select().from(localUsers).where(eq(localUsers.id, localUser.id));
-    if (!user?.isAdmin) return res.status(403).json({ error: "Acesso restrito ao administrador." });
+    const user = await localUsersService.findById(localUser.id);
+    if (!user?.is_admin) return res.status(403).json({ error: "Acesso restrito ao administrador." });
     next();
   } catch {
     res.status(500).json({ error: "Erro ao verificar permissão." });
@@ -77,14 +77,12 @@ app.post("/api/auth/register", isAuthenticated, isAdminUser, async (req: any, re
     if (!email || !password || password.length < 6) {
       return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
     }
-    const existing = await db.select().from(localUsers).where(eq(localUsers.email, email.toLowerCase()));
-    if (existing.length > 0) {
+    const existing = await localUsersService.findByEmail(email);
+    if (existing) {
       return res.status(400).json({ error: "Este e-mail já está cadastrado." });
     }
-    const passwordHash = await bcrypt.hash(password, 10);
-    const id = `lu-${Date.now()}`;
-    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash, isAdmin: false });
-    res.json({ id, email: email.toLowerCase() });
+    const user = await localUsersService.create({ id: `lu-${Date.now()}`, email, password, isAdmin: false });
+    res.json({ id: user.id, email: user.email });
   } catch (e: any) {
     console.error("Register error:", e);
     res.status(500).json({ error: e?.message || "Erro ao criar usuário." });
@@ -94,8 +92,8 @@ app.post("/api/auth/register", isAuthenticated, isAdminUser, async (req: any, re
 // GET /api/admin/users — list all users (admin only)
 app.get("/api/admin/users", isAuthenticated, isAdminUser, async (_req, res) => {
   try {
-    const rows = await db.select({ id: localUsers.id, email: localUsers.email, isAdmin: localUsers.isAdmin, createdAt: localUsers.createdAt }).from(localUsers);
-    res.json(rows);
+    const rows = await localUsersService.listAll();
+    res.json(rows.map(u => ({ id: u.id, email: u.email, isAdmin: u.is_admin, createdAt: u.created_at })));
   } catch (e: any) {
     res.status(500).json({ error: "Erro ao buscar usuários." });
   }
@@ -107,7 +105,7 @@ app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any
     const { id } = req.params;
     const selfId = (req.session as any)?.localUser?.id;
     if (id === selfId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
-    await db.delete(localUsers).where(eq(localUsers.id, id));
+    await localUsersService.deleteById(id);
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: "Erro ao excluir usuário." });
@@ -121,16 +119,16 @@ app.post("/api/auth/login", async (req: any, res) => {
     if (!email || !password) {
       return res.status(400).json({ error: "Preencha e-mail e senha." });
     }
-    const [user] = await db.select().from(localUsers).where(eq(localUsers.email, email.toLowerCase()));
+    const user = await localUsersService.findByEmail(email);
     if (!user) {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
-    const match = await bcrypt.compare(password, user.passwordHash);
+    const match = await localUsersService.verifyPassword(user, password);
     if (!match) {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
     (req.session as any).localUser = { id: user.id, email: user.email };
-    res.json({ id: user.id, email: user.email });
+    res.json({ id: user.id, email: user.email, isAdmin: user.is_admin });
   } catch (e: any) {
     console.error("Login error:", e);
     res.status(500).json({ error: e?.message || "Erro ao entrar." });
@@ -148,8 +146,8 @@ app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
   const localUser = (req.session as any)?.localUser;
   if (localUser) {
     try {
-      const [row] = await db.select({ isAdmin: localUsers.isAdmin }).from(localUsers).where(eq(localUsers.id, localUser.id));
-      return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.isAdmin ?? false });
+      const row = await localUsersService.findById(localUser.id);
+      return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.is_admin ?? false });
     } catch {
       return res.json({ id: localUser.id, email: localUser.email, isAdmin: false });
     }
@@ -444,18 +442,16 @@ if (process.env.NODE_ENV === "production") {
 // --- Auto-seed first admin user on startup ---
 async function seedAdminIfNeeded() {
   try {
-    const existing = await db.select({ id: localUsers.id }).from(localUsers);
-    if (existing.length === 0) {
+    const count = await localUsersService.count();
+    if (count === 0) {
       const email = process.env.ADMIN_EMAIL;
       const password = process.env.ADMIN_PASSWORD;
       if (!email || !password) {
         console.log("[Setup] Set ADMIN_EMAIL and ADMIN_PASSWORD secrets to auto-create the first admin user.");
         return;
       }
-      const passwordHash = await bcrypt.hash(password, 10);
-      const id = `lu-admin-${Date.now()}`;
-      await db.insert(localUsers).values({ id, email, passwordHash, isAdmin: true });
-      console.log(`[Setup] Admin user created: ${email} (change password after first login)`);
+      await localUsersService.create({ id: `lu-admin-${Date.now()}`, email, password, isAdmin: true });
+      console.log(`[Setup] Admin user created: ${email}`);
     }
   } catch (e: any) {
     console.error("[Setup] Failed to seed admin:", e?.message);
@@ -465,8 +461,8 @@ async function seedAdminIfNeeded() {
 // GET /api/auth/setup — check if setup is needed
 app.get("/api/auth/setup", async (_req, res) => {
   try {
-    const existing = await db.select({ id: localUsers.id }).from(localUsers);
-    res.json({ needsSetup: existing.length === 0 });
+    const count = await localUsersService.count();
+    res.json({ needsSetup: count === 0 });
   } catch (e: any) {
     res.status(500).json({ error: e?.message });
   }
@@ -475,17 +471,15 @@ app.get("/api/auth/setup", async (_req, res) => {
 // POST /api/auth/setup — create first admin (only works if no users exist)
 app.post("/api/auth/setup", async (req: any, res) => {
   try {
-    const existing = await db.select({ id: localUsers.id }).from(localUsers);
-    if (existing.length > 0) {
+    const count = await localUsersService.count();
+    if (count > 0) {
       return res.status(403).json({ error: "Setup já realizado. Use o painel de administração." });
     }
     const { email, password } = req.body;
     if (!email || !password || password.length < 6) {
       return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
     }
-    const passwordHash = await bcrypt.hash(password, 10);
-    const id = `lu-admin-${Date.now()}`;
-    await db.insert(localUsers).values({ id, email: email.toLowerCase(), passwordHash, isAdmin: true });
+    await localUsersService.create({ id: `lu-admin-${Date.now()}`, email, password, isAdmin: true });
     res.json({ ok: true, message: "Administrador criado com sucesso." });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Erro ao criar administrador." });
