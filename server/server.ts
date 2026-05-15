@@ -23,7 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 await setupAuth(app);
 
 // ── MODO SEM LOGIN ────────────────────────────────────────────────────────────
-const AUTH_ENABLED = true;
+const AUTH_ENABLED = false;
 const DEFAULT_USER_ID = "default";
 // ─────────────────────────────────────────────────────────────────────────────
 
