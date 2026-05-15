@@ -4085,7 +4085,43 @@ const ContratosSection = ({
   const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | null>(null);
 
   const handlePrint = () => {
-    window.print();
+    if (!reciboRef.current) {
+      alert('Recibo não encontrado. Aguarde um momento e tente novamente.');
+      return;
+    }
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('O navegador bloqueou a abertura de nova janela. Permita popups neste site para imprimir.');
+      return;
+    }
+    const headLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(el => el.outerHTML)
+      .join('\n');
+    const bodyContent = reciboRef.current.outerHTML;
+    printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Recibo</title>
+  ${headLinks}
+  <style>
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: white !important; margin: 0; padding: 0; }
+    @page { margin: 10mm; }
+  </style>
+</head>
+<body class="bg-white">
+  <div style="max-width:21cm;margin:0 auto;padding:1rem;">
+    ${bodyContent}
+  </div>
+  <script>
+    window.addEventListener('load', function() {
+      setTimeout(function() { window.print(); }, 600);
+    });
+  </script>
+</body>
+</html>`);
+    printWindow.document.close();
   };
 
   const handleDownloadImage = async () => {
