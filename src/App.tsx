@@ -893,15 +893,19 @@ const LotDashboard = ({
         <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-12">
           {quadras.length > 0 ? (
             quadras.map((q) => {
-              // Try to find how many lots in this quadra from lotesInfo
-              const lotsInQuadra = Object.keys(dev.lotesInfo || {})
+              // 1. Fonte primária: lotesPorQuadra (configurado no empreendimento, independente de vendas/vendedor)
+              const configuredCount = dev.lotesPorQuadra?.[q];
+
+              // 2. Fallback: lotes que aparecem em lotesInfo para essa quadra
+              const lotesInfoKeys = Object.keys(dev.lotesInfo || {})
                 .filter((key) => key.startsWith(q.toUpperCase() + "-"))
                 .map((key) => key.split("-")[1]);
 
-              // If no lotesInfo, show a standard range (e.g. 1-20) if possible or just the known ones
-              const displayLots =
-                lotsInQuadra.length > 0
-                  ? lotsInQuadra.sort((a, b) => Number(a) - Number(b))
+              // 3. Fallback final: padrão 12 lotes
+              const displayLots = configuredCount && configuredCount > 0
+                ? Array.from({ length: configuredCount }, (_, i) => (i + 1).toString())
+                : lotesInfoKeys.length > 0
+                  ? lotesInfoKeys.sort((a, b) => Number(a) - Number(b))
                   : Array.from({ length: 12 }, (_, i) => (i + 1).toString());
 
               return (
