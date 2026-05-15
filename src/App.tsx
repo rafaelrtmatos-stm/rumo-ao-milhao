@@ -5629,7 +5629,9 @@ const ConfigSection = ({
     } else {
       updated = [...(formData.vendedores || []), { ...vendedorForm, id: `vend-${Date.now()}` }];
     }
-    setFormData({ ...formData, vendedores: updated });
+    const newFormData = { ...formData, vendedores: updated };
+    setFormData(newFormData);
+    onSave(newFormData);
     setShowVendedorForm(false);
     setEditingVendedor(null);
     setVendedorForm(emptyVendedor);
@@ -5637,13 +5639,23 @@ const ConfigSection = ({
 
   const handleDeleteVendedor = (id: string) => {
     if (!confirm("Remover este vendedor?")) return;
-    setFormData({ ...formData, vendedores: (formData.vendedores || []).filter((v) => v.id !== id) });
+    const updated = (formData.vendedores || []).filter((v) => v.id !== id);
+    const newFormData = { ...formData, vendedores: updated };
+    setFormData(newFormData);
+    onSave(newFormData);
   };
 
   const handleMigrate = async () => {
     setMigrating(true);
-    setMigrateMsg('Dados agora salvos diretamente no Supabase. Nenhuma migração necessária.');
-    setMigrating(false);
+    setMigrateMsg('');
+    try {
+      const result = await dbService.migrateFromLocalStorage();
+      setMigrateMsg(result.msg);
+    } catch (e: any) {
+      setMigrateMsg('Erro durante a migração: ' + (e?.message || 'Tente novamente.'));
+    } finally {
+      setMigrating(false);
+    }
   };
 
   const themes: { id: AppTheme; label: string; color: string }[] = [
@@ -6463,29 +6475,36 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
     let subVendas: { unsubscribe: () => void } | null = null;
 
     const load = async () => {
-      const userRes = await fetch('/api/auth/user');
-      if (!userRes.ok) return;
-      const user = await userRes.json();
-      if (!user?.id) return;
-      setCurrentUser(user.id);
+      try {
+        const userRes = await fetch('/api/auth/user');
+        if (!userRes.ok) return;
+        const user = await userRes.json();
+        if (!user?.id) return;
+        setCurrentUser(user.id);
 
-      const [devs, cls, sls, cfg] = await Promise.all([
-        dbService.getEmpreendimentos(),
-        dbService.getClientes(),
-        dbService.getVendas(),
-        dbService.getAppConfig(),
-      ]);
-      setDevelopments(devs);
-      setClients(cls);
-      setSales(sls);
-      setConfig(cfg);
-      setIsLoaded(true);
+        const results = await Promise.allSettled([
+          dbService.getEmpreendimentos(),
+          dbService.getClientes(),
+          dbService.getVendas(),
+          dbService.getAppConfig(),
+        ]);
 
-      subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
-      subClientes = dbService.subscribeToClientes((d) => setClients(d));
-      subVendas = dbService.subscribeToVendas((d) => setSales(d));
+        if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+        if (results[1].status === 'fulfilled') setClients(results[1].value);
+        if (results[2].status === 'fulfilled') setSales(results[2].value);
+        if (results[3].status === 'fulfilled') setConfig(results[3].value);
+
+        setIsLoaded(true);
+
+        subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
+        subClientes = dbService.subscribeToClientes((d) => setClients(d));
+        subVendas = dbService.subscribeToVendas((d) => setSales(d));
+      } catch (e) {
+        console.error('Erro ao carregar dados:', e);
+        setIsLoaded(true);
+      }
     };
-    load().catch(console.error);
+    load();
 
     return () => {
       subDevs?.unsubscribe();
