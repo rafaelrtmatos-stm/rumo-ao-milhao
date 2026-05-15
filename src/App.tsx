@@ -6213,10 +6213,35 @@ const ProprietariosSection = ({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Proprietario, "id">>(emptyProp);
+  const [cpfErr, setCpfErr] = useState<string | null>(null);
+  const [fetchingCep, setFetchingCep] = useState(false);
   const propFormRef = useRef<HTMLDivElement>(null);
+
+  const buscarCEPProp = async (cep: string) => {
+    const clean = cep.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setFetchingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setForm((prev) => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          estado: data.uf || prev.estado,
+        }));
+      }
+    } catch {}
+    setFetchingCep(false);
+  };
 
   const handleSave = () => {
     if (!form.nome.trim()) { triggerShake(propFormRef.current); return; }
+    const st = cpfStatus(form.cpf);
+    if (st === "invalid") { setCpfErr("CPF inválido"); triggerShake(propFormRef.current); return; }
+    setCpfErr(null);
     let updated: Proprietario[];
     if (editingId) {
       updated = proprietarios.map((p) => p.id === editingId ? { ...form, id: editingId } : p);
@@ -6254,7 +6279,7 @@ const ProprietariosSection = ({
         </div>
         <button
           className="btn-primary flex-none"
-          onClick={() => { setEditingId(null); setForm(emptyProp); setShowForm(true); }}
+          onClick={() => { setEditingId(null); setForm(emptyProp); setCpfErr(null); setShowForm(true); }}
         >
           <Plus size={18} /> Novo Proprietário
         </button>
@@ -6295,7 +6320,18 @@ const ProprietariosSection = ({
                 </div>
                 <div>
                   <label className="label">CPF *</label>
-                  <input className="input-field" placeholder="000.000.000-00" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: maskCPF(e.target.value) })} />
+                  <input
+                    className={`input-field ${cpfErr ? "border-red-400 focus:ring-red-300" : ""}`}
+                    placeholder="000.000.000-00"
+                    value={form.cpf}
+                    onChange={(e) => {
+                      const masked = maskCPF(e.target.value);
+                      setForm({ ...form, cpf: masked });
+                      const st = cpfStatus(masked);
+                      setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                    }}
+                  />
+                  {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
                 </div>
                 <div className="sm:col-span-2">
                   <label className="label">Endereço (Tipo + Nome)</label>
@@ -6318,12 +6354,23 @@ const ProprietariosSection = ({
                   <input className="input-field" maxLength={2} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase() })} />
                 </div>
                 <div>
-                  <label className="label">CEP</label>
-                  <input className="input-field" placeholder="00000-000" value={form.cep} onChange={(e) => setForm({ ...form, cep: maskCEP(e.target.value) })} />
+                  <label className="label">
+                    CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}
+                  </label>
+                  <input
+                    className="input-field"
+                    placeholder="00000-000"
+                    value={form.cep}
+                    onChange={(e) => {
+                      const val = maskCEP(e.target.value);
+                      setForm({ ...form, cep: val });
+                      if (val.replace(/\D/g, "").length === 8) buscarCEPProp(val);
+                    }}
+                  />
                 </div>
               </div>
               <div className="flex gap-3 justify-end pt-2">
-                <button className="btn-ghost h-10 px-6" onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyProp); }}>Cancelar</button>
+                <button className="btn-ghost h-10 px-6" onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyProp); setCpfErr(null); }}>Cancelar</button>
                 <button className="btn-primary h-10 px-10" onClick={handleSave}>Salvar Proprietário</button>
               </div>
             </div>
