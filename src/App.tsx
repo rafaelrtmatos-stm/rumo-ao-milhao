@@ -3878,6 +3878,53 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   </div>
                 </div>
 
+                {/* Modo de pagamento à vista */}
+                {tipoVenda === 'avista' && (
+                  <div className="sm:col-span-2">
+                    <label className="label">Modo de Pagamento</label>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        { value: 'dinheiro', label: '💵 Dinheiro', emoji: '💵' },
+                        { value: 'pix', label: '📱 PIX', emoji: '📱' },
+                        { value: 'cheque', label: '🏦 Cheque', emoji: '🏦' },
+                        { value: 'permuta', label: '🔄 Permuta', emoji: '🔄' },
+                        { value: 'outro', label: '📝 Outro', emoji: '📝' },
+                      ].map((modo) => (
+                        <button
+                          key={modo.value}
+                          type="button"
+                          onClick={() => setSaleData({ ...saleData, modoAvista: modo.value as any })}
+                          className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                            saleData.modoAvista === modo.value
+                              ? 'bg-primary-main text-white shadow-lg shadow-primary-main/30'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {modo.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Campo de descrição para Permuta ou Outro */}
+                    {(saleData.modoAvista === 'permuta' || saleData.modoAvista === 'outro') && (
+                      <div className="mt-4">
+                        <label className="label">
+                          {saleData.modoAvista === 'permuta' ? 'Descrição do bem (ex: Carro Gol 2015)' : 'Descreva a forma de pagamento'}
+                        </label>
+                        <textarea
+                          className="input-field min-h-[80px] resize-none"
+                          placeholder={saleData.modoAvista === 'permuta' 
+                            ? 'Ex: Carro Fiat Uno 2010, avaliado em R$ 15.000,00'
+                            : 'Ex: Metade em dinheiro, metade em cheque'
+                          }
+                          value={saleData.descricaoAvista || ''}
+                          onChange={(e) => setSaleData({ ...saleData, descricaoAvista: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {tipoVenda === 'parcelado' && (<>
                 <div>
                   <label className="label">Quantidade de Parcelas</label>
@@ -4223,8 +4270,14 @@ const ContratosSection = ({
 
     setShowGerarModal(false);
     setDownloadingDocx(true);
+    
+    // Determina qual endpoint usar baseado no tipo de contrato
+    const endpoint = tipoContrato === 'avista' 
+      ? "/api/contrato/avista-padrao" 
+      : "/api/contrato/parcelado-padrao";
+    
     try {
-      const res = await fetch("/api/contrato/parcelado-padrao", {
+      const res = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
