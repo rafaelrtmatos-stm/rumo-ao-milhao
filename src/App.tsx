@@ -132,14 +132,16 @@ function validarRG(rg: string): boolean {
   return /^[a-zA-Z0-9.\-/]+$/.test(clean);
 }
 
-function cpfStatus(v: string): "empty" | "valid" | "invalid" {
+function cpfStatus(v: string | undefined | null): "empty" | "valid" | "invalid" {
+  if (!v) return "empty";
   const digits = v.replace(/\D/g, "");
   if (!digits.length) return "empty";
   if (digits.length < 11) return "invalid";
   return validarCPF(v) ? "valid" : "invalid";
 }
 
-function rgStatus(v: string): "empty" | "valid" | "invalid" {
+function rgStatus(v: string | undefined | null): "empty" | "valid" | "invalid" {
+  if (!v) return "empty";
   const clean = v.replace(/\s+/g, "").trim();
   if (!clean.length) return "empty";
   return validarRG(clean) ? "valid" : "invalid";
@@ -3799,6 +3801,7 @@ const ContratosSection = ({
   vendedores = [],
   proprietarios = [],
   onEditVenda,
+  onUpdateProprietario,
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -3817,7 +3820,7 @@ const ContratosSection = ({
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
   );
-  const [showReciboModal, setShowReciboModal] = useState(() => initialVenda != null && false);
+  const [showReciboModal, setShowReciboModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
