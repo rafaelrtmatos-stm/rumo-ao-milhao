@@ -2210,6 +2210,7 @@ const VendasSection = ({
   const [rg2Err, setRg2Err] = useState<string | null>(null);
   const [showNameDropdown, setShowNameDropdown] = useState(false);
   const [showCpfDropdown, setShowCpfDropdown] = useState(false);
+  const [cpfMatch, setCpfMatch] = useState<Cliente | null>(null);
   const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState<string>("");
@@ -2257,24 +2258,32 @@ const VendasSection = ({
         setHasSecondBuyer(false);
       }
       setLastSavedVenda(null);
+      setCpfMatch(null);
       setCpfDuplicates([]);
     }
   }, [editingEntry]);
 
-  // CPF duplicate detection
+  // CPF detection — match único mostra "Usar dados existentes", múltiplos mostra duplicatas
   useEffect(() => {
     const cpfRaw = (clientData.cpf || "").replace(/\D/g, "");
     if (cpfRaw.length !== 11 || !validarCPF(clientData.cpf || "")) {
+      setCpfMatch(null);
       setCpfDuplicates([]);
       return;
     }
+    // Exclui o cliente já carregado (edição ou após "Usar dados existentes")
     const excludeId = editingEntry?.cliente?.id || clientData.id;
     const matches = clients.filter(
       (c) => c.cpf?.replace(/\D/g, "") === cpfRaw && c.id !== excludeId
     );
-    if (matches.length > 1) {
+    if (matches.length === 1) {
+      setCpfMatch(matches[0]);
+      setCpfDuplicates([]);
+    } else if (matches.length > 1) {
+      setCpfMatch(null);
       setCpfDuplicates(matches);
     } else {
+      setCpfMatch(null);
       setCpfDuplicates([]);
     }
   }, [clientData.cpf, clientData.id, clients, editingEntry]);
@@ -3215,6 +3224,33 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 })()}
               </div>
               {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
+              {cpfMatch && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-blue-700 uppercase tracking-widest">
+                    👤 Cliente já cadastrado: {cpfMatch.nome}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setClientData({ ...clientData, ...cpfMatch }); setCpfMatch(null); }}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Usar dados existentes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCpfMatch(null)}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      Ignorar
+                    </button>
+                  </div>
+                </motion.div>
+              )}
               {cpfDuplicates.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: -4 }}
