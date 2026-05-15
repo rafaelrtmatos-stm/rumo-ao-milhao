@@ -4823,6 +4823,34 @@ const ContratosSection = ({
                       <label className="label">Lote</label>
                       <input className="input-field" placeholder="Ex: 01" value={contratoData.numeroLote} onChange={(e) => setContratoData({ ...contratoData, numeroLote: e.target.value, rua: "" })} />
                     </div>
+
+                    {/* Aviso: lote já vendido */}
+                    {(() => {
+                      if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) return null;
+                      const vendaExistente = sales.find(v =>
+                        v.empreendimentoId === contratoData.empreendimentoId &&
+                        v.quadra.toUpperCase() === contratoData.quadra.toUpperCase() &&
+                        v.numeroLote === contratoData.numeroLote &&
+                        v.status !== 'cancelado'
+                      );
+                      if (!vendaExistente) return null;
+                      return (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="sm:col-span-2 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                        >
+                          <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-black text-red-700 text-sm uppercase tracking-wide">⚠️ Lote já vendido!</p>
+                            <p className="text-xs text-red-600 mt-1">
+                              Quadra <strong>{vendaExistente.quadra}</strong> · Lote <strong>{vendaExistente.numeroLote}</strong> já está registrado para <strong>{vendaExistente.clienteNome}</strong> (contrato {vendaExistente.numeroContrato}, status: <strong>{vendaExistente.status || 'pendente'}</strong>). Confira antes de prosseguir.
+                            </p>
+                          </div>
+                        </motion.div>
+                      );
+                    })()}
+
                     <div>
                       {(() => {
                         const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
