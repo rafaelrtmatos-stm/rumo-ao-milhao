@@ -4357,7 +4357,7 @@ const ContratosSection = ({
   const openReciboPopup = (): Promise<Window> => {
     return new Promise((resolve, reject) => {
       if (!reciboRef.current) { reject(new Error('Recibo não encontrado.')); return; }
-      const popup = window.open('', '_blank', 'width=900,height=1200');
+      const popup = window.open('', '_blank', 'width=900,height=1200,left=-10000,top=-10000,toolbar=no,scrollbars=no,menubar=no,status=no');
       if (!popup) { reject(new Error('Popup bloqueado. Permita popups neste site.')); return; }
       popup.document.open();
       popup.document.write(buildReciboPopupHTML());
