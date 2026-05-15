@@ -4880,31 +4880,33 @@ const ContratosSection = ({
               exit={{ opacity: 0, scale: 0.97 }}
               className="bg-white w-full max-w-3xl h-full lg:h-auto lg:max-h-[90vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-slate-900 rounded-xl text-white">
-                    <FileCheck size={20} />
+              <div className="p-4 sm:p-6 border-b border-slate-100">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 bg-slate-900 rounded-xl text-white shrink-0">
+                      <FileCheck size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-display font-bold text-slate-800">Gerar Recibo</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-display font-bold text-slate-800">Gerar Recibo</h4>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
-                  </div>
+                  <button onClick={() => setShowReciboModal(false)} className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
+                    <X size={22} />
+                  </button>
                 </div>
-                <div className="flex gap-2 flex-wrap">
-                  <button onClick={handleDownloadImage} className="btn-ghost h-9 px-3 text-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                    <span className="hidden sm:inline">Imagem</span>
+                <div className="flex gap-2">
+                  <button onClick={handleDownloadImage} className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
+                    Imagem
                   </button>
-                  <button onClick={handleDownloadPdf} className="btn-ghost h-9 px-3 text-xs">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
-                    <span className="hidden sm:inline">PDF</span>
+                  <button onClick={handleDownloadPdf} className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                    PDF
                   </button>
-                  <button onClick={handlePrint} className="btn-ghost h-9 px-3 text-xs">
-                    <Printer size={15} />
-                    <span className="hidden sm:inline">Imprimir</span>
-                  </button>
-                  <button onClick={() => setShowReciboModal(false)} className="h-9 w-9 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
-                    <X size={18} />
+                  <button onClick={handlePrint} className="btn-primary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
+                    <Printer size={17} />
+                    Imprimir
                   </button>
                 </div>
               </div>
@@ -5152,14 +5154,14 @@ const ContratosSection = ({
                 </div>
               </div>
 
-              <div className="p-6 border-t border-slate-100 flex justify-between gap-3">
-                <button onClick={() => setShowGerarModal(false)} className="btn-secondary px-6">Cancelar</button>
-                <div className="flex gap-3">
-                  <button onClick={handlePrint} className="btn-ghost px-5">
-                    <Printer size={16} /> Imprimir
+              <div className="p-4 sm:p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+                <button onClick={() => setShowGerarModal(false)} className="btn-secondary h-11 sm:px-6 w-full sm:w-auto">Cancelar</button>
+                <div className="flex gap-3 flex-1">
+                  <button onClick={handlePrint} className="btn-ghost h-11 flex-1 sm:flex-none sm:px-5 flex items-center justify-center gap-2 text-sm font-semibold">
+                    <Printer size={17} /> Imprimir
                   </button>
-                  <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary px-8 disabled:opacity-50">
-                    {downloadingDocx ? "Gerando..." : <><FileDown size={16} /> Baixar .docx</>}
+                  <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary h-11 flex-1 sm:flex-none sm:px-8 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50">
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> Baixar .docx</>}
                   </button>
                 </div>
               </div>
