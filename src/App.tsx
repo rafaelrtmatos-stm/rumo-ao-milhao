@@ -1146,6 +1146,7 @@ const LotDashboard = ({
   );
 };
 
+// fix-sales-scope
 const EmpreendimentosSection = ({
   developments,
   sales,
