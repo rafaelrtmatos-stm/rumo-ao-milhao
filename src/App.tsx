@@ -201,6 +201,8 @@ import {
   AlertCircle,
   RefreshCw,
   PieChart as PieChartIcon,
+  Trophy,
+  Medal,
 } from "lucide-react";
 import {
   BarChart,
@@ -4028,6 +4030,8 @@ const ContratosSection = ({
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
+  const [corretorFilter, setCorretorFilter] = useState("");
+  const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
   const [clienteMode, setClienteMode] = useState<"existente" | "novo">("existente");
@@ -4468,15 +4472,32 @@ const ContratosSection = ({
 
   const filteredSales = sales.filter((venda) => {
     const query = searchTerm.toLowerCase();
-    return (
+    const matchesSearch = !query || (
       venda.clienteNome.toLowerCase().includes(query) ||
       venda.empreendimentoNome.toLowerCase().includes(query) ||
       venda.numeroLote.toLowerCase().includes(query) ||
       venda.quadra.toLowerCase().includes(query) ||
       venda.numeroContrato.toLowerCase().includes(query) ||
-      venda.rua?.toLowerCase().includes(query)
+      venda.rua?.toLowerCase().includes(query) ||
+      venda.vendedor?.toLowerCase().includes(query)
     );
+    const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
+    return matchesSearch && matchesCorretor;
   });
+
+  // Ranking de corretores
+  const rankingCorretores = (() => {
+    const map: Record<string, { nome: string; vendas: number; total: number }> = {};
+    for (const v of sales) {
+      const nome = v.vendedor?.trim() || "Sem corretor";
+      if (!map[nome]) map[nome] = { nome, vendas: 0, total: 0 };
+      map[nome].vendas += 1;
+      map[nome].total += v.valorLote || 0;
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  })();
+  const totalGeralVendas = rankingCorretores.reduce((s, r) => s + r.total, 0);
+  const corretoresUnicos = [...new Set(sales.map(v => v.vendedor?.trim()).filter(Boolean))] as string[];
 
   const getStatusInfo = (status?: string) => {
     switch (status) {
@@ -4515,7 +4536,7 @@ const ContratosSection = ({
         </div>
 
         <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-80">
+          <div className="relative w-full sm:w-72">
             <Search
               size={18}
               className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
@@ -4528,6 +4549,26 @@ const ContratosSection = ({
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          {corretoresUnicos.length > 0 && (
+            <select
+              value={corretorFilter}
+              onChange={(e) => setCorretorFilter(e.target.value)}
+              className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
+            >
+              <option value="">Todos os corretores</option>
+              {corretoresUnicos.map((c) => (
+                <option key={c} value={c}>{c}</option>
+              ))}
+            </select>
+          )}
+          <button
+            onClick={() => setShowRanking(true)}
+            className="btn-secondary flex items-center gap-2 h-12 px-5 whitespace-nowrap"
+            title="Ranking de corretores"
+          >
+            <Trophy size={18} />
+            Ranking
+          </button>
           <button
             onClick={() => setShowNovoContrato(true)}
             className="btn-primary flex items-center gap-2 h-12 px-6 whitespace-nowrap"
@@ -4537,6 +4578,85 @@ const ContratosSection = ({
           </button>
         </div>
       </div>
+
+      {/* Modal: Ranking de Corretores */}
+      <AnimatePresence>
+        {showRanking && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="px-7 pt-7 pb-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 rounded-xl text-white">
+                    <Trophy size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Ranking de Corretores</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sales.length} venda{sales.length !== 1 ? 's' : ''} no total</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRanking(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-400" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                {rankingCorretores.length === 0 ? (
+                  <p className="text-center text-slate-400 py-10 font-medium">Nenhuma venda registrada.</p>
+                ) : rankingCorretores.map((corretor, idx) => {
+                  const pct = totalGeralVendas > 0 ? (corretor.total / totalGeralVendas) * 100 : 0;
+                  const medals = ["🥇", "🥈", "🥉"];
+                  const medal = medals[idx] || `${idx + 1}º`;
+                  const barColors = [
+                    "bg-amber-400",
+                    "bg-slate-400",
+                    "bg-orange-400",
+                  ];
+                  const barColor = barColors[idx] || "bg-primary-main/60";
+                  return (
+                    <div key={corretor.nome} className="bg-slate-50 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-xl shrink-0">{medal}</span>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 truncate">{corretor.nome}</p>
+                            <p className="text-xs text-slate-500">{corretor.vendas} venda{corretor.vendas !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-display font-bold text-slate-800 text-sm">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(corretor.total)}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-400">{pct.toFixed(1)}% do total</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer totais */}
+              {rankingCorretores.length > 0 && (
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total geral</p>
+                  <p className="font-display font-bold text-slate-800">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(totalGeralVendas)}
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       {/* Modal: Novo Contrato */}
       <AnimatePresence>
