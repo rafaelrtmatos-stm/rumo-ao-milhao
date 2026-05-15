@@ -1,3 +1,13 @@
-// Supabase has been removed. All data access now goes through /api/* routes.
-// This file is kept as an empty stub to avoid breaking any unused imports.
-export const supabase = null as any;
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+  },
+  realtime: { params: { eventsPerSecond: 10 } },
+});
