@@ -2173,6 +2173,9 @@ const VendasSection = ({
     formaPagamento: "Boleto",
     ...initialSaleData,
   });
+  const [tipoVenda, setTipoVenda] = useState<'avista' | 'parcelado'>(
+    initialSaleData?.quantidadeParcelas === 0 ? 'avista' : 'parcelado'
+  );
   const vendasFormRef = useRef<HTMLFormElement>(null);
   const [showNovoDev, setShowNovoDev] = useState(false);
   const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
@@ -2222,6 +2225,7 @@ const VendasSection = ({
         setClientData({ ...editingEntry.cliente });
       }
       setSaleData({ ...editingEntry.venda });
+      setTipoVenda(editingEntry.venda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
       if (editingEntry.venda.comprador2) {
         setHasSecondBuyer(true);
         setSecondBuyerData({ ...editingEntry.venda.comprador2 });
@@ -3789,6 +3793,34 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
+                {/* Toggle À Vista / Parcelado */}
+                <div className="sm:col-span-2">
+                  <label className="label">Tipo de Pagamento</label>
+                  <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('avista');
+                        setSaleData({ ...saleData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      À Vista
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('parcelado');
+                        setSaleData({ ...saleData, quantidadeParcelas: undefined, dataVencimento: defaultVencimento() });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'parcelado' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      Parcelado
+                    </button>
+                  </div>
+                </div>
+
+                {tipoVenda === 'parcelado' && (<>
                 <div>
                   <label className="label">Quantidade de Parcelas</label>
                   <input
@@ -3820,9 +3852,11 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
+                </>)}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {tipoVenda === 'parcelado' && (
                 <div>
                   <label className="label">Data de Vencimento</label>
                   <div className="relative">
@@ -3843,6 +3877,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     />
                   </div>
                 </div>
+                )}
                 {vendedores.length > 0 && (
                   <div>
                     <label className="label">Vendedor</label>
@@ -3871,30 +3906,38 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 </p>
 
                 <div className="space-y-6">
-                  <div className="flex justify-between items-center border-b border-slate-50 pb-4">
-                    <span className="text-sm font-medium text-slate-500">
-                      Valor da Mensalidade
-                    </span>
-                    <p className="text-3xl font-display font-bold text-primary-main">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(saleData.valorParcela || 0)}
-                    </p>
-                  </div>
+                  {tipoVenda === 'avista' ? (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">Pagamento</span>
+                      <span className="text-xl font-display font-bold text-emerald-600 bg-emerald-50 px-4 py-1.5 rounded-xl">À Vista</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">
+                        Valor da Mensalidade
+                      </span>
+                      <p className="text-3xl font-display font-bold text-primary-main">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(saleData.valorParcela || 0)}
+                      </p>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        Saldo Financiado
+                        {tipoVenda === 'avista' ? 'Entrada' : 'Saldo Financiado'}
                       </p>
                       <p className="font-display font-bold text-slate-700">
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
                         }).format(
-                          (saleData.valorLote || 0) -
-                            (saleData.valorEntrada || 0),
+                          tipoVenda === 'avista'
+                            ? (saleData.valorEntrada || 0)
+                            : (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
                         )}
                       </p>
                     </div>
@@ -4001,6 +4044,7 @@ const ContratosSection = ({
     dataVenda: new Date().toISOString().split("T")[0],
   };
   const [contratoData, setContratoData] = useState(emptyContrato);
+  const [tipoContrato, setTipoContrato] = useState<'avista' | 'parcelado'>('parcelado');
   const [ruaWarning, setRuaWarning] = useState<string | null>(null);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
 
@@ -4647,11 +4691,30 @@ const ContratosSection = ({
                 <div className="space-y-4">
                   <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pagamento</p>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Toggle À Vista / Parcelado */}
+                    <div className="sm:col-span-2">
+                      <label className="label">Tipo de Pagamento</label>
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                        <button type="button"
+                          onClick={() => { setTipoContrato('avista'); setContratoData({ ...contratoData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" }); }}
+                          className={`px-6 py-2.5 transition-colors ${tipoContrato === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                          À Vista
+                        </button>
+                        <button type="button"
+                          onClick={() => { setTipoContrato('parcelado'); setContratoData({ ...contratoData, quantidadeParcelas: 1, dataVencimento: defaultVencimento() }); }}
+                          className={`px-6 py-2.5 transition-colors ${tipoContrato === 'parcelado' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                          Parcelado
+                        </button>
+                      </div>
+                    </div>
+
                     {[
                       { label: "Valor do Lote (R$)", field: "valorLote", type: "number" },
                       { label: "Entrada (R$)", field: "valorEntrada", type: "number" },
-                      { label: "Nº de Parcelas", field: "quantidadeParcelas", type: "number" },
-                      { label: "Valor da Parcela (R$)", field: "valorParcela", type: "number" },
+                      ...(tipoContrato === 'parcelado' ? [
+                        { label: "Nº de Parcelas", field: "quantidadeParcelas", type: "number" },
+                        { label: "Valor da Parcela (R$)", field: "valorParcela", type: "number" },
+                      ] : []),
                     ].map(({ label, field, type }) => (
                       <div key={field}>
                         <label className="label">{label}</label>
@@ -4664,10 +4727,12 @@ const ContratosSection = ({
                         {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
                       </select>
                     </div>
+                    {tipoContrato === 'parcelado' && (
                     <div>
                       <label className="label">Data de Vencimento das Parcelas</label>
                       <input className="input-field" placeholder="Ex: todo dia 10" value={contratoData.dataVencimento} onChange={(e) => setContratoData({ ...contratoData, dataVencimento: e.target.value })} />
                     </div>
+                    )}
                     <div>
                       <label className="label">Data do Contrato</label>
                       <input type="date" className="input-field" value={contratoData.dataVenda} onChange={(e) => setContratoData({ ...contratoData, dataVenda: e.target.value })} />
@@ -4814,6 +4879,23 @@ const ContratosSection = ({
                     <label className="label">Valor de Entrada (R$)</label>
                     <input type="number" className="input-field" value={editVendaForm.valorEntrada ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorEntrada: parseFloat(e.target.value) || 0 })} />
                   </div>
+                  {/* Toggle À Vista / Parcelado */}
+                  <div className="col-span-2">
+                    <label className="label">Tipo de Pagamento</label>
+                    <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                      <button type="button"
+                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" })}
+                        className={`px-5 py-2 transition-colors ${(editVendaForm.quantidadeParcelas === 0) ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        À Vista
+                      </button>
+                      <button type="button"
+                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: editVendaForm.quantidadeParcelas || 1, dataVencimento: editVendaForm.dataVencimento || defaultVencimento() })}
+                        className={`px-5 py-2 transition-colors ${(editVendaForm.quantidadeParcelas !== 0) ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        Parcelado
+                      </button>
+                    </div>
+                  </div>
+                  {editVendaForm.quantidadeParcelas !== 0 && (<>
                   <div>
                     <label className="label">Qtd. Parcelas</label>
                     <input type="number" min={1} className="input-field" value={editVendaForm.quantidadeParcelas ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: parseInt(e.target.value) || 1 })} />
@@ -4826,6 +4908,7 @@ const ContratosSection = ({
                     <label className="label">Vencimento</label>
                     <input className="input-field" placeholder="Ex: todo dia 10" value={editVendaForm.dataVencimento || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVencimento: e.target.value })} />
                   </div>
+                  </>)}
                   <div>
                     <label className="label">Data do Contrato</label>
                     <input type="date" className="input-field" value={editVendaForm.dataVenda || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVenda: e.target.value })} />
