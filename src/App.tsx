@@ -3836,7 +3836,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
-                <div>
+                <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
                   <label className="label">Entrada</label>
                   <input
                     type="number"
@@ -3884,22 +3884,38 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     <label className="label">Modo de Pagamento</label>
                     <div className="flex flex-wrap gap-3">
                       {[
-                        { value: 'dinheiro', label: '💵 Dinheiro', emoji: '💵' },
-                        { value: 'pix', label: '📱 PIX', emoji: '📱' },
-                        { value: 'cheque', label: '🏦 Cheque', emoji: '🏦' },
-                        { value: 'permuta', label: '🔄 Permuta', emoji: '🔄' },
-                        { value: 'outro', label: '📝 Outro', emoji: '📝' },
+                        {
+                          value: 'dinheiro', label: 'Dinheiro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><circle cx="12" cy="16" r="2"/></svg>
+                        },
+                        {
+                          value: 'pix', label: 'PIX',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        },
+                        {
+                          value: 'cheque', label: 'Cheque',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+                        },
+                        {
+                          value: 'permuta', label: 'Permuta',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l5.1 5.1"/><path d="M4 4l5 5"/></svg>
+                        },
+                        {
+                          value: 'outro', label: 'Outro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        },
                       ].map((modo) => (
                         <button
                           key={modo.value}
                           type="button"
                           onClick={() => setSaleData({ ...saleData, modoAvista: modo.value as any })}
-                          className={`px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
                             saleData.modoAvista === modo.value
                               ? 'bg-primary-main text-white shadow-lg shadow-primary-main/30'
                               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
                           }`}
                         >
+                          {modo.icon}
                           {modo.label}
                         </button>
                       ))}
@@ -4031,22 +4047,22 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {tipoVenda !== 'avista' && (
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        {tipoVenda === 'avista' ? 'Entrada' : 'Saldo Financiado'}
+                        Saldo Financiado
                       </p>
                       <p className="font-display font-bold text-slate-700">
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
                         }).format(
-                          tipoVenda === 'avista'
-                            ? (saleData.valorEntrada || 0)
-                            : (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
+                          (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
                         )}
                       </p>
                     </div>
-                    <div className="space-y-1 text-right">
+                    )}
+                    <div className={`space-y-1 ${tipoVenda !== 'avista' ? 'text-right' : 'col-span-2'}`}>
                       <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
                         Total Líquido
                       </p>
@@ -4439,31 +4455,95 @@ const ContratosSection = ({
   };
 
   const buildReciboPopupHTML = () => {
-    if (!reciboRef.current) throw new Error('Recibo não encontrado.');
-    const headLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map(el => el.outerHTML).join('\n');
-    const bodyContent = reciboRef.current.outerHTML;
+    if (!selectedVenda) throw new Error('Venda não encontrada.');
+    const clienteNome = selectedVenda.clienteNome || '___________________________';
+    const clienteCpf = client?.cpf || '___.___.___-__';
+    const empreendimento = selectedVenda.empreendimentoNome || '';
+    const quadra = selectedVenda.quadra || '';
+    const lote = selectedVenda.numeroLote || '';
+    const rua = selectedVenda.rua || '';
+    const vendedor = selectedVenda.vendedor || '___________________________';
+    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedVenda.valorEntrada || 0);
+    const dataFormatada = new Date(selectedVenda.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Recibo</title>
-  ${headLinks}
   <style>
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-    html, body { background: #ffffff; margin: 0; padding: 0; }
-    #recibo-root { padding: 24px; background: #ffffff; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, Helvetica, sans-serif; }
+    #recibo-root { padding: 32px; background: #ffffff; max-width: 21cm; margin: 0 auto; }
+    .recibo-card { background: #ffffff; padding: 64px; border: 1px solid #e2e8f0; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0f172a; padding-bottom: 32px; margin-bottom: 48px; }
+    .titulo { font-size: 36px; font-weight: 900; font-style: italic; letter-spacing: -1px; color: #0f172a; margin: 0; }
+    .subtitulo { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin: 4px 0 0 0; }
+    .valor-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; text-align: right; }
+    .valor-box { background: #0f172a; color: #ffffff; font-size: 28px; font-weight: 700; padding: 8px 20px; border-radius: 12px; }
+    .corpo { font-size: 18px; line-height: 2; margin-bottom: 32px; text-align: justify; color: #1e293b; }
+    .destaque { font-weight: 700; text-transform: uppercase; text-decoration: underline; text-underline-offset: 4px; }
+    .negrito { font-weight: 700; }
+    .italico { font-weight: 700; font-style: italic; }
+    .imovel-box { background: #f8fafc; border: 2px dashed #e2e8f0; border-radius: 24px; padding: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    .imovel-col-full { grid-column: 1 / -1; }
+    .label-sm { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .valor-item { font-weight: 700; color: #1e293b; font-size: 16px; }
+    .obs { font-size: 13px; font-style: italic; color: #64748b; margin-bottom: 32px; }
+    .rodape { margin-top: 80px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
+    .data-texto { font-size: 14px; font-weight: 700; color: #1e293b; }
+    .assinatura { width: 240px; text-align: center; }
+    .linha-assinatura { height: 1px; background: #0f172a; margin-bottom: 8px; }
+    .assinatura-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .assinatura-nome { font-weight: 700; color: #0f172a; font-size: 14px; }
   </style>
 </head>
 <body>
-  <div id="recibo-root">${bodyContent}</div>
+  <div id="recibo-root">
+    <div class="recibo-card">
+      <div class="header">
+        <div>
+          <p class="titulo">RECIBO</p>
+          <p class="subtitulo">Instrumento de Quitação de Valores</p>
+        </div>
+        <div>
+          <p class="valor-label">Valor do Recibo</p>
+          <p class="valor-box">${valor}</p>
+        </div>
+      </div>
+      <p class="corpo">
+        Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)</span> para aquisição do imóvel:
+      </p>
+      <div class="imovel-box">
+        <div>
+          <p class="label-sm">Empreendimento</p>
+          <p class="valor-item">${empreendimento}</p>
+        </div>
+        <div>
+          <p class="label-sm">Localização</p>
+          <p class="valor-item">Q:${quadra} / L:${lote}</p>
+        </div>
+        ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
+      </div>
+      <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
+      <div class="rodape">
+        <div>
+          <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
+        </div>
+        <div class="assinatura">
+          <div class="linha-assinatura"></div>
+          <p class="assinatura-label">Assinatura do Vendedor</p>
+          <p class="assinatura-nome">${vendedor}</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>`;
   };
 
   const openReciboPopup = (): Promise<Window> => {
     return new Promise((resolve, reject) => {
-      if (!reciboRef.current) { reject(new Error('Recibo não encontrado.')); return; }
+      if (!selectedVenda) { reject(new Error('Venda não encontrada.')); return; }
       const popup = window.open('', '_blank', 'width=900,height=1200,left=-10000,top=-10000,toolbar=no,scrollbars=no,menubar=no,status=no');
       if (!popup) { reject(new Error('Popup bloqueado. Permita popups neste site.')); return; }
       popup.document.open();
@@ -4518,8 +4598,8 @@ const ContratosSection = ({
   };
 
   const handleDownloadImage = async () => {
-    if (!reciboRef.current) {
-      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
       return;
     }
     setReciboDownloading('img');
@@ -4542,8 +4622,8 @@ const ContratosSection = ({
   };
 
   const handleDownloadPdf = async () => {
-    if (!reciboRef.current) {
-      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
       return;
     }
     setReciboDownloading('pdf');
