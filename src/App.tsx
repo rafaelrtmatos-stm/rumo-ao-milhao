@@ -4143,7 +4143,6 @@ const ContratosSection = ({
     medidaFrente: "", medidaLateralDir: "", medidaLateralEsq: "", medidaFundos: "", areaTotal: "",
   });
   const [gerarEmp, setGerarEmp] = useState({ nome: "", comunidade: "", cidade: "", estado: "" });
-  const [gerarSalvarProp, setGerarSalvarProp] = useState(false);
   const [fetchingCep, setFetchingCep] = useState(false);
 
   const fetchCepGerar = async (cep: string) => {
@@ -4221,12 +4220,7 @@ const ContratosSection = ({
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
-    if (gerarSalvarProp && gerarProprietarioId && onUpdateProprietario) {
-      const prop = proprietarios.find((p) => p.id === gerarProprietarioId);
-      if (prop) {
-        onUpdateProprietario({ ...prop, nome: gerarVendedor.nome, rg: gerarVendedor.rg, cpf: gerarVendedor.cpf, endereco: gerarVendedor.endereco, numero: gerarVendedor.numero, bairro: gerarVendedor.bairro, cidade: gerarVendedor.cidade, estado: gerarVendedor.estado, cep: gerarVendedor.cep, nacionalidade: gerarVendedor.nacionalidade, estadoCivil: gerarVendedor.estadoCivil });
-      }
-    }
+
     setShowGerarModal(false);
     setDownloadingDocx(true);
     try {
@@ -5636,12 +5630,7 @@ const ContratosSection = ({
                       Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.
                     </p>
                   )}
-                  {gerarProprietarioId && onUpdateProprietario && (
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                      <input type="checkbox" className="rounded" checked={gerarSalvarProp} onChange={(e) => setGerarSalvarProp(e.target.checked)} />
-                      <span className="text-xs font-semibold text-slate-600">Salvar alterações neste proprietário</span>
-                    </label>
-                  )}
+
                 </div>
 
                 {/* Dados do Vendedor / Proprietário */}
