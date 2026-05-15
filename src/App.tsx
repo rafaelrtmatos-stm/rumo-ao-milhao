@@ -1164,7 +1164,7 @@ const EmpreendimentosSection = ({
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
-    descricao: "", comunidade: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [],
+    descricao: "", comunidade: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [], lotesPorQuadra: {},
   };
   const [isAdding, setIsAdding] = useState(false);
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
@@ -1201,6 +1201,7 @@ const EmpreendimentosSection = ({
       quadras: dev.quadras, ruas: dev.ruas,
       ruasPorQuadra: dev.ruasPorQuadra || {},
       ruasFaixas: dev.ruasFaixas || [],
+      lotesPorQuadra: dev.lotesPorQuadra || {},
     });
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -1378,10 +1379,64 @@ const EmpreendimentosSection = ({
                   <input
                     className="input-field"
                     value={formData.quadras}
-                    onChange={(e) => setFormData({ ...formData, quadras: e.target.value })}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const quadraList = raw.split(",").map((q) => q.trim()).filter(Boolean);
+                      const existing = formData.lotesPorQuadra || {};
+                      const newLpq: Record<string, number> = {};
+                      quadraList.forEach((q) => { newLpq[q] = existing[q] ?? 0; });
+                      const soma = Object.values(newLpq).reduce((s, n) => s + n, 0);
+                      setFormData({ ...formData, quadras: raw, lotesPorQuadra: newLpq, totalLotes: soma || formData.totalLotes || 0 });
+                    }}
                     placeholder="Ex: A, B, C, D"
                   />
+                  <p className="text-[10px] text-slate-400 mt-1">Separe por vírgula. O total de lotes será calculado automaticamente abaixo.</p>
                 </div>
+
+                {/* Editor de lotes por quadra */}
+                {(() => {
+                  const quadraList = (formData.quadras || "").split(",").map((q) => q.trim()).filter(Boolean);
+                  if (quadraList.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Lotes por Quadra
+                      </p>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                        {quadraList.map((q) => (
+                          <div key={q} className="flex flex-col gap-1 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                            <label className="text-[9px] font-black uppercase tracking-widest text-primary-main">
+                              Quadra {q}
+                            </label>
+                            <div className="flex items-center gap-1.5">
+                              <input
+                                type="number"
+                                min={0}
+                                className="input-field text-sm font-bold w-full py-1.5"
+                                placeholder="0"
+                                value={(formData.lotesPorQuadra || {})[q] || ""}
+                                onChange={(e) => {
+                                  const val = Number(e.target.value) || 0;
+                                  const updated = { ...(formData.lotesPorQuadra || {}), [q]: val };
+                                  const soma = Object.values(updated).reduce((s, n) => s + n, 0);
+                                  setFormData({ ...formData, lotesPorQuadra: updated, totalLotes: soma });
+                                }}
+                              />
+                              <span className="text-[9px] text-slate-400 shrink-0">lotes</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs font-bold text-slate-500 pt-1">
+                        Total calculado:{" "}
+                        <span className="text-primary-main">
+                          {Object.values(formData.lotesPorQuadra || {}).reduce((s, n) => s + n, 0)} lotes
+                        </span>
+                      </p>
+                    </div>
+                  );
+                })()}
+
                 {/* Faixas de Rua por Lote */}
                 <div className="space-y-3">
                   <div className="flex items-center justify-between">
@@ -1492,17 +1547,21 @@ const EmpreendimentosSection = ({
               </div>
               <div>
                 <label className="label">Total de Lotes</label>
-                <input
-                  type="number"
-                  className="input-field font-bold"
-                  value={formData.totalLotes}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      totalLotes: Number(e.target.value),
-                    })
-                  }
-                />
+                {Object.values(formData.lotesPorQuadra || {}).some((v) => v > 0) ? (
+                  <div className="input-field font-bold bg-slate-100 cursor-not-allowed flex items-center justify-between">
+                    <span className="text-primary-main">{formData.totalLotes}</span>
+                    <span className="text-[10px] text-slate-400 font-normal">calculado automaticamente</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    className="input-field font-bold"
+                    value={formData.totalLotes}
+                    onChange={(e) =>
+                      setFormData({ ...formData, totalLotes: Number(e.target.value) })
+                    }
+                  />
+                )}
               </div>
 
               <div className="md:col-span-2 flex justify-between items-center pt-4">
@@ -1591,10 +1650,24 @@ const EmpreendimentosSection = ({
                 </p>
               ) : null}
               {dev.quadras && (
-                <p className="text-xs text-slate-500 line-clamp-1">
-                  <span className="font-bold text-slate-700">Quadras:</span>{" "}
-                  {dev.quadras}
-                </p>
+                dev.lotesPorQuadra && Object.values(dev.lotesPorQuadra).some((v) => v > 0) ? (
+                  <div className="mt-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lotes por quadra</p>
+                    <div className="flex flex-wrap gap-1">
+                      {dev.quadras.split(",").map((q) => q.trim()).filter(Boolean).map((q) => (
+                        <span key={q} className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary-main/8 text-primary-main rounded-lg px-2 py-0.5">
+                          Q.{q}
+                          <span className="font-black">{dev.lotesPorQuadra?.[q] ?? 0}</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 line-clamp-1">
+                    <span className="font-bold text-slate-700">Quadras:</span>{" "}
+                    {dev.quadras}
+                  </p>
+                )
               )}
             </div>
 
