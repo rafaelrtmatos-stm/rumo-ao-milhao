@@ -5764,7 +5764,7 @@ const ConfigSection = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="label">Nome Completo</label>
-                <input className="input-field" placeholder="Ex: GENILSON PEREIRA MOREIRA" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: e.target.value })} />
+                <input className="input-field" placeholder="Nome Completo" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: e.target.value })} />
               </div>
               <div>
                 <label className="label">Nacionalidade</label>
@@ -6175,7 +6175,7 @@ const ProprietariosSection = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="label">Nome Completo *</label>
-                  <input className="input-field" placeholder="Ex: GENILSON PEREIRA MOREIRA" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                  <input className="input-field" placeholder="Nome Completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                 </div>
                 <div>
                   <label className="label">Nacionalidade</label>
