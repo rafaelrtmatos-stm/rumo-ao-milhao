@@ -4186,6 +4186,32 @@ const ContratosSection = ({
     printWindow.document.close();
   };
 
+  const captureReciboCanvas = async () => {
+    if (!reciboRef.current) throw new Error('Elemento do recibo não encontrado.');
+    const clone = reciboRef.current.cloneNode(true) as HTMLElement;
+    clone.style.position = 'fixed';
+    clone.style.top = '0';
+    clone.style.left = '0';
+    clone.style.zIndex = '-9999';
+    clone.style.width = reciboRef.current.offsetWidth + 'px';
+    clone.style.background = '#ffffff';
+    document.body.appendChild(clone);
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(clone, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        allowTaint: false,
+        windowWidth: reciboRef.current.offsetWidth,
+      });
+      return canvas;
+    } finally {
+      document.body.removeChild(clone);
+    }
+  };
+
   const handleDownloadImage = async () => {
     if (!reciboRef.current) {
       alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
@@ -4193,21 +4219,21 @@ const ContratosSection = ({
     }
     setReciboDownloading('img');
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(reciboRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-      });
-      const dataUrl = canvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = `recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.png`;
-      link.href = dataUrl;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      const canvas = await captureReciboCanvas();
+      const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
+      canvas.toBlob((blob) => {
+        if (!blob) { alert('Não foi possível gerar a imagem.'); return; }
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `recibo-${nome}.png`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 5000);
+      }, 'image/png');
     } catch (e: unknown) {
       console.error('Erro ao gerar imagem:', e);
       alert('Erro ao gerar imagem: ' + (e instanceof Error ? e.message : String(e)));
@@ -4223,21 +4249,25 @@ const ContratosSection = ({
     }
     setReciboDownloading('pdf');
     try {
-      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await captureReciboCanvas();
       const { jsPDF } = await import('jspdf');
-      const canvas = await html2canvas(reciboRef.current, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-        allowTaint: true,
-      });
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-      pdf.save(`recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.pdf`);
+      const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `recibo-${nome}.pdf`;
+      link.target = '_blank';
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
     } catch (e: unknown) {
       console.error('Erro ao gerar PDF:', e);
       alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
