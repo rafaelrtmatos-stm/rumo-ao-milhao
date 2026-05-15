@@ -28,6 +28,8 @@ import {
   User,
   List,
   Check,
+  Monitor,
+  Smartphone,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -245,6 +247,8 @@ const Sidebar = ({
   setIsOpen,
   onLogout,
   isAdmin,
+  forceDesktop,
+  onToggleDesktop,
 }: {
   currentSection: Section;
   setSection: (s: Section) => void;
@@ -252,8 +256,10 @@ const Sidebar = ({
   setIsOpen: (val: boolean) => void;
   onLogout?: () => void;
   isAdmin?: boolean;
+  forceDesktop: boolean;
+  onToggleDesktop: () => void;
 }) => {
-  const menuItems = [
+  const mainMenuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
@@ -263,8 +269,9 @@ const Sidebar = ({
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "calculadora", label: "Calculadora", icon: Calculator },
     ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
-    { id: "config", label: "Configurações", icon: Settings },
   ];
+  const configItem = { id: "config", label: "Configurações", icon: Settings };
+  const allMenuItems = [...mainMenuItems, configItem];
 
   return (
     <>
@@ -282,7 +289,7 @@ const Sidebar = ({
       </AnimatePresence>
 
       <div
-        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
           <div>
@@ -302,7 +309,7 @@ const Sidebar = ({
         </div>
 
         <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
-          {menuItems.map((item) => {
+          {mainMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentSection === item.id;
             return (
@@ -333,6 +340,53 @@ const Sidebar = ({
               </button>
             );
           })}
+
+          {/* Toggle Mobile / PC */}
+          <button
+            onClick={onToggleDesktop}
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group text-slate-500 hover:bg-slate-50 hover:text-primary-main"
+          >
+            <div className="p-2 rounded-lg bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main transition-colors">
+              {forceDesktop ? <Smartphone size={18} /> : <Monitor size={18} />}
+            </div>
+            <span className="text-sm font-medium">
+              {forceDesktop ? "Versão Mobile" : "Versão PC"}
+            </span>
+          </button>
+
+          {/* Config */}
+          {(() => {
+            const item = configItem;
+            const Icon = item.icon;
+            const isActive = currentSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setSection(item.id as Section);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group ${
+                  isActive
+                    ? "bg-primary-main text-primary-contrast shadow-lg shadow-primary-main/20 font-semibold"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-primary-main"
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-lg ${isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main"} transition-colors`}
+                >
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{item.label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-active"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-contrast shadow-sm"
+                  />
+                )}
+              </button>
+            );
+          })()}
         </nav>
 
         <div className="p-6 border-t border-slate-50">
@@ -352,14 +406,16 @@ const Sidebar = ({
 const Header = ({
   title,
   toggleSidebar,
+  forceDesktop,
 }: {
   title: string;
   toggleSidebar: () => void;
+  forceDesktop: boolean;
 }) => (
-  <header className="h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 left-0 lg:left-72 z-40">
+  <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 z-40 ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
     <button
       onClick={toggleSidebar}
-      className="lg:hidden p-3 mr-4 bg-surface-bg hover:bg-slate-100 rounded-2xl text-slate-600 transition-colors"
+      className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 bg-surface-bg hover:bg-slate-100 rounded-2xl text-slate-600 transition-colors`}
     >
       <LayoutDashboard size={22} />
     </button>
@@ -6460,6 +6516,13 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
   });
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
+
+  const toggleDesktop = () => {
+    const next = !forceDesktop;
+    setForceDesktop(next);
+    localStorage.setItem('force-desktop', String(next));
+  };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [prefilledSale, setPrefilledSale] = useState<
     Partial<Venda> | undefined
@@ -6802,12 +6865,15 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         setIsOpen={setIsSidebarOpen}
         onLogout={onLogout}
         isAdmin={isAdmin}
+        forceDesktop={forceDesktop}
+        onToggleDesktop={toggleDesktop}
       />
 
-      <main className="flex-1 lg:ml-72 p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 pb-32 lg:pb-10 no-print transition-all duration-300">
+      <main className={`flex-1 ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
         <Header
           title={getTitle()}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          forceDesktop={forceDesktop}
         />
 
         <AnimatePresence mode="wait">
@@ -6824,8 +6890,8 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         </AnimatePresence>
       </main>
 
-      <BottomNav currentSection={section} setSection={setSection} />
-      {section !== "vendas" && <FAB setSection={setSection} />}
+      {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} />}
+      {section !== "vendas" && !forceDesktop && <FAB setSection={setSection} />}
 
       {/* Hidden print area for contracts */}
       <div className="hidden print-only w-full h-full bg-white">
