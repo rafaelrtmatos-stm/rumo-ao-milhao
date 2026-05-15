@@ -2131,6 +2131,7 @@ const EmpreendimentosSection = ({
 
 const VendasSection = ({
   developments,
+  sales = [],
   onSaveVenda,
   onGoToContracts,
   onGoToContractsRecibo,
@@ -2143,6 +2144,7 @@ const VendasSection = ({
   onMergeClients,
 }: {
   developments: Empreendimento[];
+  sales?: Venda[];
   onSaveVenda: (v: Venda, c: Cliente) => Venda;
   onGoToContracts: (v: Venda) => void;
   onGoToContractsRecibo?: (v: Venda) => void;
@@ -7521,6 +7523,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         return (
           <VendasSection
             developments={developments}
+            sales={sales}
             onSaveVenda={saveSale}
             onGoToContracts={handleGoToContracts}
             onGoToContractsRecibo={handleGoToContractsRecibo}
