@@ -1632,7 +1632,7 @@ const EmpreendimentosSection = ({
               </div>
               <div>
                 <label className="label">Total de Lotes</label>
-                {Object.values(formData.lotesPorQuadra || {}).some((r) => getLotesDeQuadra(r).length > 0) ? (
+                {(formData.quadras || "").split(",").map(q => q.trim()).filter(Boolean).length > 0 ? (
                   <div className="input-field font-bold bg-slate-100 cursor-not-allowed flex items-center justify-between">
                     <span className="text-primary-main">{formData.totalLotes}</span>
                     <span className="text-[10px] text-slate-400 font-normal">calculado automaticamente</span>
