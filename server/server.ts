@@ -462,6 +462,16 @@ async function seedAdminIfNeeded() {
   }
 }
 
+// GET /api/auth/setup — check if setup is needed
+app.get("/api/auth/setup", async (_req, res) => {
+  try {
+    const existing = await db.select({ id: localUsers.id }).from(localUsers);
+    res.json({ needsSetup: existing.length === 0 });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message });
+  }
+});
+
 // POST /api/auth/setup — create first admin (only works if no users exist)
 app.post("/api/auth/setup", async (req: any, res) => {
   try {

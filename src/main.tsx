@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
-import { LoginScreen } from "./auth";
+import { LoginScreen, SetupScreen } from "./auth";
 import "./index.css";
 
 interface UserInfo {
@@ -20,15 +20,32 @@ async function checkSession(): Promise<UserInfo | null> {
   }
 }
 
+async function checkSetup(): Promise<boolean> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch("/api/auth/setup", { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return false;
+    const data = await res.json();
+    return data.needsSetup === true;
+  } catch {
+    return false;
+  }
+}
+
 function Root() {
   const [user, setUser] = useState<UserInfo | null>(null);
+  const [needsSetup, setNeedsSetup] = useState(false);
   const [checking, setChecking] = useState(true);
 
   useEffect(() => {
-    checkSession().then((u) => {
+    (async () => {
+      const [u, setup] = await Promise.all([checkSession(), checkSetup()]);
       setUser(u);
+      setNeedsSetup(setup);
       setChecking(false);
-    });
+    })();
   }, []);
 
   const handleLogout = async () => {
@@ -41,7 +58,12 @@ function Root() {
     setUser(u);
   };
 
+  const handleSetupComplete = () => {
+    setNeedsSetup(false);
+  };
+
   if (checking) return null;
+  if (needsSetup) return <SetupScreen onSetupComplete={handleSetupComplete} />;
   if (!user) return <LoginScreen onLogin={handleLogin} />;
   return <App onLogout={handleLogout} isAdmin={user.isAdmin} />;
 }

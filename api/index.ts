@@ -89,6 +89,15 @@ if (missingVars.length > 0) {
   }
 
   // --- Auth ---
+  app.get("/api/auth/setup", async (_req, res) => {
+    try {
+      const existing = await db.select({ id: localUsers.id }).from(localUsers);
+      res.json({ needsSetup: existing.length === 0 });
+    } catch (e: any) {
+      res.status(500).json({ error: e?.message });
+    }
+  });
+
   app.post("/api/auth/setup", async (req: any, res) => {
     try {
       const existing = await db.select({ id: localUsers.id }).from(localUsers);
