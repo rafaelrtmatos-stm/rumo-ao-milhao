@@ -1,74 +1,72 @@
-import { supabaseServer } from "./supabaseServer.js";
 import bcrypt from "bcryptjs";
+import { db } from "./db.js";
+import { localUsers } from "../shared/schema.js";
+import { eq, count as drizzleCount } from "drizzle-orm";
 
 export interface LocalUser {
   id: string;
   email: string;
   password_hash: string;
   is_admin: boolean;
-  created_at: string;
+  created_at: Date | null;
+}
+
+function toLocalUser(row: any): LocalUser {
+  return {
+    id: row.id,
+    email: row.email,
+    password_hash: row.passwordHash,
+    is_admin: row.isAdmin,
+    created_at: row.createdAt,
+  };
 }
 
 export const localUsersService = {
   async findByEmail(email: string): Promise<LocalUser | null> {
-    const { data, error } = await supabaseServer
-      .from("local_users")
-      .select("*")
-      .eq("email", email.toLowerCase())
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    return data;
+    const [row] = await db
+      .select()
+      .from(localUsers)
+      .where(eq(localUsers.email, email.toLowerCase()));
+    return row ? toLocalUser(row) : null;
   },
 
   async findById(id: string): Promise<LocalUser | null> {
-    const { data, error } = await supabaseServer
-      .from("local_users")
-      .select("*")
-      .eq("id", id)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    return data;
+    const [row] = await db
+      .select()
+      .from(localUsers)
+      .where(eq(localUsers.id, id));
+    return row ? toLocalUser(row) : null;
   },
 
   async listAll(): Promise<Pick<LocalUser, "id" | "email" | "is_admin" | "created_at">[]> {
-    const { data, error } = await supabaseServer
-      .from("local_users")
-      .select("id, email, is_admin, created_at")
-      .order("created_at", { ascending: true });
-    if (error) throw new Error(error.message);
-    return data ?? [];
+    const rows = await db
+      .select()
+      .from(localUsers)
+      .orderBy(localUsers.createdAt);
+    return rows.map(toLocalUser);
   },
 
   async count(): Promise<number> {
-    const { count, error } = await supabaseServer
-      .from("local_users")
-      .select("id", { count: "exact", head: true });
-    if (error) throw new Error(error.message);
-    return count ?? 0;
+    const [result] = await db.select({ count: drizzleCount() }).from(localUsers);
+    return Number(result?.count ?? 0);
   },
 
   async create(params: { id: string; email: string; password: string; isAdmin: boolean }): Promise<LocalUser> {
-    const password_hash = await bcrypt.hash(params.password, 10);
-    const { data, error } = await supabaseServer
-      .from("local_users")
-      .insert({
+    const passwordHash = await bcrypt.hash(params.password, 10);
+    const [row] = await db
+      .insert(localUsers)
+      .values({
         id: params.id,
         email: params.email.toLowerCase(),
-        password_hash,
-        is_admin: params.isAdmin,
+        passwordHash,
+        isAdmin: params.isAdmin,
       })
-      .select()
-      .single();
-    if (error) throw new Error(error.message);
-    return data;
+      .returning();
+    return toLocalUser(row);
   },
 
   async deleteById(id: string): Promise<void> {
-    const { error } = await supabaseServer
-      .from("local_users")
-      .delete()
-      .eq("id", id);
-    if (error) throw new Error(error.message);
+    await db.delete(localUsers).where(eq(localUsers.id, id));
   },
 
   async verifyPassword(user: LocalUser, password: string): Promise<boolean> {
