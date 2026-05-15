@@ -4186,30 +4186,83 @@ const ContratosSection = ({
     printWindow.document.close();
   };
 
-  const captureReciboCanvas = async () => {
-    if (!reciboRef.current) throw new Error('Elemento do recibo não encontrado.');
-    const clone = reciboRef.current.cloneNode(true) as HTMLElement;
-    clone.style.position = 'fixed';
-    clone.style.top = '0';
-    clone.style.left = '0';
-    clone.style.zIndex = '-9999';
-    clone.style.width = reciboRef.current.offsetWidth + 'px';
-    clone.style.background = '#ffffff';
-    document.body.appendChild(clone);
+  const buildReciboPopupHTML = () => {
+    if (!reciboRef.current) throw new Error('Recibo não encontrado.');
+    const headLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
+      .map(el => el.outerHTML).join('\n');
+    const bodyContent = reciboRef.current.outerHTML;
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Recibo</title>
+  ${headLinks}
+  <style>
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
+    html, body { background: #ffffff; margin: 0; padding: 0; }
+    #recibo-root { padding: 24px; background: #ffffff; }
+  </style>
+</head>
+<body>
+  <div id="recibo-root">${bodyContent}</div>
+</body>
+</html>`;
+  };
+
+  const openReciboPopup = (): Promise<Window> => {
+    return new Promise((resolve, reject) => {
+      if (!reciboRef.current) { reject(new Error('Recibo não encontrado.')); return; }
+      const popup = window.open('', '_blank', 'width=900,height=1200');
+      if (!popup) { reject(new Error('Popup bloqueado. Permita popups neste site.')); return; }
+      popup.document.open();
+      popup.document.write(buildReciboPopupHTML());
+      popup.document.close();
+      const onLoad = () => {
+        clearTimeout(timer);
+        setTimeout(() => resolve(popup), 800);
+      };
+      const timer = setTimeout(() => resolve(popup), 2500);
+      if (popup.document.readyState === 'complete') {
+        onLoad();
+      } else {
+        popup.addEventListener('load', onLoad, { once: true });
+      }
+    });
+  };
+
+  const captureReciboCanvas = async (): Promise<HTMLCanvasElement> => {
+    const popup = await openReciboPopup();
     try {
+      await popup.document.fonts.ready;
+      const captureEl = popup.document.getElementById('recibo-root');
+      if (!captureEl) throw new Error('Elemento de captura não encontrado.');
       const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(clone, {
+      const canvas = await html2canvas(captureEl, {
         scale: 2,
         backgroundColor: '#ffffff',
         useCORS: true,
         logging: false,
         allowTaint: false,
-        windowWidth: reciboRef.current.offsetWidth,
+        width: captureEl.scrollWidth,
+        height: captureEl.scrollHeight,
+        windowWidth: captureEl.scrollWidth,
+        windowHeight: captureEl.scrollHeight,
       });
       return canvas;
     } finally {
-      document.body.removeChild(clone);
+      popup.close();
     }
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   const handleDownloadImage = async () => {
@@ -4221,19 +4274,13 @@ const ContratosSection = ({
     try {
       const canvas = await captureReciboCanvas();
       const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
-      canvas.toBlob((blob) => {
-        if (!blob) { alert('Não foi possível gerar a imagem.'); return; }
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `recibo-${nome}.png`;
-        link.target = '_blank';
-        link.rel = 'noopener';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        setTimeout(() => URL.revokeObjectURL(url), 5000);
-      }, 'image/png');
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('Falha ao gerar blob da imagem.')); return; }
+          triggerDownload(blob, `recibo-${nome}.png`);
+          resolve();
+        }, 'image/png');
+      });
     } catch (e: unknown) {
       console.error('Erro ao gerar imagem:', e);
       alert('Erro ao gerar imagem: ' + (e instanceof Error ? e.message : String(e)));
@@ -4253,21 +4300,12 @@ const ContratosSection = ({
       const { jsPDF } = await import('jspdf');
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = (canvas.height * pdfW) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
       const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
       const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = `recibo-${nome}.pdf`;
-      link.target = '_blank';
-      link.rel = 'noopener';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(url), 5000);
+      triggerDownload(blob, `recibo-${nome}.pdf`);
     } catch (e: unknown) {
       console.error('Erro ao gerar PDF:', e);
       alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
