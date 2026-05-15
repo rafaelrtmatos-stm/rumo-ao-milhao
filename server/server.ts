@@ -22,6 +22,13 @@ app.use(express.urlencoded({ extended: true }));
 
 await setupAuth(app);
 
+// ── MODO SEM LOGIN ────────────────────────────────────────────────────────────
+// Quando true, qualquer requisição é tratada como usuário "default".
+// Para reativar o login, mude para false e reative o bloco em src/main.tsx.
+const AUTH_ENABLED = false;
+const DEFAULT_USER_ID = "default";
+// ─────────────────────────────────────────────────────────────────────────────
+
 const geminiAI = new GoogleGenAI({
   apiKey: process.env.AI_INTEGRATIONS_GEMINI_API_KEY || process.env.GEMINI_API_KEY || process.env.GOOGLE_API_KEY,
   ...(process.env.AI_INTEGRATIONS_GEMINI_BASE_URL ? {
@@ -48,12 +55,14 @@ async function geminiMultipart(parts: any[]): Promise<string> {
 
 // --- Local Auth ---
 const isAuthenticated: RequestHandler = (req: any, res, next) => {
+  if (!AUTH_ENABLED) return next();
   if ((req.session as any)?.localUser?.id) return next();
   if (req.isAuthenticated?.() && req.user?.claims?.sub) return next();
   return res.status(401).json({ message: "Unauthorized" });
 };
 
 function getUserId(req: any): string {
+  if (!AUTH_ENABLED) return DEFAULT_USER_ID;
   return (req.session as any)?.localUser?.id || req.user?.claims?.sub;
 }
 
@@ -142,8 +151,14 @@ app.post("/api/auth/logout", (req: any, res) => {
 });
 
 // GET /api/auth/user — override the one from registerAuthRoutes
-app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
+app.get("/api/auth/user", async (req: any, res) => {
+  if (!AUTH_ENABLED) {
+    return res.json({ id: DEFAULT_USER_ID, email: "admin@sistema.local", isAdmin: true });
+  }
   const localUser = (req.session as any)?.localUser;
+  if (!localUser?.id && !req.isAuthenticated?.()) {
+    return res.status(401).json({ message: "Unauthorized" });
+  }
   if (localUser) {
     try {
       const row = await localUsersService.findById(localUser.id);
