@@ -23,9 +23,7 @@ app.use(express.urlencoded({ extended: true }));
 await setupAuth(app);
 
 // ── MODO SEM LOGIN ────────────────────────────────────────────────────────────
-// Quando true, qualquer requisição é tratada como usuário "default".
-// Para reativar o login, mude para false e reative o bloco em src/main.tsx.
-const AUTH_ENABLED = false;
+const AUTH_ENABLED = true;
 const DEFAULT_USER_ID = "default";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -216,6 +214,18 @@ app.post("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
   } catch (e: any) {
     console.error(e);
     res.status(500).json({ error: "Failed to save empreendimentos" });
+  }
+});
+
+app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const { id } = req.params;
+    await db.delete(empreendimentos).where(and(eq(empreendimentos.id, id), eq(empreendimentos.userId, userId)));
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error(e);
+    res.status(500).json({ error: "Failed to delete empreendimento" });
   }
 });
 
@@ -449,9 +459,26 @@ if (process.env.NODE_ENV === "production") {
       middlewareMode: true,
       hmr: { server: httpServer },
     },
-    appType: "spa",
+    appType: "custom",
   });
   app.use(vite.middlewares);
+  // SPA fallback — only for non-API routes
+  app.use("*", async (req, res, next) => {
+    if (req.originalUrl.startsWith("/api/")) return next();
+    try {
+      const url = req.originalUrl;
+      let template = await vite.transformIndexHtml(url, `<!doctype html><html><head></head><body><div id="root"></div></body></html>`);
+      // Load the actual index.html
+      const fs = await import("fs");
+      const indexPath = path.resolve(__dirname, "../index.html");
+      const rawHtml = fs.readFileSync(indexPath, "utf-8");
+      template = await vite.transformIndexHtml(url, rawHtml);
+      res.status(200).set({ "Content-Type": "text/html" }).end(template);
+    } catch (e: any) {
+      vite.ssrFixStacktrace(e);
+      next(e);
+    }
+  });
 }
 
 // --- Auto-seed first admin user on startup ---

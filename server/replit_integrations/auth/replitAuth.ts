@@ -59,7 +59,16 @@ export async function setupAuth(app: Express) {
   app.use(passport.initialize());
   app.use(passport.session());
 
-  const config = await getOidcConfig();
+  let config: any;
+  try {
+    config = await Promise.race([
+      getOidcConfig(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("OIDC discovery timeout")), 3000)),
+    ]);
+  } catch (e) {
+    console.warn("[Auth] OIDC discovery skipped (local auth only):", (e as Error).message);
+    return;
+  }
 
   const verify: VerifyFunction = async (
     tokens: client.TokenEndpointResponse & client.TokenEndpointResponseHelpers,
