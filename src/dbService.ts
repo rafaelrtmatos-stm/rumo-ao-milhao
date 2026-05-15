@@ -38,7 +38,7 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
   if (items.length > 0) {
     const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
-    const { error } = await supabase.from('empreendimentos').upsert(rows, { onConflict: 'id,user_id' });
+    const { error } = await supabase.from('empreendimentos').upsert(rows);
     if (error) throw error;
   }
   const existing = await throwIfError(
@@ -69,7 +69,7 @@ async function getClientes(): Promise<Cliente[]> {
 async function saveClientes(items: Cliente[]): Promise<void> {
   if (items.length > 0) {
     const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
-    const { error } = await supabase.from('clientes').upsert(rows, { onConflict: 'id,user_id' });
+    const { error } = await supabase.from('clientes').upsert(rows);
     if (error) throw error;
   }
   const existing = await throwIfError(
@@ -95,7 +95,7 @@ async function getVendas(): Promise<Venda[]> {
 async function saveVendas(items: Venda[]): Promise<void> {
   if (items.length > 0) {
     const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
-    const { error } = await supabase.from('vendas').upsert(rows, { onConflict: 'id,user_id' });
+    const { error } = await supabase.from('vendas').upsert(rows);
     if (error) throw error;
   }
   const existing = await throwIfError(
@@ -124,7 +124,7 @@ async function getAppConfig(): Promise<AppConfig> {
 async function saveAppConfig(config: AppConfig): Promise<void> {
   const { error } = await supabase
     .from('app_config')
-    .upsert({ user_id: currentUserId, data: config }, { onConflict: 'user_id' });
+    .upsert({ user_id: currentUserId, data: config });
   if (error) throw error;
 }
 
