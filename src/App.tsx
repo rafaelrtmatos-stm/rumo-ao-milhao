@@ -6616,12 +6616,6 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
 
     const load = async () => {
       try {
-        const userRes = await fetch('/api/auth/user');
-        if (!userRes.ok) return;
-        const user = await userRes.json();
-        if (!user?.id) return;
-        setCurrentUser(user.id);
-
         const results = await Promise.allSettled([
           dbService.getEmpreendimentos(),
           dbService.getClientes(),
@@ -6630,17 +6624,31 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         ]);
 
         if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+        else console.error('Erro empreendimentos:', results[0].reason);
+
         if (results[1].status === 'fulfilled') setClients(results[1].value);
+        else console.error('Erro clientes:', results[1].reason);
+
         if (results[2].status === 'fulfilled') setSales(results[2].value);
+        else console.error('Erro vendas:', results[2].reason);
+
         if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        else console.error('Erro config:', results[3].reason);
+
+        const anyFailed = results.some(r => r.status === 'rejected');
+        if (anyFailed) {
+          const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+          alert('Erro ao conectar ao Supabase:\n' + JSON.stringify(firstErr.reason));
+        }
 
         setIsLoaded(true);
 
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
         subClientes = dbService.subscribeToClientes((d) => setClients(d));
         subVendas = dbService.subscribeToVendas((d) => setSales(d));
-      } catch (e) {
+      } catch (e: unknown) {
         console.error('Erro ao carregar dados:', e);
+        alert('Erro crítico ao carregar dados:\n' + JSON.stringify(e));
         setIsLoaded(true);
       }
     };
@@ -6664,13 +6672,13 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
       ? developments.map((d) => (d.id === newDev.id ? newDev : d))
       : [...developments, newDev];
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    dbService.saveEmpreendimentos(updated).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    dbService.saveEmpreendimentos(updated).catch((e) => alert('Erro ao deletar empreendimento:\n' + JSON.stringify(e)));
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
