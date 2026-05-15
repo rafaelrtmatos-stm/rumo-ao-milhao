@@ -3784,6 +3784,36 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
               </div>
             </div>
 
+            {/* Aviso: lote já vendido */}
+            {(() => {
+              if (!saleData.empreendimentoId || !saleData.quadra || !saleData.numeroLote) return null;
+              const vendaExistente = sales.find(v =>
+                v.id !== editingEntry?.venda?.id &&
+                v.empreendimentoId === saleData.empreendimentoId &&
+                v.quadra.toUpperCase() === saleData.quadra.toUpperCase() &&
+                v.numeroLote === saleData.numeroLote &&
+                v.status !== 'cancelado'
+              );
+              if (!vendaExistente) return null;
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="sm:col-span-2 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                >
+                  <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-black text-red-700 text-sm uppercase tracking-wide">
+                      ⚠️ Lote já vendido!
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      Quadra <strong>{vendaExistente.quadra}</strong> · Lote <strong>{vendaExistente.numeroLote}</strong> já está registrado para <strong>{vendaExistente.clienteNome}</strong> (contrato {vendaExistente.numeroContrato}, status: <strong>{vendaExistente.status || 'pendente'}</strong>). Confira antes de prosseguir.
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
             <div className="space-y-6 lg:col-span-2">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div>
