@@ -7638,3 +7638,4 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
     </div>
   );
 }
+
