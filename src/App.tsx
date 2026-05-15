@@ -47,6 +47,21 @@ import { dbService, setCurrentUser } from "./dbService";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
+function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?: string }): string[] {
+  if (!faixa) return [];
+  if (faixa.especificos && faixa.especificos.trim()) {
+    return faixa.especificos
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort((a, b) => Number(a) - Number(b));
+  }
+  if (faixa.inicio !== undefined && faixa.fim !== undefined && faixa.fim >= faixa.inicio && faixa.fim > 0) {
+    return Array.from({ length: faixa.fim - faixa.inicio + 1 }, (_, i) => (faixa.inicio! + i).toString());
+  }
+  return [];
+}
+
 function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
   const loteNum = parseInt(lote.replace(/\D/g, ""), 10);
   if (!isNaN(loteNum) && dev.ruasFaixas && dev.ruasFaixas.length > 0) {
@@ -893,9 +908,8 @@ const LotDashboard = ({
         <div className="flex-1 overflow-y-auto p-6 sm:p-10 space-y-12">
           {quadras.length > 0 ? (
             quadras.map((q) => {
-              // 1. Fonte primária: faixa configurada no empreendimento (independente de vendas/vendedor)
-              const faixaQuadra = dev.lotesPorQuadra?.[q];
-              const faixaValida = faixaQuadra && faixaQuadra.fim >= faixaQuadra.inicio && faixaQuadra.fim > 0;
+              // 1. Fonte primária: faixa ou lista específica configurada no empreendimento (independente de vendas/vendedor)
+              const configuredLots = getLotesDeQuadra(dev.lotesPorQuadra?.[q]);
 
               // 2. Fallback: lotes que aparecem em lotesInfo para essa quadra
               const lotesInfoKeys = Object.keys(dev.lotesInfo || {})
@@ -903,11 +917,8 @@ const LotDashboard = ({
                 .map((key) => key.split("-")[1]);
 
               // 3. Fallback final: padrão 12 lotes
-              const displayLots: string[] = faixaValida
-                ? Array.from(
-                    { length: faixaQuadra!.fim - faixaQuadra!.inicio + 1 },
-                    (_, i) => (faixaQuadra!.inicio + i).toString()
-                  )
+              const displayLots: string[] = configuredLots.length > 0
+                ? configuredLots
                 : lotesInfoKeys.length > 0
                   ? lotesInfoKeys.sort((a, b) => Number(a) - Number(b))
                   : Array.from({ length: 12 }, (_, i) => (i + 1).toString());
@@ -1380,9 +1391,9 @@ const EmpreendimentosSection = ({
                       const raw = e.target.value;
                       const quadraList = raw.split(",").map((q) => q.trim()).filter(Boolean);
                       const existing = formData.lotesPorQuadra || {};
-                      const newLpq: Record<string, { inicio: number; fim: number }> = {};
-                      quadraList.forEach((q) => { newLpq[q] = existing[q] ?? { inicio: 1, fim: 0 }; });
-                      const soma = Object.values(newLpq).reduce((s, r) => s + (r.fim >= r.inicio ? r.fim - r.inicio + 1 : 0), 0);
+                      const newLpq: Record<string, { inicio?: number; fim?: number; especificos?: string }> = {};
+                      quadraList.forEach((q) => { newLpq[q] = existing[q] ?? {}; });
+                      const soma = Object.values(newLpq).reduce((s, r) => s + getLotesDeQuadra(r).length, 0);
                       setFormData({ ...formData, quadras: raw, lotesPorQuadra: newLpq, totalLotes: soma || formData.totalLotes || 0 });
                     }}
                     placeholder="Ex: A, B, C, D"
@@ -1401,10 +1412,11 @@ const EmpreendimentosSection = ({
                       </p>
                       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
                         {quadraList.map((q) => {
-                          const faixa = (formData.lotesPorQuadra || {})[q] ?? { inicio: 1, fim: 0 };
-                          const count = faixa.fim >= faixa.inicio ? faixa.fim - faixa.inicio + 1 : 0;
-                          const recalc = (updated: Record<string, { inicio: number; fim: number }>) => {
-                            const soma = Object.values(updated).reduce((s, r) => s + (r.fim >= r.inicio ? r.fim - r.inicio + 1 : 0), 0);
+                          const entry = (formData.lotesPorQuadra || {})[q] ?? {};
+                          const isEspecificos = entry.especificos !== undefined;
+                          const count = getLotesDeQuadra(entry).length;
+                          const recalc = (updated: Record<string, { inicio?: number; fim?: number; especificos?: string }>) => {
+                            const soma = Object.values(updated).reduce((s, r) => s + getLotesDeQuadra(r).length, 0);
                             setFormData({ ...formData, lotesPorQuadra: updated, totalLotes: soma });
                           };
                           return (
@@ -1419,39 +1431,81 @@ const EmpreendimentosSection = ({
                                   </span>
                                 )}
                               </div>
-                              <div className="flex items-center gap-1.5">
-                                <div className="flex flex-col gap-0.5 flex-1">
-                                  <span className="text-[8px] text-slate-400 font-bold uppercase">De</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    className="input-field text-sm font-bold w-full py-1.5"
-                                    placeholder="1"
-                                    value={faixa.inicio || ""}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value) || 1;
-                                      const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...faixa, inicio: val } };
-                                      recalc(updated);
-                                    }}
-                                  />
-                                </div>
-                                <span className="text-slate-300 font-bold mt-4">—</span>
-                                <div className="flex flex-col gap-0.5 flex-1">
-                                  <span className="text-[8px] text-slate-400 font-bold uppercase">Até</span>
-                                  <input
-                                    type="number"
-                                    min={1}
-                                    className="input-field text-sm font-bold w-full py-1.5"
-                                    placeholder="20"
-                                    value={faixa.fim || ""}
-                                    onChange={(e) => {
-                                      const val = Number(e.target.value) || 0;
-                                      const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...faixa, fim: val } };
-                                      recalc(updated);
-                                    }}
-                                  />
-                                </div>
+
+                              {/* Toggle: Faixa / Específicos */}
+                              <div className="flex rounded-lg overflow-hidden border border-slate-200 text-[9px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const { especificos: _, ...rest } = entry;
+                                    const updated = { ...(formData.lotesPorQuadra || {}), [q]: rest };
+                                    recalc(updated);
+                                  }}
+                                  className={`flex-1 py-1 transition-colors ${!isEspecificos ? "bg-primary-main text-white" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  Faixa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = { ...(formData.lotesPorQuadra || {}), [q]: { especificos: entry.especificos ?? "" } };
+                                    recalc(updated);
+                                  }}
+                                  className={`flex-1 py-1 transition-colors ${isEspecificos ? "bg-primary-main text-white" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  Específicos
+                                </button>
                               </div>
+
+                              {isEspecificos ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[8px] text-slate-400 font-bold uppercase">Lotes disponíveis (separados por vírgula)</span>
+                                  <input
+                                    type="text"
+                                    className="input-field text-sm font-bold w-full py-1.5"
+                                    placeholder="Ex: 1, 2, 6, 10, 15"
+                                    value={entry.especificos ?? ""}
+                                    onChange={(e) => {
+                                      const updated = { ...(formData.lotesPorQuadra || {}), [q]: { especificos: e.target.value } };
+                                      recalc(updated);
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex flex-col gap-0.5 flex-1">
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">De</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="input-field text-sm font-bold w-full py-1.5"
+                                      placeholder="1"
+                                      value={entry.inicio ?? ""}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 1;
+                                        const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...entry, inicio: val } };
+                                        recalc(updated);
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="text-slate-300 font-bold mt-4">—</span>
+                                  <div className="flex flex-col gap-0.5 flex-1">
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">Até</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="input-field text-sm font-bold w-full py-1.5"
+                                      placeholder="20"
+                                      value={entry.fim ?? ""}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...entry, fim: val } };
+                                        recalc(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
                             </div>
                           );
                         })}
@@ -1459,7 +1513,7 @@ const EmpreendimentosSection = ({
                       <p className="text-xs font-bold text-slate-500 pt-1">
                         Total calculado:{" "}
                         <span className="text-primary-main">
-                          {Object.values(formData.lotesPorQuadra || {}).reduce((s, r) => s + (r.fim >= r.inicio ? r.fim - r.inicio + 1 : 0), 0)} lotes
+                          {Object.values(formData.lotesPorQuadra || {}).reduce((s, r) => s + getLotesDeQuadra(r).length, 0)} lotes
                         </span>
                       </p>
                     </div>
@@ -1576,7 +1630,7 @@ const EmpreendimentosSection = ({
               </div>
               <div>
                 <label className="label">Total de Lotes</label>
-                {Object.values(formData.lotesPorQuadra || {}).some((r) => r.fim >= r.inicio && r.fim > 0) ? (
+                {Object.values(formData.lotesPorQuadra || {}).some((r) => getLotesDeQuadra(r).length > 0) ? (
                   <div className="input-field font-bold bg-slate-100 cursor-not-allowed flex items-center justify-between">
                     <span className="text-primary-main">{formData.totalLotes}</span>
                     <span className="text-[10px] text-slate-400 font-normal">calculado automaticamente</span>
@@ -1679,19 +1733,20 @@ const EmpreendimentosSection = ({
                 </p>
               ) : null}
               {dev.quadras && (
-                dev.lotesPorQuadra && Object.values(dev.lotesPorQuadra).some((r) => r.fim >= r.inicio && r.fim > 0) ? (
+                dev.lotesPorQuadra && Object.values(dev.lotesPorQuadra).some((r) => getLotesDeQuadra(r).length > 0) ? (
                   <div className="mt-1">
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lotes por quadra</p>
                     <div className="flex flex-wrap gap-1">
                       {dev.quadras.split(",").map((q) => q.trim()).filter(Boolean).map((q) => {
-                        const faixa = dev.lotesPorQuadra?.[q];
-                        const count = faixa && faixa.fim >= faixa.inicio ? faixa.fim - faixa.inicio + 1 : 0;
+                        const entry = dev.lotesPorQuadra?.[q];
+                        const lotes = getLotesDeQuadra(entry);
+                        if (lotes.length === 0) return null;
+                        const label = entry?.especificos !== undefined
+                          ? `${lotes.length} espec.`
+                          : `${entry?.inicio}–${entry?.fim}`;
                         return (
                           <span key={q} className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary-main/8 text-primary-main rounded-lg px-2 py-0.5">
-                            Q.{q}
-                            {faixa && count > 0 && (
-                              <span className="font-black">{faixa.inicio}–{faixa.fim}</span>
-                            )}
+                            Q.{q} <span className="font-black">{label}</span>
                           </span>
                         );
                       })}
