@@ -2248,7 +2248,8 @@ const VendasSection = ({
       setCpfDuplicates([]);
       return;
     }
-    const excludeId = editingEntry?.cliente?.id;
+    // Exclude the client already loaded into the form (by editing or after "Usar dados existentes")
+    const excludeId = editingEntry?.cliente?.id || clientData.id;
     const matches = clients.filter(
       (c) => c.cpf?.replace(/\D/g, "") === cpfRaw && c.id !== excludeId
     );
@@ -2262,7 +2263,7 @@ const VendasSection = ({
       setCpfMatch(null);
       setCpfDuplicates([]);
     }
-  }, [clientData.cpf, clients, editingEntry]);
+  }, [clientData.cpf, clientData.id, clients, editingEntry]);
 
   const [rawText, setRawText] = useState("");
   const [isExtracting, setIsExtracting] = useState(false);
@@ -3213,7 +3214,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   <div className="flex gap-2">
                     <button
                       type="button"
-                      onClick={() => setClientData({ ...clientData, ...cpfMatch })}
+                      onClick={() => { setClientData({ ...clientData, ...cpfMatch }); setCpfMatch(null); }}
                       className="text-[10px] font-bold uppercase tracking-widest bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
                     >
                       Usar dados existentes
