@@ -4552,7 +4552,68 @@ const ContratosSection = ({
       </AnimatePresence>
 
       <div className="card-premium">
-        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+        {/* Mobile: cards */}
+        <div className="sm:hidden space-y-3">
+          {filteredSales.length === 0 && (
+            <p className="py-12 text-center text-slate-300 italic font-medium">
+              {searchTerm ? `Nenhum contrato encontrado para "${searchTerm}"` : "Nenhum contrato formalizado."}
+            </p>
+          )}
+          {filteredSales.map((venda) => {
+            const s = getStatusInfo(venda.status);
+            const Icon = s.icon;
+            return (
+              <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 truncate">{venda.clienteNome}</p>
+                    <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome}</p>
+                  </div>
+                  <div className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
+                    <Icon size={11} />
+                    {s.label}
+                  </div>
+                </div>
+                <p className="font-display font-bold text-primary-main text-lg">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+                </p>
+                <div className="grid grid-cols-4 gap-2">
+                  <button
+                    onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-white transition-all"
+                  >
+                    <FileText size={20} />
+                    <span className="text-[9px] font-bold uppercase">Contrato</span>
+                  </button>
+                  <button
+                    onClick={() => { setSelectedVenda(venda); setViewMode("receipt"); }}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-white transition-all"
+                  >
+                    <FileCheck size={20} />
+                    <span className="text-[9px] font-bold uppercase">Recibo</span>
+                  </button>
+                  <button
+                    onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                  >
+                    <Pencil size={20} />
+                    <span className="text-[9px] font-bold uppercase">Editar</span>
+                  </button>
+                  <button
+                    onClick={() => { if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) { onDeleteVenda(venda.id); } }}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    <Trash2 size={20} />
+                    <span className="text-[9px] font-bold uppercase">Excluir</span>
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Desktop: table */}
+        <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
           <table className="w-full text-left border-separate border-spacing-y-2">
             <thead>
               <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
@@ -4564,15 +4625,13 @@ const ContratosSection = ({
               </tr>
             </thead>
             <tbody className="text-sm">
-              {filteredSales.map((venda, idx) => {
+              {filteredSales.map((venda) => {
                 const s = getStatusInfo(venda.status);
                 const Icon = s.icon;
                 return (
                   <tr key={venda.id} className="group">
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
-                      <div
-                        className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}
-                      >
+                      <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
                         <Icon size={12} />
                         {s.label}
                       </div>
@@ -4584,53 +4643,33 @@ const ContratosSection = ({
                       {venda.empreendimentoNome}
                     </td>
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
-                      {new Intl.NumberFormat("pt-BR", {
-                        style: "currency",
-                        currency: "BRL",
-                      }).format(venda.valorLote)}
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
                     </td>
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
                       <div className="flex justify-center gap-2">
                         <button
-                          onClick={() => {
-                            setSelectedVenda(venda);
-                            setViewMode("contract");
-                          }}
+                          onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
                           className="p-2.5 bg-surface-card text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-primary-contrast transition-all"
                           title="Contrato"
                         >
                           <FileText size={18} />
                         </button>
                         <button
-                          onClick={() => {
-                            setSelectedVenda(venda);
-                            setViewMode("receipt");
-                          }}
+                          onClick={() => { setSelectedVenda(venda); setViewMode("receipt"); }}
                           className="p-2.5 bg-surface-card text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-primary-contrast transition-all"
                           title="Recibo"
                         >
                           <FileCheck size={18} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (onEditVenda) {
-                              onEditVenda(venda);
-                            } else {
-                              setEditingVenda(venda);
-                              setEditVendaForm({ ...venda });
-                            }
-                          }}
+                          onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
                           className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
                           title="Editar venda completa"
                         >
                           <Pencil size={18} />
                         </button>
                         <button
-                          onClick={() => {
-                            if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) {
-                              onDeleteVenda(venda.id);
-                            }
-                          }}
+                          onClick={() => { if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) { onDeleteVenda(venda.id); } }}
                           className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
                           title="Excluir contrato"
                         >
@@ -4643,13 +4682,8 @@ const ContratosSection = ({
               })}
               {filteredSales.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={5}
-                    className="py-16 text-center text-slate-300 italic font-medium"
-                  >
-                    {searchTerm
-                      ? `Nenhum contrato encontrado para "${searchTerm}"`
-                      : "Nenhum contrato formalizado."}
+                  <td colSpan={5} className="py-16 text-center text-slate-300 italic font-medium">
+                    {searchTerm ? `Nenhum contrato encontrado para "${searchTerm}"` : "Nenhum contrato formalizado."}
                   </td>
                 </tr>
               )}
@@ -4667,53 +4701,55 @@ const ContratosSection = ({
               exit={{ opacity: 0, y: 50 }}
               className="bg-surface-card w-full max-w-3xl h-full lg:h-auto lg:max-h-[85vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
             >
-              <div className="p-6 border-b border-border-subtle flex justify-between items-start bg-surface-card">
-                <div className="flex items-start gap-3">
-                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
-                    <FileText size={20} />
-                  </div>
-                  <div>
-                    <h4 className="font-display font-bold text-slate-800">Resumo da Venda</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {selectedVenda.numeroContrato}
-                      </p>
-                      <span className="text-slate-300">•</span>
-                      <div className="flex gap-1">
-                        {(["pendente", "pago", "cancelado"] as const).map((status) => (
-                          <button
-                            key={status}
-                            onClick={() => onUpdateStatus(selectedVenda.id, status)}
-                            className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${selectedVenda.status === status ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
-                          >
-                            {status}
-                          </button>
-                        ))}
+              <div className="p-4 sm:p-6 border-b border-border-subtle bg-surface-card">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast shrink-0">
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-display font-bold text-slate-800">Resumo da Venda</h4>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                          {selectedVenda.numeroContrato}
+                        </p>
+                        <span className="text-slate-300">•</span>
+                        <div className="flex gap-1">
+                          {(["pendente", "pago", "cancelado"] as const).map((status) => (
+                            <button
+                              key={status}
+                              onClick={() => onUpdateStatus(selectedVenda.id, status)}
+                              className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${selectedVenda.status === status ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
+                            >
+                              {status}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </div>
                   </div>
+                  <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    <X size={22} />
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex gap-2">
                   <button
                     onClick={handleOpenGerarContrato}
                     disabled={downloadingDocx}
-                    className="btn-ghost h-9 px-3 text-xs disabled:opacity-50"
+                    className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    <FileDown size={15} />
-                    <span className="hidden sm:inline">Gerar Contrato</span>
+                    <FileDown size={18} />
+                    Gerar Contrato
                   </button>
                   <button
                     onClick={() => setShowReciboModal(true)}
-                    className="btn-ghost h-9 px-3 text-xs"
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2"
                   >
-                    <FileCheck size={15} />
-                    <span className="hidden sm:inline">Gerar Recibo</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedVenda(null)}
-                    className="h-9 w-9 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
-                  >
-                    <X size={20} />
+                    <FileCheck size={18} />
+                    Gerar Recibo
                   </button>
                 </div>
               </div>
