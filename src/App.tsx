@@ -238,6 +238,28 @@ const exportToCSV = (sales: Venda[]) => {
   document.body.removeChild(link);
 };
 
+// --- Shake + scroll utility ---
+function triggerShake(containerEl: HTMLElement | null) {
+  if (!containerEl) return;
+  containerEl.classList.remove('shake');
+  void containerEl.offsetWidth;
+  containerEl.classList.add('shake');
+  containerEl.addEventListener('animationend', () => containerEl.classList.remove('shake'), { once: true });
+
+  const firstInvalid = containerEl.querySelector<HTMLElement>(
+    'input:invalid, select:invalid, textarea:invalid'
+  ) || containerEl.querySelector<HTMLElement>(
+    'input[required], select[required], textarea[required]'
+  );
+  if (firstInvalid) {
+    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstInvalid.classList.add('field-invalid');
+    const clear = () => { firstInvalid.classList.remove('field-invalid'); };
+    firstInvalid.addEventListener('input', clear, { once: true });
+    firstInvalid.addEventListener('change', clear, { once: true });
+  }
+}
+
 // --- Components ---
 
 const Sidebar = ({
@@ -1146,6 +1168,7 @@ const EmpreendimentosSection = ({
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "" });
@@ -1183,7 +1206,10 @@ const EmpreendimentosSection = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.nome) return;
+    if (!formData.nome) {
+      triggerShake(devFormRef.current);
+      return;
+    }
     if (editingDev) {
       onSave({
         ...editingDev,
@@ -1293,6 +1319,7 @@ const EmpreendimentosSection = ({
             className="overflow-hidden"
           >
             <form
+              ref={devFormRef}
               onSubmit={handleSubmit}
               className="card-premium grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50"
             >
@@ -1981,6 +2008,7 @@ const VendasSection = ({
     formaPagamento: "Boleto",
     ...initialSaleData,
   });
+  const vendasFormRef = useRef<HTMLFormElement>(null);
   const [showNovoDev, setShowNovoDev] = useState(false);
   const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
   const [cpfErr, setCpfErr] = useState<string | null>(null);
@@ -2416,7 +2444,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientData.nome || !saleData.empreendimentoId) {
-      alert("Por favor, preencha os campos obrigatórios.");
+      triggerShake(vendasFormRef.current);
       return;
     }
     if (clientData.cpf && cpfStatus(clientData.cpf) === "invalid") {
@@ -2820,7 +2848,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
+      <form ref={vendasFormRef} onSubmit={handleSubmit} className="space-y-8">
         <div className="card-premium">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
@@ -5674,9 +5702,10 @@ const ConfigSection = ({
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
   };
   const [vendedorForm, setVendedorForm] = useState<Omit<Vendedor, "id">>(emptyVendedor);
+  const vendedorFormRef = useRef<HTMLDivElement>(null);
 
   const handleSaveVendedor = () => {
-    if (!vendedorForm.nome.trim()) { alert("Nome é obrigatório."); return; }
+    if (!vendedorForm.nome.trim()) { triggerShake(vendedorFormRef.current); return; }
     let updated: Vendedor[];
     if (editingVendedor) {
       updated = (formData.vendedores || []).map((v) =>
@@ -5827,7 +5856,7 @@ const ConfigSection = ({
         ))}
 
         {showVendedorForm && (
-          <div className="border border-border-subtle rounded-2xl p-6 space-y-4 bg-slate-50/50">
+          <div ref={vendedorFormRef} className="border border-border-subtle rounded-2xl p-6 space-y-4 bg-slate-50/50">
             <h5 className="font-bold text-slate-700 text-sm">{editingVendedor ? "Editar Vendedor" : "Novo Vendedor"}</h5>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
@@ -6184,9 +6213,10 @@ const ProprietariosSection = ({
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<Omit<Proprietario, "id">>(emptyProp);
+  const propFormRef = useRef<HTMLDivElement>(null);
 
   const handleSave = () => {
-    if (!form.nome.trim()) { alert("Nome é obrigatório."); return; }
+    if (!form.nome.trim()) { triggerShake(propFormRef.current); return; }
     let updated: Proprietario[];
     if (editingId) {
       updated = proprietarios.map((p) => p.id === editingId ? { ...form, id: editingId } : p);
@@ -6238,7 +6268,7 @@ const ProprietariosSection = ({
             exit={{ height: 0, opacity: 0 }}
             className="overflow-hidden"
           >
-            <div className="card-premium space-y-6 bg-slate-50/50">
+            <div ref={propFormRef} className="card-premium space-y-6 bg-slate-50/50">
               <h4 className="font-bold text-slate-800 text-base">{editingId ? "Editar Proprietário" : "Novo Proprietário"}</h4>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
