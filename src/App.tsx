@@ -4250,7 +4250,6 @@ const ContratosSection = ({
       medidaFundos: selectedVenda.medidaFundos || "",
       areaTotal: selectedVenda.areaTotal || "",
     });
-    setGerarSalvarProp(false);
     setShowGerarModal(true);
   };
 
