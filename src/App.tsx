@@ -2556,8 +2556,8 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
         )}
       </AnimatePresence>
 
-      {/* IA Auto-fill Section */}
-      <div className="card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10">
+      {/* IA Auto-fill Section — temporariamente desativado. Para reativar, remova o "hidden" abaixo */}
+      <div className="hidden card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10">
         <div className="flex items-center gap-3 mb-4">
           <div className="p-3 bg-primary-main text-primary-contrast rounded-2xl shadow-lg shadow-primary-main/10">
             <Sparkles size={20} />
