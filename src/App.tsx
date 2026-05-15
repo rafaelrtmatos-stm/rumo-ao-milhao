@@ -510,13 +510,20 @@ const StatCard = ({
   value,
   icon: Icon,
   colorClass,
+  onClick,
+  subtitle,
 }: {
   title: string;
   value: string;
   icon: any;
   colorClass: string;
+  onClick?: () => void;
+  subtitle?: string;
 }) => (
-  <div className={`stat-card-gradient ${colorClass}`}>
+  <div
+    className={`stat-card-gradient ${colorClass} ${onClick ? "cursor-pointer hover:scale-[1.03] hover:-translate-y-1 transition-transform duration-200" : ""}`}
+    onClick={onClick}
+  >
     <div className="flex justify-between items-start">
       <div>
         <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-2">
@@ -525,6 +532,9 @@ const StatCard = ({
         <p className="text-4xl font-display font-bold tracking-tight">
           {value}
         </p>
+        {subtitle && (
+          <p className="text-[10px] opacity-70 mt-1 font-semibold">{subtitle}</p>
+        )}
       </div>
       <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
         <Icon size={24} className="stroke-[2.5]" />
@@ -533,6 +543,11 @@ const StatCard = ({
     <div className="absolute -right-6 -bottom-6 opacity-10">
       <Icon size={120} />
     </div>
+    {onClick && (
+      <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mt-3 flex items-center gap-1">
+        Clique para ver <span className="text-base leading-none">›</span>
+      </p>
+    )}
   </div>
 );
 
@@ -541,21 +556,21 @@ const StatCard = ({
 const DashboardSection = ({
   sales,
   developments,
+  clients,
   onNavigate,
   onViewContract,
 }: {
   sales: Venda[];
   developments: Empreendimento[];
+  clients: Cliente[];
   onNavigate?: (s: Section) => void;
   onViewContract?: (v: Venda) => void;
 }) => {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
-  const totalCommissions = sales.reduce(
-    (acc, sale) => acc + (sale.comissao || 0),
+  const totalLotesDisponiveis = developments.reduce(
+    (acc, d) => acc + Math.max(0, d.totalLotes - d.lotesVendidos),
     0,
   );
-  const totalCosts = sales.reduce((acc, sale) => acc + (sale.custo || 0), 0);
-  const totalProfit = totalRevenue - totalCosts - totalCommissions;
 
   // Chart Data: Sales per Day (last 7 days)
   const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -616,47 +631,21 @@ const DashboardSection = ({
           colorClass="bg-gradient-to-br from-slate-800 to-slate-900"
         />
         <StatCard
-          title="Comissões"
-          value={new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-            maximumFractionDigits: 0,
-          }).format(totalCommissions)}
-          icon={Calculator}
+          title="Lotes Disponíveis"
+          value={totalLotesDisponiveis.toString()}
+          icon={LayoutDashboard}
           colorClass="bg-gradient-to-br from-chumbo-base to-chumbo-muted text-primary-contrast"
+          onClick={() => onNavigate?.("empreendimentos")}
+          subtitle={`em ${developments.length} empreendimento${developments.length !== 1 ? "s" : ""}`}
         />
-        <motion.div
-          whileHover={{ y: -5 }}
-          className="card-premium border-primary-main/20 bg-primary-main/[0.02]"
-        >
-          <div className="flex justify-between items-start">
-            <div>
-              <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] text-slate-400 mb-2">
-                Lucro Líquido
-              </p>
-              <p
-                className={`text-3xl font-display font-bold tracking-tight ${totalProfit >= 0 ? "text-success-main" : "text-red-500"}`}
-              >
-                {new Intl.NumberFormat("pt-BR", {
-                  style: "currency",
-                  currency: "BRL",
-                  maximumFractionDigits: 0,
-                }).format(totalProfit)}
-              </p>
-            </div>
-            <div className="p-3 bg-surface-card shadow-sm border border-border-subtle rounded-2xl">
-              <TrendingUp
-                size={24}
-                className={
-                  totalProfit >= 0 ? "text-success-main" : "text-red-500"
-                }
-              />
-            </div>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-4 font-bold flex items-center gap-1">
-            Total após custos e comissões
-          </p>
-        </motion.div>
+        <StatCard
+          title="Clientes"
+          value={clients.length.toString()}
+          icon={Users}
+          colorClass="bg-gradient-to-br from-primary-main/90 to-primary-accent/80"
+          onClick={() => onNavigate?.("clientes")}
+          subtitle="cadastrados"
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
@@ -7052,6 +7041,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
           <DashboardSection
             sales={sales}
             developments={developments}
+            clients={clients}
             onNavigate={(s) => setSection(s)}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
           />
@@ -7128,9 +7118,9 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
       case "config":
         return <ConfigSection config={config} onSave={saveAppConfig} />;
       case "usuarios":
-        return isAdmin ? <UsuariosSection /> : <DashboardSection sales={sales} developments={developments} />;
+        return isAdmin ? <UsuariosSection /> : <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
       default:
-        return <DashboardSection sales={sales} developments={developments} />;
+        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
     }
   };
 
