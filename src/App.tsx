@@ -1765,30 +1765,53 @@ const EmpreendimentosSection = ({
 
 
             <div className="mt-auto space-y-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
-              <div className="flex justify-between items-end">
-                <div className="space-y-1">
-                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-                    Vendas
-                  </p>
-                  <p className="text-2xl font-display font-bold text-slate-800 leading-none">
-                    {dev.lotesVendidos}{" "}
-                    <span className="text-sm font-medium text-slate-400">
-                      / {dev.totalLotes}
-                    </span>
-                  </p>
+              {/* Warning: quadras sem faixa configurada */}
+              {(() => {
+                const quadraList = (dev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                const semFaixa = quadraList.filter(q => getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length === 0);
+                const somaQuadras = quadraList.reduce((s, q) => s + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length, 0);
+                const diffTotal = quadraList.length > 0 && somaQuadras > 0 && somaQuadras !== dev.totalLotes;
+                if (semFaixa.length === 0 && !diffTotal) return null;
+                return (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <AlertCircle size={15} className="text-amber-500 mt-0.5 shrink-0" />
+                    <div className="text-[11px] font-bold text-amber-700 space-y-0.5">
+                      {semFaixa.length > 0 && (
+                        <p>⚠️ Quadra{semFaixa.length > 1 ? 's' : ''} sem lotes configurados: <span className="font-black">{semFaixa.map(q => `Q.${q}`).join(', ')}</span></p>
+                      )}
+                      {diffTotal && (
+                        <p>⚠️ Total configurado ({somaQuadras}) difere do total cadastrado ({dev.totalLotes}). Confira as faixas.</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Métricas: Vendidos / Disponíveis / Total */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Vendidos</p>
+                  <p className="text-lg font-display font-bold text-slate-800">{dev.lotesVendidos}</p>
                 </div>
-                <p className="text-sm font-bold text-primary-main">
-                  {Math.round((dev.lotesVendidos / dev.totalLotes) * 100)}%
-                </p>
+                <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-0.5">Disponíveis</p>
+                  <p className="text-lg font-display font-bold text-emerald-700">{Math.max(0, dev.totalLotes - dev.lotesVendidos)}</p>
+                </div>
+                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total</p>
+                  <p className="text-lg font-display font-bold text-slate-800">{dev.totalLotes}</p>
+                </div>
               </div>
 
-              <div className="relative">
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <span>Progresso de vendas</span>
+                  <span className="text-primary-main">{dev.totalLotes > 0 ? Math.round((dev.lotesVendidos / dev.totalLotes) * 100) : 0}%</span>
+                </div>
                 <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
                   <motion.div
                     initial={{ width: 0 }}
-                    animate={{
-                      width: `${(dev.lotesVendidos / dev.totalLotes) * 100}%`,
-                    }}
+                    animate={{ width: `${dev.totalLotes > 0 ? (dev.lotesVendidos / dev.totalLotes) * 100 : 0}%` }}
                     className="bg-primary-main h-full rounded-full shadow-[0_0_8px_rgba(45,80,22,0.3)]"
                   />
                 </div>
