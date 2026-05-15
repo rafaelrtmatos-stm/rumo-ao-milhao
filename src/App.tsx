@@ -4082,29 +4082,70 @@ const ContratosSection = ({
   }, [initialVenda]);
 
   const reciboRef = useRef<HTMLDivElement>(null);
-  const handlePrint = () => window.print();
+  const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | null>(null);
+
+  const handlePrint = () => {
+    window.print();
+  };
 
   const handleDownloadImage = async () => {
-    if (!reciboRef.current) return;
-    const html2canvas = (await import('html2canvas')).default;
-    const canvas = await html2canvas(reciboRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-    const link = document.createElement('a');
-    link.download = `recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+    if (!reciboRef.current) {
+      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+      return;
+    }
+    setReciboDownloading('img');
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const canvas = await html2canvas(reciboRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+      });
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.download = `recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (e: unknown) {
+      console.error('Erro ao gerar imagem:', e);
+      alert('Erro ao gerar imagem: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setReciboDownloading(null);
+    }
   };
 
   const handleDownloadPdf = async () => {
-    if (!reciboRef.current) return;
-    const html2canvas = (await import('html2canvas')).default;
-    const { jsPDF } = await import('jspdf');
-    const canvas = await html2canvas(reciboRef.current, { scale: 2, backgroundColor: '#ffffff', useCORS: true });
-    const imgData = canvas.toDataURL('image/png');
-    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-    const pdfWidth = pdf.internal.pageSize.getWidth();
-    const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-    pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
-    pdf.save(`recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.pdf`);
+    if (!reciboRef.current) {
+      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+      return;
+    }
+    setReciboDownloading('pdf');
+    try {
+      const html2canvas = (await import('html2canvas')).default;
+      const { jsPDF } = await import('jspdf');
+      const canvas = await html2canvas(reciboRef.current, {
+        scale: 2,
+        backgroundColor: '#ffffff',
+        useCORS: true,
+        logging: false,
+        allowTaint: true,
+      });
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      pdf.save(`recibo-${selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo'}.pdf`);
+    } catch (e: unknown) {
+      console.error('Erro ao gerar PDF:', e);
+      alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setReciboDownloading(null);
+    }
   };
 
   const client = selectedVenda
@@ -4896,15 +4937,33 @@ const ContratosSection = ({
                   </button>
                 </div>
                 <div className="flex gap-2">
-                  <button onClick={handleDownloadImage} className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-                    Imagem
+                  <button
+                    onClick={handleDownloadImage}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {reciboDownloading === 'img' ? (
+                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
+                    ) : (
+                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>Imagem</>
+                    )}
                   </button>
-                  <button onClick={handleDownloadPdf} className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
-                    PDF
+                  <button
+                    onClick={handleDownloadPdf}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {reciboDownloading === 'pdf' ? (
+                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
+                    ) : (
+                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>PDF</>
+                    )}
                   </button>
-                  <button onClick={handlePrint} className="btn-primary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2">
+                  <button
+                    onClick={handlePrint}
+                    disabled={reciboDownloading !== null}
+                    className="btn-primary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
                     <Printer size={17} />
                     Imprimir
                   </button>
