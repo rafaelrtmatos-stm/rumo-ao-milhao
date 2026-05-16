@@ -69,7 +69,8 @@ function parseFicha(text: string): Record<string, any> {
   for (const rawLine of lines) {
     const colonIdx = rawLine.indexOf(":");
     if (colonIdx < 0) continue;
-    const key = rawLine.slice(0, colonIdx).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    // Normalize key: remove accents, uppercase, and strip trailing parenthetical like (3) or (2)
+    const key = rawLine.slice(0, colonIdx).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*[\(\[]\d+[\)\]]\s*$/, "").trim();
     const val = rawLine.slice(colonIdx + 1).trim();
     if (!val) continue;
 
@@ -103,7 +104,14 @@ function parseFicha(text: string): Record<string, any> {
       else { result.numeroParcelas = parseInt(val.replace(/\D/g, "")) || 0; }
     }
     else if (["VENCIMENTO", "DATA DE VENCIMENTO", "DATA VENCIMENTO"].includes(key)) {
-      result.dataVencimento = toISODate(val);
+      // Handle "TODO DIA 10", "DIA 10", "10", or full date "10/05/2025"
+      const dayMatch = val.match(/\b(\d{1,2})\b/);
+      const fullDate = toISODate(val);
+      if (fullDate !== val) {
+        result.dataVencimento = fullDate;
+      } else if (dayMatch) {
+        result.diaVencimento = dayMatch[1];
+      }
     }
     else if (key === "PROFISSAO") { result.profissao = val; }
     else if (key === "CIDADE") { result.cidade = val; }
