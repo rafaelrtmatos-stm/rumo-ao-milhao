@@ -17,14 +17,6 @@ function Root() {
       setAuthToken(storedToken);
     }
     checkAuth();
-
-    const handleUnauthorized = () => {
-      setAuthToken(null);
-      setUser(null);
-      setAuthState("login");
-    };
-    window.addEventListener("auth:unauthorized", handleUnauthorized);
-    return () => window.removeEventListener("auth:unauthorized", handleUnauthorized);
   }, []);
 
   async function checkAuth() {
