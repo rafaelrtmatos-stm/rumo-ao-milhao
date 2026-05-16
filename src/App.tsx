@@ -7292,7 +7292,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         const anyFailed = results.some(r => r.status === 'rejected');
         if (anyFailed) {
           const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
-          alert('Erro ao conectar ao Supabase:\n' + JSON.stringify(firstErr.reason));
+          alert('Erro ao carregar dados:\n' + JSON.stringify(firstErr.reason));
         }
 
         setIsLoaded(true);
