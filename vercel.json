@@ -9,6 +9,6 @@
     }
   },
   "toolbar": {
-    "defaultOpen": false
+    "enabled": false
   }
 }
