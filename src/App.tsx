@@ -2637,7 +2637,12 @@ const EmpreendimentosSection = ({
               </div>
 
               <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
-                <button onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className="btn-secondary px-5"
+                >
+                  Cancelar
+                </button>
                 <button
                   disabled={bulkSelectedQuadras.length === 0}
                   onClick={() => {
@@ -2647,7 +2652,6 @@ const EmpreendimentosSection = ({
                     const newLotesInfo: Record<string, any> = { ...(bulkAvailDev.lotesInfo || {}) };
 
                     if (bulkAvailTab === "marcarIndisponiveis") {
-                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como indisponíveis
                       bulkSelectedQuadras.forEach(q => {
                         const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
                         lotes.forEach(l => {
@@ -2659,7 +2663,6 @@ const EmpreendimentosSection = ({
                         });
                       });
                     } else if (bulkAvailTab === "liberarTodos") {
-                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como disponíveis
                       bulkSelectedQuadras.forEach(q => {
                         const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
                         lotes.forEach(l => {
@@ -2671,7 +2674,6 @@ const EmpreendimentosSection = ({
                         });
                       });
                     } else {
-                      // Para cada quadra com lotes específicos informados, marcar os informados como disponíveis e os demais como indisponíveis
                       bulkSelectedQuadras.forEach(q => {
                         const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
                         const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
@@ -2687,14 +2689,18 @@ const EmpreendimentosSection = ({
                     }
 
                     onUpdateLotesInfo(bulkAvailDev.id, newLotesInfo);
-                    setBulkAvailDev(null);
-                    setBulkSelectedQuadras([]);
-                    setBulkLotesEspecificos({});
+                    // Não fechar ainda — aguarda OK
                   }}
-                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                  className={`px-6 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
                 >
                   {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
-                  {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : bulkAvailTab === "liberarTodos" ? "Liberar Lotes" : "Aplicar Disponibilidade"}
+                  Aplicar
+                </button>
+                <button
+                  onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className="px-6 h-11 rounded-xl font-bold text-sm bg-primary-main text-primary-contrast hover:opacity-90 transition-colors flex items-center gap-2"
+                >
+                  <Check size={15} /> OK
                 </button>
               </div>
             </motion.div>
@@ -4918,6 +4924,8 @@ const ContratosSection = ({
   const [tipoContrato, setTipoContrato] = useState<'avista' | 'parcelado'>('parcelado');
   const [ruaWarning, setRuaWarning] = useState<string | null>(null);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [editingContratoExistente, setEditingContratoExistente] = useState(false);
+  const [showSaveContratoDialog, setShowSaveContratoDialog] = useState<null | { novoLotesInfo: Record<string, any>; vendaAtualizada: Venda }>(null);
 
   useEffect(() => {
     if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) {
@@ -5083,6 +5091,14 @@ const ContratosSection = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      // Marcar contrato como gerado
+      const vendaAtualizada = { ...selectedVenda, contratoGerado: true } as any;
+      if (editingContratoExistente) {
+        setShowSaveContratoDialog({ novoLotesInfo: {}, vendaAtualizada });
+      } else {
+        onUpdateVenda(vendaAtualizada);
+        setSelectedVenda(vendaAtualizada);
+      }
     } catch (e: any) {
       alert("Erro ao gerar contrato: " + e.message);
     } finally {
@@ -6177,7 +6193,9 @@ const ContratosSection = ({
                       <FileText size={20} />
                     </div>
                     <div className="min-w-0">
-                      <h4 className="font-display font-bold text-slate-800">Resumo da Venda</h4>
+                      <h4 className="font-display font-bold text-slate-800">
+                        {(selectedVenda as any).contratoGerado ? "Contrato Gerado" : "Resumo da Venda"}
+                      </h4>
                       <div className="flex flex-wrap items-center gap-2 mt-1">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
                           {selectedVenda.numeroContrato}
@@ -6204,23 +6222,61 @@ const ContratosSection = ({
                     <X size={22} />
                   </button>
                 </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleOpenGerarContrato}
-                    disabled={downloadingDocx}
-                    className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    <FileDown size={18} />
-                    Gerar Contrato
-                  </button>
-                  <button
-                    onClick={() => setShowReciboModal(true)}
-                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2"
-                  >
-                    <FileCheck size={18} />
-                    Gerar Recibo
-                  </button>
-                </div>
+                {/* Se contrato já gerado: mostrar Editar / DOC / PDF no topo */}
+                {(selectedVenda as any).contratoGerado ? (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() => {
+                        // Abre modo edição: marca flag de edição de contrato existente
+                        setEditingContratoExistente(true);
+                        handleOpenGerarContrato();
+                      }}
+                      className="flex items-center gap-2 px-4 h-10 rounded-xl border-2 border-amber-300 text-amber-700 bg-amber-50 hover:bg-amber-100 font-bold text-xs uppercase tracking-widest transition-colors"
+                    >
+                      <Pencil size={15} /> Editar
+                    </button>
+                    <button
+                      onClick={handleOpenGerarContrato}
+                      disabled={downloadingDocx}
+                      className="flex items-center gap-2 px-4 h-10 rounded-xl border-2 border-primary-main/30 text-primary-main bg-primary-main/5 hover:bg-primary-main/10 font-bold text-xs uppercase tracking-widest transition-colors disabled:opacity-50"
+                    >
+                      <FileDown size={15} /> DOC
+                    </button>
+                    <button
+                      onClick={() => setShowReciboModal(true)}
+                      className="flex items-center gap-2 px-4 h-10 rounded-xl border-2 border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 font-bold text-xs uppercase tracking-widest transition-colors"
+                    >
+                      <FileCheck size={15} /> Recibo
+                    </button>
+                    <button
+                      onClick={() => window.print()}
+                      className="flex items-center gap-2 px-4 h-10 rounded-xl border-2 border-slate-200 text-slate-600 bg-slate-50 hover:bg-slate-100 font-bold text-xs uppercase tracking-widest transition-colors"
+                    >
+                      <Printer size={15} /> PDF/Imprimir
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => {
+                        setEditingContratoExistente(false);
+                        handleOpenGerarContrato();
+                      }}
+                      disabled={downloadingDocx}
+                      className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      <FileDown size={18} />
+                      Gerar Contrato
+                    </button>
+                    <button
+                      onClick={() => setShowReciboModal(true)}
+                      className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2"
+                    >
+                      <FileCheck size={18} />
+                      Gerar Recibo
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div className="flex-1 overflow-y-auto p-5 lg:p-8 bg-slate-50/50 space-y-4">
@@ -6652,11 +6708,87 @@ const ContratosSection = ({
         )}
       </AnimatePresence>
       {DeleteModal}
+
+      {/* Modal: Salvar contrato editado */}
+      <AnimatePresence>
+        {showSaveContratoDialog && (
+          <div className="fixed inset-0 z-[300] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-[24px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+                <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500">
+                  <FileText size={20} />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Contrato Editado</h4>
+                  <p className="text-[11px] text-slate-400 font-medium">O que deseja fazer com as alterações?</p>
+                </div>
+              </div>
+              <div className="p-6 space-y-3">
+                <button
+                  onClick={() => {
+                    // Salvar como novo: gera novo ID de contrato
+                    if (showSaveContratoDialog && selectedVenda) {
+                      const novaVenda = {
+                        ...selectedVenda,
+                        id: `venda-${Date.now()}`,
+                        numeroContrato: `CONT-${Date.now()}`,
+                        contratoGerado: true,
+                      } as any;
+                      onSaveVenda(novaVenda, clients.find(c => c.id === selectedVenda.clienteId) || { id: '', nome: '', cpf: '', rg: '', estadoCivil: '', profissao: '', nascimento: '', cep: '', endereco: '', numero: '', bairro: '', cidade: '', estado: '', telefone1: '', telefone2: '', genero: 'M', nacionalidade: '' });
+                    }
+                    setShowSaveContratoDialog(null);
+                    setEditingContratoExistente(false);
+                  }}
+                  className="w-full flex items-center gap-3 p-4 bg-emerald-50 border-2 border-emerald-200 text-emerald-700 rounded-2xl hover:bg-emerald-100 transition-colors text-left"
+                >
+                  <div className="p-2 bg-emerald-100 rounded-xl shrink-0"><Plus size={16} /></div>
+                  <div>
+                    <p className="font-bold text-sm">Salvar como novo contrato</p>
+                    <p className="text-xs text-emerald-600">Cria uma nova versão e mantém o original</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => {
+                    // Sobrescrever: atualiza o contrato existente
+                    if (selectedVenda) {
+                      const atualizada = { ...selectedVenda, contratoGerado: true } as any;
+                      onUpdateVenda(atualizada);
+                      setSelectedVenda(atualizada);
+                    }
+                    setShowSaveContratoDialog(null);
+                    setEditingContratoExistente(false);
+                  }}
+                  className="w-full flex items-center gap-3 p-4 bg-amber-50 border-2 border-amber-200 text-amber-700 rounded-2xl hover:bg-amber-100 transition-colors text-left"
+                >
+                  <div className="p-2 bg-amber-100 rounded-xl shrink-0"><RefreshCw size={16} /></div>
+                  <div>
+                    <p className="font-bold text-sm">Sobrescrever contrato existente</p>
+                    <p className="text-xs text-amber-600">Substitui o contrato atual pelas alterações</p>
+                  </div>
+                </button>
+                <button
+                  onClick={() => { setShowSaveContratoDialog(null); setEditingContratoExistente(false); }}
+                  className="w-full flex items-center gap-3 p-4 bg-slate-50 border-2 border-slate-200 text-slate-600 rounded-2xl hover:bg-slate-100 transition-colors text-left"
+                >
+                  <div className="p-2 bg-slate-100 rounded-xl shrink-0"><X size={16} /></div>
+                  <div>
+                    <p className="font-bold text-sm">Cancelar</p>
+                    <p className="text-xs text-slate-500">Descartar as alterações</p>
+                  </div>
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
-
-const ClientesSection = ({
   clients,
   sales,
   onUpdateCliente,
@@ -8426,13 +8558,16 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
     id: string,
     info: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }>,
   ) => {
-    const updated = developments.map((d) =>
-      d.id === id
-        ? { ...d, lotesInfo: { ...(d.lotesInfo || {}), ...info } }
-        : d,
-    );
-    setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    setDevelopments(prev => {
+      const updated = prev.map((d) =>
+        d.id === id
+          ? { ...d, lotesInfo: { ...(d.lotesInfo || {}), ...info } }
+          : d,
+      );
+      // Save após obter o estado mais recente
+      dbService.saveEmpreendimentos(updated).catch(console.error);
+      return updated;
+    });
   };
 
   const deleteLot = (devId: string, key: string) => {
