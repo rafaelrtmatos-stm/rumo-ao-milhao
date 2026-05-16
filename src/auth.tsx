@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Building2, Lock, Mail, ShieldCheck } from "lucide-react";
 
-export function LoginScreen({ onLogin }: { onLogin: () => void }) {
+export function LoginScreen({ onLogin }: { onLogin: (data?: any) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,7 +24,7 @@ export function LoginScreen({ onLogin }: { onLogin: () => void }) {
         throw new Error("Servidor indisponível. Tente novamente mais tarde.");
       }
       if (!res.ok) throw new Error(data.error || "Erro ao autenticar.");
-      onLogin();
+      onLogin(data);
     } catch (err: any) {
       setError(err.message || "Erro ao autenticar.");
     } finally {

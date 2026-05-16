@@ -10,6 +10,7 @@ import type { RequestHandler } from "express";
 import { localUsersService } from "./localUsersService.js";
 import { gerarContratoParceladoPadrao } from "./contratoParceladoPadrao.js";
 import { GoogleGenAI } from "@google/genai";
+import jwt from "jsonwebtoken";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,11 +21,21 @@ const httpServer = createServer(app);
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// CORS para Vercel (permite o frontend enviar o header Authorization)
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 await setupAuth(app);
 
 // ── MODO COM LOGIN ────────────────────────────────────────────────────────────
 const AUTH_ENABLED = true;
 const DEFAULT_USER_ID = "default";
+const JWT_SECRET = process.env.JWT_SECRET || "rumo-ao-milhao-jwt-secret-2025";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const geminiAI = new GoogleGenAI({
@@ -51,25 +62,57 @@ async function geminiMultipart(parts: any[]): Promise<string> {
   return response.text ?? "{}";
 }
 
-// --- Local Auth ---
+// --- JWT Auth helpers ---
+function signToken(payload: { id: string; email: string }): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
+}
+
+function verifyToken(token: string): { id: string; email: string } | null {
+  try {
+    return jwt.verify(token, JWT_SECRET) as { id: string; email: string };
+  } catch {
+    return null;
+  }
+}
+
+function extractToken(req: any): string | null {
+  const authHeader = req.headers["authorization"];
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  return null;
+}
+
+// --- Local Auth middleware ---
 const isAuthenticated: RequestHandler = (req: any, res, next) => {
   if (!AUTH_ENABLED) return next();
+
+  // JWT token (novo método — Vercel)
+  const token = extractToken(req);
+  if (token) {
+    const payload = verifyToken(token);
+    if (payload) {
+      req.jwtUser = payload;
+      return next();
+    }
+  }
+
+  // Sessão Express (fallback — Replit local)
   if ((req.session as any)?.localUser?.id) return next();
   if (req.isAuthenticated?.() && req.user?.claims?.sub) return next();
+
   return res.status(401).json({ message: "Unauthorized" });
 };
 
 function getUserId(req: any): string {
   if (!AUTH_ENABLED) return DEFAULT_USER_ID;
-  return (req.session as any)?.localUser?.id || req.user?.claims?.sub;
+  return req.jwtUser?.id || (req.session as any)?.localUser?.id || req.user?.claims?.sub;
 }
 
 // Middleware: only admin users can proceed
 const isAdminUser: RequestHandler = async (req: any, res, next) => {
-  const localUser = (req.session as any)?.localUser;
-  if (!localUser?.id) return res.status(401).json({ error: "Não autenticado." });
+  const userId = getUserId(req);
+  if (!userId) return res.status(401).json({ error: "Não autenticado." });
   try {
-    const user = await localUsersService.findById(localUser.id);
+    const user = await localUsersService.findById(userId);
     if (!user?.is_admin) return res.status(403).json({ error: "Acesso restrito ao administrador." });
     next();
   } catch {
@@ -129,7 +172,7 @@ app.get("/api/admin/users", isAuthenticated, isAdminUser, async (_req, res) => {
 app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const selfId = (req.session as any)?.localUser?.id;
+    const selfId = getUserId(req);
     if (id === selfId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
     await localUsersService.deleteById(id);
     res.json({ ok: true });
@@ -153,7 +196,7 @@ app.patch("/api/admin/users/:id/permissions", isAuthenticated, isAdminUser, asyn
   }
 });
 
-// POST /api/auth/login
+// POST /api/auth/login — retorna JWT token
 app.post("/api/auth/login", async (req: any, res) => {
   try {
     const { email, password } = req.body;
@@ -168,8 +211,20 @@ app.post("/api/auth/login", async (req: any, res) => {
     if (!match) {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
-    (req.session as any).localUser = { id: user.id, email: user.email };
-    res.json({ id: user.id, email: user.email, isAdmin: user.is_admin, permissions: (user as any).permissions ?? {} });
+
+    // Também salva na sessão (para compatibilidade com Replit local)
+    if (req.session) {
+      (req.session as any).localUser = { id: user.id, email: user.email };
+    }
+
+    const token = signToken({ id: user.id, email: user.email });
+    res.json({
+      id: user.id,
+      email: user.email,
+      isAdmin: user.is_admin,
+      permissions: (user as any).permissions ?? {},
+      token, // JWT para o frontend guardar
+    });
   } catch (e: any) {
     console.error("Login error:", e);
     res.status(500).json({ error: e?.message || "Erro ao entrar." });
@@ -178,20 +233,42 @@ app.post("/api/auth/login", async (req: any, res) => {
 
 // POST /api/auth/logout
 app.post("/api/auth/logout", (req: any, res) => {
-  (req.session as any).localUser = null;
-  req.session.destroy(() => res.json({ ok: true }));
+  if (req.session) {
+    (req.session as any).localUser = null;
+    req.session.destroy(() => {});
+  }
+  res.json({ ok: true });
 });
 
-// GET /api/auth/user — override the one from registerAuthRoutes
+// GET /api/auth/user — verifica JWT ou sessão
 app.get("/api/auth/user", async (req: any, res) => {
   if (!AUTH_ENABLED) {
     return res.json({ id: DEFAULT_USER_ID, email: "admin@sistema.local", isAdmin: true });
   }
-  const localUser = (req.session as any)?.localUser;
-  if (!localUser?.id && !req.isAuthenticated?.()) {
-    return res.status(401).json({ message: "Unauthorized" });
+
+  // JWT token (Vercel)
+  const token = extractToken(req);
+  if (token) {
+    const payload = verifyToken(token);
+    if (payload) {
+      try {
+        const row = await localUsersService.findById(payload.id);
+        return res.json({
+          id: payload.id,
+          email: payload.email,
+          isAdmin: row?.is_admin ?? false,
+          permissions: (row as any)?.permissions ?? {},
+        });
+      } catch {
+        return res.json({ id: payload.id, email: payload.email, isAdmin: false, permissions: {} });
+      }
+    }
+    return res.status(401).json({ message: "Token inválido." });
   }
-  if (localUser) {
+
+  // Sessão (Replit local)
+  const localUser = (req.session as any)?.localUser;
+  if (localUser?.id) {
     try {
       const row = await localUsersService.findById(localUser.id);
       return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.is_admin ?? false, permissions: (row as any)?.permissions ?? {} });
@@ -199,8 +276,14 @@ app.get("/api/auth/user", async (req: any, res) => {
       return res.json({ id: localUser.id, email: localUser.email, isAdmin: false, permissions: {} });
     }
   }
-  const userId = req.user?.claims?.sub;
-  res.json({ id: userId, email: req.user?.claims?.email, isAdmin: false });
+
+  // Passport (Replit OAuth)
+  if (req.isAuthenticated?.()) {
+    const userId = req.user?.claims?.sub;
+    return res.json({ id: userId, email: req.user?.claims?.email, isAdmin: false });
+  }
+
+  return res.status(401).json({ message: "Unauthorized" });
 });
 
 function safeParseJson(text: string | undefined | null): any {
@@ -208,7 +291,6 @@ function safeParseJson(text: string | undefined | null): any {
   try {
     return JSON.parse(text);
   } catch {
-    // Try to extract JSON from markdown code blocks
     const match = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (match) {
       try { return JSON.parse(match[1].trim()); } catch {}
@@ -368,57 +450,12 @@ app.post("/api/gemini/extract-sale", isAuthenticated, async (req, res) => {
   }
 });
 
-// Smart paste: structured prompt tuned for the CADASTRO DO COMPRADOR format
 app.post("/api/gemini/smart-paste", isAuthenticated, async (req, res) => {
   try {
     const { rawText } = req.body;
     if (!rawText?.trim()) return res.status(400).json({ error: "Texto vazio." });
 
-    const prompt = `Extraia os dados do texto abaixo e retorne APENAS um JSON válido, sem markdown, sem explicação.
-
-Texto:
-${rawText}
-
-Retorne exatamente neste formato:
-{
-  "nome": "",
-  "nacionalidade": "",
-  "rg": "",
-  "cpf": "",
-  "estadoCivil": "",
-  "profissao": "",
-  "nascimento": "YYYY-MM-DD",
-  "endereco": "",
-  "numero": "",
-  "bairro": "",
-  "cidade": "",
-  "estado": "",
-  "cep": "",
-  "telefone1": "",
-  "telefone2": "",
-  "lote": "",
-  "quadra": "",
-  "empreendimento": "",
-  "valorTotal": 0,
-  "entrada": 0,
-  "numeroParcelas": 0,
-  "valorParcela": 0,
-  "diaVencimento": ""
-}
-
-Regras:
-- nascimento: converta DD/MM/YYYY para YYYY-MM-DD
-- cpf: mantenha a máscara 000.000.000-00
-- rg: inclua órgão emissor se houver (ex: 35328010 SSP AM)
-- telefone1 e telefone2: apenas dígitos (sem formatação), ex: 92990725820
-- cep: apenas dígitos, ex: 69085190
-- estadoCivil: normalize para Solteiro, Solteira, Casado, Casada, Divorciado, Divorciada, Viúvo, Viúva ou União Estável
-- nacionalidade: ex: Brasileira, Brasileira nata, Portuguesa (capitalize primeira letra)
-- profissao: texto simples, ex: Agricultor, Vendedor, Autônomo
-- valorTotal, entrada, valorParcela: apenas número decimal, sem R$ ou pontos, ex: 18000.00
-- numeroParcelas: apenas o número inteiro
-- diaVencimento: apenas o número do dia, ex: 20
-- Se um campo não existir no texto, retorne string vazia ou 0`;
+    const prompt = `Extraia os dados do texto abaixo e retorne APENAS um JSON válido, sem markdown, sem explicação.\n\nTexto:\n${rawText}\n\nRetorne exatamente neste formato:\n{\n  "nome": "",\n  "nacionalidade": "",\n  "rg": "",\n  "cpf": "",\n  "estadoCivil": "",\n  "profissao": "",\n  "nascimento": "YYYY-MM-DD",\n  "endereco": "",\n  "numero": "",\n  "bairro": "",\n  "cidade": "",\n  "estado": "",\n  "cep": "",\n  "telefone1": "",\n  "telefone2": "",\n  "lote": "",\n  "quadra": "",\n  "empreendimento": "",\n  "valorTotal": 0,\n  "entrada": 0,\n  "numeroParcelas": 0,\n  "valorParcela": 0,\n  "diaVencimento": ""\n}\n\nRegras:\n- nascimento: converta DD/MM/YYYY para YYYY-MM-DD\n- cpf: mantenha a máscara 000.000.000-00\n- rg: inclua órgão emissor se houver (ex: 35328010 SSP AM)\n- telefone1 e telefone2: apenas dígitos (sem formatação), ex: 92990725820\n- cep: apenas dígitos, ex: 69085190\n- estadoCivil: normalize para Solteiro, Solteira, Casado, Casada, Divorciado, Divorciada, Viúvo, Viúva ou União Estável\n- nacionalidade: ex: Brasileira, Brasileira nata, Portuguesa (capitalize primeira letra)\n- profissao: texto simples, ex: Agricultor, Vendedor, Autônomo\n- valorTotal, entrada, valorParcela: apenas número decimal, sem R$ ou pontos, ex: 18000.00\n- numeroParcelas: apenas o número inteiro\n- diaVencimento: apenas o número do dia, ex: 20\n- Se um campo não existir no texto, retorne string vazia ou 0`;
 
     const raw = await geminiText(prompt);
     res.json(safeParseJson(raw.replace(/```json|```/g, "").trim()));
@@ -496,17 +533,14 @@ if (process.env.NODE_ENV === "production") {
     appType: "custom",
   });
   app.use(vite.middlewares);
-  // SPA fallback — only for non-API routes
   app.use("*", async (req, res, next) => {
     if (req.originalUrl.startsWith("/api/")) return next();
     try {
       const url = req.originalUrl;
-      let template = await vite.transformIndexHtml(url, `<!doctype html><html><head></head><body><div id="root"></div></body></html>`);
-      // Load the actual index.html
       const fs = await import("fs");
       const indexPath = path.resolve(__dirname, "../index.html");
       const rawHtml = fs.readFileSync(indexPath, "utf-8");
-      template = await vite.transformIndexHtml(url, rawHtml);
+      const template = await vite.transformIndexHtml(url, rawHtml);
       res.status(200).set({ "Content-Type": "text/html" }).end(template);
     } catch (e: any) {
       vite.ssrFixStacktrace(e);

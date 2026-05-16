@@ -32,6 +32,37 @@ export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
   usuarios: false,
 };
 
+// ── JWT helpers ───────────────────────────────────────────────────────────────
+const TOKEN_KEY = "rumo_auth_token";
+
+export function getAuthToken(): string | null {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+export function setAuthToken(token: string) {
+  try { localStorage.setItem(TOKEN_KEY, token); } catch {}
+}
+
+export function clearAuthToken() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+}
+
+/**
+ * authFetch — substitui fetch() em todo o app.
+ * Injeta automaticamente o header Authorization: Bearer <token>.
+ * Importe e use authFetch no lugar de fetch para chamadas à API.
+ */
+export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers ?? {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(input, { ...init, headers });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null }
@@ -87,20 +118,25 @@ function Root() {
         }
       }
 
-      // 2. Verificar se já está logado (sessão ativa)
-      const userRes = await fetch("/api/auth/user");
-      if (userRes.ok) {
-        const user = await userRes.json();
-        if (user?.id) {
-          setAuth({
-            status: "authenticated",
-            isAdmin: user.isAdmin ?? false,
-            userId: user.id,
-            email: user.email ?? "",
-            permissions: user.permissions ?? {},
-          });
-          return;
+      // 2. Verificar se já tem token salvo (JWT)
+      const token = getAuthToken();
+      if (token) {
+        const userRes = await authFetch("/api/auth/user");
+        if (userRes.ok) {
+          const user = await userRes.json();
+          if (user?.id) {
+            setAuth({
+              status: "authenticated",
+              isAdmin: user.isAdmin ?? false,
+              userId: user.id,
+              email: user.email ?? "",
+              permissions: user.permissions ?? {},
+            });
+            return;
+          }
         }
+        // Token inválido/expirado — limpa
+        clearAuthToken();
       }
 
       setAuth({ status: "login" });
@@ -113,9 +149,12 @@ function Root() {
     checkAuth();
   }, []);
 
-  const handleLogin = async () => {
+  const handleLogin = async (userData?: { id: string; email: string; isAdmin: boolean; permissions: Record<string, boolean>; token?: string }) => {
+    if (userData?.token) {
+      setAuthToken(userData.token);
+    }
     try {
-      const res = await fetch("/api/auth/user");
+      const res = await authFetch("/api/auth/user");
       if (res.ok) {
         const user = await res.json();
         setAuth({
@@ -133,8 +172,9 @@ function Root() {
 
   const handleLogout = async () => {
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await authFetch("/api/auth/logout", { method: "POST" });
     } catch {}
+    clearAuthToken();
     setAuth({ status: "login" });
   };
 
