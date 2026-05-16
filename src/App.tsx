@@ -5351,6 +5351,17 @@ const ContratosSection = ({
       height: captureEl.scrollHeight,
       windowWidth: captureEl.scrollWidth,
       windowHeight: captureEl.scrollHeight,
+      onclone: (_clonedDoc: Document, clonedEl: HTMLElement) => {
+        // html2canvas não suporta oklch (Tailwind v4) — neutralizar antes da captura
+        const style = clonedEl.ownerDocument.createElement('style');
+        style.textContent = [
+          '* { color: revert-layer !important; background-color: revert-layer !important; border-color: revert-layer !important; }',
+          '[class*="bg-"] { background-color: white !important; }',
+          '[class*="text-"] { color: black !important; }',
+          '[class*="border-"] { border-color: #d1d5db !important; }',
+        ].join('\n');
+        clonedEl.ownerDocument.head.appendChild(style);
+      },
     });
     return canvas;
   };

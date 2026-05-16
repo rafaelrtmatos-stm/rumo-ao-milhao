@@ -152,9 +152,54 @@ app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
     const self = await localUsersService.findById(u.id);
     if (!self?.is_admin) return res.status(403).json({ error: "Acesso restrito." });
     const rows = await localUsersService.listAll();
-    res.json(rows.map(r => ({ id: r.id, email: r.email, isAdmin: r.is_admin, createdAt: r.created_at })));
+    res.json(rows.map(r => ({ id: r.id, email: r.email, isAdmin: r.is_admin, createdAt: r.created_at, permissions: r.permissions ?? {}, profile: r.profile ?? {} })));
   } catch (e: any) {
     res.status(500).json({ error: "Erro ao buscar usuários." });
+  }
+});
+
+// Criar usuário (admin)
+app.post("/api/admin/users", isAuthenticated, async (req: any, res) => {
+  try {
+    const u = (req.session as any)?.localUser;
+    const self = await localUsersService.findById(u.id);
+    if (!self?.is_admin) return res.status(403).json({ error: "Acesso restrito." });
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6)
+      return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
+    const existing = await localUsersService.findByEmail(email);
+    if (existing) return res.status(400).json({ error: "Este e-mail já está cadastrado." });
+    const user = await localUsersService.create({ id: `lu-${Date.now()}`, email, password, isAdmin: false });
+    res.json({ id: user.id, email: user.email });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao criar usuário." });
+  }
+});
+
+// Atualizar permissões
+app.patch("/api/admin/users/:id/permissions", isAuthenticated, async (req: any, res) => {
+  try {
+    const u = (req.session as any)?.localUser;
+    const self = await localUsersService.findById(u.id);
+    if (!self?.is_admin) return res.status(403).json({ error: "Acesso restrito." });
+    const { permissions } = req.body;
+    await localUsersService.updatePermissions(req.params.id, permissions);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar permissões." });
+  }
+});
+
+// Atualizar perfil do usuário
+app.patch("/api/admin/users/:id/profile", isAuthenticated, async (req: any, res) => {
+  try {
+    const u = (req.session as any)?.localUser;
+    const self = await localUsersService.findById(u.id);
+    if (!self?.is_admin) return res.status(403).json({ error: "Acesso restrito." });
+    await localUsersService.updateProfile(req.params.id, req.body);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar perfil." });
   }
 });
 
