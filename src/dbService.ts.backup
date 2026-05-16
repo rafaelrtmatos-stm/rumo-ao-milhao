@@ -35,7 +35,6 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
   _suppressEmpreendimentosCallback = true;
   try {
-    const toDelete = existing.filter(e => !ids.has(e.id)).map(e => e.id);
     if (items.length > 0) {
       const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
       const { error } = await supabase.from('empreendimentos').upsert(rows);
