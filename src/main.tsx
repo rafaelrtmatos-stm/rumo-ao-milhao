@@ -102,7 +102,7 @@ type AuthState =
 function Root() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 
-  const checkAuth = async () => {
+  const checkAuth = async (retryCount = 0) => {
     try {
       // 1. Verificar se precisa de setup
       const setupRes = await fetch("/api/auth/setup");
@@ -131,12 +131,22 @@ function Root() {
             return;
           }
         }
-        // Token inválido — limpa
+        // Se não for erro de autenticação (401/403), pode ser erro de rede — tentar de novo
+        if (userRes.status !== 401 && userRes.status !== 403 && retryCount < 2) {
+          await new Promise(r => setTimeout(r, 900 * (retryCount + 1)));
+          return checkAuth(retryCount + 1);
+        }
+        // Token inválido definitivamente — limpa
         clearAuthToken();
       }
 
       setAuth({ status: "login" });
     } catch {
+      // Erro de rede puro — tentar novamente antes de forçar login
+      if (retryCount < 2) {
+        await new Promise(r => setTimeout(r, 1000 * (retryCount + 1)));
+        return checkAuth(retryCount + 1);
+      }
       setAuth({ status: "login" });
     }
   };
