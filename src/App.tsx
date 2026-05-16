@@ -31,6 +31,7 @@ import {
   Check,
   Monitor,
   Smartphone,
+  ClipboardPaste,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -48,6 +49,51 @@ import { dbService, setCurrentUser } from "./dbService";
 import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
+
+function parseFicha(text: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  const lines = text.split(/\r?\n/);
+  const cleanCurrency = (v: string) =>
+    parseFloat(v.replace(/R\$\s*/gi, "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+
+  for (const rawLine of lines) {
+    const colonIdx = rawLine.indexOf(":");
+    if (colonIdx < 0) continue;
+    const key = rawLine.slice(0, colonIdx).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const val = rawLine.slice(colonIdx + 1).trim();
+    if (!val) continue;
+
+    if (key === "NOME") { result.nome = val; }
+    else if (key === "RG") { result.rg = val; }
+    else if (key === "CPF") { result.cpf = val; }
+    else if (key === "ESTADO CIVIL") { result.estadoCivil = val; }
+    else if (["DATA DE ANIVERSARIO", "NASCIMENTO", "DATA NASC", "DATA NASCIMENTO"].includes(key)) { result.nascimento = val; }
+    else if (["ENDERECO", "RUA"].includes(key)) { result.endereco = val; }
+    else if (["No", "NUMERO", "NUM", "Nº"].includes(key.replace(/[ºo]/i, "o"))) { result.numero = val; }
+    else if (key === "BAIRRO") { result.bairro = val; }
+    else if (key === "CEP") { result.cep = val; }
+    else if (["CONTATO", "TELEFONE", "FONE", "TEL"].includes(key)) {
+      const phones = val.split("/").map((p) => p.trim()).filter(Boolean);
+      if (phones[0]) result.telefone1 = phones[0];
+      if (phones[1]) result.telefone2 = phones[1];
+    }
+    else if (key === "LOTE") { result.lote = val; }
+    else if (key === "QUADRA") { result.quadra = val; }
+    else if (key === "EMPREENDIMENTO") { result.empreendimento = val; }
+    else if (["VALOR TOTAL", "VALOR"].includes(key)) { result.valorTotal = cleanCurrency(val); }
+    else if (key === "ENTRADA") { result.entrada = cleanCurrency(val); }
+    else if (["PARCELAS", "QUANTIDADE DE PARCELAS"].includes(key)) {
+      const m = val.match(/^(\d+)[xX]?\s*(?:de\s*)?(?:R\$\s*)?([\d.,]+)/i);
+      if (m) { result.numeroParcelas = parseInt(m[1]); result.valorParcela = cleanCurrency(m[2]); }
+      else { result.numeroParcelas = parseInt(val.replace(/\D/g, "")) || 0; }
+    }
+    else if (["VENCIMENTO", "DATA DE VENCIMENTO"].includes(key)) { result.dataVencimento = val; }
+    else if (key === "PROFISSAO") { result.profissao = val; }
+    else if (key === "CIDADE") { result.cidade = val; }
+    else if (key === "ESTADO") { result.estado = val; }
+  }
+  return result;
+}
 
 function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?: string }): string[] {
   if (!faixa) return [];
@@ -1278,7 +1324,7 @@ const EmpreendimentosSection = ({
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as "disponivel" | "indisponivel" });
-  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "gerenciar">("cadastrar");
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
@@ -1299,7 +1345,7 @@ const EmpreendimentosSection = ({
       return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } } };
     });
     setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
-    setLotRegTab("gerenciar");
+    setLotRegTab("lotes");
   };
 
   const openAddForm = () => {
@@ -1778,20 +1824,6 @@ const EmpreendimentosSection = ({
             whileHover={{ scale: 1.01, translateY: -4 }}
             className="card-premium flex flex-col group relative overflow-hidden"
           >
-            <div className="absolute top-0 right-0 p-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-              <button
-                onClick={() => openEditForm(dev)}
-                className="p-2.5 bg-blue-50 text-blue-500 rounded-xl hover:bg-blue-500 hover:text-white transition-all shadow-sm"
-              >
-                <Pencil size={18} />
-              </button>
-              <button
-                onClick={() => requestDelete(`Excluir o empreendimento "${dev.nome}"? Esta ação não pode ser desfeita.`, () => onDelete(dev.id))}
-                className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
-              >
-                <Trash2 size={18} />
-              </button>
-            </div>
 
             <div className="mb-6 flex items-center gap-4">
               <div className="p-4 bg-slate-50 text-primary-main rounded-2xl group-hover:bg-primary-main group-hover:text-primary-contrast transition-colors duration-300">
@@ -1929,28 +1961,34 @@ const EmpreendimentosSection = ({
                 </span>
               </div>
 
-              <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setSelectedDevForMap(dev)}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
+                  className="flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
                 >
-                  <LayoutDashboard size={14} />
-                  <span>Dashboard</span>
+                  <MapPin size={14} />
+                  <span>Ver Mapa</span>
                 </button>
                 <button
-                  onClick={() => { setBulkAvailDev(dev); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); setBulkAvailTab("marcarIndisponiveis"); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-700 hover:text-white transition-colors"
-                  title="Gerenciar disponibilidade em massa"
+                  onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className="flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
                 >
                   <Settings size={14} />
-                  <span>Disponib.</span>
+                  <span>Gerenciar Lotes</span>
                 </button>
                 <button
-                  onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "" }); }}
-                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
+                  onClick={() => openEditForm(dev)}
+                  className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-colors"
                 >
-                  <Plus size={14} />
-                  <span>Lote</span>
+                  <Pencil size={14} />
+                  <span>Editar</span>
+                </button>
+                <button
+                  onClick={() => requestDelete(`Excluir o empreendimento "${dev.nome}"? Esta ação não pode ser desfeita.`, () => onDelete(dev.id))}
+                  className="flex items-center justify-center gap-2 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors"
+                >
+                  <Trash2 size={14} />
+                  <span>Excluir</span>
                 </button>
               </div>
             </div>
@@ -2032,20 +2070,31 @@ const EmpreendimentosSection = ({
                     : "Cadastrar Lote"}
                 </button>
                 <button
-                  onClick={() => setLotRegTab("gerenciar")}
+                  onClick={() => setLotRegTab("lotes")}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
-                    lotRegTab === "gerenciar"
+                    lotRegTab === "lotes"
                       ? "text-primary-main border-b-2 border-primary-main"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
                   <List size={14} />
-                  Lotes Registrados
+                  Lotes
                   {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
                     <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
                       {Object.keys(lotRegDev.lotesInfo || {}).length}
                     </span>
                   )}
+                </button>
+                <button
+                  onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                    lotRegTab === "acoesMassa"
+                      ? "text-slate-700 border-b-2 border-slate-700"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                >
+                  <Settings size={14} />
+                  Ações em Massa
                 </button>
               </div>
 
@@ -2154,8 +2203,8 @@ const EmpreendimentosSection = ({
                 </>
               )}
 
-              {/* Tab: Gerenciar */}
-              {lotRegTab === "gerenciar" && (
+              {/* Tab: Lotes Registrados */}
+              {lotRegTab === "lotes" && (
                 <>
                   <div className="flex-1 overflow-y-auto">
                     {Object.keys(lotRegDev.lotesInfo || {}).length === 0 ? (
@@ -2338,11 +2387,170 @@ const EmpreendimentosSection = ({
                   <div className="p-4 border-t border-slate-100 flex justify-between items-center">
                     <p className="text-[10px] text-slate-400">Lotes com comprador não podem ser removidos.</p>
                     <button
-                      onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "" }); setLotRegTab("cadastrar"); }}
+                      onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); }}
                       className="btn-primary px-5 py-2 text-xs flex items-center gap-2"
                     >
                       <Plus size={13} />
                       Novo Lote
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Tab: Ações em Massa */}
+              {lotRegTab === "acoesMassa" && (
+                <>
+                  <div className="flex border-b border-slate-100 px-6 pt-4 gap-4">
+                    <button
+                      onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                      className={`pb-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-slate-700" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                    >
+                      <span className="flex items-center gap-1.5"><X size={13} />Marcar Indisponíveis</span>
+                    </button>
+                    <button
+                      onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                      className={`pb-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-emerald-500" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                    >
+                      <span className="flex items-center gap-1.5"><Check size={13} />Definir Disponíveis</span>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {(() => {
+                      const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                      if (quadraList.length === 0) {
+                        return <p className="text-slate-400 text-sm text-center py-8">Nenhuma quadra configurada neste empreendimento.</p>;
+                      }
+                      if (bulkAvailTab === "marcarIndisponiveis") {
+                        return (
+                          <div className="space-y-4">
+                            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                              <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
+                              <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <button
+                                  onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
+                                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                                >
+                                  {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                {quadraList.map(q => {
+                                  const isSelected = bulkSelectedQuadras.includes(q);
+                                  const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                                  return (
+                                    <button
+                                      key={q}
+                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                      className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-slate-700 text-white border-slate-700 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
+                                    >
+                                      <span>Q.{q}</span>
+                                      {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-slate-300" : "text-slate-400"}`}>{lotes.length} lotes</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {bulkSelectedQuadras.length > 0 && (
+                                <p className="mt-3 text-xs text-slate-500 font-medium">
+                                  {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""} → todos os lotes disponíveis serão bloqueados.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="space-y-4">
+                          <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                            <p className="font-bold mb-1">ℹ️ Como funciona</p>
+                            <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>.</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
+                            <div className="space-y-3">
+                              {quadraList.map(q => {
+                                const isSelected = bulkSelectedQuadras.includes(q);
+                                const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                                return (
+                                  <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? "border-emerald-300" : "border-slate-100"}`}>
+                                    <button
+                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                      className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                    >
+                                      <span className="flex items-center gap-2">
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"}`}>
+                                          {isSelected && <Check size={10} />}
+                                        </span>
+                                        Quadra {q}
+                                      </span>
+                                      {lotes.length > 0 && <span className="text-[9px] text-slate-400">{lotes.length} lotes configurados</span>}
+                                    </button>
+                                    {isSelected && (
+                                      <div className="px-4 py-3 bg-white">
+                                        <label className="label text-[10px] mb-1">Lotes disponíveis (separados por vírgula)</label>
+                                        <input
+                                          className="input-field text-xs h-9"
+                                          placeholder="Ex: 01, 02, 05, 10"
+                                          value={bulkLotesEspecificos[q] || ""}
+                                          onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                    <button onClick={() => { setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); setLotRegTab("cadastrar"); }} className="btn-secondary px-6">Cancelar</button>
+                    <button
+                      disabled={bulkSelectedQuadras.length === 0}
+                      onClick={() => {
+                        if (!lotRegDev) return;
+                        const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                        const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
+                        const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
+                        if (bulkAvailTab === "marcarIndisponiveis") {
+                          bulkSelectedQuadras.forEach(q => {
+                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                            lotes.forEach(l => {
+                              const key = `${q}-${l}`.toUpperCase();
+                              const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                              if (!temVendaAtiva) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                              }
+                            });
+                          });
+                        } else {
+                          bulkSelectedQuadras.forEach(q => {
+                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                            const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                            lotes.forEach(l => {
+                              const key = `${q}-${l}`.toUpperCase();
+                              const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                              if (!temVendaAtiva) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
+                              }
+                            });
+                          });
+                        }
+                        onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
+                        setLotRegDev(prev => prev ? { ...prev, lotesInfo: newLotesInfo } : null);
+                        setBulkSelectedQuadras([]);
+                        setBulkLotesEspecificos({});
+                        setLotRegTab("lotes");
+                      }}
+                      className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                    >
+                      {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
+                      {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
                     </button>
                   </div>
                 </>
@@ -2649,6 +2857,10 @@ const VendasSection = ({
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [mergeTargetId, setMergeTargetId] = useState<string>("");
   const [hasDraft, setHasDraft] = useState(() => !!localStorage.getItem('venda_rascunho'));
+  const [showColarFicha, setShowColarFicha] = useState(false);
+  const [fichaText, setFichaText] = useState("");
+  const [fichaFilled, setFichaFilled] = useState<string[]>([]);
+  const [fichaSuccess, setFichaSuccess] = useState(false);
 
   const handleSalvarNovoDev = () => {
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
@@ -3475,6 +3687,112 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Colar Ficha Button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => { setShowColarFicha(true); setFichaText(""); setFichaFilled([]); setFichaSuccess(false); }}
+          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg"
+        >
+          <ClipboardPaste size={15} />
+          Colar Ficha
+        </button>
+      </div>
+
+      {/* Modal: Colar Ficha */}
+      <AnimatePresence>
+        {showColarFicha && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-xl rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-900 rounded-xl text-white">
+                    <ClipboardPaste size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Colar Ficha</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preenchimento automático por texto</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowColarFicha(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                  <p className="font-bold text-slate-700 mb-1">Como usar</p>
+                  <p>Cole o texto da ficha no formato <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">CHAVE: valor</span>, um por linha. Exemplos: <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Nome: João Silva</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Parcelas: 63x de R$ 600,00</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Contato: (11) 99999-0000 / (11) 88888-0000</span></p>
+                </div>
+                <textarea
+                  className="input-field min-h-[200px] resize-none font-mono text-xs"
+                  placeholder={"Nome: João da Silva\nCPF: 123.456.789-00\nRG: 1234567\nNascimento: 01/01/1990\nEstado Civil: Casado(a)\nProfissão: Comerciante\nEndereço: Rua das Flores\nBairro: Centro\nCidade: São Paulo\nCEP: 01001-000\nContato: (11) 99999-0000 / (11) 88888-0000\nEmpreendimento: Residencial Palmeiras\nQuadra: A\nLote: 05\nValor Total: R$ 50.000,00\nEntrada: R$ 5.000,00\nParcelas: 60x de R$ 750,00"}
+                  value={fichaText}
+                  onChange={(e) => setFichaText(e.target.value)}
+                  autoFocus
+                />
+                {fichaSuccess && fichaFilled.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+                  >
+                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                      <CheckCircle2 size={15} />
+                      Campos preenchidos com sucesso!
+                    </div>
+                    <p className="text-[11px] text-emerald-600 ml-5">{fichaFilled.join(", ")}</p>
+                  </motion.div>
+                )}
+              </div>
+              <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowColarFicha(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  disabled={!fichaText.trim()}
+                  onClick={() => {
+                    const parsed = parseFicha(fichaText);
+                    const filled: string[] = [];
+                    applyDataToState(parsed, developments);
+                    if (parsed.nome) filled.push("Nome");
+                    if (parsed.cpf) filled.push("CPF");
+                    if (parsed.rg) filled.push("RG");
+                    if (parsed.nascimento) filled.push("Nascimento");
+                    if (parsed.estadoCivil) filled.push("Estado Civil");
+                    if (parsed.profissao) filled.push("Profissão");
+                    if (parsed.endereco) filled.push("Endereço");
+                    if (parsed.bairro) filled.push("Bairro");
+                    if (parsed.cidade) filled.push("Cidade");
+                    if (parsed.cep) filled.push("CEP");
+                    if (parsed.telefone1) filled.push("Telefone");
+                    if (parsed.telefone2) filled.push("Telefone 2");
+                    if (parsed.empreendimento) filled.push("Empreendimento");
+                    if (parsed.quadra) filled.push("Quadra");
+                    if (parsed.lote) filled.push("Lote");
+                    if (parsed.valorTotal) filled.push("Valor Total");
+                    if (parsed.entrada) filled.push("Entrada");
+                    if (parsed.numeroParcelas) filled.push("Parcelas");
+                    if (parsed.valorParcela) filled.push("Valor Parcela");
+                    setFichaFilled(filled);
+                    setFichaSuccess(true);
+                    if (filled.length > 0) {
+                      setTimeout(() => setShowColarFicha(false), 1800);
+                    }
+                  }}
+                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${!fichaText.trim() ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-900 hover:bg-primary-main text-white"}`}
+                >
+                  <ClipboardPaste size={15} />
+                  Preencher Campos
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
 
       <form ref={vendasFormRef} onSubmit={handleSubmit} className="space-y-8">
         <div className="card-premium">
