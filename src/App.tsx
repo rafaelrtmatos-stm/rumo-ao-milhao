@@ -7289,12 +7289,6 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         if (results[3].status === 'fulfilled') setConfig(results[3].value);
         else console.error('Erro config:', results[3].reason);
 
-        const anyFailed = results.some(r => r.status === 'rejected');
-        if (anyFailed) {
-          const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
-          alert('Erro ao carregar dados:\n' + JSON.stringify(firstErr.reason));
-        }
-
         setIsLoaded(true);
 
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
@@ -7302,7 +7296,6 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         subVendas = dbService.subscribeToVendas((d) => setSales(d));
       } catch (e: unknown) {
         console.error('Erro ao carregar dados:', e);
-        alert('Erro crítico ao carregar dados:\n' + JSON.stringify(e));
         setIsLoaded(true);
       }
     };
