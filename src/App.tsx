@@ -2086,29 +2086,29 @@ const EmpreendimentosSection = ({
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-slate-100">
+              <div className="flex border-b border-slate-100 overflow-x-auto">
                 <button
                   onClick={() => setLotRegTab("cadastrar")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "cadastrar"
                       ? "text-primary-main border-b-2 border-primary-main"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <Plus size={14} />
+                  <Plus size={13} />
                   {lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()]
                     ? "Editar Lote"
-                    : "Cadastrar Lote"}
+                    : "Cadastrar"}
                 </button>
                 <button
                   onClick={() => setLotRegTab("lotes")}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "lotes"
                       ? "text-primary-main border-b-2 border-primary-main"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <List size={14} />
+                  <List size={13} />
                   Lotes
                   {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
                     <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
@@ -2118,14 +2118,15 @@ const EmpreendimentosSection = ({
                 </button>
                 <button
                   onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "acoesMassa"
                       ? "text-slate-700 border-b-2 border-slate-700"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <Settings size={14} />
-                  Ações em Massa
+                  <Settings size={13} />
+                  <span className="hidden sm:inline">Ações em Massa</span>
+                  <span className="sm:hidden">Em Massa</span>
                 </button>
               </div>
 
@@ -2431,18 +2432,18 @@ const EmpreendimentosSection = ({
               {/* Tab: Ações em Massa */}
               {lotRegTab === "acoesMassa" && (
                 <>
-                  <div className="flex border-b border-slate-100 px-6 pt-4 gap-4">
+                  <div className="flex border-b border-slate-100 overflow-x-auto px-4 sm:px-6 pt-4 gap-3 sm:gap-4">
                     <button
                       onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                      className={`pb-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-slate-700" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                      className={`shrink-0 pb-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-slate-700" : "text-slate-400 border-transparent hover:text-slate-600"}`}
                     >
-                      <span className="flex items-center gap-1.5"><X size={13} />Marcar Indisponíveis</span>
+                      <span className="flex items-center gap-1.5"><X size={13} /><span className="hidden sm:inline">Marcar </span>Indisponíveis</span>
                     </button>
                     <button
                       onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                      className={`pb-3 text-xs font-bold uppercase tracking-widest border-b-2 transition-colors ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-emerald-500" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                      className={`shrink-0 pb-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-emerald-500" : "text-slate-400 border-transparent hover:text-slate-600"}`}
                     >
-                      <span className="flex items-center gap-1.5"><Check size={13} />Definir Disponíveis</span>
+                      <span className="flex items-center gap-1.5"><Check size={13} /><span className="hidden sm:inline">Definir </span>Disponíveis</span>
                     </button>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-5">
@@ -2617,20 +2618,22 @@ const EmpreendimentosSection = ({
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-slate-100">
+              <div className="flex border-b border-slate-100 overflow-x-auto">
                 <button
                   onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-b-2 border-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-b-2 border-slate-700" : "text-slate-400 hover:text-slate-600"}`}
                 >
-                  <X size={14} />
-                  Marcar Indisponíveis
+                  <X size={13} />
+                  <span className="hidden sm:inline">Marcar Indisponíveis</span>
+                  <span className="sm:hidden">Indisponíveis</span>
                 </button>
                 <button
                   onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
                 >
-                  <Check size={14} />
-                  Definir Disponíveis
+                  <Check size={13} />
+                  <span className="hidden sm:inline">Definir Disponíveis</span>
+                  <span className="sm:hidden">Disponíveis</span>
                 </button>
               </div>
 
@@ -7559,6 +7562,55 @@ const ConfigSection = ({
     URL.revokeObjectURL(url);
   };
 
+  // Export / Import only config (theme + vendedores + proprietarios)
+  const configImportRef = useRef<HTMLInputElement>(null);
+  const [configImportError, setConfigImportError] = useState('');
+  const [configImportSuccess, setConfigImportSuccess] = useState('');
+
+  const handleExportConfig = () => {
+    const payload = {
+      version: "1.0",
+      type: "config-only",
+      app: "Rumo ao Milhão",
+      exportedAt: new Date().toISOString(),
+      config,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+    a.href = url;
+    a.download = `rumo-configuracoes-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setConfigImportError('');
+    setConfigImportSuccess('');
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        const cfg: AppConfig = data.type === 'config-only' ? data.config : data.config;
+        if (!cfg || typeof cfg !== 'object') {
+          setConfigImportError('Arquivo inválido: configurações não encontradas.');
+          return;
+        }
+        const merged: AppConfig = { ...config, ...cfg, vendedores: cfg.vendedores ?? config.vendedores };
+        onSave(merged);
+        setFormData({ ...formData, ...merged, vendedores: merged.vendedores || [] });
+        setConfigImportSuccess('Configurações importadas com sucesso!');
+      } catch {
+        setConfigImportError('Arquivo corrompido ou formato inválido.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     setImportError('');
     setImportSuccess('');
@@ -7737,12 +7789,12 @@ const ConfigSection = ({
         )}
 
         {(formData.vendedores || []).map((v) => (
-          <div key={v.id} className="flex items-center justify-between p-4 rounded-2xl bg-slate-50 border border-border-subtle">
-            <div>
-              <p className="font-bold text-slate-800 text-sm">{v.nome}</p>
+          <div key={v.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-border-subtle">
+            <div className="flex-1 min-w-0">
+              <p className="font-bold text-slate-800 text-sm truncate">{v.nome}</p>
               <p className="text-xs text-slate-400">{v.estadoCivil} · CPF {v.cpf} · {v.cidade}/{v.estado}</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex gap-2 shrink-0">
               <button
                 className="h-8 w-8 flex items-center justify-center rounded-xl hover:bg-slate-200 text-slate-500 transition-colors"
                 onClick={() => {
@@ -8014,6 +8066,71 @@ const ConfigSection = ({
             </div>
           )}
         </div>
+      </div>
+
+      {/* Exportar / Importar apenas Configurações */}
+      <div className="card-premium space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary-main text-white rounded-xl">
+            <Settings size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-800">Exportar / Importar Configurações</h4>
+            <p className="text-xs text-slate-400 mt-0.5">Salve ou restaure apenas tema, vendedores e proprietários — sem mover seus dados</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-primary-main/5 border border-primary-main/20">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-primary-main/10 rounded-xl mt-0.5">
+              <Download size={16} className="text-primary-main" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Exportar Configurações</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tema · {(formData.vendedores || []).length} vendedor(es) · {(config.proprietarios || []).length} proprietário(s)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleExportConfig}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-main hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
+          >
+            <Download size={15} /> Baixar .json
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-slate-200 rounded-xl mt-0.5">
+              <Upload size={16} className="text-slate-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-700 text-sm">Importar Configurações</p>
+              <p className="text-xs text-slate-400 mt-0.5">Selecione um arquivo .json exportado por este app</p>
+            </div>
+          </div>
+          <button
+            onClick={() => configImportRef.current?.click()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
+          >
+            <Upload size={15} /> Selecionar arquivo
+          </button>
+          <input ref={configImportRef} type="file" accept=".json" className="hidden" onChange={handleImportConfig} />
+        </div>
+
+        {configImportError && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 border border-red-100">
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+            <p className="text-sm text-red-700 font-medium">{configImportError}</p>
+          </div>
+        )}
+        {configImportSuccess && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-green-50 border border-green-100">
+            <ShieldCheck size={16} className="text-green-600 shrink-0" />
+            <p className="text-sm text-green-700 font-semibold">{configImportSuccess}</p>
+          </div>
+        )}
       </div>
 
       {DeleteModal}
@@ -8769,7 +8886,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
       {isAdmin && (
       <>
       {/* Create user card */}
-      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
+      <div className="bg-surface-card rounded-3xl p-5 sm:p-8 shadow-sm border border-border-subtle">
         <h2 className="text-lg font-bold text-primary-main mb-6 uppercase tracking-widest text-[11px]">
           Criar Novo Usuário
         </h2>
@@ -8842,7 +8959,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
       </div>
 
       {/* User list */}
-      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle space-y-4">
+      <div className="bg-surface-card rounded-3xl p-5 sm:p-8 shadow-sm border border-border-subtle space-y-4">
         <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
           Usuários Cadastrados
         </h2>
@@ -8852,14 +8969,19 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
           <div className="space-y-3">
             {users.map((u) => (
               <div key={u.id} className="rounded-2xl border border-border-subtle overflow-hidden">
-                <div className="flex items-center justify-between p-4 bg-surface-bg">
-                  <div className="min-w-0">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-surface-bg">
+                  <div className="min-w-0 flex-1">
                     <p className="text-sm font-bold text-slate-700 truncate">{u.email}</p>
                     <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
                       {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
                     </p>
+                    {(u.profile?.nome || u.profile?.creci) && (
+                      <p className="text-[10px] text-primary-main mt-0.5 font-bold">
+                        {u.profile?.nome}{u.profile?.creci ? ` · CRECI ${u.profile.creci}` : ""}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 ml-3 flex-none">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button
                       onClick={() => handleOpenEditProfile(u)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingProfileUser === u.id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white"}`}
