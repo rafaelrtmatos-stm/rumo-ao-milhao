@@ -96,6 +96,25 @@ app.post("/api/auth/register", isAuthenticated, isAdminUser, async (req: any, re
   }
 });
 
+// POST /api/admin/users — create new user (admin only)
+app.post("/api/admin/users", isAuthenticated, isAdminUser, async (req: any, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password || password.length < 6) {
+      return res.status(400).json({ error: "E-mail e senha (mínimo 6 caracteres) são obrigatórios." });
+    }
+    const existing = await localUsersService.findByEmail(email);
+    if (existing) {
+      return res.status(400).json({ error: "Este e-mail já está cadastrado." });
+    }
+    const user = await localUsersService.create({ id: `lu-${Date.now()}`, email, password, isAdmin: false });
+    res.json({ id: user.id, email: user.email, isAdmin: user.is_admin, createdAt: user.created_at, permissions: user.permissions ?? {} });
+  } catch (e: any) {
+    console.error("Create user error:", e);
+    res.status(500).json({ error: e?.message || "Erro ao criar usuário." });
+  }
+});
+
 // GET /api/admin/users — list all users (admin only)
 app.get("/api/admin/users", isAuthenticated, isAdminUser, async (_req, res) => {
   try {
