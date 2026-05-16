@@ -32,6 +32,10 @@ import {
   Monitor,
   Smartphone,
   ClipboardPaste,
+  Upload,
+  AlertTriangle,
+  Database,
+  ShieldCheck,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -7508,9 +7512,17 @@ const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sale
 const ConfigSection = ({
   config,
   onSave,
+  developments,
+  clients,
+  sales,
+  onImport,
 }: {
   config: AppConfig;
   onSave: (c: AppConfig) => void;
+  developments: Empreendimento[];
+  clients: Cliente[];
+  sales: Venda[];
+  onImport: (data: { empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig }, mode: "replace" | "merge") => void;
 }) => {
   const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
   const [migrating, setMigrating] = useState(false);
@@ -7518,6 +7530,80 @@ const ConfigSection = ({
   const [showVendedorForm, setShowVendedorForm] = useState(false);
   const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+
+  // Export/Import state
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<{ empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig; exportedAt?: string; app?: string } | null>(null);
+  const [importError, setImportError] = useState('');
+  const [importMode, setImportMode] = useState<'replace' | 'merge'>('merge');
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState('');
+
+  const handleExport = () => {
+    const payload = {
+      version: "1.0",
+      app: "Rumo ao Milhão",
+      exportedAt: new Date().toISOString(),
+      empreendimentos: developments,
+      clientes: clients,
+      vendas: sales,
+      config,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+    a.href = url;
+    a.download = `rumo-ao-milhao-backup-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError('');
+    setImportSuccess('');
+    setImportPreview(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.json')) {
+      setImportError('Selecione um arquivo .json válido.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!data.empreendimentos || !data.clientes || !data.vendas) {
+          setImportError('Arquivo inválido: não é um backup do Rumo ao Milhão.');
+          return;
+        }
+        setImportPreview(data);
+      } catch {
+        setImportError('Arquivo corrompido ou formato inválido.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    try {
+      await onImport({
+        empreendimentos: importPreview.empreendimentos,
+        clientes: importPreview.clientes,
+        vendas: importPreview.vendas,
+        config: importPreview.config || config,
+      }, importMode);
+      setImportSuccess(`Importação concluída com sucesso! ${importMode === 'replace' ? 'Todos os dados foram substituídos.' : 'Dados mesclados com os existentes.'}`);
+      setImportPreview(null);
+    } catch (err: any) {
+      setImportError('Erro ao importar: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setImporting(false);
+    }
+  };
   const emptyVendedor: Omit<Vendedor, "id"> = {
     nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
@@ -7780,6 +7866,156 @@ const ConfigSection = ({
           )}
         </button>
       </div>
+      {/* Exportar / Importar Dados */}
+      <div className="card-premium space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-slate-900 text-white rounded-xl">
+            <Database size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-800">Exportar e Importar Dados</h4>
+            <p className="text-xs text-slate-400 mt-0.5">Faça backup completo ou restaure seus dados de um arquivo anterior</p>
+          </div>
+        </div>
+
+        {/* Export */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-green-50 border border-green-100">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-green-100 rounded-xl mt-0.5">
+              <Download size={16} className="text-green-700" />
+            </div>
+            <div>
+              <p className="font-semibold text-green-900 text-sm">Exportar Backup</p>
+              <p className="text-xs text-green-700 mt-0.5">
+                {developments.length} empreendimento{developments.length !== 1 ? 's' : ''} · {clients.length} cliente{clients.length !== 1 ? 's' : ''} · {sales.length} venda{sales.length !== 1 ? 's' : ''}
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleExport}
+            className="flex items-center gap-2 px-5 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+          >
+            <Download size={15} /> Baixar .json
+          </button>
+        </div>
+
+        {/* Import */}
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-blue-50 border border-blue-100">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-blue-100 rounded-xl mt-0.5">
+                <Upload size={16} className="text-blue-700" />
+              </div>
+              <div>
+                <p className="font-semibold text-blue-900 text-sm">Importar Backup</p>
+                <p className="text-xs text-blue-700 mt-0.5">Selecione um arquivo .json exportado anteriormente</p>
+              </div>
+            </div>
+            <button
+              onClick={() => importInputRef.current?.click()}
+              className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
+            >
+              <Upload size={15} /> Selecionar arquivo
+            </button>
+            <input
+              ref={importInputRef}
+              type="file"
+              accept=".json"
+              className="hidden"
+              onChange={handleFileSelect}
+            />
+          </div>
+
+          {importError && (
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 border border-red-100">
+              <AlertTriangle size={16} className="text-red-500 shrink-0" />
+              <p className="text-sm text-red-700 font-medium">{importError}</p>
+            </div>
+          )}
+
+          {importSuccess && (
+            <div className="flex items-center gap-3 p-4 rounded-2xl bg-green-50 border border-green-100">
+              <ShieldCheck size={16} className="text-green-600 shrink-0" />
+              <p className="text-sm text-green-700 font-semibold">{importSuccess}</p>
+            </div>
+          )}
+
+          {importPreview && (
+            <div className="border border-border-subtle rounded-2xl p-5 space-y-5 bg-slate-50/60">
+              <div>
+                <p className="font-bold text-slate-800 text-sm mb-1">Prévia do arquivo</p>
+                {importPreview.exportedAt && (
+                  <p className="text-xs text-slate-400">
+                    Exportado em: {new Date(importPreview.exportedAt).toLocaleString('pt-BR')}
+                  </p>
+                )}
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
+                  <p className="text-lg font-bold text-slate-800">{importPreview.empreendimentos.length}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Empreendimentos</p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
+                  <p className="text-lg font-bold text-slate-800">{importPreview.clientes.length}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Clientes</p>
+                </div>
+                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
+                  <p className="text-lg font-bold text-slate-800">{importPreview.vendas.length}</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Vendas</p>
+                </div>
+              </div>
+
+              <div>
+                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Modo de importação</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <button
+                    onClick={() => setImportMode('merge')}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${importMode === 'merge' ? 'border-primary-main bg-primary-main/5' : 'border-slate-200 bg-white'}`}
+                  >
+                    <p className={`font-bold text-sm ${importMode === 'merge' ? 'text-primary-main' : 'text-slate-700'}`}>Mesclar</p>
+                    <p className="text-xs text-slate-400 mt-1">Adiciona os registros do backup. Itens com o mesmo ID serão atualizados.</p>
+                  </button>
+                  <button
+                    onClick={() => setImportMode('replace')}
+                    className={`p-4 rounded-xl border-2 text-left transition-all ${importMode === 'replace' ? 'border-red-500 bg-red-50' : 'border-slate-200 bg-white'}`}
+                  >
+                    <p className={`font-bold text-sm ${importMode === 'replace' ? 'text-red-600' : 'text-slate-700'}`}>Substituir tudo</p>
+                    <p className="text-xs text-slate-400 mt-1">Apaga todos os dados atuais e substitui pelo conteúdo do backup.</p>
+                  </button>
+                </div>
+                {importMode === 'replace' && (
+                  <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-red-50 border border-red-100">
+                    <AlertTriangle size={14} className="text-red-500 shrink-0" />
+                    <p className="text-xs text-red-600 font-medium">Atenção: esta ação não pode ser desfeita. Todos os dados atuais serão perdidos.</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex gap-3 justify-end pt-1">
+                <button
+                  className="btn-ghost px-6 h-10"
+                  onClick={() => { setImportPreview(null); setImportError(''); }}
+                >
+                  Cancelar
+                </button>
+                <button
+                  className={`flex items-center gap-2 px-8 h-10 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 ${importMode === 'replace' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-main hover:bg-primary-dark'}`}
+                  onClick={handleConfirmImport}
+                  disabled={importing}
+                >
+                  {importing ? (
+                    <><RefreshCw size={14} className="animate-spin" /> Importando...</>
+                  ) : (
+                    <><Check size={14} /> Confirmar importação</>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {DeleteModal}
     </div>
   );
@@ -8698,6 +8934,49 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
+  const handleImport = async (
+    data: { empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig },
+    mode: "replace" | "merge"
+  ) => {
+    let finalDevs: Empreendimento[];
+    let finalClients: Cliente[];
+    let finalSales: Venda[];
+    let finalConfig: AppConfig;
+
+    if (mode === "replace") {
+      finalDevs = data.empreendimentos;
+      finalClients = data.clientes;
+      finalSales = data.vendas;
+      finalConfig = data.config;
+    } else {
+      const devMap = new Map(developments.map((d) => [d.id, d]));
+      data.empreendimentos.forEach((d) => devMap.set(d.id, d));
+      finalDevs = Array.from(devMap.values());
+
+      const clientMap = new Map(clients.map((c) => [c.id, c]));
+      data.clientes.forEach((c) => clientMap.set(c.id, c));
+      finalClients = Array.from(clientMap.values());
+
+      const saleMap = new Map(sales.map((s) => [s.id, s]));
+      data.vendas.forEach((s) => saleMap.set(s.id, s));
+      finalSales = Array.from(saleMap.values());
+
+      finalConfig = { ...config, ...data.config, vendedores: data.config?.vendedores ?? config.vendedores };
+    }
+
+    await Promise.all([
+      dbService.saveEmpreendimentos(finalDevs),
+      dbService.saveClientes(finalClients),
+      dbService.saveVendas(finalSales),
+      dbService.saveAppConfig(finalConfig),
+    ]);
+
+    setDevelopments(finalDevs);
+    setClients(finalClients);
+    setSales(finalSales);
+    setConfig(finalConfig);
+  };
+
   const [contractInitialMode, setContractInitialMode] = React.useState<'recibo' | undefined>(undefined);
 
   const handleGoToContracts = (v: Venda) => {
@@ -8869,7 +9148,16 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
       case "calculadora":
         return <CalculatorSection />;
       case "config":
-        return <ConfigSection config={config} onSave={saveAppConfig} />;
+        return (
+          <ConfigSection
+            config={config}
+            onSave={saveAppConfig}
+            developments={developments}
+            clients={clients}
+            sales={sales}
+            onImport={handleImport}
+          />
+        );
       case "usuarios":
         return isAdmin ? <UsuariosSection /> : <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
       default:
