@@ -93,7 +93,7 @@ type AuthState =
 function Root() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 
-  const checkAuth = async () => {
+  const checkAuth = async (retryCount = 0) => {
     try {
       // 1. Verificar se precisa de setup
       const setupRes = await fetch("/api/auth/setup");
@@ -122,12 +122,60 @@ function Root() {
             return;
           }
         }
-        // Token inválido — limpa
-        clearAuthToken();
+        // Só desloga se for 401 (token realmente inválido)
+        // 5xx ou erros de rede não devem deslogar
+        if (userRes.status === 401) {
+          clearAuthToken();
+          setAuth({ status: "login" });
+          return;
+        }
+        // Servidor indisponível (5xx) — mantém autenticado com dados do token local
+        // decodifica payload do JWT sem verificar assinatura (apenas para UI)
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            if (payload?.id) {
+              setAuth({
+                status: "authenticated",
+                isAdmin: false,
+                userId: payload.id,
+                email: payload.email ?? "",
+                permissions: {},
+              });
+              return;
+            }
+          }
+        } catch {}
       }
 
       setAuth({ status: "login" });
     } catch {
+      // Erro de rede: se há token salvo, tenta manter sessão por até 2 retries
+      const token = getAuthToken();
+      if (token && retryCount < 2) {
+        setTimeout(() => checkAuth(retryCount + 1), 1500);
+        return;
+      }
+      // Se há token mas servidor não responde, tenta decodificar JWT localmente
+      if (token) {
+        try {
+          const parts = token.split(".");
+          if (parts.length === 3) {
+            const payload = JSON.parse(atob(parts[1]));
+            if (payload?.id) {
+              setAuth({
+                status: "authenticated",
+                isAdmin: false,
+                userId: payload.id,
+                email: payload.email ?? "",
+                permissions: {},
+              });
+              return;
+            }
+          }
+        } catch {}
+      }
       setAuth({ status: "login" });
     }
   };
