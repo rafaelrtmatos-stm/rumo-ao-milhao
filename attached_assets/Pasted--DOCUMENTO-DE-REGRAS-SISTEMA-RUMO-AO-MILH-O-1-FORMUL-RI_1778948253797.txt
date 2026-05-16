@@ -1,0 +1,150 @@
+**DOCUMENTO DE REGRAS — SISTEMA RUMO AO MILHÃO**
+
+---
+
+**1. FORMULÁRIO DE VENDA — COLAR FICHA**
+
+Botão **"Colar Ficha"** no topo do formulário.
+
+Ao clicar abre caixa de texto grande → usuário cola o texto → clica **"Preencher Campos"**
+
+O sistema lê linha por linha, qualquer ordem, maiúsculo ou minúsculo, padrão `CHAVE: valor`:
+
+Chaves reconhecidas:
+- `NOME` → Nome do cliente
+- `RG` → RG
+- `CPF` → CPF
+- `ESTADO CIVIL` → Estado civil
+- `DATA DE ANIVERSÁRIO` / `NASCIMENTO` / `DATA NASC` → Data nascimento
+- `ENDEREÇO` / `RUA` → Endereço
+- `Nº` / `NUMERO` / `NUM` → Número
+- `BAIRRO` → Bairro
+- `CEP` → CEP
+- `CONTATO` / `TELEFONE` / `FONE` / `TEL` → Telefone(s)
+- `LOTE` → Lote
+- `QUADRA` → Quadra
+- `EMPREENDIMENTO` → Empreendimento
+- `VALOR TOTAL` / `VALOR` → Valor total
+- `ENTRADA` → Entrada
+- `PARCELAS` / `QUANTIDADE DE PARCELAS` → Parcelas
+- `VENCIMENTO` / `DATA DE VENCIMENTO` → Vencimento
+
+Tratamentos especiais:
+- `63x de R$ 600,00` → extrai `63` quantidade e `600,00` valor parcela
+- `+55 91 98294-8762 / +55 91 98888-6169` → telefone 1 e telefone 2
+- `R$ 38.800,00` → remove `R$` e formata número
+- `4478817 PC PA` → salva RG completo com órgão emissor
+- Linhas não reconhecidas → ignoradas
+- Campos vazios ex: `BAIRRO:` → ficam em branco
+
+Após preencher: campos editáveis → usuário revisa → **Salvar Rascunho** / **Finalizar Venda**
+
+---
+
+**2. FORMULÁRIO DE VENDA — FLUXO**
+
+Botões no final: **Salvar Rascunho** / **Finalizar Venda**
+
+---
+
+**3. VENDA REGISTRADA**
+
+Resumo: cliente, lote, valor, forma de pagamento
+
+Botões: **Copiar Resumo** / **Gerar Contrato** / **Gerar Recibo** / **Novo Cadastro**
+
+---
+
+**4. GERAR CONTRATO — Aba 1 — Lote**
+
+Campos: frente, lat. direita, lat. esquerda, fundos, área, rua, localidade *(preenche automático se cadastrado)*
+
+Botões: **Cancelar** / **Avançar →**
+
+---
+
+**5. GERAR CONTRATO — Aba 2 — Vendedor**
+
+Campos: buscar proprietário cadastrado ou preencher manualmente: nome, nacionalidade, estado civil, RG, CPF, endereço
+
+Botões: **← Voltar** / **Gerar Contrato →**
+
+---
+
+**6. GERAR CONTRATO — Aba 3 — Contrato Gerado**
+
+Prévia visual do contrato preenchido
+
+Botões: **← Voltar** / **Baixar DOC** / **Baixar PDF** / **Imprimir** / **Fechar**
+
+---
+
+**7. ABA CONTRATOS**
+
+Busca: filtrar por cliente, lote, quadra, empreendimento, status
+
+Lista exibe todas as vendas em dois grupos:
+- 🟡 **Sem contrato** → venda registrada, contrato não gerado
+- 🟢 **Com contrato** → contrato gerado
+
+Badge de status: 🟡 Rascunho / 🟢 Ativo / 🔴 Cancelado
+
+Botões por linha:
+- **Gerar Contrato** *(se não gerado)* ou **📄 Contrato** *(se gerado)*
+- **✏️ Editar**
+- **🗑️ Excluir**
+
+---
+
+**8. EDITAR CONTRATO**
+
+Pergunta primeiro: *"O que deseja fazer?"*
+- **Substituir** → atualiza, não contabiliza nova venda
+- **Duplicar** → nova venda, contabiliza
+
+---
+
+**9. ABA EMPREENDIMENTOS**
+
+**Lista de empreendimentos**, botões por linha:
+- **🗺️ Ver Mapa**
+- **⚙️ Gerenciar Lotes**
+- **✏️ Editar**
+- **🗑️ Excluir**
+
+---
+
+**10. VER MAPA**
+
+Grade visual com quadras e lotes. Cores:
+- 🟢 Verde → disponível
+- 🔴 Vermelho escuro → vendido
+- 🟠 Laranja → indisponível sem cliente
+- ⬜ Cinza → não configurado
+
+Ao clicar num lote:
+- Disponível → **"Gerar Venda"** ou **"Marcar Indisponível"**
+- Vendido → abre prévia do contrato do cliente
+- Indisponível → **"Marcar Disponível"**
+
+---
+
+**11. GERENCIAR LOTES — Aba Cadastrar**
+
+- Escolher quadra
+- Adicionar lotes individualmente ou em massa
+- Definir rua de cada lote
+- Definir medidas padrão da quadra *(aplica em todos)*
+
+---
+
+**12. GERENCIAR LOTES — Aba Ações em Massa**
+
+- Campo: *"Lotes específicos separados por vírgula: 1, 2, 5, 8"*
+- Ou selecionar quadra inteira
+- Botões: **Marcar Disponível** / **Marcar Indisponível**
+- Botão: **Ver Lotes Disponíveis** → filtra só os livres
+
+---
+
+Manda o zip que eu implemento tudo.
