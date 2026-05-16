@@ -1,7 +1,36 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App";
+import { LoginScreen, SetupScreen } from "./auth";
 import "./index.css";
+
+// Seções disponíveis no sistema
+export const ALL_SECTIONS = [
+  "dashboard",
+  "vendas",
+  "empreendimentos",
+  "proprietarios",
+  "contratos",
+  "clientes",
+  "aniversarios",
+  "calculadora",
+  "config",
+  "usuarios",
+] as const;
+
+// Permissões padrão para usuários não-admin
+export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
+  dashboard: true,
+  vendas: true,
+  empreendimentos: false,
+  proprietarios: false,
+  contratos: true,
+  clientes: true,
+  aniversarios: true,
+  calculadora: true,
+  config: false,
+  usuarios: false,
+};
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -37,8 +66,113 @@ class ErrorBoundary extends React.Component<
   }
 }
 
+type AuthState =
+  | { status: "loading" }
+  | { status: "setup" }
+  | { status: "login" }
+  | { status: "authenticated"; isAdmin: boolean; userId: string; email: string; permissions: Record<string, boolean> };
+
+function Root() {
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+  const checkAuth = async () => {
+    try {
+      // 1. Verificar se precisa de setup (sem usuários cadastrados)
+      const setupRes = await fetch("/api/auth/setup");
+      if (setupRes.ok) {
+        const { needsSetup } = await setupRes.json();
+        if (needsSetup) {
+          setAuth({ status: "setup" });
+          return;
+        }
+      }
+
+      // 2. Verificar se já está logado (sessão ativa)
+      const userRes = await fetch("/api/auth/user");
+      if (userRes.ok) {
+        const user = await userRes.json();
+        if (user?.id) {
+          setAuth({
+            status: "authenticated",
+            isAdmin: user.isAdmin ?? false,
+            userId: user.id,
+            email: user.email ?? "",
+            permissions: user.permissions ?? {},
+          });
+          return;
+        }
+      }
+
+      setAuth({ status: "login" });
+    } catch {
+      setAuth({ status: "login" });
+    }
+  };
+
+  useEffect(() => {
+    checkAuth();
+  }, []);
+
+  const handleLogin = async () => {
+    try {
+      const res = await fetch("/api/auth/user");
+      if (res.ok) {
+        const user = await res.json();
+        setAuth({
+          status: "authenticated",
+          isAdmin: user.isAdmin ?? false,
+          userId: user.id,
+          email: user.email ?? "",
+          permissions: user.permissions ?? {},
+        });
+      }
+    } catch {
+      setAuth({ status: "login" });
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    setAuth({ status: "login" });
+  };
+
+  if (auth.status === "loading") {
+    return (
+      <div style={{ minHeight: "100vh", background: "#1c1c1e", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.2em", fontSize: 12, textTransform: "uppercase" }}>
+          Carregando...
+        </p>
+      </div>
+    );
+  }
+
+  if (auth.status === "setup") {
+    return <SetupScreen onSetupComplete={() => setAuth({ status: "login" })} />;
+  }
+
+  if (auth.status === "login") {
+    return <LoginScreen onLogin={handleLogin} />;
+  }
+
+  // Permissões efetivas: admin tem tudo; não-admin usa padrão + customizações salvas
+  const effectivePermissions: Record<string, boolean> = auth.isAdmin
+    ? Object.fromEntries(ALL_SECTIONS.map((s) => [s, true]))
+    : { ...DEFAULT_NON_ADMIN_PERMISSIONS, ...auth.permissions };
+
+  return (
+    <App
+      onLogout={handleLogout}
+      isAdmin={auth.isAdmin}
+      userEmail={auth.email}
+      userPermissions={effectivePermissions}
+    />
+  );
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <ErrorBoundary>
-    <App onLogout={() => {}} isAdmin={true} />
+    <Root />
   </ErrorBoundary>
 );

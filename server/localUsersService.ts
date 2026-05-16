@@ -8,6 +8,7 @@ export interface LocalUser {
   email: string;
   password_hash: string;
   is_admin: boolean;
+  permissions: Record<string, boolean>;
   created_at: Date | null;
 }
 
@@ -17,6 +18,7 @@ function toLocalUser(row: any): LocalUser {
     email: row.email,
     password_hash: row.passwordHash,
     is_admin: row.isAdmin,
+    permissions: row.permissions ?? {},
     created_at: row.createdAt,
   };
 }
@@ -71,5 +73,12 @@ export const localUsersService = {
 
   async verifyPassword(user: LocalUser, password: string): Promise<boolean> {
     return bcrypt.compare(password, user.password_hash);
+  },
+
+  async updatePermissions(id: string, permissions: Record<string, boolean>): Promise<void> {
+    await db
+      .update(localUsers)
+      .set({ permissions } as any)
+      .where(eq(localUsers.id, id));
   },
 };

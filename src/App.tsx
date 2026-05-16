@@ -363,6 +363,8 @@ const Sidebar = ({
   isAdmin,
   forceDesktop,
   onToggleDesktop,
+  userPermissions,
+  userEmail,
 }: {
   currentSection: Section;
   setSection: (s: Section) => void;
@@ -372,8 +374,10 @@ const Sidebar = ({
   isAdmin?: boolean;
   forceDesktop: boolean;
   onToggleDesktop: () => void;
+  userPermissions?: Record<string, boolean>;
+  userEmail?: string;
 }) => {
-  const mainMenuItems = [
+  const allMenuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
@@ -384,8 +388,14 @@ const Sidebar = ({
     { id: "calculadora", label: "Calculadora", icon: Calculator },
     ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
   ];
+
+  // Filtra itens de menu por permissão (admin sempre vê tudo)
+  const mainMenuItems = isAdmin
+    ? allMenuItems
+    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
+
   const configItem = { id: "config", label: "Configurações", icon: Settings };
-  const allMenuItems = [...mainMenuItems, configItem];
+  const showConfig = isAdmin || userPermissions?.["config"] !== false;
 
   return (
     <>
@@ -469,7 +479,7 @@ const Sidebar = ({
           </button>
 
           {/* Config */}
-          {(() => {
+          {showConfig && (() => {
             const item = configItem;
             const Icon = item.icon;
             const isActive = currentSection === item.id;
@@ -503,7 +513,14 @@ const Sidebar = ({
           })()}
         </nav>
 
-        <div className="p-6 border-t border-slate-50">
+        <div className="p-6 border-t border-slate-50 space-y-2">
+          {userEmail && (
+            <div className="px-3 py-2 rounded-xl bg-slate-50 mb-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Logado como</p>
+              <p className="text-xs font-bold text-slate-500 truncate">{userEmail}</p>
+              {isAdmin && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Administrador</p>}
+            </div>
+          )}
           <button
             onClick={onLogout}
             className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50"
@@ -7634,13 +7651,31 @@ const ProprietariosSection = ({
 // --- Usuários Section (admin only) ---
 
 const UsuariosSection = () => {
-  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string }[]>([]);
+  const SECTION_LABELS: Record<string, string> = {
+    dashboard: "Dashboard",
+    vendas: "Nova Venda",
+    empreendimentos: "Empreendimentos",
+    proprietarios: "Proprietários",
+    contratos: "Contratos",
+    clientes: "Clientes",
+    aniversarios: "Aniversários",
+    calculadora: "Calculadora",
+    config: "Configurações",
+    usuarios: "Usuários",
+  };
+
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
+
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean> }[]>([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [editingPermUser, setEditingPermUser] = useState<string | null>(null);
+  const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
+  const [savingPerms, setSavingPerms] = useState(false);
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
   const loadUsers = async () => {
@@ -7692,6 +7727,36 @@ const UsuariosSection = () => {
     });
   };
 
+  const handleOpenPerms = (u: typeof users[0]) => {
+    // Padrão não-admin + customizações salvas
+    const defaults: Record<string, boolean> = {
+      dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false,
+    };
+    setPendingPerms({ ...defaults, ...(u.permissions || {}) });
+    setEditingPermUser(u.id);
+  };
+
+  const handleSavePerms = async () => {
+    if (!editingPermUser) return;
+    setSavingPerms(true);
+    try {
+      const res = await fetch(`/api/admin/users/${editingPermUser}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: pendingPerms }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await loadUsers();
+      setEditingPermUser(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Create user card */}
@@ -7725,12 +7790,8 @@ const UsuariosSection = () => {
               />
             </div>
           </div>
-          {error && (
-            <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>
-          )}
-          {success && (
-            <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>
-          )}
+          {error && <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>}
+          {success && <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>}
           <button
             type="submit"
             disabled={creating}
@@ -7741,9 +7802,9 @@ const UsuariosSection = () => {
         </form>
       </div>
 
-      {/* User list card */}
-      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
-        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-6">
+      {/* User list */}
+      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle space-y-4">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
           Usuários Cadastrados
         </h2>
         {loading ? (
@@ -7751,22 +7812,87 @@ const UsuariosSection = () => {
         ) : (
           <div className="space-y-3">
             {users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between p-4 rounded-2xl bg-surface-bg border border-border-subtle">
-                <div>
-                  <p className="text-sm font-bold text-slate-700">{u.email}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
-                    {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
-                  </p>
+              <div key={u.id} className="rounded-2xl border border-border-subtle overflow-hidden">
+                <div className="flex items-center justify-between p-4 bg-surface-bg">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-700 truncate">{u.email}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
+                      {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 flex-none">
+                    {!u.isAdmin && (
+                      <>
+                        <button
+                          onClick={() => editingPermUser === u.id ? setEditingPermUser(null) : handleOpenPerms(u)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingPermUser === u.id ? "bg-primary-main text-white" : "bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-white"}`}
+                        >
+                          <Settings size={12} />
+                          Permissões
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u.id, u.email)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          title="Excluir usuário"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                    {u.isAdmin && (
+                      <span className="text-[10px] font-black px-3 py-1.5 bg-amber-50 text-amber-600 rounded-xl uppercase tracking-widest">
+                        Acesso Total
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {!u.isAdmin && (
-                  <button
-                    onClick={() => handleDelete(u.id, u.email)}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    title="Excluir usuário"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
+
+                {/* Permissions panel */}
+                <AnimatePresence>
+                  {editingPermUser === u.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 border-t border-border-subtle bg-white space-y-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {ALL_SECTIONS_LIST.map((sec) => {
+                            const enabled = pendingPerms[sec] ?? false;
+                            return (
+                              <button
+                                key={sec}
+                                type="button"
+                                onClick={() => setPendingPerms(prev => ({ ...prev, [sec]: !enabled }))}
+                                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${enabled ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"}`}
+                              >
+                                <div className={`w-4 h-4 rounded flex items-center justify-center flex-none transition-all ${enabled ? "bg-primary-main text-white" : "border-2 border-slate-300"}`}>
+                                  {enabled && <Check size={10} />}
+                                </div>
+                                {SECTION_LABELS[sec]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-end gap-3 pt-1">
+                          <button onClick={() => setEditingPermUser(null)} className="btn-secondary px-5 py-2 text-xs">Cancelar</button>
+                          <button
+                            onClick={handleSavePerms}
+                            disabled={savingPerms}
+                            className="btn-primary px-6 py-2 text-xs flex items-center gap-2"
+                          >
+                            {savingPerms ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                            Salvar Permissões
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ))}
           </div>
@@ -7779,7 +7905,7 @@ const UsuariosSection = () => {
 
 // --- Main App ---
 
-export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAdmin?: boolean }) {
+export default function App({ onLogout, isAdmin, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userEmail?: string; userPermissions?: Record<string, boolean> }) {
   const [section, setSection] = useState<Section>("dashboard");
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -8144,13 +8270,19 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
     <div className="min-h-screen bg-surface-bg flex">
       <Sidebar
         currentSection={section}
-        setSection={setSection}
+        setSection={(s) => {
+          // Só navega se tiver permissão
+          if (userPermissions && !userPermissions[s] && !isAdmin) return;
+          setSection(s);
+        }}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         onLogout={onLogout}
         isAdmin={isAdmin}
         forceDesktop={forceDesktop}
         onToggleDesktop={toggleDesktop}
+        userPermissions={userPermissions}
+        userEmail={userEmail}
       />
 
       <main className={`flex-1 ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>

@@ -8,6 +8,9 @@ export const localUsers = pgTable("local_users", {
   email: text("email").notNull().unique(),
   passwordHash: text("password_hash").notNull(),
   isAdmin: boolean("is_admin").notNull().default(false),
+  // Permissões customizadas por seção. null = usa padrão baseado em isAdmin.
+  // Exemplo: { dashboard: true, vendas: true, empreendimentos: false, ... }
+  permissions: jsonb("permissions").$type<Record<string, boolean>>().default({}),
   createdAt: timestamp("created_at").defaultNow(),
 });
 

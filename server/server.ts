@@ -22,8 +22,8 @@ app.use(express.urlencoded({ extended: true }));
 
 await setupAuth(app);
 
-// ── MODO SEM LOGIN ────────────────────────────────────────────────────────────
-const AUTH_ENABLED = false;
+// ── MODO COM LOGIN ────────────────────────────────────────────────────────────
+const AUTH_ENABLED = true;
 const DEFAULT_USER_ID = "default";
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -119,6 +119,21 @@ app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any
   }
 });
 
+// PATCH /api/admin/users/:id/permissions — update user permissions (admin only)
+app.patch("/api/admin/users/:id/permissions", isAuthenticated, isAdminUser, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { permissions } = req.body;
+    if (!permissions || typeof permissions !== "object") {
+      return res.status(400).json({ error: "Permissões inválidas." });
+    }
+    await localUsersService.updatePermissions(id, permissions);
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar permissões." });
+  }
+});
+
 // POST /api/auth/login
 app.post("/api/auth/login", async (req: any, res) => {
   try {
@@ -135,7 +150,7 @@ app.post("/api/auth/login", async (req: any, res) => {
       return res.status(401).json({ error: "E-mail ou senha incorretos." });
     }
     (req.session as any).localUser = { id: user.id, email: user.email };
-    res.json({ id: user.id, email: user.email, isAdmin: user.is_admin });
+    res.json({ id: user.id, email: user.email, isAdmin: user.is_admin, permissions: (user as any).permissions ?? {} });
   } catch (e: any) {
     console.error("Login error:", e);
     res.status(500).json({ error: e?.message || "Erro ao entrar." });
@@ -160,9 +175,9 @@ app.get("/api/auth/user", async (req: any, res) => {
   if (localUser) {
     try {
       const row = await localUsersService.findById(localUser.id);
-      return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.is_admin ?? false });
+      return res.json({ id: localUser.id, email: localUser.email, isAdmin: row?.is_admin ?? false, permissions: (row as any)?.permissions ?? {} });
     } catch {
-      return res.json({ id: localUser.id, email: localUser.email, isAdmin: false });
+      return res.json({ id: localUser.id, email: localUser.email, isAdmin: false, permissions: {} });
     }
   }
   const userId = req.user?.claims?.sub;
