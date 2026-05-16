@@ -1,5 +1,3 @@
-export * from "./models/auth";
-export * from "./models/chat";
 
 import { pgTable, text, jsonb, timestamp, boolean } from "drizzle-orm/pg-core";
 
