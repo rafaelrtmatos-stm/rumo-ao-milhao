@@ -136,7 +136,7 @@
   }
 
   .stat-card-gradient {
-    @apply text-primary-contrast overflow-hidden relative rounded-[32px] p-8 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.15)];
+    @apply text-primary-contrast overflow-hidden relative rounded-2xl sm:rounded-[32px] p-5 sm:p-8 shadow-[0_20px_40px_-15px_rgba(0,0,0,0.15)];
   }
 }
 

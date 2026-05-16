@@ -490,7 +490,7 @@ const Sidebar = ({
       <div
         className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
-        <div className="p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
+        <div className="p-5 sm:p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
           <div>
             <h1 className="text-2xl font-display font-bold text-primary-main italic tracking-tight">
               Rumo ao Milhão
@@ -711,7 +711,7 @@ const StatCard = ({
         <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-2">
           {title}
         </p>
-        <p className="text-4xl font-display font-bold tracking-tight">
+        <p className="text-2xl sm:text-4xl font-display font-bold tracking-tight">
           {value}
         </p>
         {subtitle && (
@@ -780,22 +780,23 @@ const DashboardSection = ({
   }));
 
   return (
-    <div className="space-y-8">
-      <div className="flex justify-between items-center px-2">
+    <div className="space-y-5 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
         <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
           <LayoutDashboard className="text-primary-main" />
           Visão Geral
         </h3>
         <button
           onClick={() => exportToCSV(sales)}
-          className="btn-ghost text-xs px-4 py-2 border-slate-200"
+          className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
         >
           <Download size={14} />
-          <span>Exportar Vendas</span>
+          <span className="hidden sm:inline">Exportar Vendas</span>
+          <span className="sm:hidden">Exportar</span>
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
         <StatCard
           title="Vendas"
           value={sales.length.toString()}
@@ -830,9 +831,9 @@ const DashboardSection = ({
         />
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
         <div className="card-premium">
-          <div className="flex items-center gap-2 mb-8">
+          <div className="flex items-center gap-2 mb-4 sm:mb-8">
             <BarChart3 size={18} className="text-primary-main" />
             <h4 className="font-display font-bold text-slate-800">
               Tendência de Vendas (7 dias)
@@ -882,7 +883,7 @@ const DashboardSection = ({
         </div>
 
         <div className="card-premium">
-          <div className="flex items-center gap-2 mb-8">
+          <div className="flex items-center gap-2 mb-4 sm:mb-8">
             <PieChartIcon size={18} className="text-primary-main" />
             <h4 className="font-display font-bold text-slate-800">
               Ocupação por Loteamento
@@ -935,7 +936,7 @@ const DashboardSection = ({
       </div>
 
       <div className="card-premium">
-        <div className="flex items-center justify-between mb-8">
+        <div className="flex items-center justify-between mb-4 sm:mb-8">
           <h3 className="text-lg lg:text-xl font-display font-bold text-slate-800 flex items-center gap-2">
             <div className="w-1.5 h-6 bg-primary-main rounded-full" />
             Vendas Recentes
@@ -5538,21 +5539,22 @@ const ContratosSection = ({
           </p>
         </div>
 
-        <div className="flex gap-3 w-full sm:w-auto">
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
           <button
             onClick={() => setShowRanking(true)}
-            className="btn-secondary flex items-center gap-2 h-12 px-5 whitespace-nowrap"
+            className="btn-secondary flex items-center gap-2"
             title="Ranking de corretores"
           >
             <Trophy size={18} />
-            Ranking
+            <span className="hidden sm:inline">Ranking</span>
           </button>
           <button
             onClick={() => setShowNovoContrato(true)}
-            className="btn-primary flex items-center gap-2 h-12 px-6 whitespace-nowrap"
+            className="btn-primary flex items-center gap-2 flex-1 sm:flex-none justify-center"
           >
             <Plus size={18} />
-            Novo Contrato
+            <span className="hidden sm:inline">Novo Contrato</span>
+            <span className="sm:hidden">Novo</span>
           </button>
         </div>
       </div>
@@ -7812,7 +7814,7 @@ const CalculatorSection = () => {
 
   return (
     <div className="max-w-5xl mx-auto pb-32 lg:pb-0">
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
         <div className="lg:col-span-7 space-y-6">
           <div className="card-premium bg-surface-card/50 backdrop-blur-sm">
             <h3 className="text-xl font-display font-bold text-slate-800 mb-8 flex items-center gap-3">
@@ -7918,14 +7920,14 @@ const CalculatorSection = () => {
         </div>
 
         <div className="lg:col-span-12 xl:col-span-5">
-          <div className="bg-slate-900 text-white rounded-[40px] p-10 shadow-[0_30px_100px_-20px_rgba(15,23,42,0.3)] relative overflow-hidden group border border-white/5">
+          <div className="bg-slate-900 text-white rounded-3xl sm:rounded-[40px] p-6 sm:p-10 shadow-[0_30px_100px_-20px_rgba(15,23,42,0.3)] relative overflow-hidden group border border-white/5">
             <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light/10 rounded-full -mr-24 -mt-24 blur-3xl group-hover:bg-primary-light/20 transition-all duration-1000" />
 
-            <h3 className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-primary-light opacity-60 mb-10">
+            <h3 className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-primary-light opacity-60 mb-6 sm:mb-10">
               Resumo da Proposta
             </h3>
 
-            <div className="space-y-8 relative">
+            <div className="space-y-6 sm:space-y-8 relative">
               <div className="space-y-1">
                 <p className="text-xs font-bold text-slate-400 uppercase tracking-widest opacity-60">
                   Total do Lote
@@ -7938,7 +7940,7 @@ const CalculatorSection = () => {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-8">
+              <div className="grid grid-cols-2 gap-4 sm:gap-8">
                 <div className="space-y-1">
                   <p className="text-xs font-bold text-slate-400 uppercase tracking-widest opacity-60">
                     Entrada
@@ -7963,12 +7965,12 @@ const CalculatorSection = () => {
                 </div>
               </div>
 
-              <div className="pt-10 border-t border-white/10">
+              <div className="pt-6 sm:pt-10 border-t border-white/10">
                 <p className="text-[10px] font-extrabold uppercase text-primary-light/60 tracking-widest mb-3">
                   Mensalidade Recomendada
                 </p>
                 <div className="flex items-baseline gap-3">
-                  <p className="text-6xl font-display font-bold text-white tracking-tighter drop-shadow-2xl">
+                  <p className="text-3xl sm:text-6xl font-display font-bold text-white tracking-tighter drop-shadow-2xl">
                     {new Intl.NumberFormat("pt-BR", {
                       style: "currency",
                       currency: "BRL",
@@ -7980,7 +7982,7 @@ const CalculatorSection = () => {
                 </div>
               </div>
 
-              <div className="mt-12 p-8 bg-white/5 rounded-[32px] border border-white/10 backdrop-blur-md shadow-inner">
+              <div className="mt-6 sm:mt-12 p-5 sm:p-8 bg-white/5 rounded-2xl sm:rounded-[32px] border border-white/10 backdrop-blur-md shadow-inner">
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="text-[10px] font-bold text-primary-light uppercase tracking-widest leading-none mb-1">
