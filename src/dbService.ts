@@ -10,9 +10,10 @@ export function setAuthToken(token: string | null) {
 }
 
 function getHeaders(): HeadersInit {
+  const token = _authToken || localStorage.getItem('auth_token');
   const headers: HeadersInit = { 'Content-Type': 'application/json' };
-  if (_authToken) {
-    (headers as any)['Authorization'] = `Bearer ${_authToken}`;
+  if (token) {
+    (headers as any)['Authorization'] = `Bearer ${token}`;
   }
   return headers;
 }
@@ -25,6 +26,12 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
       ...(options.headers || {}),
     },
   });
+  if (res.status === 401) {
+    localStorage.removeItem('auth_token');
+    _authToken = null;
+    window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    throw new Error('Sessão expirada. Faça login novamente.');
+  }
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err?.error || `Erro ${res.status}`);
