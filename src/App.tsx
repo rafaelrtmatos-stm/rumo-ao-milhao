@@ -5139,6 +5139,157 @@ const ContratosSection = ({
     }
   };
 
+  const [downloadingPdfContrato, setDownloadingPdfContrato] = useState(false);
+
+  // Baixa PDF do contrato usando jsPDF (captura a prévia renderizada)
+  const handleDownloadPdfContrato = async () => {
+    if (!selectedVenda) return;
+    const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
+    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+
+    setDownloadingPdfContrato(true);
+    const endpoint = tipoContrato === 'avista'
+      ? "/api/contrato/avista-padrao"
+      : "/api/contrato/parcelado-padrao";
+
+    try {
+      const res = await authFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          vendedor: gerarVendedor,
+          cliente,
+          empreendimento: { nome: gerarEmp.nome || desenvolvimento.nome, comunidade: gerarEmp.comunidade || gerarExtra.comunidade, cidade: gerarEmp.cidade || desenvolvimento.cidade, estado: gerarEmp.estado || desenvolvimento.estado },
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: gerarExtra.rua,
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: gerarExtra.formaPagamento,
+            medidaFrente: gerarExtra.medidaFrente,
+            medidaLateralDir: gerarExtra.medidaLateralDir,
+            medidaLateralEsq: gerarExtra.medidaLateralEsq,
+            medidaFundos: gerarExtra.medidaFundos,
+            areaTotal: gerarExtra.areaTotal,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Erro: " + (err.error || "Falha ao gerar contrato."));
+        return;
+      }
+      // O servidor retorna DOCX; converte para PDF via jsPDF/mammoth não é viável client-side.
+      // Estratégia: baixar como DOCX com extensão .pdf não é correto.
+      // Em vez disso, geramos um PDF simples com os dados da prévia.
+      const jspdfModule = await import('jspdf');
+      const JsPDFClass = jspdfModule.jsPDF ?? (jspdfModule as any).default?.jsPDF ?? (jspdfModule as any).default;
+      const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+      const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR") : "";
+
+      const margin = 20;
+      let y = margin;
+      const lineH = 7;
+      const pageW = pdf.internal.pageSize.getWidth();
+
+      const addLine = (text: string, bold = false, size = 11) => {
+        if (y > 270) { pdf.addPage(); y = margin; }
+        pdf.setFontSize(size);
+        pdf.setFont("helvetica", bold ? "bold" : "normal");
+        const lines = pdf.splitTextToSize(text, pageW - margin * 2);
+        pdf.text(lines, margin, y);
+        y += lineH * lines.length;
+      };
+      const addBlank = () => { y += 4; };
+
+      pdf.setFontSize(16);
+      pdf.setFont("helvetica", "bold");
+      pdf.text(tipoContrato === 'avista' ? "CONTRATO DE COMPRA E VENDA À VISTA" : "CONTRATO DE COMPRA E VENDA PARCELADO", pageW / 2, y, { align: "center" });
+      y += lineH * 2;
+
+      addLine(`Nº ${selectedVenda.numeroContrato}`, true, 10);
+      addBlank();
+
+      addLine("VENDEDOR", true, 12);
+      addLine(`Nome: ${gerarVendedor.nome || "—"}`);
+      if (gerarVendedor.cpf) addLine(`CPF: ${gerarVendedor.cpf}`);
+      if (gerarVendedor.rg) addLine(`RG: ${gerarVendedor.rg}`);
+      if (gerarVendedor.estadoCivil) addLine(`Estado Civil: ${gerarVendedor.estadoCivil}`);
+      if (gerarVendedor.endereco) addLine(`Endereço: ${gerarVendedor.endereco}${gerarVendedor.numero ? ", " + gerarVendedor.numero : ""} — ${gerarVendedor.bairro || ""} — ${gerarVendedor.cidade || ""}/${gerarVendedor.estado || ""}`);
+      addBlank();
+
+      addLine("COMPRADOR", true, 12);
+      addLine(`Nome: ${cliente.nome}`);
+      if (cliente.cpf) addLine(`CPF: ${cliente.cpf}`);
+      if (cliente.rg) addLine(`RG: ${cliente.rg}`);
+      if (cliente.estadoCivil) addLine(`Estado Civil: ${cliente.estadoCivil}`);
+      if (cliente.profissao) addLine(`Profissão: ${cliente.profissao}`);
+      addBlank();
+
+      addLine("IMÓVEL", true, 12);
+      addLine(`Empreendimento: ${gerarEmp.nome || desenvolvimento.nome}`);
+      addLine(`Quadra: ${selectedVenda.quadra}   Lote: ${selectedVenda.numeroLote}`);
+      if (gerarExtra.rua) addLine(`Logradouro: ${gerarExtra.rua}`);
+      if (gerarExtra.areaTotal) addLine(`Área Total: ${gerarExtra.areaTotal} m²`);
+      addBlank();
+
+      addLine("CONDIÇÕES DE PAGAMENTO", true, 12);
+      addLine(`Valor Total: ${fmtCurrency(selectedVenda.valorLote)}`);
+      if (selectedVenda.quantidadeParcelas > 0) {
+        addLine(`Entrada: ${fmtCurrency(selectedVenda.valorEntrada)}`);
+        addLine(`Parcelas: ${selectedVenda.quantidadeParcelas}x de ${fmtCurrency(selectedVenda.valorParcela)}`);
+        if (selectedVenda.dataVencimento) addLine(`Vencimento: dia ${fmtDate(selectedVenda.dataVencimento).split("/")[0]} de cada mês`);
+      }
+      addLine(`Forma de Pagamento: ${gerarExtra.formaPagamento}`);
+      addLine(`Data da Venda: ${fmtDate(selectedVenda.dataVenda)}`);
+      addBlank();
+      addBlank();
+
+      y += 20;
+      pdf.setDrawColor(0);
+      pdf.line(margin, y, margin + 80, y);
+      pdf.setFontSize(9);
+      pdf.setFont("helvetica", "normal");
+      pdf.text("Vendedor", margin + 40, y + 5, { align: "center" });
+      pdf.text(gerarVendedor.nome || "", margin + 40, y + 10, { align: "center" });
+
+      pdf.line(pageW - margin - 80, y, pageW - margin, y);
+      pdf.text("Comprador", pageW - margin - 40, y + 5, { align: "center" });
+      pdf.text(cliente.nome, pageW - margin - 40, y + 10, { align: "center" });
+
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      const blob = pdf.output('blob');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra_${selectedVenda.quadra}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true });
+    } catch (e: any) {
+      alert("Erro ao gerar PDF do contrato: " + e.message);
+    } finally {
+      setDownloadingPdfContrato(false);
+    }
+  };
+
+  const [gerarFinalFormat, setGerarFinalFormat] = useState<'pdf' | 'docx'>('docx');
+
+  const handleOpenGerarContratoFormato = (formato: 'pdf' | 'docx') => {
+    setGerarFinalFormat(formato);
+    handleOpenGerarContrato();
+  };
+
   const handleSalvarContrato = () => {
     let cliente: Cliente;
     if (clienteMode === "existente") {
@@ -5241,8 +5392,13 @@ const ContratosSection = ({
     const quadra = selectedVenda.quadra || '';
     const lote = selectedVenda.numeroLote || '';
     const rua = selectedVenda.rua || '';
-    const vendedor = selectedVenda.vendedor || '___________________________';
-    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedVenda.valorEntrada || 0);
+    const isAvista = selectedVenda.quantidadeParcelas === 0;
+    const valorNumerico = isAvista ? (selectedVenda.valorLote || 0) : (selectedVenda.valorEntrada || 0);
+    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNumerico);
+    const pagamentoLabel = isAvista ? 'PAGAMENTO INTEGRAL À VISTA' : 'SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)';
+    const corretorNome = userProfile?.nome || '___________________________';
+    const corretorCargo = userProfile?.creci ? 'Corretor de Imóveis' : 'Angariador/Captador';
+    const corretorCreci = userProfile?.creci || '';
     const dataFormatada = new Date(selectedVenda.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
     return `<!DOCTYPE html>
 <html>
@@ -5290,7 +5446,7 @@ const ContratosSection = ({
         </div>
       </div>
       <p class="corpo">
-        Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)</span> para aquisição do imóvel:
+        Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">${pagamentoLabel}</span> para aquisição do imóvel:
       </p>
       <div class="imovel-box">
         <div>
@@ -5310,15 +5466,10 @@ const ContratosSection = ({
         </div>
         <div class="assinatura">
           <div class="linha-assinatura"></div>
-          <p class="assinatura-label">Assinatura do Vendedor</p>
-          <p class="assinatura-nome">${vendedor}</p>
+          <p class="assinatura-label">${corretorCargo}</p>
+          <p class="assinatura-nome">${corretorNome}</p>
+          ${corretorCreci ? `<p class="assinatura-label">CRECI: ${corretorCreci}</p>` : ''}
         </div>
-        ${userProfile?.nome ? `<div class="assinatura">
-          <div class="linha-assinatura"></div>
-          <p class="assinatura-label">Corretor Responsável</p>
-          <p class="assinatura-nome">${userProfile.nome}</p>
-          ${userProfile.creci ? `<p class="assinatura-label">CRECI: ${userProfile.creci}</p>` : ''}
-        </div>` : ''}
       </div>
     </div>
   </div>
@@ -5530,7 +5681,7 @@ const ContratosSection = ({
 
   const handleOpenGerarContratoForVenda = (venda: Venda) => {
     const dev = developments.find((d) => d.id === venda.empreendimentoId);
-    setSelectedVenda(venda);
+    // Pré-preenche gerarExtra/gerarEmp para quando o usuário quiser baixar depois
     setGerarProprietarioId("");
     setGerarVendedor(emptyGerarVendedor);
     setGerarEmp({
@@ -5551,7 +5702,8 @@ const ContratosSection = ({
     });
     setTipoContrato(venda.quantidadeParcelas === 0 ? "avista" : "parcelado");
     setGerarStep(0);
-    setShowGerarModal(true);
+    // Apenas abre a visualização — wizard só abre se usuário clicar PDF/DOCX
+    setSelectedVenda(venda);
   };
 
   const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
@@ -5958,8 +6110,8 @@ const ContratosSection = ({
 
                     {[
                       { label: "Valor do Lote (R$)", field: "valorLote", type: "number" },
-                      { label: "Entrada (R$)", field: "valorEntrada", type: "number" },
                       ...(tipoContrato === 'parcelado' ? [
+                        { label: "Entrada (R$)", field: "valorEntrada", type: "number" },
                         { label: "Nº de Parcelas", field: "quantidadeParcelas", type: "number" },
                         { label: "Valor da Parcela (R$)", field: "valorParcela", type: "number" },
                       ] : []),
@@ -6123,16 +6275,12 @@ const ContratosSection = ({
                     <label className="label">Valor do Lote (R$)</label>
                     <input type="number" className="input-field" value={editVendaForm.valorLote ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorLote: parseFloat(e.target.value) || 0 })} />
                   </div>
-                  <div>
-                    <label className="label">Valor de Entrada (R$)</label>
-                    <input type="number" className="input-field" value={editVendaForm.valorEntrada ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorEntrada: parseFloat(e.target.value) || 0 })} />
-                  </div>
                   {/* Toggle À Vista / Parcelado */}
                   <div className="col-span-2">
                     <label className="label">Tipo de Pagamento</label>
                     <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
                       <button type="button"
-                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" })}
+                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: 0, valorParcela: 0, valorEntrada: 0, dataVencimento: "" })}
                         className={`px-5 py-2 transition-colors ${(editVendaForm.quantidadeParcelas === 0) ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
                         À Vista
                       </button>
@@ -6144,6 +6292,10 @@ const ContratosSection = ({
                     </div>
                   </div>
                   {editVendaForm.quantidadeParcelas !== 0 && (<>
+                  <div>
+                    <label className="label">Valor de Entrada (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorEntrada ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorEntrada: parseFloat(e.target.value) || 0 })} />
+                  </div>
                   <div>
                     <label className="label">Qtd. Parcelas</label>
                     <input type="number" min={1} className="input-field" value={editVendaForm.quantidadeParcelas ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: parseInt(e.target.value) || 1 })} />
@@ -6402,6 +6554,13 @@ const ContratosSection = ({
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    <ChevronLeft size={17} />
+                    Voltar
+                  </button>
+                  <button
                     onClick={() => { setEditingVenda(selectedVenda); setEditVendaForm({ ...selectedVenda }); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                   >
@@ -6409,12 +6568,26 @@ const ContratosSection = ({
                     Editar
                   </button>
                   <button
-                    onClick={handleOpenGerarContrato}
-                    disabled={downloadingDocx}
-                    className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    onClick={() => handleOpenGerarContratoFormato('pdf')}
+                    disabled={downloadingPdfContrato || downloadingDocx}
+                    className="btn-ghost h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar PDF do contrato"
                   >
-                    <ChevronRight size={18} />
-                    Avançar
+                    {downloadingPdfContrato ? <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <><FileDown size={17} /> PDF</>}
+                  </button>
+                  <button
+                    onClick={() => handleOpenGerarContratoFormato('docx')}
+                    disabled={downloadingDocx || downloadingPdfContrato}
+                    className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar DOCX do contrato"
+                  >
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
+                  </button>
+                  <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="btn-primary h-11 px-6 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    OK
                   </button>
                 </div>
               </div>
@@ -6495,22 +6668,32 @@ const ContratosSection = ({
                       <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
                       <p className="font-bold text-primary-main text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
-                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
-                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
-                      <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
-                      <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
-                    </div>
+                    {selectedVenda.quantidadeParcelas > 0 && (
+                      <>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
+                          <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
+                          <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
+                          <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
+                        </div>
+                      </>
+                    )}
+                    {selectedVenda.quantidadeParcelas === 0 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Modalidade</p>
+                        <p className="font-bold text-success-main">À Vista</p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Pagamento</p>
                       <p className="font-semibold text-slate-700">{selectedVenda.formaPagamento || "—"}</p>
@@ -6603,7 +6786,9 @@ const ContratosSection = ({
                     <div className="text-right">
                       <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Valor do Recibo</p>
                       <p className="text-3xl font-bold bg-slate-900 text-white px-4 py-1 rounded-xl">
-                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                          selectedVenda.quantidadeParcelas === 0 ? selectedVenda.valorLote : selectedVenda.valorEntrada
+                        )}
                       </p>
                     </div>
                   </div>
@@ -6615,10 +6800,16 @@ const ContratosSection = ({
                       <span className="font-bold">{client?.cpf || "___.___.___-__"}</span>
                       , a importância supra de{" "}
                       <span className="font-bold italic">
-                        ({new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)})
+                        ({new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                          selectedVenda.quantidadeParcelas === 0 ? selectedVenda.valorLote : selectedVenda.valorEntrada
+                        )})
                       </span>
                       , referente ao{" "}
-                      <span className="font-bold">SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)</span>{" "}
+                      <span className="font-bold">
+                        {selectedVenda.quantidadeParcelas === 0
+                          ? "PAGAMENTO INTEGRAL À VISTA"
+                          : "SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)"}
+                      </span>{" "}
                       para aquisição do imóvel:
                     </p>
                     <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-dashed border-slate-200 grid grid-cols-2 gap-6">
@@ -6650,7 +6841,9 @@ const ContratosSection = ({
                     </div>
                     <div className="w-64 text-center">
                       <div className="h-px bg-slate-900 mb-2" />
-                      <p className="text-[10px] font-bold uppercase text-slate-400">Vendedor</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-400">
+                        {userProfile?.creci ? "Corretor de Imóveis" : "Angariador/Captador"}
+                      </p>
                       {userProfile?.nome ? (
                         <>
                           <p className="font-bold text-slate-900">{userProfile.nome}</p>
@@ -6874,11 +7067,14 @@ const ContratosSection = ({
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pagamento</p>
                         <div className="grid grid-cols-2 gap-2 text-sm">
                           <div><span className="text-slate-500 text-xs">Valor do Lote</span><p className="font-bold text-primary-main">{fmtCurrency(selectedVenda.valorLote)}</p></div>
-                          <div><span className="text-slate-500 text-xs">Entrada</span><p className="font-bold text-slate-800">{fmtCurrency(selectedVenda.valorEntrada)}</p></div>
-                          {selectedVenda.quantidadeParcelas > 0 && <>
-                            <div><span className="text-slate-500 text-xs">Parcelas</span><p className="text-slate-700">{selectedVenda.quantidadeParcelas}x de {fmtCurrency(selectedVenda.valorParcela)}</p></div>
-                            <div><span className="text-slate-500 text-xs">Vencimento</span><p className="text-slate-700">{selectedVenda.dataVencimento}</p></div>
-                          </>}
+                          {selectedVenda.quantidadeParcelas === 0
+                            ? <div><span className="text-slate-500 text-xs">Modalidade</span><p className="font-bold text-success-main">À Vista</p></div>
+                            : <>
+                              <div><span className="text-slate-500 text-xs">Entrada</span><p className="font-bold text-slate-800">{fmtCurrency(selectedVenda.valorEntrada)}</p></div>
+                              <div><span className="text-slate-500 text-xs">Parcelas</span><p className="text-slate-700">{selectedVenda.quantidadeParcelas}x de {fmtCurrency(selectedVenda.valorParcela)}</p></div>
+                              <div><span className="text-slate-500 text-xs">Vencimento</span><p className="text-slate-700">{selectedVenda.dataVencimento}</p></div>
+                            </>
+                          }
                           <div><span className="text-slate-500 text-xs">Forma de Pagamento</span><p className="text-slate-700">{gerarExtra.formaPagamento}</p></div>
                         </div>
                       </div>
@@ -6913,14 +7109,15 @@ const ContratosSection = ({
                 ) : (
                   <div className="flex gap-2 flex-1">
                     <button
-                      onClick={() => window.print()}
-                      className="btn-ghost h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
+                      onClick={handleDownloadPdfContrato}
+                      disabled={downloadingPdfContrato || downloadingDocx}
+                      className="btn-ghost h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50"
                     >
-                      <Printer size={17} /> Salvar PDF
+                      {downloadingPdfContrato ? <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</> : <><FileDown size={17} /> Baixar PDF</>}
                     </button>
                     <button
                       onClick={handleDownloadDocx}
-                      disabled={downloadingDocx}
+                      disabled={downloadingDocx || downloadingPdfContrato}
                       className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50"
                     >
                       {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> Baixar .docx</>}
