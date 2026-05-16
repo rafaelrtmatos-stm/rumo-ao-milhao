@@ -1,7 +1,8 @@
+import { authFetch } from './lib/authFetch';
+
 async function apiFetch(path: string, body: object): Promise<any> {
-  const res = await fetch(path, {
+  const res = await authFetch(path, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
   if (!res.ok) {
