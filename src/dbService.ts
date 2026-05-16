@@ -1,79 +1,178 @@
+import { createClient } from '@supabase/supabase-js';
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
-import { authFetch } from './lib/authFetch';
 
-export function setCurrentUser(_id: string) {}
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL as string;
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 
-async function apiGet<T>(path: string): Promise<T> {
-  const res = await authFetch(path);
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || `Erro ${res.status}`);
-  }
-  return res.json();
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+// Fixed UUID for the single "default" user (user_id column is uuid type in Supabase)
+const DEFAULT_UUID = '00000000-0000-0000-0000-000000000001';
+
+let currentUserId = DEFAULT_UUID;
+
+export function setCurrentUser(_id: string) {
+  // Always use fixed UUID — this is a single-user app
+  currentUserId = DEFAULT_UUID;
 }
 
-async function apiPost(path: string, body: unknown): Promise<void> {
-  const res = await authFetch(path, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || `Erro ${res.status}`);
-  }
+function rowToItem<T>(row: { id: string; data: unknown }): T {
+  return { ...(row.data as object), id: row.id } as T;
 }
+
+async function throwIfError<T>(p: PromiseLike<{ data: T | null; error: unknown }>): Promise<T> {
+  const { data, error } = await p;
+  if (error) throw error;
+  return data as T;
+}
+
+// ─── Empreendimentos ───────────────────────────────────────────────────────────
 
 async function getEmpreendimentos(): Promise<Empreendimento[]> {
-  return apiGet<Empreendimento[]>('/api/empreendimentos');
+  const rows = await throwIfError(
+    supabase.from('empreendimentos').select('id, data').eq('user_id', currentUserId)
+  );
+  return (rows as { id: string; data: unknown }[]).map(r => rowToItem<Empreendimento>(r));
 }
 
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
-  return apiPost('/api/empreendimentos', items);
-}
-
-async function deleteEmpreendimento(id: string): Promise<void> {
-  const res = await authFetch(`/api/empreendimentos/${id}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || `Erro ${res.status}`);
+  if (items.length > 0) {
+    const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
+    const { error } = await supabase.from('empreendimentos').upsert(rows);
+    if (error) throw error;
+  }
+  const existing = await throwIfError(
+    supabase.from('empreendimentos').select('id').eq('user_id', currentUserId)
+  ) as { id: string }[];
+  const ids = new Set(items.map(i => i.id));
+  const toDelete = existing.filter(r => !ids.has(r.id)).map(r => r.id);
+  if (toDelete.length > 0) {
+    const { error } = await supabase.from('empreendimentos').delete().in('id', toDelete);
+    if (error) throw error;
   }
 }
 
+async function deleteEmpreendimento(id: string): Promise<void> {
+  const { error } = await supabase.from('empreendimentos').delete().eq('id', id).eq('user_id', currentUserId);
+  if (error) throw error;
+}
+
+// ─── Clientes ─────────────────────────────────────────────────────────────────
+
 async function getClientes(): Promise<Cliente[]> {
-  return apiGet<Cliente[]>('/api/clientes');
+  const rows = await throwIfError(
+    supabase.from('clientes').select('id, data').eq('user_id', currentUserId)
+  );
+  return (rows as { id: string; data: unknown }[]).map(r => rowToItem<Cliente>(r));
 }
 
 async function saveClientes(items: Cliente[]): Promise<void> {
-  return apiPost('/api/clientes', items);
+  if (items.length > 0) {
+    const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
+    const { error } = await supabase.from('clientes').upsert(rows);
+    if (error) throw error;
+  }
+  const existing = await throwIfError(
+    supabase.from('clientes').select('id').eq('user_id', currentUserId)
+  ) as { id: string }[];
+  const ids = new Set(items.map(i => i.id));
+  const toDelete = existing.filter(r => !ids.has(r.id)).map(r => r.id);
+  if (toDelete.length > 0) {
+    const { error } = await supabase.from('clientes').delete().in('id', toDelete);
+    if (error) throw error;
+  }
 }
 
+// ─── Vendas ───────────────────────────────────────────────────────────────────
+
 async function getVendas(): Promise<Venda[]> {
-  return apiGet<Venda[]>('/api/vendas');
+  const rows = await throwIfError(
+    supabase.from('vendas').select('id, data').eq('user_id', currentUserId)
+  );
+  return (rows as { id: string; data: unknown }[]).map(r => rowToItem<Venda>(r));
 }
 
 async function saveVendas(items: Venda[]): Promise<void> {
-  return apiPost('/api/vendas', items);
+  if (items.length > 0) {
+    const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
+    const { error } = await supabase.from('vendas').upsert(rows);
+    if (error) throw error;
+  }
+  const existing = await throwIfError(
+    supabase.from('vendas').select('id').eq('user_id', currentUserId)
+  ) as { id: string }[];
+  const ids = new Set(items.map(i => i.id));
+  const toDelete = existing.filter(r => !ids.has(r.id)).map(r => r.id);
+  if (toDelete.length > 0) {
+    const { error } = await supabase.from('vendas').delete().in('id', toDelete);
+    if (error) throw error;
+  }
 }
 
+// ─── AppConfig ────────────────────────────────────────────────────────────────
+
 async function getAppConfig(): Promise<AppConfig> {
-  return apiGet<AppConfig>('/api/config');
+  const { data, error } = await supabase
+    .from('app_config')
+    .select('data')
+    .eq('user_id', currentUserId)
+    .maybeSingle();
+  if (error) throw error;
+  return (data?.data as AppConfig) ?? { theme: 'standard', vendedores: [] };
 }
 
 async function saveAppConfig(config: AppConfig): Promise<void> {
-  return apiPost('/api/config', config);
+  const { error } = await supabase
+    .from('app_config')
+    .upsert({ user_id: currentUserId, data: config });
+  if (error) throw error;
 }
 
-function subscribeToEmpreendimentos(_callback: (devs: Empreendimento[]) => void): { unsubscribe: () => void } {
-  return { unsubscribe: () => {} };
+// ─── Realtime subscriptions ───────────────────────────────────────────────────
+
+function subscribeToEmpreendimentos(callback: (devs: Empreendimento[]) => void): { unsubscribe: () => void } {
+  const channel = supabase
+    .channel(`empreendimentos:${currentUserId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'empreendimentos', filter: `user_id=eq.${currentUserId}` },
+      async () => {
+        try { callback(await getEmpreendimentos()); } catch (e) { console.error('Realtime empreendimentos:', e); }
+      }
+    )
+    .subscribe();
+  return { unsubscribe: () => { supabase.removeChannel(channel); } };
 }
 
-function subscribeToClientes(_callback: (clientes: Cliente[]) => void): { unsubscribe: () => void } {
-  return { unsubscribe: () => {} };
+function subscribeToClientes(callback: (clientes: Cliente[]) => void): { unsubscribe: () => void } {
+  const channel = supabase
+    .channel(`clientes:${currentUserId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'clientes', filter: `user_id=eq.${currentUserId}` },
+      async () => {
+        try { callback(await getClientes()); } catch (e) { console.error('Realtime clientes:', e); }
+      }
+    )
+    .subscribe();
+  return { unsubscribe: () => { supabase.removeChannel(channel); } };
 }
 
-function subscribeToVendas(_callback: (vendas: Venda[]) => void): { unsubscribe: () => void } {
-  return { unsubscribe: () => {} };
+function subscribeToVendas(callback: (vendas: Venda[]) => void): { unsubscribe: () => void } {
+  const channel = supabase
+    .channel(`vendas:${currentUserId}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'vendas', filter: `user_id=eq.${currentUserId}` },
+      async () => {
+        try { callback(await getVendas()); } catch (e) { console.error('Realtime vendas:', e); }
+      }
+    )
+    .subscribe();
+  return { unsubscribe: () => { supabase.removeChannel(channel); } };
 }
+
+// ─── Migrate from localStorage ────────────────────────────────────────────────
 
 async function migrateFromLocalStorage(): Promise<{ ok: boolean; msg: string }> {
   try {
@@ -108,7 +207,7 @@ async function migrateFromLocalStorage(): Promise<{ ok: boolean; msg: string }> 
   }
 }
 
-export const supabase = null;
+// ─── Export ───────────────────────────────────────────────────────────────────
 
 export const dbService = {
   getEmpreendimentos,
