@@ -7696,13 +7696,23 @@ const UsuariosSection = () => {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: newEmail, password: newPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao criar usuário.");
+      // Salvar permissões padrão para o novo usuário
+      const defaultPerms: Record<string, boolean> = {
+        dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
+      };
+      await fetch(`/api/admin/users/${data.id}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: defaultPerms }),
+      });
       setSuccess(`Usuário ${newEmail} criado com sucesso!`);
       setNewEmail("");
       setNewPassword("");
