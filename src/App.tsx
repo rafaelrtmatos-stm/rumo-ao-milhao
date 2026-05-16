@@ -4878,6 +4878,7 @@ const ContratosSection = ({
   proprietarios = [],
   onEditVenda,
   onUpdateProprietario,
+  onClearInitialVenda,
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -4892,6 +4893,7 @@ const ContratosSection = ({
   initialMode?: 'recibo';
   onUpdateProprietario?: (p: Proprietario) => void;
   onEditVenda?: (v: Venda) => void;
+  onClearInitialVenda?: () => void;
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -5160,6 +5162,7 @@ const ContratosSection = ({
     if (initialVenda) {
       setSelectedVenda(initialVenda);
       setViewMode("contract");
+      onClearInitialVenda?.();
     }
   }, [initialVenda]);
 
@@ -6289,15 +6292,8 @@ const ContratosSection = ({
                     disabled={downloadingDocx}
                     className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                   >
-                    <FileDown size={18} />
-                    DOC
-                  </button>
-                  <button
-                    onClick={() => setShowReciboModal(true)}
-                    className="btn-ghost h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
-                  >
-                    <FileCheck size={18} />
-                    Recibo
+                    <ChevronRight size={18} />
+                    Avançar
                   </button>
                 </div>
               </div>
@@ -6791,10 +6787,10 @@ const ContratosSection = ({
                 ) : (
                   <div className="flex gap-2 flex-1">
                     <button
-                      onClick={handlePrint}
+                      onClick={() => window.print()}
                       className="btn-ghost h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
                     >
-                      <Printer size={17} /> Imprimir
+                      <Printer size={17} /> Salvar PDF
                     </button>
                     <button
                       onClick={handleDownloadDocx}
@@ -8768,6 +8764,7 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
             onEditVenda={handleEditVenda}
+            onClearInitialVenda={() => setContractToOpen(null)}
           />
         );
       case "clientes":
