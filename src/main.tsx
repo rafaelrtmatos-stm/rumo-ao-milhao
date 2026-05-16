@@ -47,16 +47,7 @@ export function clearAuthToken() {
   try { localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 
-// authFetch — usa sempre em vez de fetch() para chamadas à API
-export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
-  const token = getAuthToken();
-  const headers = new Headers(init.headers ?? {});
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
-    headers.set("Content-Type", "application/json");
-  }
-  return fetch(input, { ...init, headers });
-}
+export { authFetch } from "./lib/authFetch";
 // ─────────────────────────────────────────────────────────────────────────────
 
 class ErrorBoundary extends React.Component<

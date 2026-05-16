@@ -45,6 +45,7 @@ import {
   AppTheme,
 } from "./types";
 import { dbService, setCurrentUser } from "./dbService";
+import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
@@ -4727,10 +4728,8 @@ const ContratosSection = ({
       : "/api/contrato/parcelado-padrao";
     
     try {
-      const res = await fetch(endpoint, {
+      const res = await authFetch(endpoint, {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           vendedor: gerarVendedor,
           cliente,
@@ -4755,7 +4754,7 @@ const ContratosSection = ({
         }),
       });
       if (!res.ok) {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         alert("Erro: " + (err.error || "Falha ao gerar contrato."));
         return;
       }
@@ -4770,6 +4769,7 @@ const ContratosSection = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true });
     } catch (e: any) {
       alert("Erro ao gerar contrato: " + e.message);
     } finally {
@@ -5126,8 +5126,9 @@ const ContratosSection = ({
   const getStatusInfo = (status?: string) => {
     switch (status) {
       case "pago":
+      case "ativo":
         return {
-          label: "Pago",
+          label: "Ativo",
           color: "text-success-main bg-success-main/10",
           icon: CheckCircle2,
         };
@@ -5137,13 +5138,46 @@ const ContratosSection = ({
           color: "text-red-500 bg-red-50",
           icon: AlertCircle,
         };
-      default:
+      case "rascunho":
+      case "pendente":
         return {
-          label: "Pendente",
+          label: "Rascunho",
           color: "text-amber-500 bg-amber-50",
           icon: Clock,
         };
+      default:
+        return {
+          label: "Ativo",
+          color: "text-success-main bg-success-main/10",
+          icon: CheckCircle2,
+        };
     }
+  };
+
+  const handleOpenGerarContratoForVenda = (venda: Venda) => {
+    const dev = developments.find((d) => d.id === venda.empreendimentoId);
+    setSelectedVenda(venda);
+    setGerarProprietarioId("");
+    setGerarVendedor(emptyGerarVendedor);
+    setGerarEmp({
+      nome: dev?.nome || "",
+      comunidade: dev?.comunidade || "",
+      cidade: dev?.cidade || "",
+      estado: dev?.estado || "",
+    });
+    setGerarExtra({
+      rua: venda.rua || "",
+      comunidade: dev?.comunidade || "",
+      formaPagamento: venda.formaPagamento || "Dinheiro",
+      medidaFrente: venda.medidaFrente || "",
+      medidaLateralDir: venda.medidaLateralDir || "",
+      medidaLateralEsq: venda.medidaLateralEsq || "",
+      medidaFundos: venda.medidaFundos || "",
+      areaTotal: venda.areaTotal || "",
+    });
+    setTipoContrato(venda.quantidadeParcelas === 0 ? "avista" : "parcelado");
+    setGerarStep(0);
+    setShowGerarModal(true);
   };
 
   return (
@@ -5714,146 +5748,172 @@ const ContratosSection = ({
         )}
       </AnimatePresence>
 
-      <div className="card-premium">
-        {/* Mobile: cards */}
-        <div className="sm:hidden space-y-3">
-          {filteredSales.length === 0 && (
-            <p className="py-12 text-center text-slate-300 italic font-medium">
-              {searchTerm ? `Nenhum contrato encontrado para "${searchTerm}"` : "Nenhum contrato formalizado."}
-            </p>
-          )}
-          {filteredSales.map((venda) => {
-            const s = getStatusInfo(venda.status);
-            const Icon = s.icon;
-            return (
-              <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <p className="font-bold text-slate-800 truncate">{venda.clienteNome}</p>
-                    <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome}</p>
-                  </div>
-                  <div className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
-                    <Icon size={11} />
-                    {s.label}
-                  </div>
+      {(() => {
+        const semContrato = filteredSales.filter((v) => !v.contratoGerado);
+        const comContrato = filteredSales.filter((v) => v.contratoGerado);
+
+        const renderMobileCard = (venda: Venda) => {
+          const s = getStatusInfo(venda.status);
+          const Icon = s.icon;
+          return (
+            <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800 truncate">{venda.clienteNome}</p>
+                  <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}</p>
                 </div>
-                <p className="font-display font-bold text-primary-main text-lg">
-                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
-                </p>
-                <div className="grid grid-cols-4 gap-2">
+                <div className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
+                  <Icon size={11} />
+                  {s.label}
+                </div>
+              </div>
+              <p className="font-display font-bold text-primary-main text-lg">
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+              </p>
+              <div className="grid grid-cols-4 gap-2">
+                <button
+                  onClick={() => handleOpenGerarContratoForVenda(venda)}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${venda.contratoGerado ? "bg-white text-primary-main border-border-subtle hover:bg-primary-main hover:text-white" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                >
+                  <FileDown size={20} />
+                  <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
+                </button>
+                <button
+                  onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-white transition-all"
+                >
+                  <FileCheck size={20} />
+                  <span className="text-[9px] font-bold uppercase">Recibo</span>
+                </button>
+                <button
+                  onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                >
+                  <Pencil size={20} />
+                  <span className="text-[9px] font-bold uppercase">Editar</span>
+                </button>
+                <button
+                  onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                >
+                  <Trash2 size={20} />
+                  <span className="text-[9px] font-bold uppercase">Excluir</span>
+                </button>
+              </div>
+            </div>
+          );
+        };
+
+        const renderDesktopRow = (venda: Venda) => {
+          const s = getStatusInfo(venda.status);
+          const Icon = s.icon;
+          return (
+            <tr key={venda.id} className="group">
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
+                <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
+                  <Icon size={12} />
+                  {s.label}
+                </div>
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-semibold text-slate-700">
+                {venda.clienteNome}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
+                {venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
+                <div className="flex justify-center gap-2">
                   <button
-                    onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-white transition-all"
+                    onClick={() => handleOpenGerarContratoForVenda(venda)}
+                    className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center gap-1.5 text-xs font-bold ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                    title={venda.contratoGerado ? "Baixar contrato novamente" : "Gerar contrato"}
                   >
-                    <FileText size={20} />
-                    <span className="text-[9px] font-bold uppercase">Contrato</span>
+                    <FileDown size={15} />
+                    {venda.contratoGerado ? "Contrato" : "Gerar Contrato"}
                   </button>
                   <button
                     onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-white transition-all"
+                    className="p-2.5 bg-surface-card text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-primary-contrast transition-all"
+                    title="Recibo"
                   >
-                    <FileCheck size={20} />
-                    <span className="text-[9px] font-bold uppercase">Recibo</span>
+                    <FileCheck size={18} />
                   </button>
                   <button
                     onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                    className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                    title="Editar venda"
                   >
-                    <Pencil size={20} />
-                    <span className="text-[9px] font-bold uppercase">Editar</span>
+                    <Pencil size={18} />
                   </button>
                   <button
-                    onClick={() => requestDelete(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                    onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                    className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                    title="Excluir"
                   >
-                    <Trash2 size={20} />
-                    <span className="text-[9px] font-bold uppercase">Excluir</span>
+                    <Trash2 size={18} />
                   </button>
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              </td>
+            </tr>
+          );
+        };
 
-        {/* Desktop: table */}
-        <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
-          <table className="w-full text-left border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                <th className="pb-3 px-4">Status</th>
-                <th className="pb-3 px-4">Titular</th>
-                <th className="pb-3 px-4">Loteamento</th>
-                <th className="pb-3 px-4 text-right">Montante</th>
-                <th className="pb-3 px-4 text-center">Documento</th>
-              </tr>
-            </thead>
-            <tbody className="text-sm">
-              {filteredSales.map((venda) => {
-                const s = getStatusInfo(venda.status);
-                const Icon = s.icon;
-                return (
-                  <tr key={venda.id} className="group">
-                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
-                      <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
-                        <Icon size={12} />
-                        {s.label}
-                      </div>
-                    </td>
-                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-semibold text-slate-700">
-                      {venda.clienteNome}
-                    </td>
-                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
-                      {venda.empreendimentoNome}
-                    </td>
-                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
-                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
-                    </td>
-                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
-                      <div className="flex justify-center gap-2">
-                        <button
-                          onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
-                          className="p-2.5 bg-surface-card text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-primary-contrast transition-all"
-                          title="Contrato"
-                        >
-                          <FileText size={18} />
-                        </button>
-                        <button
-                          onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
-                          className="p-2.5 bg-surface-card text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-primary-contrast transition-all"
-                          title="Recibo"
-                        >
-                          <FileCheck size={18} />
-                        </button>
-                        <button
-                          onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
-                          className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
-                          title="Editar venda completa"
-                        >
-                          <Pencil size={18} />
-                        </button>
-                        <button
-                          onClick={() => requestDelete(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                          className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
-                          title="Excluir contrato"
-                        >
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-              {filteredSales.length === 0 && (
-                <tr>
-                  <td colSpan={5} className="py-16 text-center text-slate-300 italic font-medium">
-                    {searchTerm ? `Nenhum contrato encontrado para "${searchTerm}"` : "Nenhum contrato formalizado."}
-                  </td>
+        const GroupTable = ({ rows }: { rows: Venda[] }) => (
+          <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+            <table className="w-full text-left border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <th className="pb-3 px-4">Status</th>
+                  <th className="pb-3 px-4">Titular</th>
+                  <th className="pb-3 px-4">Loteamento</th>
+                  <th className="pb-3 px-4 text-right">Montante</th>
+                  <th className="pb-3 px-4 text-center">Ações</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody className="text-sm">
+                {rows.map((v) => renderDesktopRow(v))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+        return (
+          <div className="space-y-6">
+            {filteredSales.length === 0 && (
+              <div className="card-premium py-16 text-center text-slate-300 italic font-medium">
+                {searchTerm ? `Nenhum resultado para "${searchTerm}"` : "Nenhuma venda cadastrada."}
+              </div>
+            )}
+
+            {semContrato.length > 0 && (
+              <div className="card-premium space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <span className="text-base">🟡</span>
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-600">Sem Contrato</span>
+                  <span className="ml-auto text-xs font-bold text-slate-400">{semContrato.length} registro{semContrato.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="sm:hidden space-y-3">{semContrato.map((v) => renderMobileCard(v))}</div>
+                <GroupTable rows={semContrato} />
+              </div>
+            )}
+
+            {comContrato.length > 0 && (
+              <div className="card-premium space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <span className="text-base">🟢</span>
+                  <span className="text-xs font-black uppercase tracking-widest text-success-main">Com Contrato</span>
+                  <span className="ml-auto text-xs font-bold text-slate-400">{comContrato.length} registro{comContrato.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="sm:hidden space-y-3">{comContrato.map((v) => renderMobileCard(v))}</div>
+                <GroupTable rows={comContrato} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       <AnimatePresence>
         {selectedVenda && (
@@ -8130,7 +8190,7 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
         const anyFailed = results.some(r => r.status === 'rejected');
         if (anyFailed) {
           const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
-          alert('Erro ao conectar ao Supabase:\n' + JSON.stringify(firstErr.reason));
+          console.error('Erro ao carregar dados:', JSON.stringify(firstErr.reason));
         }
 
         setIsLoaded(true);

@@ -516,6 +516,27 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
   }
 });
 
+// --- Contrato À Vista Padrão (reutiliza o mesmo template com quantidadeParcelas=0) ---
+app.post("/api/contrato/avista-padrao", isAuthenticated, async (req, res) => {
+  try {
+    const { vendedor, cliente, empreendimento, venda } = req.body;
+    if (!vendedor || !cliente || !empreendimento || !venda) {
+      return res.status(400).json({ error: "Dados incompletos para gerar o contrato." });
+    }
+    const vendaAvista = { ...venda, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" };
+    const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda: vendaAvista });
+    const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
+    const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
+    const filename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.send(buffer);
+  } catch (err: any) {
+    console.error("Contrato avista generation error:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // --- Dev: Vite middleware (HMR on same HTTP server); Prod: static ---
 if (process.env.NODE_ENV === "production") {
   const distPath = path.resolve(__dirname, "../dist/public");

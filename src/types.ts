@@ -13,13 +13,22 @@ export interface Venda {
   dataVenda: string;
   vendedor: string;
   vendedorId?: string;
-  status: "ativo" | "pago" | "atrasado" | "cancelado";
+  status: "ativo" | "pago" | "atrasado" | "cancelado" | "pendente" | "rascunho";
   formaPagamento?: string;
   custo?: number;
   comissao?: number;
   user_id?: string;
-
-  // 👇 ADICIONE ESTES DOIS CAMPOS NOVOS:
   modoAvista?: "dinheiro" | "pix" | "cheque" | "permuta" | "outro";
   descricaoAvista?: string;
+  numeroContrato?: string;
+  clienteNome?: string;
+  empreendimentoNome?: string;
+  contratoGerado?: boolean;
+  rascunho?: boolean;
+  medidaFrente?: string;
+  medidaLateralDir?: string;
+  medidaLateralEsq?: string;
+  medidaFundos?: string;
+  areaTotal?: string;
+  comprador2?: any;
 }
