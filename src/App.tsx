@@ -4903,6 +4903,10 @@ const ContratosSection = ({
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
+  const [empreendimentoFilter, setEmpreendimentoFilter] = useState("");
+  const [statusVendaFilter, setStatusVendaFilter] = useState(""); // "pago" | "pendente" | "cancelado"
+  const [tipoVendaFilter, setTipoVendaFilter] = useState(""); // "avista" | "parcelado"
+  const [contratoFilter, setContratoFilter] = useState(""); // "gerado" | "pendente"
   const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -5428,7 +5432,13 @@ const ContratosSection = ({
       venda.vendedor?.toLowerCase().includes(query)
     );
     const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
-    return matchesSearch && matchesCorretor;
+    const matchesEmpreendimento = !empreendimentoFilter || venda.empreendimentoNome === empreendimentoFilter;
+    const matchesStatusVenda = !statusVendaFilter || (venda.status || "pendente") === statusVendaFilter;
+    const isAvista = (venda as any).tipoVenda === "avista" || (venda as any).avista === true || ((venda.quantidadeParcelas ?? 0) <= 1 && (venda.valorEntrada ?? 0) >= (venda.valorLote ?? 0));
+    const matchesTipo = !tipoVendaFilter || (tipoVendaFilter === "avista" ? isAvista : !isAvista);
+    const isContratoGerado = !!(venda as any).contratoGerado;
+    const matchesContrato = !contratoFilter || (contratoFilter === "gerado" ? isContratoGerado : !isContratoGerado);
+    return matchesSearch && matchesCorretor && matchesEmpreendimento && matchesStatusVenda && matchesTipo && matchesContrato;
   });
 
   // Ranking de corretores
@@ -5444,6 +5454,7 @@ const ContratosSection = ({
   })();
   const totalGeralVendas = rankingCorretores.reduce((s, r) => s + r.total, 0);
   const corretoresUnicos = [...new Set(sales.map(v => v.vendedor?.trim()).filter(Boolean))] as string[];
+  const empreendimentosUnicos = [...new Set(sales.map(v => v.empreendimentoNome?.trim()).filter(Boolean))] as string[];
 
   const getStatusInfo = (status?: string) => {
     switch (status) {
@@ -5495,6 +5506,7 @@ const ContratosSection = ({
               onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
+          {/* Filtro: Corretor */}
           {corretoresUnicos.length > 0 && (
             <select
               value={corretorFilter}
@@ -5507,6 +5519,50 @@ const ContratosSection = ({
               ))}
             </select>
           )}
+          {/* Filtro: Empreendimento */}
+          {empreendimentosUnicos.length > 1 && (
+            <select
+              value={empreendimentoFilter}
+              onChange={(e) => setEmpreendimentoFilter(e.target.value)}
+              className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
+            >
+              <option value="">Todos os empreendimentos</option>
+              {empreendimentosUnicos.map((e) => (
+                <option key={e} value={e}>{e}</option>
+              ))}
+            </select>
+          )}
+          {/* Filtro: Status da venda */}
+          <select
+            value={statusVendaFilter}
+            onChange={(e) => setStatusVendaFilter(e.target.value)}
+            className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
+          >
+            <option value="">Todos os status</option>
+            <option value="pendente">⏳ Pendente</option>
+            <option value="pago">✅ Pago</option>
+            <option value="cancelado">❌ Cancelado</option>
+          </select>
+          {/* Filtro: Tipo (à vista / parcelado) */}
+          <select
+            value={tipoVendaFilter}
+            onChange={(e) => setTipoVendaFilter(e.target.value)}
+            className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
+          >
+            <option value="">À Vista & Parcelado</option>
+            <option value="avista">💵 À Vista</option>
+            <option value="parcelado">📅 Parcelado</option>
+          </select>
+          {/* Filtro: Contrato */}
+          <select
+            value={contratoFilter}
+            onChange={(e) => setContratoFilter(e.target.value)}
+            className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
+          >
+            <option value="">Todos os contratos</option>
+            <option value="gerado">🟢 Contrato Gerado</option>
+            <option value="pendente">🟡 Contrato Pendente</option>
+          </select>
           <button
             onClick={() => setShowRanking(true)}
             className="btn-secondary flex items-center gap-2 h-12 px-5 whitespace-nowrap"
@@ -6047,6 +6103,8 @@ const ContratosSection = ({
           {filteredSales.map((venda) => {
             const s = getStatusInfo(venda.status);
             const Icon = s.icon;
+            const isContratoGerado = !!(venda as any).contratoGerado;
+            const isAvista = (venda as any).tipoVenda === "avista" || (venda as any).avista === true || ((venda.quantidadeParcelas ?? 0) <= 1 && (venda.valorEntrada ?? 0) >= (venda.valorLote ?? 0));
             return (
               <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
                 <div className="flex items-start justify-between gap-2">
@@ -6059,13 +6117,22 @@ const ContratosSection = ({
                     {s.label}
                   </div>
                 </div>
+                {/* Badges: tipo e contrato */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1 ${isAvista ? "bg-blue-50 text-blue-600 border border-blue-200" : "bg-violet-50 text-violet-600 border border-violet-200"}`}>
+                    {isAvista ? "💵 À Vista" : "📅 Parcelado"}
+                  </span>
+                  <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1 ${isContratoGerado ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-amber-50 text-amber-500 border border-amber-200"}`}>
+                    {isContratoGerado ? "🟢 Contrato Gerado" : "🟡 Contrato Pendente"}
+                  </span>
+                </div>
                 <p className="font-display font-bold text-primary-main text-lg">
                   {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
                 </p>
                 <div className="grid grid-cols-4 gap-2">
                   <button
                     onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-white transition-all"
+                    className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${isContratoGerado ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-600 hover:text-white" : "bg-white text-amber-500 border-amber-200 hover:bg-amber-500 hover:text-white"}`}
                   >
                     <FileText size={20} />
                     <span className="text-[9px] font-bold uppercase">Contrato</span>
@@ -6105,6 +6172,8 @@ const ContratosSection = ({
                 <th className="pb-3 px-4">Status</th>
                 <th className="pb-3 px-4">Titular</th>
                 <th className="pb-3 px-4">Loteamento</th>
+                <th className="pb-3 px-4">Tipo</th>
+                <th className="pb-3 px-4">Contrato</th>
                 <th className="pb-3 px-4 text-right">Montante</th>
                 <th className="pb-3 px-4 text-center">Documento</th>
               </tr>
@@ -6113,6 +6182,8 @@ const ContratosSection = ({
               {filteredSales.map((venda) => {
                 const s = getStatusInfo(venda.status);
                 const Icon = s.icon;
+                const isContratoGerado = !!(venda as any).contratoGerado;
+                const isAvista = (venda as any).tipoVenda === "avista" || (venda as any).avista === true || ((venda.quantidadeParcelas ?? 0) <= 1 && (venda.valorEntrada ?? 0) >= (venda.valorLote ?? 0));
                 return (
                   <tr key={venda.id} className="group">
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
@@ -6127,6 +6198,16 @@ const ContratosSection = ({
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
                       {venda.empreendimentoNome}
                     </td>
+                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1 ${isAvista ? "bg-blue-50 text-blue-600 border border-blue-200" : "bg-violet-50 text-violet-600 border border-violet-200"}`}>
+                        {isAvista ? "💵 À Vista" : "📅 Parcelado"}
+                      </span>
+                    </td>
+                    <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors">
+                      <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1 ${isContratoGerado ? "bg-emerald-50 text-emerald-600 border border-emerald-200" : "bg-amber-50 text-amber-500 border border-amber-200"}`}>
+                        {isContratoGerado ? "🟢 Gerado" : "🟡 Pendente"}
+                      </span>
+                    </td>
                     <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
                       {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
                     </td>
@@ -6134,8 +6215,8 @@ const ContratosSection = ({
                       <div className="flex justify-center gap-2">
                         <button
                           onClick={() => { setSelectedVenda(venda); setViewMode("contract"); }}
-                          className="p-2.5 bg-surface-card text-primary-main rounded-xl shadow-sm border border-border-subtle hover:bg-primary-main hover:text-primary-contrast transition-all"
-                          title="Contrato"
+                          className={`p-2.5 rounded-xl shadow-sm border transition-all ${isContratoGerado ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-600 hover:text-white" : "bg-amber-50 text-amber-600 border-amber-200 hover:bg-amber-500 hover:text-white"}`}
+                          title={isContratoGerado ? "Ver Contrato Gerado" : "Contrato Pendente"}
                         >
                           <FileText size={18} />
                         </button>
@@ -6167,7 +6248,7 @@ const ContratosSection = ({
               })}
               {filteredSales.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="py-16 text-center text-slate-300 italic font-medium">
+                  <td colSpan={7} className="py-16 text-center text-slate-300 italic font-medium">
                     {searchTerm ? `Nenhum contrato encontrado para "${searchTerm}"` : "Nenhum contrato formalizado."}
                   </td>
                 </tr>
