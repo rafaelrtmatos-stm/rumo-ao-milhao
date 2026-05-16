@@ -16,13 +16,6 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist/public',
-    rollupOptions: {
-      external: [],
-    },
-  },
-  optimizeDeps: {
-    include: ['lucide-react'],
-    exclude: ['canvg'],
   },
   server: {
     allowedHosts: true,
