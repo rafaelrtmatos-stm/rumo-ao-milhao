@@ -1075,10 +1075,10 @@ const LotDashboard = ({
                           onClick={() => { if (sold && soldData) setSelectedLotSale(soldData); }}
                           className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${
                             sold
-                              ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100 hover:border-red-200 hover:shadow-lg"
+                              ? "bg-red-100 border-red-300 text-red-700 cursor-pointer hover:bg-red-200 hover:border-red-400 hover:shadow-lg"
                               : isIndisponivel
-                                ? `${isPending ? "bg-amber-50 border-amber-300" : "bg-slate-100 border-slate-200"} text-slate-400`
-                                : "bg-white border-slate-100 hover:border-primary-main hover:shadow-xl hover:shadow-primary-main/5 text-slate-400"
+                                ? `${isPending ? "bg-amber-50 border-amber-300 text-amber-700" : "bg-rose-900 border-rose-800 text-rose-200"}`
+                                : "bg-emerald-50 border-emerald-200 hover:border-emerald-400 hover:shadow-xl hover:shadow-emerald-500/10 text-emerald-700"
                           }`}
                         >
                           <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">
@@ -1089,12 +1089,12 @@ const LotDashboard = ({
                           </span>
 
                           {sold ? (
-                            <div className="mt-2 p-1 bg-red-100 rounded-full text-[8px] font-bold uppercase tracking-widest">
+                            <div className="mt-2 p-1 bg-red-200 rounded-full text-[8px] font-bold uppercase tracking-widest text-red-800">
                               Vendido
                             </div>
                           ) : isIndisponivel ? (
                             <>
-                              <div className={`mt-2 px-2 py-0.5 ${isPending ? "bg-amber-200 text-amber-700" : "bg-slate-200 text-slate-500"} rounded-full text-[8px] font-bold uppercase tracking-widest`}>
+                              <div className={`mt-2 px-2 py-0.5 ${isPending ? "bg-amber-200 text-amber-700" : "bg-rose-800 text-rose-200 border border-rose-700"} rounded-full text-[8px] font-bold uppercase tracking-widest`}>
                                 {isPending ? "Pendente" : "Indisponível"}
                               </div>
                               {onUpdateLotesInfo && (
@@ -1185,15 +1185,15 @@ const LotDashboard = ({
         <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
           <div className="flex flex-wrap gap-6">
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-white border border-slate-200" />
+              <div className="w-3 h-3 rounded-full bg-emerald-400 border border-emerald-300" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Disponível</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-slate-300" />
+              <div className="w-3 h-3 rounded-full bg-rose-900" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Indisponível</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-red-400" />
+              <div className="w-3 h-3 rounded-full bg-red-300" />
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vendido — clique para ver</span>
             </div>
             {hasPendingChanges && (
@@ -3281,8 +3281,177 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
     setLastSavedVenda(savedVenda);
   };
 
+  // ── Contract flow state ──────────────────────────────────────────────────
+  const [contractFlowStep, setContractFlowStep] = React.useState<'success' | 'vendedor' | 'empreendimento'>('success');
+  const [contractFlowVendedor, setContractFlowVendedor] = React.useState({
+    vendedor: '', corretor: '', comissao: '', testemunha1: '', testemunha2: '',
+    assinatura1: '', assinatura2: '', observacaoVendedor: '',
+  });
+  const [contractFlowEmp, setContractFlowEmp] = React.useState({
+    empreendimento: '', quadra: '', lote: '', medidas: '', localizacao: '',
+    observacoes: '', clausulas: '', complemento: '',
+  });
+
+  // Preenche dados do empreendimento automaticamente ao registrar nova venda
+  React.useEffect(() => {
+    if (!lastSavedVenda) return;
+    const dev = developments.find(d => d.id === lastSavedVenda.empreendimentoId);
+    setContractFlowEmp(prev => ({
+      ...prev,
+      empreendimento: lastSavedVenda.empreendimentoNome || dev?.nome || '',
+      quadra: lastSavedVenda.quadra || '',
+      lote: lastSavedVenda.numeroLote || '',
+      localizacao: dev?.endereco || '',
+    }));
+    setContractFlowVendedor(prev => ({
+      ...prev,
+      vendedor: lastSavedVenda.vendedor || '',
+    }));
+    setContractFlowStep('success');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastSavedVenda?.id]);
+
   if (lastSavedVenda) {
     const wasEditing = !!editingEntry;
+    const dev = developments.find(d => d.id === lastSavedVenda.empreendimentoId);
+
+    // ── Etapa Vendedor ────────────────────────────────────────────────────
+    if (contractFlowStep === 'vendedor') {
+      return (
+        <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px]">1</span>
+              <span>Venda</span>
+              <ChevronRight size={12} />
+              <span className="w-6 h-6 rounded-full bg-primary-main text-white flex items-center justify-center text-[10px]">2</span>
+              <span className="text-primary-main">Dados do Vendedor</span>
+              <ChevronRight size={12} />
+              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-400 flex items-center justify-center text-[10px]">3</span>
+              <span>Empreendimento</span>
+            </div>
+          </div>
+          <div className="card-premium p-8 space-y-6">
+            <h2 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
+              <div className="p-2.5 bg-primary-main/10 rounded-xl text-primary-main"><UserCheck size={20} /></div>
+              Dados do Vendedor
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="space-y-1">
+                <label className="label">Vendedor</label>
+                <input className="input-field" value={contractFlowVendedor.vendedor} onChange={e => setContractFlowVendedor(p => ({ ...p, vendedor: e.target.value }))} placeholder="Nome do vendedor" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Corretor</label>
+                <input className="input-field" value={contractFlowVendedor.corretor} onChange={e => setContractFlowVendedor(p => ({ ...p, corretor: e.target.value }))} placeholder="Nome do corretor" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Comissão (%)</label>
+                <input className="input-field" type="number" value={contractFlowVendedor.comissao} onChange={e => setContractFlowVendedor(p => ({ ...p, comissao: e.target.value }))} placeholder="Ex: 5" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Testemunha 1</label>
+                <input className="input-field" value={contractFlowVendedor.testemunha1} onChange={e => setContractFlowVendedor(p => ({ ...p, testemunha1: e.target.value }))} placeholder="Nome da testemunha 1" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Testemunha 2</label>
+                <input className="input-field" value={contractFlowVendedor.testemunha2} onChange={e => setContractFlowVendedor(p => ({ ...p, testemunha2: e.target.value }))} placeholder="Nome da testemunha 2" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Assinatura 1</label>
+                <input className="input-field" value={contractFlowVendedor.assinatura1} onChange={e => setContractFlowVendedor(p => ({ ...p, assinatura1: e.target.value }))} placeholder="Responsável pela assinatura 1" />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Assinatura 2</label>
+                <input className="input-field" value={contractFlowVendedor.assinatura2} onChange={e => setContractFlowVendedor(p => ({ ...p, assinatura2: e.target.value }))} placeholder="Responsável pela assinatura 2" />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Observações do Vendedor</label>
+                <textarea className="input-field min-h-[80px]" value={contractFlowVendedor.observacaoVendedor} onChange={e => setContractFlowVendedor(p => ({ ...p, observacaoVendedor: e.target.value }))} placeholder="Observações adicionais sobre o vendedor..." />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-secondary flex-1" onClick={() => setContractFlowStep('success')}>
+              <ArrowLeft size={16} /> Voltar
+            </button>
+            <button className="btn-primary flex-1" onClick={() => setContractFlowStep('empreendimento')}>
+              Avançar <ChevronRight size={16} />
+            </button>
+          </div>
+        </motion.div>
+      );
+    }
+
+    // ── Etapa Empreendimento ──────────────────────────────────────────────
+    if (contractFlowStep === 'empreendimento') {
+      return (
+        <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} className="space-y-6">
+          <div className="flex items-center gap-3 mb-2">
+            <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-slate-400">
+              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px]">1</span>
+              <span>Venda</span>
+              <ChevronRight size={12} />
+              <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-[10px]">2</span>
+              <span>Vendedor</span>
+              <ChevronRight size={12} />
+              <span className="w-6 h-6 rounded-full bg-primary-main text-white flex items-center justify-center text-[10px]">3</span>
+              <span className="text-primary-main">Dados do Empreendimento</span>
+            </div>
+          </div>
+          <div className="card-premium p-8 space-y-6">
+            <h2 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
+              <div className="p-2.5 bg-primary-main/10 rounded-xl text-primary-main"><Building2 size={20} /></div>
+              Dados do Empreendimento
+            </h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Empreendimento</label>
+                <input className="input-field" value={contractFlowEmp.empreendimento} onChange={e => setContractFlowEmp(p => ({ ...p, empreendimento: e.target.value }))} placeholder="Nome do empreendimento" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Quadra</label>
+                <input className="input-field" value={contractFlowEmp.quadra} onChange={e => setContractFlowEmp(p => ({ ...p, quadra: e.target.value }))} placeholder="Quadra" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Lote</label>
+                <input className="input-field" value={contractFlowEmp.lote} onChange={e => setContractFlowEmp(p => ({ ...p, lote: e.target.value }))} placeholder="Número do lote" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Medidas</label>
+                <input className="input-field" value={contractFlowEmp.medidas} onChange={e => setContractFlowEmp(p => ({ ...p, medidas: e.target.value }))} placeholder="Ex: 10x25m" />
+              </div>
+              <div className="space-y-1">
+                <label className="label">Localização</label>
+                <input className="input-field" value={contractFlowEmp.localizacao} onChange={e => setContractFlowEmp(p => ({ ...p, localizacao: e.target.value }))} placeholder="Endereço / Localização" />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Observações</label>
+                <textarea className="input-field min-h-[70px]" value={contractFlowEmp.observacoes} onChange={e => setContractFlowEmp(p => ({ ...p, observacoes: e.target.value }))} placeholder="Observações sobre o terreno..." />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Cláusulas Específicas</label>
+                <textarea className="input-field min-h-[70px]" value={contractFlowEmp.clausulas} onChange={e => setContractFlowEmp(p => ({ ...p, clausulas: e.target.value }))} placeholder="Cláusulas contratuais específicas..." />
+              </div>
+              <div className="space-y-1 sm:col-span-2">
+                <label className="label">Informações Complementares</label>
+                <textarea className="input-field min-h-[70px]" value={contractFlowEmp.complemento} onChange={e => setContractFlowEmp(p => ({ ...p, complemento: e.target.value }))} placeholder="Informações adicionais do terreno..." />
+              </div>
+            </div>
+          </div>
+          <div className="flex gap-3">
+            <button className="btn-secondary flex-1" onClick={() => setContractFlowStep('vendedor')}>
+              <ArrowLeft size={16} /> Voltar
+            </button>
+            <button className="btn-primary flex-1" onClick={() => onGoToContracts(lastSavedVenda)}>
+              <FileText size={16} /> Gerar Contrato
+            </button>
+          </div>
+        </motion.div>
+      );
+    }
+
+    // ── Tela de sucesso (pós-venda) ───────────────────────────────────────
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.95 }}
@@ -3307,7 +3476,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
             <span>Copiar Resumo</span>
           </button>
           <button
-            onClick={() => onGoToContracts(lastSavedVenda)}
+            onClick={() => setContractFlowStep('vendedor')}
             className="btn-primary px-6"
           >
             <FileText size={18} />
