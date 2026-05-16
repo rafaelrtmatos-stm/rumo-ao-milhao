@@ -17,6 +17,23 @@ export default defineConfig({
   build: {
     outDir: 'dist/public',
   },
+  optimizeDeps: {
+    include: ['lucide-react'],
+    exclude: ['canvg', 'html2canvas', 'dompurify'],
+    esbuildOptions: {
+      plugins: [
+        {
+          name: 'core-js-external',
+          setup(build) {
+            build.onResolve({ filter: /^core-js\// }, (args) => ({
+              path: args.path,
+              external: true,
+            }));
+          },
+        },
+      ],
+    },
+  },
   server: {
     allowedHosts: true,
     hmr: process.env.DISABLE_HMR !== 'true',
