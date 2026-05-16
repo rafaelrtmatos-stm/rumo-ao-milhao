@@ -194,4 +194,16 @@
   body {
     background: white;
   }
+  /* Esconde tudo e mostra apenas o recibo */
+  body > * {
+    display: none !important;
+  }
+  body > #print-recibo-overlay {
+    display: block !important;
+    position: fixed !important;
+    inset: 0 !important;
+    z-index: 99999 !important;
+    background: white !important;
+  }
+  @page { margin: 10mm; }
 }
