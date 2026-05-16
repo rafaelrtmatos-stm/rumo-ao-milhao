@@ -64,7 +64,7 @@ async function geminiMultipart(parts: any[]): Promise<string> {
 
 // --- JWT Auth helpers ---
 function signToken(payload: { id: string; email: string }): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(payload, JWT_SECRET);
 }
 
 function verifyToken(token: string): { id: string; email: string } | null {
