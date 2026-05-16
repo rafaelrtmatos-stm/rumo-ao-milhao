@@ -3880,6 +3880,39 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   </div>
                 </div>
 
+                {tipoVenda === 'avista' && (<>
+                <div className="sm:col-span-2">
+                  <label className="label">Forma de Recebimento</label>
+                  <div className="flex flex-wrap gap-2">
+                    {([
+                      { value: 'dinheiro', label: '💵 Dinheiro' },
+                      { value: 'pix', label: '⚡ PIX' },
+                      { value: 'cheque', label: '🧾 Cheque' },
+                      { value: 'permuta', label: '🔄 Permuta' },
+                      { value: 'outro', label: '📋 Outro' },
+                    ] as { value: Venda['modoAvista']; label: string }[]).map((opt) => (
+                      <button
+                        key={opt.value}
+                        type="button"
+                        onClick={() => setSaleData({ ...saleData, modoAvista: opt.value })}
+                        className={`px-4 py-2 rounded-xl text-sm font-bold border transition-colors ${saleData.modoAvista === opt.value ? 'bg-primary-main text-white border-primary-main' : 'bg-white text-slate-600 border-slate-200 hover:border-primary-main'}`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">Como foi a negociação / Observações</label>
+                  <textarea
+                    className="input-field min-h-[90px] resize-none"
+                    placeholder={saleData.modoAvista === 'permuta' ? 'Ex: Permutado por veículo Fiat Strada 2020, avaliado em R$ 45.000...' : 'Ex: Cliente veio indicado, pagou à vista sem necessidade de desconto...'}
+                    value={saleData.descricaoAvista ?? ""}
+                    onChange={(e) => setSaleData({ ...saleData, descricaoAvista: e.target.value })}
+                  />
+                </div>
+                </>)}
+
                 {tipoVenda === 'parcelado' && (<>
                 <div>
                   <label className="label">Quantidade de Parcelas</label>
@@ -5434,32 +5467,60 @@ const ContratosSection = ({
                 {/* Financial Section */}
                 <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
                   <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Financeiro</p>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
-                      <p className="font-bold text-primary-main text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                  {selectedVenda.quantidadeParcelas === 0 ? (
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
+                          <p className="font-bold text-emerald-600 text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Recebimento</p>
+                          <p className="font-bold text-slate-800 capitalize">
+                            {selectedVenda.modoAvista === 'dinheiro' && '💵 Dinheiro'}
+                            {selectedVenda.modoAvista === 'pix' && '⚡ PIX'}
+                            {selectedVenda.modoAvista === 'cheque' && '🧾 Cheque'}
+                            {selectedVenda.modoAvista === 'permuta' && '🔄 Permuta'}
+                            {selectedVenda.modoAvista === 'outro' && '📋 Outro'}
+                            {!selectedVenda.modoAvista && '—'}
+                          </p>
+                        </div>
+                      </div>
+                      {selectedVenda.descricaoAvista && (
+                        <div className="bg-amber-50 border border-amber-100 rounded-xl p-3">
+                          <p className="text-[10px] text-amber-600 uppercase font-bold mb-1">Detalhes da Negociação</p>
+                          <p className="text-sm text-slate-700 leading-relaxed">{selectedVenda.descricaoAvista}</p>
+                        </div>
+                      )}
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
-                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
+                  ) : (
+                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
+                        <p className="font-bold text-primary-main text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
+                        <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
+                        <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
+                        <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
+                        <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Pagamento</p>
+                        <p className="font-semibold text-slate-700">{selectedVenda.formaPagamento || "—"}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
-                      <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
-                      <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
-                      <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
-                    </div>
-                    <div>
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Pagamento</p>
-                      <p className="font-semibold text-slate-700">{selectedVenda.formaPagamento || "—"}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
 
                 {/* Seller and date */}
