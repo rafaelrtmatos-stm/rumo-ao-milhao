@@ -392,10 +392,10 @@ const Sidebar = ({
   // Filtra itens de menu por permissão (admin sempre vê tudo)
   const mainMenuItems = isAdmin
     ? allMenuItems
-    : allMenuItems.filter((item) => userPermissions?.[item.id] === true);
+    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
 
   const configItem = { id: "config", label: "Configurações", icon: Settings };
-  const showConfig = isAdmin || userPermissions?.["config"] === true;
+  const showConfig = isAdmin || userPermissions?.["config"] !== false;
 
   return (
     <>
@@ -7738,12 +7738,13 @@ const UsuariosSection = () => {
   };
 
   const handleOpenPerms = (u: typeof users[0]) => {
-    // Padrão não-admin + customizações salvas
     const defaults: Record<string, boolean> = {
       dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
       contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false,
     };
-    setPendingPerms({ ...defaults, ...(u.permissions || {}) });
+    // Se o usuário já tem permissões salvas, usa elas; senão usa os defaults
+    const saved = u.permissions && Object.keys(u.permissions).length > 0 ? u.permissions : defaults;
+    setPendingPerms(saved);
     setEditingPermUser(u.id);
   };
 
