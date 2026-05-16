@@ -8,6 +8,7 @@ import {
   Cake,
   Calculator,
   ChevronRight,
+  ChevronLeft,
   TrendingUp,
   DollarSign,
   Package,
@@ -30,6 +31,8 @@ import {
   Check,
   Monitor,
   Smartphone,
+  Save,
+  Copy,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -4599,6 +4602,9 @@ const ContratosSection = ({
   const [tipoContrato, setTipoContrato] = useState<'avista' | 'parcelado'>('parcelado');
   const [ruaWarning, setRuaWarning] = useState<string | null>(null);
   const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [gerarStep, setGerarStep] = useState(0);
+  const [showDuplicarModal, setShowDuplicarModal] = useState(false);
+  const [pendingEditVenda, setPendingEditVenda] = useState<Venda | null>(null);
 
   useEffect(() => {
     if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) {
@@ -4679,6 +4685,7 @@ const ContratosSection = ({
       medidaFundos: selectedVenda.medidaFundos || "",
       areaTotal: selectedVenda.areaTotal || "",
     });
+    setGerarStep(0);
     setShowGerarModal(true);
   };
 
@@ -5688,8 +5695,8 @@ const ContratosSection = ({
                 <button onClick={() => setEditingVenda(null)} className="btn-secondary px-6">Cancelar</button>
                 <button
                   onClick={() => {
-                    onUpdateVenda({ ...editingVenda, ...editVendaForm } as Venda);
-                    setEditingVenda(null);
+                    setPendingEditVenda({ ...editingVenda, ...editVendaForm } as Venda);
+                    setShowDuplicarModal(true);
                   }}
                   className="btn-primary px-8"
                 >
@@ -5895,11 +5902,18 @@ const ContratosSection = ({
                     Gerar Contrato
                   </button>
                   <button
+                    onClick={() => { setEditingVenda(selectedVenda); setEditVendaForm({ ...selectedVenda }); }}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    <Pencil size={17} />
+                    Editar
+                  </button>
+                  <button
                     onClick={() => setShowReciboModal(true)}
-                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2"
+                    className="btn-ghost h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                   >
                     <FileCheck size={18} />
-                    Gerar Recibo
+                    Recibo
                   </button>
                 </div>
               </div>
@@ -6146,9 +6160,9 @@ const ContratosSection = ({
         )}
       </AnimatePresence>
 
-      {/* Modal: Selecionar Proprietário para gerar .docx */}
+      {/* Modal: Gerar Contrato — Wizard Steps */}
       <AnimatePresence>
-        {showGerarModal && (
+        {showGerarModal && selectedVenda && (
           <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
@@ -6156,183 +6170,321 @@ const ContratosSection = ({
               exit={{ opacity: 0, scale: 0.95 }}
               className="bg-white w-full max-w-xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
             >
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
-                    <FileDown size={20} />
+              {/* Header com steps */}
+              <div className="p-6 border-b border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                      <FileDown size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-display font-bold text-slate-800">Gerar Contrato</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {gerarStep === 0 ? "Dados do Terreno" : gerarStep === 1 ? "Dados do Vendedor" : "Preview do Contrato"}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <h4 className="font-display font-bold text-slate-800">Gerar Contrato (.docx)</h4>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Selecione o proprietário do lote</p>
-                  </div>
+                  <button onClick={() => setShowGerarModal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                    <X size={20} />
+                  </button>
                 </div>
-                <button onClick={() => setShowGerarModal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
-                  <X size={20} />
-                </button>
+                {/* Steps indicator */}
+                <div className="flex items-center gap-2">
+                  {["Terreno", "Vendedor", "Preview"].map((label, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-1">
+                      <div className={`flex items-center gap-1.5 ${i <= gerarStep ? "text-primary-main" : "text-slate-300"}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${i < gerarStep ? "bg-primary-main text-white" : i === gerarStep ? "bg-primary-main/20 text-primary-main border-2 border-primary-main" : "bg-slate-100 text-slate-400"}`}>
+                          {i < gerarStep ? "✓" : i + 1}
+                        </div>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest hidden sm:block ${i <= gerarStep ? "text-primary-main" : "text-slate-300"}`}>{label}</span>
+                      </div>
+                      {i < 2 && <div className={`flex-1 h-0.5 rounded-full ${i < gerarStep ? "bg-primary-main" : "bg-slate-100"}`} />}
+                    </div>
+                  ))}
+                </div>
               </div>
 
               <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                {/* Seletor de proprietário */}
-                <div>
-                  <label className="label">Proprietário do Lote (Vendedor no Contrato)</label>
-                  {proprietarios.length > 0 ? (
-                    <select
-                      className="input-field font-semibold"
-                      value={gerarProprietarioId}
-                      onChange={(e) => handleSelectProprietario(e.target.value)}
-                    >
-                      <option value="">Selecionar proprietário...</option>
-                      {proprietarios.map((p) => (
-                        <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <p className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-2 rounded-xl">
-                      Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.
-                    </p>
-                  )}
 
-                </div>
-
-                {/* Dados do Vendedor / Proprietário */}
-                <div className="space-y-3 pt-2 border-t border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Vendedor</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="label">Nome Completo *</label>
-                      <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
+                {/* STEP 0: Terreno */}
+                {gerarStep === 0 && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="label">Rua do Lote</label>
+                        <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} placeholder="Nome da rua" />
+                      </div>
+                      <div>
+                        <label className="label">Forma de Pagamento</label>
+                        <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
+                          {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Frente (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} placeholder="Ex: 12" />
+                      </div>
+                      <div>
+                        <label className="label">Lateral Direita (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} placeholder="Ex: 30" />
+                      </div>
+                      <div>
+                        <label className="label">Lateral Esquerda (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} placeholder="Ex: 30" />
+                      </div>
+                      <div>
+                        <label className="label">Fundos (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} placeholder="Ex: 12" />
+                      </div>
+                      <div>
+                        <label className="label">Área Total (m²)</label>
+                        <input className="input-field" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} placeholder="Ex: 360" />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="label">Comunidade / Região</label>
+                        <input className="input-field" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} placeholder="Ex: Comunidade do Lago" />
+                      </div>
                     </div>
-                    <div>
-                      <label className="label">Nacionalidade</label>
-                      <input className="input-field" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Estado Civil</label>
-                      <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
-                        {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="label">RG</label>
-                      <input className="input-field" placeholder="0000000" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: maskRG(e.target.value) })} />
-                    </div>
-                    <div>
-                      <label className="label">CPF</label>
-                      <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: maskCPF(e.target.value) })} />
-                    </div>
-                    <div>
-                      <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
-                      <input
-                        className="input-field"
-                        placeholder="00000-000"
-                        value={gerarVendedor.cep}
-                        onChange={(e) => {
-                          const val = maskCEP(e.target.value);
-                          setGerarVendedor({ ...gerarVendedor, cep: val });
-                          if (val.replace(/\D/g, "").length === 8) fetchCepGerar(val);
-                        }}
-                      />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="label">Endereço</label>
-                      <input className="input-field" value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Número</label>
-                      <input className="input-field" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Bairro</label>
-                      <input className="input-field" value={gerarVendedor.bairro} onChange={(e) => setGerarVendedor({ ...gerarVendedor, bairro: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Cidade</label>
-                      <input className="input-field" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Estado (UF)</label>
-                      <input className="input-field" maxLength={2} value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value.toUpperCase() })} />
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empreendimento</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome do Empreendimento</label>
+                          <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: e.target.value })} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Comunidade / Região</label>
+                          <input className="input-field" value={gerarEmp.comunidade} onChange={(e) => setGerarEmp({ ...gerarEmp, comunidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Cidade</label>
+                          <input className="input-field" value={gerarEmp.cidade} onChange={(e) => setGerarEmp({ ...gerarEmp, cidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado (UF)</label>
+                          <input className="input-field" maxLength={2} value={gerarEmp.estado} onChange={(e) => setGerarEmp({ ...gerarEmp, estado: e.target.value.toUpperCase() })} />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Empreendimento */}
-                <div className="space-y-3 pt-2 border-t border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empreendimento</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="label">Nome do Empreendimento</label>
-                      <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: e.target.value })} />
-                    </div>
-                    <div className="sm:col-span-2">
-                      <label className="label">Comunidade / Região</label>
-                      <input className="input-field" value={gerarEmp.comunidade} onChange={(e) => setGerarEmp({ ...gerarEmp, comunidade: e.target.value })} />
-                    </div>
+                {/* STEP 1: Vendedor */}
+                {gerarStep === 1 && (
+                  <div className="space-y-4">
                     <div>
-                      <label className="label">Cidade</label>
-                      <input className="input-field" value={gerarEmp.cidade} onChange={(e) => setGerarEmp({ ...gerarEmp, cidade: e.target.value })} />
+                      <label className="label">Proprietário do Lote (Vendedor no Contrato)</label>
+                      {proprietarios.length > 0 ? (
+                        <select className="input-field font-semibold" value={gerarProprietarioId} onChange={(e) => handleSelectProprietario(e.target.value)}>
+                          <option value="">Selecionar proprietário...</option>
+                          {proprietarios.map((p) => (
+                            <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <p className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-2 rounded-xl">Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.</p>
+                      )}
                     </div>
-                    <div>
-                      <label className="label">Estado (UF)</label>
-                      <input className="input-field" maxLength={2} value={gerarEmp.estado} onChange={(e) => setGerarEmp({ ...gerarEmp, estado: e.target.value.toUpperCase() })} />
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Vendedor</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome Completo *</label>
+                          <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Nacionalidade</label>
+                          <input className="input-field" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado Civil</label>
+                          <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
+                            {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">RG</label>
+                          <input className="input-field" placeholder="0000000" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: maskRG(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">CPF</label>
+                          <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: maskCPF(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
+                          <input className="input-field" placeholder="00000-000" value={gerarVendedor.cep} onChange={(e) => { const val = maskCEP(e.target.value); setGerarVendedor({ ...gerarVendedor, cep: val }); if (val.replace(/\D/g, "").length === 8) fetchCepGerar(val); }} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Endereço</label>
+                          <input className="input-field" value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Número</label>
+                          <input className="input-field" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Bairro</label>
+                          <input className="input-field" value={gerarVendedor.bairro} onChange={(e) => setGerarVendedor({ ...gerarVendedor, bairro: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Cidade</label>
+                          <input className="input-field" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado (UF)</label>
+                          <input className="input-field" maxLength={2} value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value.toUpperCase() })} />
+                        </div>
+                      </div>
                     </div>
                   </div>
-                </div>
+                )}
 
-                {/* Dados do Lote */}
-                <div className="space-y-3 pt-2 border-t border-slate-100">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Lote e Pagamento</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="sm:col-span-2">
-                      <label className="label">Rua do Lote</label>
-                      <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} />
+                {/* STEP 2: Preview */}
+                {gerarStep === 2 && selectedVenda && (() => {
+                  const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+                  const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+                  const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+                  return (
+                    <div className="space-y-4">
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Nome</span><p className="font-bold text-slate-800">{cliente?.nome || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">CPF</span><p className="font-mono text-slate-700">{cliente?.cpf || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Estado Civil</span><p className="text-slate-700">{cliente?.estadoCivil || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Profissão</span><p className="text-slate-700">{cliente?.profissao || "—"}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Terreno</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Empreendimento</span><p className="font-bold text-slate-800">{gerarEmp.nome || dev?.nome}</p></div>
+                          <div><span className="text-slate-500 text-xs">Lote / Quadra</span><p className="font-bold text-slate-800">Lote {selectedVenda.numeroLote} — Quadra {selectedVenda.quadra}</p></div>
+                          <div><span className="text-slate-500 text-xs">Rua</span><p className="text-slate-700">{gerarExtra.rua || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Área Total</span><p className="text-slate-700">{gerarExtra.areaTotal ? `${gerarExtra.areaTotal} m²` : "—"}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pagamento</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Valor do Lote</span><p className="font-bold text-primary-main">{fmtCurrency(selectedVenda.valorLote)}</p></div>
+                          <div><span className="text-slate-500 text-xs">Entrada</span><p className="font-bold text-slate-800">{fmtCurrency(selectedVenda.valorEntrada)}</p></div>
+                          {selectedVenda.quantidadeParcelas > 0 && <>
+                            <div><span className="text-slate-500 text-xs">Parcelas</span><p className="text-slate-700">{selectedVenda.quantidadeParcelas}x de {fmtCurrency(selectedVenda.valorParcela)}</p></div>
+                            <div><span className="text-slate-500 text-xs">Vencimento</span><p className="text-slate-700">{selectedVenda.dataVencimento}</p></div>
+                          </>}
+                          <div><span className="text-slate-500 text-xs">Forma de Pagamento</span><p className="text-slate-700">{gerarExtra.formaPagamento}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendedor</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Nome</span><p className="font-bold text-slate-800">{gerarVendedor.nome || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">CPF</span><p className="font-mono text-slate-700">{gerarVendedor.cpf || "—"}</p></div>
+                        </div>
+                      </div>
                     </div>
-                    <div>
-                      <label className="label">Forma de Pagamento</label>
-                      <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
-                        {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="label">Frente (m)</label>
-                      <input className="input-field" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Lateral Direita (m)</label>
-                      <input className="input-field" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Lateral Esquerda (m)</label>
-                      <input className="input-field" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Fundos (m)</label>
-                      <input className="input-field" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="label">Área Total (m²)</label>
-                      <input className="input-field" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} />
-                    </div>
-                  </div>
-                </div>
+                  );
+                })()}
               </div>
 
+              {/* Footer com botões de navegação */}
               <div className="p-4 sm:p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
-                <button onClick={() => setShowGerarModal(false)} className="btn-secondary h-11 sm:px-6 w-full sm:w-auto">Cancelar</button>
-                <div className="flex gap-3 flex-1">
-                  <button onClick={handlePrint} className="btn-ghost h-11 flex-1 sm:flex-none sm:px-5 flex items-center justify-center gap-2 text-sm font-semibold">
-                    <Printer size={17} /> Imprimir
+                <button
+                  onClick={() => gerarStep === 0 ? setShowGerarModal(false) : setGerarStep(gerarStep - 1)}
+                  className="btn-secondary h-11 sm:px-6 w-full sm:w-auto flex items-center justify-center gap-2"
+                >
+                  <ChevronLeft size={17} /> {gerarStep === 0 ? "Cancelar" : "Voltar"}
+                </button>
+
+                {gerarStep < 2 ? (
+                  <button
+                    onClick={() => setGerarStep(gerarStep + 1)}
+                    className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 font-semibold"
+                  >
+                    Avançar <ChevronRight size={17} />
                   </button>
-                  <button onClick={handleDownloadDocx} disabled={downloadingDocx} className="btn-primary h-11 flex-1 sm:flex-none sm:px-8 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50">
-                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> Baixar .docx</>}
-                  </button>
-                </div>
+                ) : (
+                  <div className="flex gap-2 flex-1">
+                    <button
+                      onClick={handlePrint}
+                      className="btn-ghost h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
+                    >
+                      <Printer size={17} /> Imprimir
+                    </button>
+                    <button
+                      onClick={handleDownloadDocx}
+                      disabled={downloadingDocx}
+                      className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50"
+                    >
+                      {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> Baixar .docx</>}
+                    </button>
+                  </div>
+                )}
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
       {DeleteModal}
+
+      {DeleteModal}
+
+      {/* Modal: Duplicar ou Substituir contrato editado */}
+      <AnimatePresence>
+        {showDuplicarModal && pendingEditVenda && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col gap-6"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-xl">
+                  <FileText size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Salvar contrato editado</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">O que deseja fazer com as alterações?</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    onUpdateVenda(pendingEditVenda);
+                    setEditingVenda(null);
+                    setShowDuplicarModal(false);
+                    setPendingEditVenda(null);
+                  }}
+                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Save size={17} /> Substituir contrato original
+                </button>
+                <button
+                  onClick={() => {
+                    const novoId = `venda-${Date.now()}`;
+                    const novoContrato = `CONT-${Date.now()}`;
+                    onUpdateVenda({ ...pendingEditVenda, id: novoId, numeroContrato: novoContrato });
+                    setEditingVenda(null);
+                    setShowDuplicarModal(false);
+                    setPendingEditVenda(null);
+                  }}
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Copy size={17} /> Duplicar como novo contrato
+                </button>
+                <button
+                  onClick={() => { setShowDuplicarModal(false); setPendingEditVenda(null); }}
+                  className="text-sm text-slate-400 hover:text-slate-600 font-semibold py-2 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
