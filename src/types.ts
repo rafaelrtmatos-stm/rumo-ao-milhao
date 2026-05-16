@@ -24,6 +24,21 @@ export interface Venda {
   clienteNome?: string;
   empreendimentoNome?: string;
   contratoGerado?: boolean;
+  contratoSnapshot?: {
+    vendedor: {
+      nome: string; nacionalidade: string; estadoCivil: string;
+      rg: string; cpf: string; endereco: string; numero: string;
+      bairro: string; cidade: string; estado: string; cep: string;
+    };
+    empreendimento: { nome: string; comunidade: string; cidade: string; estado: string };
+    extra: {
+      rua: string; comunidade: string; formaPagamento: string;
+      medidaFrente: string; medidaLateralDir: string; medidaLateralEsq: string;
+      medidaFundos: string; areaTotal: string;
+    };
+    tipoContrato: 'avista' | 'parcelado';
+    geradoEm: string;
+  };
   rascunho?: boolean;
   medidaFrente?: string;
   medidaLateralDir?: string;
