@@ -179,7 +179,7 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   const valorFormatado = numExt(valorTotal);
 
   // ── Carregar template ──────────────────────────────────────────────────────
-  const templatePath = path.join(process.cwd(), "attached_assets", "recibo_avista_template.docx");
+  const templatePath = path.join(__dirname, "..", "attached_assets", "recibo_avista_template.docx");
   const zip = new AdmZip(templatePath);
   let xml = zip.readAsText("word/document.xml");
 

@@ -5195,6 +5195,7 @@ const ContratosSection = ({
 <head>
   <meta charset="UTF-8">
   <title>Recibo</title>
+  <script src="https://cdn.tailwindcss.com"><\/script>
   ${headLinks}
   <style>
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -5208,9 +5209,9 @@ const ContratosSection = ({
   </div>
   <script>
     window.addEventListener('load', function() {
-      setTimeout(function() { window.print(); }, 600);
+      setTimeout(function() { window.print(); }, 900);
     });
-  </script>
+  <\/script>
 </body>
 </html>`);
     printWindow.document.close();
@@ -5325,27 +5326,21 @@ const ContratosSection = ({
   };
 
   const captureReciboCanvas = async (): Promise<HTMLCanvasElement> => {
-    const popup = await openReciboPopup();
-    try {
-      await popup.document.fonts.ready;
-      const captureEl = popup.document.getElementById('recibo-root');
-      if (!captureEl) throw new Error('Elemento de captura não encontrado.');
-      const html2canvas = (await import('html2canvas')).default;
-      const canvas = await html2canvas(captureEl, {
-        scale: 2,
-        backgroundColor: '#ffffff',
-        useCORS: true,
-        logging: false,
-        allowTaint: false,
-        width: captureEl.scrollWidth,
-        height: captureEl.scrollHeight,
-        windowWidth: captureEl.scrollWidth,
-        windowHeight: captureEl.scrollHeight,
-      });
-      return canvas;
-    } finally {
-      popup.close();
-    }
+    if (!reciboRef.current) throw new Error('Elemento de recibo não encontrado. Certifique-se de que o recibo está visível na tela.');
+    const captureEl = reciboRef.current;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(captureEl, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      allowTaint: false,
+      width: captureEl.scrollWidth,
+      height: captureEl.scrollHeight,
+      windowWidth: captureEl.scrollWidth,
+      windowHeight: captureEl.scrollHeight,
+    });
+    return canvas;
   };
 
   const triggerDownload = (blob: Blob, filename: string) => {
@@ -5391,9 +5386,11 @@ const ContratosSection = ({
     setReciboDownloading('pdf');
     try {
       const canvas = await captureReciboCanvas();
-      const { jsPDF } = await import('jspdf');
+      const jspdfModule = await import('jspdf');
+      // Compatível com jsPDF v2, v3 e v4
+      const JsPDFClass = jspdfModule.jsPDF ?? (jspdfModule as any).default?.jsPDF ?? (jspdfModule as any).default;
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = (canvas.height * pdfW) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
