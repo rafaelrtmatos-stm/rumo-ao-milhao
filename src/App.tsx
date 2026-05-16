@@ -6594,8 +6594,8 @@ const ContratosSection = ({
                 </div>
               </div>
               <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/50">
-                <div ref={reciboRef} className="bg-white shadow-2xl p-8 sm:p-16 mx-auto w-full max-w-[21cm] min-h-[15cm] text-black font-sans border border-slate-200">
-                  <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-12">
+                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
+                  <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
                     <div>
                       <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
                       <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Instrumento de Quitação de Valores</p>
@@ -6607,7 +6607,7 @@ const ContratosSection = ({
                       </p>
                     </div>
                   </div>
-                  <div className="space-y-8 text-lg leading-loose">
+                  <div className="space-y-8 text-lg leading-loose flex-1">
                     <p className="text-justify">
                       Recebemos de{" "}
                       <span className="font-bold uppercase underline underline-offset-4">{selectedVenda.clienteNome}</span>
@@ -6641,28 +6641,27 @@ const ContratosSection = ({
                       Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
                     </p>
                   </div>
-                  <div className="mt-20 pt-10 border-t border-slate-100 flex flex-wrap justify-between items-end gap-6">
+                  <div className="pt-10 border-t border-slate-100 flex justify-between items-end">
                     <div>
                       <p className="text-sm font-bold text-slate-800">
                         Santarém/PA,{" "}
                         {new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
                       </p>
                     </div>
-                    <div className="w-56 text-center">
+                    <div className="w-64 text-center">
                       <div className="h-px bg-slate-900 mb-2" />
-                      <p className="text-[10px] font-bold uppercase text-slate-400">Assinatura do Vendedor</p>
-                      <p className="font-bold text-slate-900">{selectedVenda.vendedor || "___________________________"}</p>
+                      <p className="text-[10px] font-bold uppercase text-slate-400">Vendedor</p>
+                      {userProfile?.nome ? (
+                        <>
+                          <p className="font-bold text-slate-900">{userProfile.nome}</p>
+                          {userProfile.creci && (
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">CRECI: {userProfile.creci}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="font-bold text-slate-900">___________________________</p>
+                      )}
                     </div>
-                    {userProfile?.nome && (
-                      <div className="w-56 text-center">
-                        <div className="h-px bg-slate-900 mb-2" />
-                        <p className="text-[10px] font-bold uppercase text-slate-400">Corretor Responsável</p>
-                        <p className="font-bold text-slate-900">{userProfile.nome}</p>
-                        {userProfile.creci && (
-                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">CRECI: {userProfile.creci}</p>
-                        )}
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>
