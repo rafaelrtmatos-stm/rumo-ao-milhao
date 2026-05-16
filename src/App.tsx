@@ -936,6 +936,7 @@ const LotDashboard = ({
   onStartSale,
   onClose,
   onViewContract,
+  onUpdateLotesInfo,
 }: {
   dev: Empreendimento;
   sales: Venda[];
@@ -943,10 +944,41 @@ const LotDashboard = ({
   onStartSale: (v: Partial<Venda>) => void;
   onClose: () => void;
   onViewContract: (v: Venda) => void;
+  onUpdateLotesInfo?: (id: string, info: Record<string, any>) => void;
 }) => {
   const quadras = dev.quadras?.split(",").map((q) => q.trim()) || [];
   const soldLots = sales.filter((s) => s.empreendimentoId === dev.id);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
+  // Indisponível mode: track which lot is being toggled and pending changes
+  const [pendingIndisponiveis, setPendingIndisponiveis] = useState<Record<string, boolean>>({});
+  const [savingIndisponivel, setSavingIndisponivel] = useState(false);
+  const hasPendingChanges = Object.keys(pendingIndisponiveis).length > 0;
+
+  const toggleIndisponivel = (q: string, l: string) => {
+    const key = `${q}-${l}`.toUpperCase();
+    const currentStatus = dev.lotesInfo?.[key]?.status;
+    const pendingVal = pendingIndisponiveis[key];
+    // If already pending, remove (cancel this lot's change)
+    if (pendingVal !== undefined) {
+      setPendingIndisponiveis(prev => { const n = { ...prev }; delete n[key]; return n; });
+    } else {
+      // Toggle: if indisponivel -> disponivel, if disponivel/undefined -> indisponivel
+      const newStatus = currentStatus === 'indisponivel' ? 'disponivel' : 'indisponivel';
+      setPendingIndisponiveis(prev => ({ ...prev, [key]: newStatus === 'indisponivel' }));
+    }
+  };
+
+  const savePendingChanges = () => {
+    if (!onUpdateLotesInfo || !hasPendingChanges) return;
+    setSavingIndisponivel(true);
+    const newLotesInfo: Record<string, any> = { ...(dev.lotesInfo || {}) };
+    Object.entries(pendingIndisponiveis).forEach(([key, isIndisponivel]) => {
+      newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || '', status: isIndisponivel ? 'indisponivel' : 'disponivel' };
+    });
+    onUpdateLotesInfo(dev.id, newLotesInfo);
+    setPendingIndisponiveis({});
+    setSavingIndisponivel(false);
+  };
 
   const isSold = (q: string, l: string) => {
     return soldLots.some(
@@ -1031,6 +1063,12 @@ const LotDashboard = ({
                       const lotInfo =
                         dev.lotesInfo?.[`${q}-${l}`.toUpperCase()];
 
+                      const lotKey = `${q}-${l}`.toUpperCase();
+                      const isIndisponivel = (pendingIndisponiveis[lotKey] !== undefined)
+                        ? pendingIndisponiveis[lotKey]
+                        : lotInfo?.status === 'indisponivel';
+                      const isPending = pendingIndisponiveis[lotKey] !== undefined;
+
                       return (
                         <div
                           key={l}
@@ -1038,7 +1076,9 @@ const LotDashboard = ({
                           className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${
                             sold
                               ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100 hover:border-red-200 hover:shadow-lg"
-                              : "bg-white border-slate-100 hover:border-primary-main hover:shadow-xl hover:shadow-primary-main/5 text-slate-400"
+                              : isIndisponivel
+                                ? `${isPending ? "bg-amber-50 border-amber-300" : "bg-slate-100 border-slate-200"} text-slate-400`
+                                : "bg-white border-slate-100 hover:border-primary-main hover:shadow-xl hover:shadow-primary-main/5 text-slate-400"
                           }`}
                         >
                           <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">
@@ -1052,20 +1092,48 @@ const LotDashboard = ({
                             <div className="mt-2 p-1 bg-red-100 rounded-full text-[8px] font-bold uppercase tracking-widest">
                               Vendido
                             </div>
+                          ) : isIndisponivel ? (
+                            <>
+                              <div className={`mt-2 px-2 py-0.5 ${isPending ? "bg-amber-200 text-amber-700" : "bg-slate-200 text-slate-500"} rounded-full text-[8px] font-bold uppercase tracking-widest`}>
+                                {isPending ? "Pendente" : "Indisponível"}
+                              </div>
+                              {onUpdateLotesInfo && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); toggleIndisponivel(q, l); }}
+                                  className="absolute inset-0 flex items-center justify-center bg-emerald-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0"
+                                >
+                                  <Check size={12} className="mr-1" /> Disponibilizar
+                                </button>
+                              )}
+                            </>
                           ) : (
-                            <button
-                              onClick={() =>
-                                onStartSale({
-                                  empreendimentoId: dev.id,
-                                  quadra: q,
-                                  numeroLote: l,
-                                  rua: lotInfo?.rua,
-                                })
-                              }
-                              className="absolute inset-0 flex items-center justify-center bg-primary-main/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0"
-                            >
-                              Vender
-                            </button>
+                            <>
+                              {/* Available lot: two buttons on hover */}
+                              {onUpdateLotesInfo && (
+                                <div className="absolute inset-0 opacity-0 group-hover:opacity-100 rounded-2xl transition-all overflow-hidden flex flex-col">
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); onStartSale({ empreendimentoId: dev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }}
+                                    className="flex-1 flex items-center justify-center bg-primary-main/90 text-white font-bold text-[9px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0 transition-all"
+                                  >
+                                    Ver / Vender
+                                  </button>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); toggleIndisponivel(q, l); }}
+                                    className="flex-1 flex items-center justify-center bg-slate-700/90 text-white font-bold text-[9px] uppercase tracking-widest transition-all"
+                                  >
+                                    <X size={10} className="mr-1" /> Indisponível
+                                  </button>
+                                </div>
+                              )}
+                              {!onUpdateLotesInfo && (
+                                <button
+                                  onClick={(e) => { e.stopPropagation(); onStartSale({ empreendimentoId: dev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }}
+                                  className="absolute inset-0 flex items-center justify-center bg-primary-main/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest translate-y-2 group-hover:translate-y-0"
+                                >
+                                  Vender
+                                </button>
+                              )}
+                            </>
                           )}
 
                           {/* Hover Tooltip */}
@@ -1075,7 +1143,7 @@ const LotDashboard = ({
                             </p>
                             <p>
                               <span className="text-white/40">Status:</span>{" "}
-                              {sold ? "Vendido" : "Disponível"}
+                              {sold ? "Vendido" : isIndisponivel ? "Indisponível" : "Disponível"}
                             </p>
                             {lotInfo?.rua && (
                               <p>
@@ -1114,19 +1182,37 @@ const LotDashboard = ({
           )}
         </div>
 
-        <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-center gap-8">
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-white border border-slate-200" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Disponível
-            </span>
+        <div className="p-6 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-wrap gap-6">
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-white border border-slate-200" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Disponível</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-slate-300" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Indisponível</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-red-400" />
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vendido — clique para ver</span>
+            </div>
+            {hasPendingChanges && (
+              <div className="flex items-center gap-2">
+                <div className="w-3 h-3 rounded-full bg-amber-300" />
+                <span className="text-[10px] font-bold text-amber-500 uppercase tracking-widest">{Object.keys(pendingIndisponiveis).length} alteração(ões) pendente(s)</span>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-2">
-            <div className="w-3 h-3 rounded-full bg-red-400" />
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-              Vendido — clique para ver cliente
-            </span>
-          </div>
+          {hasPendingChanges && onUpdateLotesInfo && (
+            <button
+              onClick={savePendingChanges}
+              disabled={savingIndisponivel}
+              className="flex items-center gap-2 px-6 py-2.5 bg-slate-800 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-900 transition-all shadow-lg"
+            >
+              <Check size={14} />
+              Salvar Alterações
+            </button>
+          )}
         </div>
 
         {/* Client detail overlay — slides in from the right */}
@@ -1277,7 +1363,7 @@ const EmpreendimentosSection = ({
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as "disponivel" | "indisponivel" });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "gerenciar">("cadastrar");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
-  const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
+  const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis" | "liberarTodos">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
   const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
@@ -1983,6 +2069,7 @@ const EmpreendimentosSection = ({
             }}
             onClose={() => setSelectedDevForMap(null)}
             onViewContract={onViewContract}
+            onUpdateLotesInfo={onUpdateLotesInfo}
           />
         )}
       </AnimatePresence>
@@ -2381,14 +2468,21 @@ const EmpreendimentosSection = ({
                   className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-b-2 border-slate-700" : "text-slate-400 hover:text-slate-600"}`}
                 >
                   <X size={14} />
-                  Marcar Indisponíveis
+                  Bloquear
                 </button>
                 <button
                   onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
                   className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
                 >
                   <Check size={14} />
-                  Definir Disponíveis
+                  Específicos
+                </button>
+                <button
+                  onClick={() => { setBulkAvailTab("liberarTodos"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "liberarTodos" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                  <Check size={14} />
+                  Liberar Todos
                 </button>
               </div>
 
@@ -2443,6 +2537,7 @@ const EmpreendimentosSection = ({
                   }
 
                   // Tab: Definir disponíveis por quadra (lotes específicos separados por vírgula)
+                  if (bulkAvailTab === "marcarDisponiveis") {
                   return (
                     <div className="space-y-4">
                       <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
@@ -2495,6 +2590,49 @@ const EmpreendimentosSection = ({
                       </div>
                     </div>
                   );
+                  }
+
+                  // Tab: Liberar todos os lotes de quadras selecionadas
+                  return (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                        <p className="font-bold mb-1">✅ Liberar todos</p>
+                        <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold">disponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
+                        <div className="flex flex-wrap gap-2 mb-3">
+                          <button
+                            onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
+                            className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-emerald-600 text-white border-emerald-600" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                          >
+                            {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                          {quadraList.map(q => {
+                            const isSelected = bulkSelectedQuadras.includes(q);
+                            const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                            return (
+                              <button
+                                key={q}
+                                onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-emerald-600 text-white border-emerald-600 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-emerald-300"}`}
+                              >
+                                <span>Q.{q}</span>
+                                {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-emerald-100" : "text-slate-400"}`}>{lotes.length} lotes</span>}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        {bulkSelectedQuadras.length > 0 && (
+                          <p className="mt-3 text-xs text-emerald-600 font-medium">
+                            {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? 's' : ''} → todos os lotes serão liberados.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
                 })()}
               </div>
 
@@ -2517,6 +2655,18 @@ const EmpreendimentosSection = ({
                           const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
                           if (!temVendaAtiva) {
                             newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                          }
+                        });
+                      });
+                    } else if (bulkAvailTab === "liberarTodos") {
+                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como disponíveis
+                      bulkSelectedQuadras.forEach(q => {
+                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                        lotes.forEach(l => {
+                          const key = `${q}-${l}`.toUpperCase();
+                          const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                          if (!temVendaAtiva) {
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "disponivel" };
                           }
                         });
                       });
@@ -2544,7 +2694,7 @@ const EmpreendimentosSection = ({
                   className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
                 >
                   {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
-                  {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
+                  {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : bulkAvailTab === "liberarTodos" ? "Liberar Lotes" : "Aplicar Disponibilidade"}
                 </button>
               </div>
             </motion.div>
@@ -7670,6 +7820,7 @@ const UsuariosSection = () => {
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newRole, setNewRole] = useState<"gerente" | "vendedor">("vendedor");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
@@ -7690,6 +7841,18 @@ const UsuariosSection = () => {
 
   useEffect(() => { loadUsers(); }, []);
 
+  // Permissões padrão por categoria
+  const ROLE_PRESETS: Record<string, Record<string, boolean>> = {
+    gerente: {
+      dashboard: true, vendas: true, empreendimentos: true, proprietarios: true,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
+    },
+    vendedor: {
+      dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
+    },
+  };
+
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     setCreating(true);
@@ -7703,19 +7866,17 @@ const UsuariosSection = () => {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao criar usuário.");
-      // Salvar permissões padrão para o novo usuário
-      const defaultPerms: Record<string, boolean> = {
-        dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
-        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
-      };
+      // Salvar permissões padrão baseadas na categoria escolhida
+      const defaultPerms = ROLE_PRESETS[newRole] || ROLE_PRESETS.vendedor;
       await fetch(`/api/admin/users/${data.id}/permissions`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permissions: defaultPerms }),
       });
-      setSuccess(`Usuário ${newEmail} criado com sucesso!`);
+      setSuccess(`Usuário ${newEmail} criado como ${newRole === "gerente" ? "Gerente" : "Vendedor"}!`);
       setNewEmail("");
       setNewPassword("");
+      setNewRole("vendedor");
       await loadUsers();
     } catch (err: any) {
       setError(err.message);
@@ -7801,6 +7962,26 @@ const UsuariosSection = () => {
               />
             </div>
           </div>
+
+          {/* Role selection */}
+          <div>
+            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2 block">Categoria (define permissões iniciais)</label>
+            <div className="grid grid-cols-2 gap-3">
+              {([["vendedor", "Vendedor", "Acesso a vendas, contratos e clientes"], ["gerente", "Gerente", "Acesso ampliado incluindo empreendimentos e proprietários"]] as const).map(([val, label, desc]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setNewRole(val)}
+                  className={`flex flex-col items-start p-4 rounded-xl border-2 text-left transition-all ${newRole === val ? "border-primary-main bg-primary-main/5" : "border-slate-200 bg-slate-50 hover:border-slate-300"}`}
+                >
+                  <span className={`text-xs font-black uppercase tracking-widest ${newRole === val ? "text-primary-main" : "text-slate-600"}`}>{label}</span>
+                  <span className="text-[10px] text-slate-400 mt-1 font-medium">{desc}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-slate-400 mt-2 font-medium">As permissões podem ser personalizadas depois de criado o usuário.</p>
+          </div>
+
           {error && <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>}
           {success && <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>}
           <button
@@ -7868,9 +8049,27 @@ const UsuariosSection = () => {
                       className="overflow-hidden"
                     >
                       <div className="p-5 border-t border-border-subtle bg-white space-y-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
-                        </p>
+                        <div className="flex items-center justify-between flex-wrap gap-3">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                            Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
+                          </p>
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPendingPerms({ dashboard: true, vendas: true, empreendimentos: false, proprietarios: false, contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false })}
+                              className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-slate-100 text-slate-500 hover:bg-slate-200 transition-all"
+                            >
+                              Preset Vendedor
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setPendingPerms({ dashboard: true, vendas: true, empreendimentos: true, proprietarios: true, contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false })}
+                              className="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest bg-primary-main/10 text-primary-main hover:bg-primary-main/20 transition-all"
+                            >
+                              Preset Gerente
+                            </button>
+                          </div>
+                        </div>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                           {ALL_SECTIONS_LIST.map((sec) => {
                             const enabled = pendingPerms[sec] ?? false;
