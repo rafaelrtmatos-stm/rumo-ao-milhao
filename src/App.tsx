@@ -56,6 +56,16 @@ function parseFicha(text: string): Record<string, any> {
   const cleanCurrency = (v: string) =>
     parseFloat(v.replace(/R\$\s*/gi, "").replace(/\./g, "").replace(",", ".").trim()) || 0;
 
+  // Converte DD/MM/AAAA ou DD/MM/AA → YYYY-MM-DD (formato do input type="date")
+  const toISODate = (v: string): string => {
+    const m = v.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (!m) return v;
+    const day = m[1].padStart(2, "0");
+    const month = m[2].padStart(2, "0");
+    const year = m[3].length === 2 ? "20" + m[3] : m[3];
+    return `${year}-${month}-${day}`;
+  };
+
   for (const rawLine of lines) {
     const colonIdx = rawLine.indexOf(":");
     if (colonIdx < 0) continue;
@@ -67,15 +77,20 @@ function parseFicha(text: string): Record<string, any> {
     else if (key === "RG") { result.rg = val; }
     else if (key === "CPF") { result.cpf = val; }
     else if (key === "ESTADO CIVIL") { result.estadoCivil = val; }
-    else if (["DATA DE ANIVERSARIO", "NASCIMENTO", "DATA NASC", "DATA NASCIMENTO"].includes(key)) { result.nascimento = val; }
+    else if (["DATA DE ANIVERSARIO", "NASCIMENTO", "DATA NASC", "DATA NASCIMENTO", "ANIVERSARIO", "DATA DE NASCIMENTO"].includes(key)) {
+      result.nascimento = toISODate(val);
+    }
     else if (["ENDERECO", "RUA"].includes(key)) { result.endereco = val; }
     else if (["No", "NUMERO", "NUM", "Nº"].includes(key.replace(/[ºo]/i, "o"))) { result.numero = val; }
     else if (key === "BAIRRO") { result.bairro = val; }
     else if (key === "CEP") { result.cep = val; }
-    else if (["CONTATO", "TELEFONE", "FONE", "TEL"].includes(key)) {
+    else if (["CONTATO", "TELEFONE", "FONE", "TEL", "CONTATO PRINCIPAL"].includes(key)) {
       const phones = val.split("/").map((p) => p.trim()).filter(Boolean);
       if (phones[0]) result.telefone1 = phones[0];
       if (phones[1]) result.telefone2 = phones[1];
+    }
+    else if (["CONTATO SECUNDARIO", "TELEFONE 2", "FONE 2", "TEL 2", "CELULAR 2"].includes(key)) {
+      result.telefone2 = val.split("/")[0].trim();
     }
     else if (key === "LOTE") { result.lote = val; }
     else if (key === "QUADRA") { result.quadra = val; }
@@ -87,10 +102,13 @@ function parseFicha(text: string): Record<string, any> {
       if (m) { result.numeroParcelas = parseInt(m[1]); result.valorParcela = cleanCurrency(m[2]); }
       else { result.numeroParcelas = parseInt(val.replace(/\D/g, "")) || 0; }
     }
-    else if (["VENCIMENTO", "DATA DE VENCIMENTO"].includes(key)) { result.dataVencimento = val; }
+    else if (["VENCIMENTO", "DATA DE VENCIMENTO", "DATA VENCIMENTO"].includes(key)) {
+      result.dataVencimento = toISODate(val);
+    }
     else if (key === "PROFISSAO") { result.profissao = val; }
     else if (key === "CIDADE") { result.cidade = val; }
     else if (key === "ESTADO") { result.estado = val; }
+    else if (key === "NACIONALIDADE") { result.nacionalidade = val; }
   }
   return result;
 }
