@@ -4913,6 +4913,7 @@ const ContratosSection = ({
   onEditVenda,
   onUpdateProprietario,
   onClearInitialVenda,
+  userProfile,
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -4928,6 +4929,7 @@ const ContratosSection = ({
   onUpdateProprietario?: (p: Proprietario) => void;
   onEditVenda?: (v: Venda) => void;
   onClearInitialVenda?: () => void;
+  userProfile?: { nome?: string; creci?: string; telefone?: string };
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -4938,7 +4940,7 @@ const ContratosSection = ({
   const [statusFilter, setStatusFilter] = useState("");
   const [empFilter, setEmpFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
-  const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc">("data_desc");
+  const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc" | "emp_asc" | "status_asc" | "corretor_asc">("data_desc");
   const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -5309,6 +5311,12 @@ const ContratosSection = ({
           <p class="assinatura-label">Assinatura do Vendedor</p>
           <p class="assinatura-nome">${vendedor}</p>
         </div>
+        ${userProfile?.nome ? `<div class="assinatura">
+          <div class="linha-assinatura"></div>
+          <p class="assinatura-label">Corretor Responsável</p>
+          <p class="assinatura-nome">${userProfile.nome}</p>
+          ${userProfile.creci ? `<p class="assinatura-label">CRECI: ${userProfile.creci}</p>` : ''}
+        </div>` : ''}
       </div>
     </div>
   </div>
@@ -5464,6 +5472,9 @@ const ContratosSection = ({
         case "valor_desc": return (b.valorLote || 0) - (a.valorLote || 0);
         case "valor_asc": return (a.valorLote || 0) - (b.valorLote || 0);
         case "nome_asc": return a.clienteNome.localeCompare(b.clienteNome, "pt-BR");
+        case "emp_asc": return (a.empreendimentoNome || "").localeCompare(b.empreendimentoNome || "", "pt-BR");
+        case "status_asc": return normalizeStatus(a.status).localeCompare(normalizeStatus(b.status), "pt-BR");
+        case "corretor_asc": return (a.vendedor || "").localeCompare(b.vendedor || "", "pt-BR");
         default: return (b.dataVenda || "").localeCompare(a.dataVenda || "");
       }
     });
@@ -5643,11 +5654,14 @@ const ContratosSection = ({
             onChange={(e) => setSortBy(e.target.value as any)}
             className="h-9 px-3 rounded-xl text-xs font-bold border bg-slate-50 text-slate-600 border-slate-200 transition-all ml-auto"
           >
-            <option value="data_desc">Data ↓ (mais recente)</option>
-            <option value="data_asc">Data ↑ (mais antigo)</option>
-            <option value="valor_desc">Valor ↓ (maior)</option>
-            <option value="valor_asc">Valor ↑ (menor)</option>
-            <option value="nome_asc">Nome A–Z</option>
+            <option value="data_desc">📅 Data ↓ (recente)</option>
+            <option value="data_asc">📅 Data ↑ (antigo)</option>
+            <option value="valor_desc">💰 Valor ↓ (maior)</option>
+            <option value="valor_asc">💰 Valor ↑ (menor)</option>
+            <option value="nome_asc">🔤 Cliente A–Z</option>
+            <option value="emp_asc">🏘️ Empreendimento A–Z</option>
+            <option value="status_asc">🔖 Status A–Z</option>
+            <option value="corretor_asc">👤 Corretor A–Z</option>
           </select>
 
           {/* Limpar filtros */}
@@ -6625,18 +6639,28 @@ const ContratosSection = ({
                       Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
                     </p>
                   </div>
-                  <div className="mt-20 pt-10 border-t border-slate-100 flex justify-between items-end">
+                  <div className="mt-20 pt-10 border-t border-slate-100 flex flex-wrap justify-between items-end gap-6">
                     <div>
                       <p className="text-sm font-bold text-slate-800">
                         Santarém/PA,{" "}
                         {new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
                       </p>
                     </div>
-                    <div className="w-64 text-center">
+                    <div className="w-56 text-center">
                       <div className="h-px bg-slate-900 mb-2" />
                       <p className="text-[10px] font-bold uppercase text-slate-400">Assinatura do Vendedor</p>
                       <p className="font-bold text-slate-900">{selectedVenda.vendedor || "___________________________"}</p>
                     </div>
+                    {userProfile?.nome && (
+                      <div className="w-56 text-center">
+                        <div className="h-px bg-slate-900 mb-2" />
+                        <p className="text-[10px] font-bold uppercase text-slate-400">Corretor Responsável</p>
+                        <p className="font-bold text-slate-900">{userProfile.nome}</p>
+                        {userProfile.creci && (
+                          <p className="text-[10px] font-bold text-slate-400 mt-0.5">CRECI: {userProfile.creci}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -9157,6 +9181,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
+  const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+
+  useEffect(() => {
+    authFetch("/api/auth/profile")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setUserProfile({ nome: d.nome || "", creci: d.creci || "", telefone: d.telefone || "" }); })
+      .catch(() => {});
+  }, []);
 
   const toggleDesktop = () => {
     const next = !forceDesktop;
@@ -9505,6 +9537,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onUpdateProprietario={handleUpdateProprietario}
             onEditVenda={handleEditVenda}
             onClearInitialVenda={() => setContractToOpen(null)}
+            userProfile={userProfile}
           />
         );
       case "clientes":
