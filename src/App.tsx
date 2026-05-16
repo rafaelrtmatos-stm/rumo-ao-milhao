@@ -2248,14 +2248,15 @@ const EmpreendimentosSection = ({
                         </button>
                       </div>
                     ) : (
-                      <table className="w-full text-sm">
+                      <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[380px]">
                         <thead className="bg-slate-50 sticky top-0">
                           <tr>
-                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
-                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
-                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
-                            <th className="px-4 py-3" />
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
+                            <th className="px-3 py-3" />
                           </tr>
                         </thead>
                         <tbody>
@@ -2414,6 +2415,7 @@ const EmpreendimentosSection = ({
                             })}
                         </tbody>
                       </table>
+                      </div>
                     )}
                   </div>
                   <div className="p-4 border-t border-slate-100 flex justify-between items-center">
