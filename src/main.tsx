@@ -47,11 +47,7 @@ export function clearAuthToken() {
   try { localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 
-/**
- * authFetch — substitui fetch() em todo o app.
- * Injeta automaticamente o header Authorization: Bearer <token>.
- * Importe e use authFetch no lugar de fetch para chamadas à API.
- */
+// authFetch — usa sempre em vez de fetch() para chamadas à API
 export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
   const token = getAuthToken();
   const headers = new Headers(init.headers ?? {});
@@ -108,7 +104,7 @@ function Root() {
 
   const checkAuth = async () => {
     try {
-      // 1. Verificar se precisa de setup (sem usuários cadastrados)
+      // 1. Verificar se precisa de setup
       const setupRes = await fetch("/api/auth/setup");
       if (setupRes.ok) {
         const { needsSetup } = await setupRes.json();
@@ -118,7 +114,7 @@ function Root() {
         }
       }
 
-      // 2. Verificar se já tem token salvo (JWT)
+      // 2. Verificar token JWT salvo no localStorage
       const token = getAuthToken();
       if (token) {
         const userRes = await authFetch("/api/auth/user");
@@ -135,7 +131,7 @@ function Root() {
             return;
           }
         }
-        // Token inválido/expirado — limpa
+        // Token inválido — limpa
         clearAuthToken();
       }
 
@@ -149,10 +145,12 @@ function Root() {
     checkAuth();
   }, []);
 
-  const handleLogin = async (userData?: { id: string; email: string; isAdmin: boolean; permissions: Record<string, boolean>; token?: string }) => {
-    if (userData?.token) {
-      setAuthToken(userData.token);
+  const handleLogin = async (loginData?: any) => {
+    // Salva o token JWT retornado pelo servidor
+    if (loginData?.token) {
+      setAuthToken(loginData.token);
     }
+    // Busca dados atualizados do usuário
     try {
       const res = await authFetch("/api/auth/user");
       if (res.ok) {
@@ -164,8 +162,19 @@ function Root() {
           email: user.email ?? "",
           permissions: user.permissions ?? {},
         });
+        return;
       }
-    } catch {
+    } catch {}
+    // Fallback: usa os dados que vieram do login diretamente
+    if (loginData?.id) {
+      setAuth({
+        status: "authenticated",
+        isAdmin: loginData.isAdmin ?? false,
+        userId: loginData.id,
+        email: loginData.email ?? "",
+        permissions: loginData.permissions ?? {},
+      });
+    } else {
       setAuth({ status: "login" });
     }
   };
@@ -196,7 +205,7 @@ function Root() {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
-  // Permissões efetivas: admin tem tudo; não-admin usa padrão + customizações salvas
+  // Permissões efetivas
   const effectivePermissions: Record<string, boolean> = auth.isAdmin
     ? Object.fromEntries(ALL_SECTIONS.map((s) => [s, true]))
     : { ...DEFAULT_NON_ADMIN_PERMISSIONS, ...auth.permissions };

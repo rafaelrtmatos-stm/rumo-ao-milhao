@@ -2,7 +2,7 @@ import { useState } from "react";
 import { motion } from "motion/react";
 import { Building2, Lock, Mail, ShieldCheck } from "lucide-react";
 
-export function LoginScreen({ onLogin }: { onLogin: (data?: any) => void }) {
+export function LoginScreen({ onLogin }: { onLogin: (data: any) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -24,6 +24,7 @@ export function LoginScreen({ onLogin }: { onLogin: (data?: any) => void }) {
         throw new Error("Servidor indisponível. Tente novamente mais tarde.");
       }
       if (!res.ok) throw new Error(data.error || "Erro ao autenticar.");
+      // Passa os dados incluindo o token JWT para o Root salvar
       onLogin(data);
     } catch (err: any) {
       setError(err.message || "Erro ao autenticar.");
