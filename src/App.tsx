@@ -31,8 +31,6 @@ import {
   Check,
   Monitor,
   Smartphone,
-  Save,
-  Copy,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -195,6 +193,7 @@ function genderizeEstadoCivil(raw: string, genero: string): string {
 import {
   Sparkles,
   Copy,
+  Save,
   FileCheck,
   MessageCircle,
   BarChart3,
