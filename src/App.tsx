@@ -6617,10 +6617,6 @@ const ContratosSection = ({
                         <label className="label">Área Total (m²)</label>
                         <input className="input-field" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} placeholder="Ex: 360" />
                       </div>
-                      <div className="sm:col-span-2">
-                        <label className="label">Comunidade / Região</label>
-                        <input className="input-field" value={gerarExtra.comunidade} onChange={(e) => setGerarExtra({ ...gerarExtra, comunidade: e.target.value })} placeholder="Ex: Comunidade do Lago" />
-                      </div>
                     </div>
                     <div className="space-y-3 pt-2 border-t border-slate-100">
                       <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empreendimento</p>
