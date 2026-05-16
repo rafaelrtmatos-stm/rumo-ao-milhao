@@ -204,6 +204,156 @@ function defaultVencimento(): string {
   return d.toISOString().split("T")[0];
 }
 
+// ─── Componente: Busca de CEP por Rua / Cidade ──────────────────────────────
+type CepResultado = {
+  cep: string;
+  logradouro: string;
+  bairro: string;
+  localidade: string;
+  uf: string;
+};
+
+const BuscarCEPPorRua = ({
+  onSelect,
+  estadoPadrao = "PA",
+  cidadePadrao = "",
+}: {
+  onSelect: (r: CepResultado) => void;
+  estadoPadrao?: string;
+  cidadePadrao?: string;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [uf, setUf] = React.useState(estadoPadrao);
+  const [cidade, setCidade] = React.useState(cidadePadrao);
+  const [rua, setRua] = React.useState("");
+  const [resultados, setResultados] = React.useState<CepResultado[]>([]);
+  const [buscando, setBuscando] = React.useState(false);
+  const [erro, setErro] = React.useState("");
+
+  const buscar = async () => {
+    const ufClean = uf.trim().toUpperCase();
+    const cidadeClean = cidade.trim();
+    const ruaClean = rua.trim();
+    if (!ufClean || !cidadeClean || !ruaClean) {
+      setErro("Preencha UF, cidade e pelo menos parte da rua.");
+      return;
+    }
+    setBuscando(true);
+    setErro("");
+    setResultados([]);
+    try {
+      const url = `https://viacep.com.br/ws/${encodeURIComponent(ufClean)}/${encodeURIComponent(cidadeClean)}/${encodeURIComponent(ruaClean)}/json/`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Erro de rede");
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setErro("Nenhum CEP encontrado. Tente termos mais genéricos.");
+      } else {
+        setResultados(data.slice(0, 20));
+      }
+    } catch {
+      setErro("Falha ao buscar. Verifique a conexão e tente novamente.");
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  const handleSelect = (r: CepResultado) => {
+    onSelect(r);
+    setOpen(false);
+    setResultados([]);
+    setRua("");
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 text-[10px] font-bold text-primary-main hover:underline mt-1"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Não sei o CEP — buscar por rua/cidade
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Buscar CEP por endereço</p>
+        <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="label">UF *</label>
+          <input
+            className="input-field text-center font-bold uppercase"
+            maxLength={2}
+            value={uf}
+            onChange={(e) => setUf(e.target.value.toUpperCase())}
+            placeholder="PA"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Cidade *</label>
+          <input
+            className="input-field"
+            value={cidade}
+            onChange={(e) => setCidade(e.target.value)}
+            placeholder="Ex: Santarém"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="label">Rua / Logradouro * <span className="text-slate-400 font-normal">(mín. 3 letras)</span></label>
+        <div className="flex gap-2">
+          <input
+            className="input-field flex-1"
+            value={rua}
+            onChange={(e) => setRua(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && buscar()}
+            placeholder="Ex: Mendonça Furtado"
+          />
+          <button
+            type="button"
+            onClick={buscar}
+            disabled={buscando}
+            className="btn-primary h-11 px-4 text-sm font-bold disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+          >
+            {buscando ? (
+              <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            )}
+            Buscar
+          </button>
+        </div>
+      </div>
+      {erro && <p className="text-xs font-bold text-red-500 bg-red-50 px-3 py-2 rounded-xl">{erro}</p>}
+      {resultados.length > 0 && (
+        <div className="space-y-1.5 max-h-52 overflow-y-auto">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">{resultados.length} resultado{resultados.length !== 1 ? "s" : ""} — clique para usar</p>
+          {resultados.map((r) => (
+            <button
+              key={r.cep}
+              type="button"
+              onClick={() => handleSelect(r)}
+              className="w-full text-left bg-white border border-slate-200 hover:border-primary-main hover:bg-primary-main/5 rounded-xl px-4 py-2.5 transition-all"
+            >
+              <p className="font-bold text-slate-800 text-sm">{r.logradouro || r.cep}</p>
+              <p className="text-[10px] font-semibold text-slate-500">{r.bairro && `${r.bairro} · `}{r.localidade}/{r.uf} · <span className="font-mono font-bold text-primary-main">{r.cep}</span></p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -4135,6 +4285,18 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 }}
                 placeholder="00000-000"
               />
+              <BuscarCEPPorRua
+                estadoPadrao={clientData.estado || "PA"}
+                cidadePadrao={clientData.cidade || ""}
+                onSelect={(r) => setClientData((prev) => ({
+                  ...prev,
+                  cep: maskCEP(r.cep),
+                  endereco: r.logradouro || prev.endereco,
+                  bairro: r.bairro || prev.bairro,
+                  cidade: r.localidade || prev.cidade,
+                  estado: r.uf || prev.estado,
+                }))}
+              />
             </div>
             <div className="md:col-span-1">
               <label className="label">Endereço</label>
@@ -5983,6 +6145,20 @@ const ContratosSection = ({
                             value={(novoCliente as any)[field] || ""}
                             onChange={(e) => setNovoCliente({ ...novoCliente, [field]: e.target.value })}
                           />
+                          {field === "cep" && (
+                            <BuscarCEPPorRua
+                              estadoPadrao={(novoCliente as any).estado || "PA"}
+                              cidadePadrao={(novoCliente as any).cidade || ""}
+                              onSelect={(r) => setNovoCliente((prev) => ({
+                                ...prev,
+                                cep: maskCEP(r.cep),
+                                endereco: r.logradouro || prev.endereco,
+                                bairro: r.bairro || prev.bairro,
+                                cidade: r.localidade || prev.cidade,
+                                estado: r.uf || prev.estado,
+                              }))}
+                            />
+                          )}
                         </div>
                       ))}
                       <div>
@@ -7012,6 +7188,18 @@ const ContratosSection = ({
                         <div>
                           <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
                           <input className="input-field" placeholder="00000-000" value={gerarVendedor.cep} onChange={(e) => { const val = maskCEP(e.target.value); setGerarVendedor({ ...gerarVendedor, cep: val }); if (val.replace(/\D/g, "").length === 8) fetchCepGerar(val); }} />
+                          <BuscarCEPPorRua
+                            estadoPadrao={gerarVendedor.estado || "PA"}
+                            cidadePadrao={gerarVendedor.cidade || ""}
+                            onSelect={(r) => setGerarVendedor((prev) => ({
+                              ...prev,
+                              cep: maskCEP(r.cep),
+                              endereco: r.logradouro || prev.endereco,
+                              bairro: r.bairro || prev.bairro,
+                              cidade: r.localidade || prev.cidade,
+                              estado: r.uf || prev.estado,
+                            }))}
+                          />
                         </div>
                         <div className="sm:col-span-2">
                           <label className="label">Endereço</label>
@@ -7345,6 +7533,20 @@ const ClientesSection = ({
                       value={(editForm as any)[field] || ""}
                       onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
                     />
+                    {field === "cep" && (
+                      <BuscarCEPPorRua
+                        estadoPadrao={editForm.estado || "PA"}
+                        cidadePadrao={editForm.cidade || ""}
+                        onSelect={(r) => setEditForm((prev) => ({
+                          ...prev,
+                          cep: maskCEP(r.cep),
+                          endereco: r.logradouro || prev.endereco,
+                          bairro: r.bairro || prev.bairro,
+                          cidade: r.localidade || prev.cidade,
+                          estado: r.uf || prev.estado,
+                        }))}
+                      />
+                    )}
                   </div>
                 ))}
                 <div>
@@ -8101,6 +8303,18 @@ const ConfigSection = ({
               <div>
                 <label className="label">CEP</label>
                 <input className="input-field" placeholder="00000-000" value={vendedorForm.cep} onChange={(e) => setVendedorForm({ ...vendedorForm, cep: maskCEP(e.target.value) })} />
+                <BuscarCEPPorRua
+                  estadoPadrao={vendedorForm.estado || "PA"}
+                  cidadePadrao={vendedorForm.cidade || ""}
+                  onSelect={(r) => setVendedorForm((prev) => ({
+                    ...prev,
+                    cep: maskCEP(r.cep),
+                    endereco: r.logradouro || prev.endereco,
+                    bairro: r.bairro || prev.bairro,
+                    cidade: r.localidade || prev.cidade,
+                    estado: r.uf || prev.estado,
+                  }))}
+                />
               </div>
             </div>
             <div className="flex gap-3 justify-end pt-2">
@@ -8777,6 +8991,18 @@ const ProprietariosSection = ({
                       setForm({ ...form, cep: val });
                       if (val.replace(/\D/g, "").length === 8) buscarCEPProp(val);
                     }}
+                  />
+                  <BuscarCEPPorRua
+                    estadoPadrao={form.estado || "PA"}
+                    cidadePadrao={form.cidade || ""}
+                    onSelect={(r) => setForm((prev) => ({
+                      ...prev,
+                      cep: maskCEP(r.cep),
+                      endereco: r.logradouro || prev.endereco,
+                      bairro: r.bairro || prev.bairro,
+                      cidade: r.localidade || prev.cidade,
+                      estado: r.uf || prev.estado,
+                    }))}
                   />
                 </div>
               </div>
