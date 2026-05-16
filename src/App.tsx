@@ -3836,6 +3836,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
+                {tipoVenda === 'parcelado' && (
                 <div>
                   <label className="label">Entrada</label>
                   <input
@@ -3851,6 +3852,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
+                )}
                 {/* Toggle À Vista / Parcelado */}
                 <div className="sm:col-span-2">
                   <label className="label">Tipo de Pagamento</label>
@@ -3859,7 +3861,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                       type="button"
                       onClick={() => {
                         setTipoVenda('avista');
-                        setSaleData({ ...saleData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" });
+                        setSaleData({ ...saleData, quantidadeParcelas: 0, valorParcela: 0, valorEntrada: 0, dataVencimento: "" });
                       }}
                       className={`px-6 py-2.5 transition-colors ${tipoVenda === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
                     >
@@ -3984,32 +3986,44 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        {tipoVenda === 'avista' ? 'Entrada' : 'Saldo Financiado'}
-                      </p>
-                      <p className="font-display font-bold text-slate-700">
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(
-                          tipoVenda === 'avista'
-                            ? (saleData.valorEntrada || 0)
-                            : (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
-                        )}
-                      </p>
-                    </div>
-                    <div className="space-y-1 text-right">
-                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        Total Líquido
-                      </p>
-                      <p className="font-display font-bold text-slate-700">
-                        {new Intl.NumberFormat("pt-BR", {
-                          style: "currency",
-                          currency: "BRL",
-                        }).format(saleData.valorLote || 0)}
-                      </p>
-                    </div>
+                    {tipoVenda === 'avista' ? (
+                      <div className="col-span-2 space-y-1 text-center">
+                        <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                          Valor Total
+                        </p>
+                        <p className="font-display font-bold text-2xl text-emerald-600">
+                          {new Intl.NumberFormat("pt-BR", {
+                            style: "currency",
+                            currency: "BRL",
+                          }).format(saleData.valorLote || 0)}
+                        </p>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-1">
+                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                            Saldo Financiado
+                          </p>
+                          <p className="font-display font-bold text-slate-700">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format((saleData.valorLote || 0) - (saleData.valorEntrada || 0))}
+                          </p>
+                        </div>
+                        <div className="space-y-1 text-right">
+                          <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                            Total Líquido
+                          </p>
+                          <p className="font-display font-bold text-slate-700">
+                            {new Intl.NumberFormat("pt-BR", {
+                              style: "currency",
+                              currency: "BRL",
+                            }).format(saleData.valorLote || 0)}
+                          </p>
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               </div>
