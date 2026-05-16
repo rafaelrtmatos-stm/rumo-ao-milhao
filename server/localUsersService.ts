@@ -3,12 +3,19 @@ import { db } from "./db.js";
 import { localUsers } from "../shared/schema.js";
 import { eq, count as drizzleCount } from "drizzle-orm";
 
+export interface UserProfile {
+  nome?: string;
+  creci?: string;
+  telefone?: string;
+}
+
 export interface LocalUser {
   id: string;
   email: string;
   password_hash: string;
   is_admin: boolean;
   permissions: Record<string, boolean>;
+  profile: UserProfile;
   created_at: Date | null;
 }
 
@@ -19,6 +26,7 @@ function toLocalUser(row: any): LocalUser {
     password_hash: row.passwordHash,
     is_admin: row.isAdmin,
     permissions: row.permissions ?? {},
+    profile: (row.profile as UserProfile) ?? {},
     created_at: row.createdAt,
   };
 }
@@ -40,7 +48,7 @@ export const localUsersService = {
     return row ? toLocalUser(row) : null;
   },
 
-  async listAll(): Promise<Pick<LocalUser, "id" | "email" | "is_admin" | "created_at">[]> {
+  async listAll(): Promise<LocalUser[]> {
     const rows = await db
       .select()
       .from(localUsers)
@@ -79,6 +87,13 @@ export const localUsersService = {
     await db
       .update(localUsers)
       .set({ permissions } as any)
+      .where(eq(localUsers.id, id));
+  },
+
+  async updateProfile(id: string, profile: UserProfile): Promise<void> {
+    await db
+      .update(localUsers)
+      .set({ profile } as any)
       .where(eq(localUsers.id, id));
   },
 };

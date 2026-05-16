@@ -29,7 +29,7 @@ export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
   aniversarios: true,
   calculadora: true,
   config: false,
-  usuarios: false,
+  usuarios: true,
 };
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
@@ -205,6 +205,7 @@ function Root() {
     <App
       onLogout={handleLogout}
       isAdmin={auth.isAdmin}
+      userId={auth.userId}
       userEmail={auth.email}
       userPermissions={effectivePermissions}
     />

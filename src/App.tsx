@@ -465,7 +465,7 @@ const Sidebar = ({
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "calculadora", label: "Calculadora", icon: Calculator },
-    ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
+    { id: "usuarios", label: "Usuários", icon: User },
   ];
 
   // Filtra itens de menu por permissão (admin sempre vê tudo)
@@ -8501,7 +8501,7 @@ const ProprietariosSection = ({
 
 // --- Usuários Section (admin only) ---
 
-const UsuariosSection = () => {
+const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; userId?: string; userEmail?: string }) => {
   const SECTION_LABELS: Record<string, string> = {
     dashboard: "Dashboard",
     vendas: "Nova Venda",
@@ -8517,7 +8517,44 @@ const UsuariosSection = () => {
 
   const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
 
-  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean> }[]>([]);
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string } }[]>([]);
+
+  // Profile state
+  const [profile, setProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await authFetch("/api/auth/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setProfile({ nome: data.nome || "", creci: data.creci || "", telefone: data.telefone || "" });
+        }
+      } catch {}
+      setProfileLoading(false);
+    };
+    loadProfile();
+  }, []);
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    setProfileMsg(null);
+    try {
+      const res = await authFetch("/api/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ nome: profile.nome, creci: profile.creci, telefone: profile.telefone }),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar");
+      setProfileMsg({ type: "ok", text: "Perfil salvo com sucesso!" });
+    } catch {
+      setProfileMsg({ type: "err", text: "Erro ao salvar perfil. Tente novamente." });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -8620,7 +8657,77 @@ const UsuariosSection = () => {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8 max-w-3xl mx-auto">
+
+      {/* Meu Perfil — visible to all users */}
+      <div className="card-premium space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-slate-900 text-white rounded-xl">
+            <User size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-800">Meu Perfil</h4>
+            <p className="text-xs text-slate-400 mt-0.5">{userEmail}</p>
+          </div>
+        </div>
+
+        {profileLoading ? (
+          <p className="text-slate-400 text-sm">Carregando...</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="label">Nome Completo (aparece nos recibos)</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: Rafael Tavares Matos"
+                  value={profile.nome}
+                  onChange={(e) => setProfile({ ...profile, nome: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">CRECI</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: 13919"
+                  value={profile.creci}
+                  onChange={(e) => setProfile({ ...profile, creci: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Telefone / WhatsApp</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: 93992332012"
+                  value={profile.telefone}
+                  onChange={(e) => setProfile({ ...profile, telefone: maskPhone(e.target.value) })}
+                />
+              </div>
+            </div>
+
+            {profileMsg && (
+              <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-semibold ${profileMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {profileMsg.type === "ok" ? <ShieldCheck size={15} /> : <AlertTriangle size={15} />}
+                {profileMsg.text}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaving}
+                className="btn-primary px-10 disabled:opacity-50"
+              >
+                {profileSaving ? <><RefreshCw size={14} className="animate-spin" /> Salvando...</> : <><Check size={14} /> Salvar Perfil</>}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Admin-only section */}
+      {isAdmin && (
+      <>
       {/* Create user card */}
       <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
         <h2 className="text-lg font-bold text-primary-main mb-6 uppercase tracking-widest text-[11px]">
@@ -8761,13 +8868,15 @@ const UsuariosSection = () => {
         )}
       </div>
       {DeleteModal}
+      </>
+      )}
     </div>
   );
 };
 
 // --- Main App ---
 
-export default function App({ onLogout, isAdmin, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userEmail?: string; userPermissions?: Record<string, boolean> }) {
+export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
   const [section, setSection] = useState<Section>("dashboard");
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -9159,7 +9268,13 @@ export default function App({ onLogout, isAdmin, userEmail, userPermissions }: {
           />
         );
       case "usuarios":
-        return isAdmin ? <UsuariosSection /> : <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
+        return (
+          <UsuariosSection
+            isAdmin={isAdmin}
+            userId={userId}
+            userEmail={userEmail}
+          />
+        );
       default:
         return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
     }

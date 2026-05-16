@@ -163,9 +163,21 @@ app.post("/api/admin/users", isAuthenticated, isAdminUser, async (req: any, res)
 app.get("/api/admin/users", isAuthenticated, isAdminUser, async (_req, res) => {
   try {
     const rows = await localUsersService.listAll();
-    res.json(rows.map(u => ({ id: u.id, email: u.email, isAdmin: u.is_admin, createdAt: u.created_at, permissions: u.permissions ?? {} })));
+    res.json(rows.map(u => ({ id: u.id, email: u.email, isAdmin: u.is_admin, createdAt: u.created_at, permissions: u.permissions ?? {}, profile: u.profile ?? {} })));
   } catch (e: any) {
     res.status(500).json({ error: "Erro ao buscar usuários." });
+  }
+});
+
+// PATCH /api/admin/users/:id/profile — update any user's profile (admin only)
+app.patch("/api/admin/users/:id/profile", isAuthenticated, isAdminUser, async (req: any, res) => {
+  try {
+    const { id } = req.params;
+    const { nome, creci, telefone } = req.body;
+    await localUsersService.updateProfile(id, { nome, creci, telefone });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar perfil." });
   }
 });
 
@@ -194,6 +206,30 @@ app.patch("/api/admin/users/:id/permissions", isAuthenticated, isAdminUser, asyn
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Erro ao salvar permissões." });
+  }
+});
+
+// GET /api/auth/profile — get current user's profile
+app.get("/api/auth/profile", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const user = await localUsersService.findById(userId);
+    if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+    res.json(user.profile ?? {});
+  } catch (e: any) {
+    res.status(500).json({ error: "Erro ao buscar perfil." });
+  }
+});
+
+// PATCH /api/auth/profile — update current user's own profile
+app.patch("/api/auth/profile", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const { nome, creci, telefone } = req.body;
+    await localUsersService.updateProfile(userId, { nome, creci, telefone });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar perfil." });
   }
 });
 
