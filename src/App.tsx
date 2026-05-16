@@ -217,6 +217,79 @@ import {
   Pie,
 } from "recharts";
 
+const DELETE_PASSWORD = "Geper3tp@";
+
+function useDeleteConfirm() {
+  const [pending, setPending] = React.useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [inputVal, setInputVal] = React.useState("");
+  const [error, setError] = React.useState(false);
+
+  const request = (message: string, onConfirm: () => void) => {
+    setInputVal("");
+    setError(false);
+    setPending({ message, onConfirm });
+  };
+
+  const confirm = () => {
+    if (inputVal === DELETE_PASSWORD) {
+      pending?.onConfirm();
+      setPending(null);
+      setInputVal("");
+      setError(false);
+    } else {
+      setError(true);
+      setInputVal("");
+    }
+  };
+
+  const cancel = () => {
+    setPending(null);
+    setInputVal("");
+    setError(false);
+  };
+
+  const Modal = pending ? (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+      <div className="bg-white w-full max-w-sm rounded-[24px] shadow-2xl overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+          <div className="p-2.5 bg-red-50 rounded-xl text-red-500">
+            <Trash2 size={20} />
+          </div>
+          <div>
+            <h4 className="font-display font-bold text-slate-800">Confirmar exclusão</h4>
+            <p className="text-[11px] text-slate-400 font-medium">Digite a senha para continuar</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-slate-600">{pending.message}</p>
+          <div>
+            <label className="label">Senha de segurança</label>
+            <input
+              type="password"
+              autoFocus
+              className={`input-field ${error ? "border-red-400 bg-red-50" : ""}`}
+              placeholder="Digite a senha..."
+              value={inputVal}
+              onChange={(e) => { setInputVal(e.target.value); setError(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") confirm(); if (e.key === "Escape") cancel(); }}
+            />
+            {error && <p className="text-xs text-red-500 font-semibold mt-1">Senha incorreta. Tente novamente.</p>}
+          </div>
+        </div>
+        <div className="p-6 border-t border-slate-100 flex gap-3">
+          <button onClick={cancel} className="btn-secondary flex-1">Cancelar</button>
+          <button onClick={confirm} className="flex-1 h-11 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+            <Trash2 size={16} />
+            Excluir
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return { request, Modal };
+}
+
 const exportToCSV = (sales: Venda[]) => {
   const headers = [
     "Contrato",
@@ -290,6 +363,8 @@ const Sidebar = ({
   isAdmin,
   forceDesktop,
   onToggleDesktop,
+  userPermissions,
+  userEmail,
 }: {
   currentSection: Section;
   setSection: (s: Section) => void;
@@ -299,8 +374,10 @@ const Sidebar = ({
   isAdmin?: boolean;
   forceDesktop: boolean;
   onToggleDesktop: () => void;
+  userPermissions?: Record<string, boolean>;
+  userEmail?: string;
 }) => {
-  const mainMenuItems = [
+  const allMenuItems = [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
@@ -311,8 +388,14 @@ const Sidebar = ({
     { id: "calculadora", label: "Calculadora", icon: Calculator },
     ...(isAdmin ? [{ id: "usuarios", label: "Usuários", icon: User }] : []),
   ];
+
+  // Filtra itens de menu por permissão (admin sempre vê tudo)
+  const mainMenuItems = isAdmin
+    ? allMenuItems
+    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
+
   const configItem = { id: "config", label: "Configurações", icon: Settings };
-  const allMenuItems = [...mainMenuItems, configItem];
+  const showConfig = isAdmin || userPermissions?.["config"] !== false;
 
   return (
     <>
@@ -396,7 +479,7 @@ const Sidebar = ({
           </button>
 
           {/* Config */}
-          {(() => {
+          {showConfig && (() => {
             const item = configItem;
             const Icon = item.icon;
             const isActive = currentSection === item.id;
@@ -430,7 +513,14 @@ const Sidebar = ({
           })()}
         </nav>
 
-        <div className="p-6 border-t border-slate-50">
+        <div className="p-6 border-t border-slate-50 space-y-2">
+          {userEmail && (
+            <div className="px-3 py-2 rounded-xl bg-slate-50 mb-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Logado como</p>
+              <p className="text-xs font-bold text-slate-500 truncate">{userEmail}</p>
+              {isAdmin && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Administrador</p>}
+            </div>
+          )}
           <button
             onClick={onLogout}
             className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50"
@@ -1166,7 +1256,7 @@ const EmpreendimentosSection = ({
   onDelete: (id: string) => void;
   onUpdateLotesInfo: (
     id: string,
-    info: Record<string, { rua: string }>,
+    info: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }>,
   ) => void;
   onDeleteLot: (devId: string, key: string) => void;
   onStartSale: (v: Partial<Venda>) => void;
@@ -1184,8 +1274,13 @@ const EmpreendimentosSection = ({
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
-  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "" });
+  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as "disponivel" | "indisponivel" });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "gerenciar">("cadastrar");
+  const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
+  const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
+  const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
+  const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
   const handleSalvarLote = () => {
     if (!lotRegDev || !lotRegForm.quadra || !lotRegForm.numeroLote) {
@@ -1193,9 +1288,15 @@ const EmpreendimentosSection = ({
       return;
     }
     const key = `${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase();
-    onUpdateLotesInfo(lotRegDev.id, { [key]: { rua: lotRegForm.rua } });
-    setLotRegForm({ quadra: "", numeroLote: "", rua: "" });
-    setLotRegDev(null);
+    const existing = lotRegDev.lotesInfo?.[key] || {};
+    onUpdateLotesInfo(lotRegDev.id, { [key]: { ...existing, rua: lotRegForm.rua, status: lotRegForm.status } });
+    setLotRegDev((prev) => {
+      if (!prev) return null;
+      const existingInfo = prev.lotesInfo?.[key] || {};
+      return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } } };
+    });
+    setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
+    setLotRegTab("gerenciar");
   };
 
   const openAddForm = () => {
@@ -1250,7 +1351,7 @@ const EmpreendimentosSection = ({
     try {
       const result = await geminiService.analyzeMap(file);
 
-      const newLotesInfo: Record<string, { rua: string }> = {};
+      const newLotesInfo: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }> = {};
       result.lotes.forEach((item: any) => {
         const key = `${item.quadra}-${item.lote}`.toUpperCase();
         newLotesInfo[key] = { rua: item.rua };
@@ -1682,7 +1783,7 @@ const EmpreendimentosSection = ({
                 <Pencil size={18} />
               </button>
               <button
-                onClick={() => onDelete(dev.id)}
+                onClick={() => requestDelete(`Excluir o empreendimento "${dev.nome}"? Esta ação não pode ser desfeita.`, () => onDelete(dev.id))}
                 className="p-2.5 bg-red-50 text-red-500 rounded-xl hover:bg-red-500 hover:text-white transition-all shadow-sm"
               >
                 <Trash2 size={18} />
@@ -1834,11 +1935,19 @@ const EmpreendimentosSection = ({
                   <span>Dashboard</span>
                 </button>
                 <button
+                  onClick={() => { setBulkAvailDev(dev); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); setBulkAvailTab("marcarIndisponiveis"); }}
+                  className="flex-1 flex items-center justify-center gap-2 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-700 hover:text-white transition-colors"
+                  title="Gerenciar disponibilidade em massa"
+                >
+                  <Settings size={14} />
+                  <span>Disponib.</span>
+                </button>
+                <button
                   onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "" }); }}
                   className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
                 >
                   <Plus size={14} />
-                  <span>Cadastrar Lote</span>
+                  <span>Lote</span>
                 </button>
               </div>
             </div>
@@ -2010,6 +2119,30 @@ const EmpreendimentosSection = ({
                         )}
                       </div>
                     )}
+                    <div>
+                      <label className="label">Disponibilidade</label>
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setLotRegForm({ ...lotRegForm, status: "disponivel" })}
+                          className={`px-5 py-2.5 flex items-center gap-2 transition-colors ${lotRegForm.status === "disponivel" ? "bg-emerald-500 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                        >
+                          <Check size={14} />
+                          Disponível
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLotRegForm({ ...lotRegForm, status: "indisponivel" })}
+                          className={`px-5 py-2.5 flex items-center gap-2 transition-colors ${lotRegForm.status === "indisponivel" ? "bg-slate-700 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                        >
+                          <X size={14} />
+                          Indisponível
+                        </button>
+                      </div>
+                      {lotRegForm.status === "indisponivel" && (
+                        <p className="text-[10px] text-slate-400 mt-2">Este lote não aparecerá como disponível para venda no dashboard.</p>
+                      )}
+                    </div>
                   </div>
                   <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
                     <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
@@ -2036,7 +2169,7 @@ const EmpreendimentosSection = ({
                           <tr>
                             <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
                             <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
-                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Rua</th>
+                            <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
                             <th className="text-left px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
                             <th className="px-4 py-3" />
                           </tr>
@@ -2052,39 +2185,129 @@ const EmpreendimentosSection = ({
                                   s.quadra.toUpperCase() === quadra &&
                                   s.numeroLote === lote
                               );
+                              const isIndisponivel = info.status === "indisponivel";
+                              const temDesistente = !!(info as any).desistente;
                               return (
-                                <tr key={key} className="border-t border-slate-50 hover:bg-slate-50/50 transition-colors">
+                                <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
                                   <td className="px-4 py-3">
                                     <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
                                   </td>
                                   <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
-                                  <td className="px-4 py-3 text-slate-500 text-xs max-w-[120px] truncate">{info.rua || <span className="italic text-slate-300">sem rua</span>}</td>
-                                  <td className="px-4 py-3 text-xs">
+                                  <td className="px-4 py-3">
                                     {venda ? (
-                                      <span className="text-red-600 font-bold flex items-center gap-1">
+                                      <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
+                                    ) : isIndisponivel ? (
+                                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Indisponível</span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs max-w-[130px]">
+                                    {venda ? (
+                                      <span className="text-red-600 font-bold flex items-center gap-1 truncate">
                                         <User size={11} />
                                         {venda.clienteNome.split(" ")[0]}
                                       </span>
+                                    ) : temDesistente ? (
+                                      <div>
+                                        <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
+                                          <AlertCircle size={11} />
+                                          {(info as any).desistente.clienteNome.split(" ")[0]}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400">Desistente</span>
+                                      </div>
                                     ) : (
-                                      <span className="text-green-600 text-[10px] font-bold">Disponível</span>
+                                      <span className="text-slate-300 italic text-[10px]">—</span>
                                     )}
                                   </td>
                                   <td className="px-4 py-3">
                                     <div className="flex items-center justify-end gap-1">
+                                      {/* Botão editar */}
                                       <button
                                         onClick={() => {
-                                          setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "" });
+                                          setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (info.status as any) || "disponivel" });
                                           setLotRegTab("cadastrar");
                                         }}
                                         className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
-                                        title="Editar"
+                                        title="Editar lote"
                                       >
                                         <Pencil size={13} />
                                       </button>
+                                      {/* Botão alternar disponibilidade (só sem venda ativa) */}
                                       {!venda && (
                                         <button
                                           onClick={() => {
-                                            if (confirm(`Remover lote ${key}?`)) {
+                                            const novoStatus = isIndisponivel ? "disponivel" : "indisponivel";
+                                            onUpdateLotesInfo(lotRegDev.id, { [key]: { ...(info as any), status: novoStatus } });
+                                            setLotRegDev((prev) => {
+                                              if (!prev) return null;
+                                              return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...(info as any), status: novoStatus } } };
+                                            });
+                                          }}
+                                          className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
+                                          title={isIndisponivel ? "Marcar como disponível" : "Marcar como indisponível"}
+                                        >
+                                          {isIndisponivel ? <Check size={13} /> : <X size={13} />}
+                                        </button>
+                                      )}
+                                      {/* Botão desistência — desvincular cliente mantendo histórico */}
+                                      {venda && (
+                                        <button
+                                          onClick={() => {
+                                            requestDelete(
+                                              `Desvincular ${venda.clienteNome} do lote ${key}? A venda será cancelada e o lote ficará disponível. O cliente permanece no sistema.`,
+                                              () => {
+                                                // Salva desistente no lotesInfo
+                                                const infoAtualizada = {
+                                                  ...(info as any),
+                                                  status: "disponivel",
+                                                  desistente: {
+                                                    clienteId: venda.clienteId,
+                                                    clienteNome: venda.clienteNome,
+                                                    dataDesistencia: new Date().toISOString().split("T")[0],
+                                                  }
+                                                };
+                                                onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+                                                setLotRegDev((prev) => {
+                                                  if (!prev) return null;
+                                                  return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
+                                                });
+                                                // Cancela a venda (status cancelado)
+                                                const updatedSales = sales.map((s) => s.id === venda.id ? { ...s, status: "cancelado" as const } : s);
+                                                // Chama update via prop — acessa window temporariamente
+                                                (window as any).__onCancelVenda?.(venda.id);
+                                              }
+                                            );
+                                          }}
+                                          className="p-1.5 hover:bg-amber-50 text-amber-500 rounded-lg transition-colors"
+                                          title="Desvincular cliente do lote (lote ficará disponível)"
+                                        >
+                                          <ArrowLeft size={13} />
+                                        </button>
+                                      )}
+                                      {/* Limpar histórico de desistente */}
+                                      {temDesistente && !venda && (
+                                        <button
+                                          onClick={() => {
+                                            const infoAtualizada = { ...(info as any) };
+                                            delete infoAtualizada.desistente;
+                                            onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+                                            setLotRegDev((prev) => {
+                                              if (!prev) return null;
+                                              return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
+                                            });
+                                          }}
+                                          className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
+                                          title="Limpar histórico de desistência"
+                                        >
+                                          <RefreshCw size={13} />
+                                        </button>
+                                      )}
+                                      {/* Botão remover (só sem venda e sem desistente) */}
+                                      {!venda && !temDesistente && (
+                                        <button
+                                          onClick={() => {
+                                            requestDelete(`Remover lote ${key}?`, () => {
                                               onDeleteLot(lotRegDev.id, key);
                                               setLotRegDev((prev) => {
                                                 if (!prev) return null;
@@ -2092,10 +2315,10 @@ const EmpreendimentosSection = ({
                                                 delete newInfo[key];
                                                 return { ...prev, lotesInfo: newInfo };
                                               });
-                                            }
+                                            });
                                           }}
                                           className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
-                                          title="Remover"
+                                          title="Remover lote"
                                         >
                                           <Trash2 size={13} />
                                         </button>
@@ -2125,6 +2348,211 @@ const EmpreendimentosSection = ({
           </div>
         )}
       </AnimatePresence>
+      {/* Modal: Gerenciar Disponibilidade em Massa */}
+      <AnimatePresence>
+        {bulkAvailDev && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-700 rounded-xl text-white">
+                    <Settings size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Disponibilidade em Massa</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{bulkAvailDev.nome}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100">
+                <button
+                  onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-b-2 border-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                  <X size={14} />
+                  Marcar Indisponíveis
+                </button>
+                <button
+                  onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 flex items-center justify-center gap-2 py-3 text-xs font-bold uppercase tracking-widest transition-colors ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                  <Check size={14} />
+                  Definir Disponíveis
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {(() => {
+                  const quadraList = (bulkAvailDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                  if (quadraList.length === 0) {
+                    return <p className="text-slate-400 text-sm text-center py-8">Nenhuma quadra configurada neste empreendimento.</p>;
+                  }
+
+                  if (bulkAvailTab === "marcarIndisponiveis") {
+                    return (
+                      <div className="space-y-4">
+                        <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                          <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
+                          <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            <button
+                              onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
+                              className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                            >
+                              {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {quadraList.map(q => {
+                              const isSelected = bulkSelectedQuadras.includes(q);
+                              const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                              return (
+                                <button
+                                  key={q}
+                                  onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                  className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-slate-700 text-white border-slate-700 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
+                                >
+                                  <span>Q.{q}</span>
+                                  {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-slate-300" : "text-slate-400"}`}>{lotes.length} lotes</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {bulkSelectedQuadras.length > 0 && (
+                            <p className="mt-3 text-xs text-slate-500 font-medium">
+                              {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? 's' : ''} selecionada{bulkSelectedQuadras.length > 1 ? 's' : ''} → todos os lotes disponíveis serão bloqueados.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Tab: Definir disponíveis por quadra (lotes específicos separados por vírgula)
+                  return (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                        <p className="font-bold mb-1">ℹ️ Como funciona</p>
+                        <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>. Lotes com venda ativa não são alterados.</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
+                        <div className="space-y-3">
+                          {quadraList.map(q => {
+                            const isSelected = bulkSelectedQuadras.includes(q);
+                            const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                            return (
+                              <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? "border-emerald-300" : "border-slate-100"}`}>
+                                <button
+                                  onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                  className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"}`}>
+                                      {isSelected && <Check size={10} />}
+                                    </span>
+                                    Quadra {q}
+                                  </span>
+                                  {lotes.length > 0 && <span className="text-[9px] text-slate-400">{lotes.length} lotes configurados</span>}
+                                </button>
+                                {isSelected && (
+                                  <div className="px-4 py-3 bg-white space-y-2">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                      Lotes disponíveis (separados por vírgula)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="input-field text-sm font-bold w-full"
+                                      placeholder="Ex: 1, 3, 5, 10, 15"
+                                      value={bulkLotesEspecificos[q] ?? ""}
+                                      onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                    />
+                                    {bulkLotesEspecificos[q]?.trim() && (
+                                      <p className="text-[10px] text-emerald-600 font-bold">
+                                        Disponíveis: {bulkLotesEspecificos[q].split(",").map(s => s.trim()).filter(Boolean).join(", ")}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  disabled={bulkSelectedQuadras.length === 0}
+                  onClick={() => {
+                    if (!bulkAvailDev) return;
+                    const quadraList = (bulkAvailDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                    const vendas = sales.filter(s => s.empreendimentoId === bulkAvailDev.id);
+                    const newLotesInfo: Record<string, any> = { ...(bulkAvailDev.lotesInfo || {}) };
+
+                    if (bulkAvailTab === "marcarIndisponiveis") {
+                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como indisponíveis
+                      bulkSelectedQuadras.forEach(q => {
+                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                        lotes.forEach(l => {
+                          const key = `${q}-${l}`.toUpperCase();
+                          const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                          if (!temVendaAtiva) {
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                          }
+                        });
+                      });
+                    } else {
+                      // Para cada quadra com lotes específicos informados, marcar os informados como disponíveis e os demais como indisponíveis
+                      bulkSelectedQuadras.forEach(q => {
+                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                        const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                        lotes.forEach(l => {
+                          const key = `${q}-${l}`.toUpperCase();
+                          const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                          if (!temVendaAtiva) {
+                            const isDisponivel = disponiveis.includes(l);
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: isDisponivel ? "disponivel" : "indisponivel" };
+                          }
+                        });
+                      });
+                    }
+
+                    onUpdateLotesInfo(bulkAvailDev.id, newLotesInfo);
+                    setBulkAvailDev(null);
+                    setBulkSelectedQuadras([]);
+                    setBulkLotesEspecificos({});
+                  }}
+                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                >
+                  {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
+                  {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {DeleteModal}
     </div>
   );
 };
@@ -3836,7 +4264,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     }
                   />
                 </div>
-                <div>
+                <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
                   <label className="label">Entrada</label>
                   <input
                     type="number"
@@ -3877,6 +4305,69 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     </button>
                   </div>
                 </div>
+
+                {/* Modo de pagamento à vista */}
+                {tipoVenda === 'avista' && (
+                  <div className="sm:col-span-2">
+                    <label className="label">Modo de Pagamento</label>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        {
+                          value: 'dinheiro', label: 'Dinheiro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><circle cx="12" cy="16" r="2"/></svg>
+                        },
+                        {
+                          value: 'pix', label: 'PIX',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        },
+                        {
+                          value: 'cheque', label: 'Cheque',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+                        },
+                        {
+                          value: 'permuta', label: 'Permuta',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l5.1 5.1"/><path d="M4 4l5 5"/></svg>
+                        },
+                        {
+                          value: 'outro', label: 'Outro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        },
+                      ].map((modo) => (
+                        <button
+                          key={modo.value}
+                          type="button"
+                          onClick={() => setSaleData({ ...saleData, modoAvista: modo.value as any })}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                            saleData.modoAvista === modo.value
+                              ? 'bg-primary-main text-white shadow-lg shadow-primary-main/30'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {modo.icon}
+                          {modo.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Campo de descrição para Permuta ou Outro */}
+                    {(saleData.modoAvista === 'permuta' || saleData.modoAvista === 'outro') && (
+                      <div className="mt-4">
+                        <label className="label">
+                          {saleData.modoAvista === 'permuta' ? 'Descrição do bem (ex: Carro Gol 2015)' : 'Descreva a forma de pagamento'}
+                        </label>
+                        <textarea
+                          className="input-field min-h-[80px] resize-none"
+                          placeholder={saleData.modoAvista === 'permuta' 
+                            ? 'Ex: Carro Fiat Uno 2010, avaliado em R$ 15.000,00'
+                            : 'Ex: Metade em dinheiro, metade em cheque'
+                          }
+                          value={saleData.descricaoAvista || ''}
+                          onChange={(e) => setSaleData({ ...saleData, descricaoAvista: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {tipoVenda === 'parcelado' && (<>
                 <div>
@@ -3984,22 +4475,22 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                   )}
 
                   <div className="grid grid-cols-2 gap-4">
+                    {tipoVenda !== 'avista' && (
                     <div className="space-y-1">
                       <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
-                        {tipoVenda === 'avista' ? 'Entrada' : 'Saldo Financiado'}
+                        Saldo Financiado
                       </p>
                       <p className="font-display font-bold text-slate-700">
                         {new Intl.NumberFormat("pt-BR", {
                           style: "currency",
                           currency: "BRL",
                         }).format(
-                          tipoVenda === 'avista'
-                            ? (saleData.valorEntrada || 0)
-                            : (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
+                          (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
                         )}
                       </p>
                     </div>
-                    <div className="space-y-1 text-right">
+                    )}
+                    <div className={`space-y-1 ${tipoVenda !== 'avista' ? 'text-right' : 'col-span-2'}`}>
                       <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
                         Total Líquido
                       </p>
@@ -4097,6 +4588,7 @@ const ContratosSection = ({
   const [novoCliente, setNovoCliente] = useState<Partial<Cliente>>({
     genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro",
   });
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
   const emptyContrato = {
     empreendimentoId: "", quadra: "", numeroLote: "", rua: "",
     valorLote: 0, valorEntrada: 0, quantidadeParcelas: 1, valorParcela: 0,
@@ -4143,7 +4635,6 @@ const ContratosSection = ({
     medidaFrente: "", medidaLateralDir: "", medidaLateralEsq: "", medidaFundos: "", areaTotal: "",
   });
   const [gerarEmp, setGerarEmp] = useState({ nome: "", comunidade: "", cidade: "", estado: "" });
-  const [gerarSalvarProp, setGerarSalvarProp] = useState(false);
   const [fetchingCep, setFetchingCep] = useState(false);
 
   const fetchCepGerar = async (cep: string) => {
@@ -4188,7 +4679,6 @@ const ContratosSection = ({
       medidaFundos: selectedVenda.medidaFundos || "",
       areaTotal: selectedVenda.areaTotal || "",
     });
-    setGerarSalvarProp(false);
     setShowGerarModal(true);
   };
 
@@ -4221,16 +4711,17 @@ const ContratosSection = ({
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
-    if (gerarSalvarProp && gerarProprietarioId && onUpdateProprietario) {
-      const prop = proprietarios.find((p) => p.id === gerarProprietarioId);
-      if (prop) {
-        onUpdateProprietario({ ...prop, nome: gerarVendedor.nome, rg: gerarVendedor.rg, cpf: gerarVendedor.cpf, endereco: gerarVendedor.endereco, numero: gerarVendedor.numero, bairro: gerarVendedor.bairro, cidade: gerarVendedor.cidade, estado: gerarVendedor.estado, cep: gerarVendedor.cep, nacionalidade: gerarVendedor.nacionalidade, estadoCivil: gerarVendedor.estadoCivil });
-      }
-    }
+
     setShowGerarModal(false);
     setDownloadingDocx(true);
+    
+    // Determina qual endpoint usar baseado no tipo de contrato
+    const endpoint = tipoContrato === 'avista' 
+      ? "/api/contrato/avista-padrao" 
+      : "/api/contrato/parcelado-padrao";
+    
     try {
-      const res = await fetch("/api/contrato/parcelado-padrao", {
+      const res = await fetch(endpoint, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -4392,31 +4883,95 @@ const ContratosSection = ({
   };
 
   const buildReciboPopupHTML = () => {
-    if (!reciboRef.current) throw new Error('Recibo não encontrado.');
-    const headLinks = Array.from(document.querySelectorAll('link[rel="stylesheet"], style'))
-      .map(el => el.outerHTML).join('\n');
-    const bodyContent = reciboRef.current.outerHTML;
+    if (!selectedVenda) throw new Error('Venda não encontrada.');
+    const clienteNome = selectedVenda.clienteNome || '___________________________';
+    const clienteCpf = client?.cpf || '___.___.___-__';
+    const empreendimento = selectedVenda.empreendimentoNome || '';
+    const quadra = selectedVenda.quadra || '';
+    const lote = selectedVenda.numeroLote || '';
+    const rua = selectedVenda.rua || '';
+    const vendedor = selectedVenda.vendedor || '___________________________';
+    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(selectedVenda.valorEntrada || 0);
+    const dataFormatada = new Date(selectedVenda.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
     return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="UTF-8">
   <title>Recibo</title>
-  ${headLinks}
   <style>
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; box-sizing: border-box; }
-    html, body { background: #ffffff; margin: 0; padding: 0; }
-    #recibo-root { padding: 24px; background: #ffffff; }
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, Helvetica, sans-serif; }
+    #recibo-root { padding: 32px; background: #ffffff; max-width: 21cm; margin: 0 auto; }
+    .recibo-card { background: #ffffff; padding: 64px; border: 1px solid #e2e8f0; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0f172a; padding-bottom: 32px; margin-bottom: 48px; }
+    .titulo { font-size: 36px; font-weight: 900; font-style: italic; letter-spacing: -1px; color: #0f172a; margin: 0; }
+    .subtitulo { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin: 4px 0 0 0; }
+    .valor-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; text-align: right; }
+    .valor-box { background: #0f172a; color: #ffffff; font-size: 28px; font-weight: 700; padding: 8px 20px; border-radius: 12px; }
+    .corpo { font-size: 18px; line-height: 2; margin-bottom: 32px; text-align: justify; color: #1e293b; }
+    .destaque { font-weight: 700; text-transform: uppercase; text-decoration: underline; text-underline-offset: 4px; }
+    .negrito { font-weight: 700; }
+    .italico { font-weight: 700; font-style: italic; }
+    .imovel-box { background: #f8fafc; border: 2px dashed #e2e8f0; border-radius: 24px; padding: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    .imovel-col-full { grid-column: 1 / -1; }
+    .label-sm { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .valor-item { font-weight: 700; color: #1e293b; font-size: 16px; }
+    .obs { font-size: 13px; font-style: italic; color: #64748b; margin-bottom: 32px; }
+    .rodape { margin-top: 80px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
+    .data-texto { font-size: 14px; font-weight: 700; color: #1e293b; }
+    .assinatura { width: 240px; text-align: center; }
+    .linha-assinatura { height: 1px; background: #0f172a; margin-bottom: 8px; }
+    .assinatura-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .assinatura-nome { font-weight: 700; color: #0f172a; font-size: 14px; }
   </style>
 </head>
 <body>
-  <div id="recibo-root">${bodyContent}</div>
+  <div id="recibo-root">
+    <div class="recibo-card">
+      <div class="header">
+        <div>
+          <p class="titulo">RECIBO</p>
+          <p class="subtitulo">Instrumento de Quitação de Valores</p>
+        </div>
+        <div>
+          <p class="valor-label">Valor do Recibo</p>
+          <p class="valor-box">${valor}</p>
+        </div>
+      </div>
+      <p class="corpo">
+        Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)</span> para aquisição do imóvel:
+      </p>
+      <div class="imovel-box">
+        <div>
+          <p class="label-sm">Empreendimento</p>
+          <p class="valor-item">${empreendimento}</p>
+        </div>
+        <div>
+          <p class="label-sm">Localização</p>
+          <p class="valor-item">Q:${quadra} / L:${lote}</p>
+        </div>
+        ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
+      </div>
+      <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
+      <div class="rodape">
+        <div>
+          <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
+        </div>
+        <div class="assinatura">
+          <div class="linha-assinatura"></div>
+          <p class="assinatura-label">Assinatura do Vendedor</p>
+          <p class="assinatura-nome">${vendedor}</p>
+        </div>
+      </div>
+    </div>
+  </div>
 </body>
 </html>`;
   };
 
   const openReciboPopup = (): Promise<Window> => {
     return new Promise((resolve, reject) => {
-      if (!reciboRef.current) { reject(new Error('Recibo não encontrado.')); return; }
+      if (!selectedVenda) { reject(new Error('Venda não encontrada.')); return; }
       const popup = window.open('', '_blank', 'width=900,height=1200,left=-10000,top=-10000,toolbar=no,scrollbars=no,menubar=no,status=no');
       if (!popup) { reject(new Error('Popup bloqueado. Permita popups neste site.')); return; }
       popup.document.open();
@@ -4471,8 +5026,8 @@ const ContratosSection = ({
   };
 
   const handleDownloadImage = async () => {
-    if (!reciboRef.current) {
-      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
       return;
     }
     setReciboDownloading('img');
@@ -4495,8 +5050,8 @@ const ContratosSection = ({
   };
 
   const handleDownloadPdf = async () => {
-    if (!reciboRef.current) {
-      alert('Recibo ainda não foi renderizado. Aguarde um momento e tente novamente.');
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
       return;
     }
     setReciboDownloading('pdf');
@@ -5195,7 +5750,7 @@ const ContratosSection = ({
                     <span className="text-[9px] font-bold uppercase">Editar</span>
                   </button>
                   <button
-                    onClick={() => { if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) { onDeleteVenda(venda.id); } }}
+                    onClick={() => requestDelete(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
                     className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
                   >
                     <Trash2 size={20} />
@@ -5264,7 +5819,7 @@ const ContratosSection = ({
                           <Pencil size={18} />
                         </button>
                         <button
-                          onClick={() => { if (window.confirm(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`)) { onDeleteVenda(venda.id); } }}
+                          onClick={() => requestDelete(`Excluir contrato de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
                           className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
                           title="Excluir contrato"
                         >
@@ -5636,12 +6191,7 @@ const ContratosSection = ({
                       Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.
                     </p>
                   )}
-                  {gerarProprietarioId && onUpdateProprietario && (
-                    <label className="flex items-center gap-2 mt-2 cursor-pointer">
-                      <input type="checkbox" className="rounded" checked={gerarSalvarProp} onChange={(e) => setGerarSalvarProp(e.target.checked)} />
-                      <span className="text-xs font-semibold text-slate-600">Salvar alterações neste proprietário</span>
-                    </label>
-                  )}
+
                 </div>
 
                 {/* Dados do Vendedor / Proprietário */}
@@ -5782,6 +6332,7 @@ const ContratosSection = ({
           </div>
         )}
       </AnimatePresence>
+      {DeleteModal}
     </div>
   );
 };
@@ -6351,6 +6902,7 @@ const ConfigSection = ({
   const [migrateMsg, setMigrateMsg] = useState('');
   const [showVendedorForm, setShowVendedorForm] = useState(false);
   const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
   const emptyVendedor: Omit<Vendedor, "id"> = {
     nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
@@ -6377,11 +6929,12 @@ const ConfigSection = ({
   };
 
   const handleDeleteVendedor = (id: string) => {
-    if (!confirm("Remover este vendedor?")) return;
-    const updated = (formData.vendedores || []).filter((v) => v.id !== id);
-    const newFormData = { ...formData, vendedores: updated };
-    setFormData(newFormData);
-    onSave(newFormData);
+    requestDelete("Remover este vendedor?", () => {
+      const updated = (formData.vendedores || []).filter((v) => v.id !== id);
+      const newFormData = { ...formData, vendedores: updated };
+      setFormData(newFormData);
+      onSave(newFormData);
+    });
   };
 
   const handleMigrate = async () => {
@@ -6612,6 +7165,7 @@ const ConfigSection = ({
           )}
         </button>
       </div>
+      {DeleteModal}
     </div>
   );
 };
@@ -6870,6 +7424,7 @@ const ProprietariosSection = ({
   const [cpfErr, setCpfErr] = useState<string | null>(null);
   const [fetchingCep, setFetchingCep] = useState(false);
   const propFormRef = useRef<HTMLDivElement>(null);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
   const buscarCEPProp = async (cep: string) => {
     const clean = cep.replace(/\D/g, "");
@@ -6915,8 +7470,9 @@ const ProprietariosSection = ({
   };
 
   const handleDelete = (id: string) => {
-    if (!confirm("Remover este proprietário?")) return;
-    onSave({ ...config, proprietarios: proprietarios.filter((p) => p.id !== id) });
+    requestDelete("Remover este proprietário?", () => {
+      onSave({ ...config, proprietarios: proprietarios.filter((p) => p.id !== id) });
+    });
   };
 
   return (
@@ -7087,6 +7643,7 @@ const ProprietariosSection = ({
           </motion.div>
         ))}
       </div>
+      {DeleteModal}
     </div>
   );
 };
@@ -7094,13 +7651,32 @@ const ProprietariosSection = ({
 // --- Usuários Section (admin only) ---
 
 const UsuariosSection = () => {
-  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string }[]>([]);
+  const SECTION_LABELS: Record<string, string> = {
+    dashboard: "Dashboard",
+    vendas: "Nova Venda",
+    empreendimentos: "Empreendimentos",
+    proprietarios: "Proprietários",
+    contratos: "Contratos",
+    clientes: "Clientes",
+    aniversarios: "Aniversários",
+    calculadora: "Calculadora",
+    config: "Configurações",
+    usuarios: "Usuários",
+  };
+
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
+
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean> }[]>([]);
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [editingPermUser, setEditingPermUser] = useState<string | null>(null);
+  const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
+  const [savingPerms, setSavingPerms] = useState(false);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
   const loadUsers = async () => {
     setLoading(true);
@@ -7120,13 +7696,23 @@ const UsuariosSection = () => {
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/auth/register", {
+      const res = await fetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: newEmail, password: newPassword }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erro ao criar usuário.");
+      // Salvar permissões padrão para o novo usuário
+      const defaultPerms: Record<string, boolean> = {
+        dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
+      };
+      await fetch(`/api/admin/users/${data.id}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: defaultPerms }),
+      });
       setSuccess(`Usuário ${newEmail} criado com sucesso!`);
       setNewEmail("");
       setNewPassword("");
@@ -7139,14 +7725,46 @@ const UsuariosSection = () => {
   };
 
   const handleDelete = async (id: string, email: string) => {
-    if (!confirm(`Excluir o usuário ${email}? Esta ação não pode ser desfeita.`)) return;
+    requestDelete(`Excluir o usuário ${email}? Esta ação não pode ser desfeita.`, async () => {
+      try {
+        const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        await loadUsers();
+      } catch (err: any) {
+        alert(err.message);
+      }
+    });
+  };
+
+  const handleOpenPerms = (u: typeof users[0]) => {
+    const defaults: Record<string, boolean> = {
+      dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false,
+    };
+    // Se o usuário já tem permissões salvas, usa elas; senão usa os defaults
+    const saved = u.permissions && Object.keys(u.permissions).length > 0 ? u.permissions : defaults;
+    setPendingPerms(saved);
+    setEditingPermUser(u.id);
+  };
+
+  const handleSavePerms = async () => {
+    if (!editingPermUser) return;
+    setSavingPerms(true);
     try {
-      const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/admin/users/${editingPermUser}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: pendingPerms }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       await loadUsers();
+      setEditingPermUser(null);
     } catch (err: any) {
       alert(err.message);
+    } finally {
+      setSavingPerms(false);
     }
   };
 
@@ -7183,12 +7801,8 @@ const UsuariosSection = () => {
               />
             </div>
           </div>
-          {error && (
-            <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>
-          )}
-          {success && (
-            <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>
-          )}
+          {error && <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>}
+          {success && <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>}
           <button
             type="submit"
             disabled={creating}
@@ -7199,9 +7813,9 @@ const UsuariosSection = () => {
         </form>
       </div>
 
-      {/* User list card */}
-      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle">
-        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400 mb-6">
+      {/* User list */}
+      <div className="bg-surface-card rounded-3xl p-8 shadow-sm border border-border-subtle space-y-4">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
           Usuários Cadastrados
         </h2>
         {loading ? (
@@ -7209,34 +7823,100 @@ const UsuariosSection = () => {
         ) : (
           <div className="space-y-3">
             {users.map((u) => (
-              <div key={u.id} className="flex items-center justify-between p-4 rounded-2xl bg-surface-bg border border-border-subtle">
-                <div>
-                  <p className="text-sm font-bold text-slate-700">{u.email}</p>
-                  <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
-                    {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
-                  </p>
+              <div key={u.id} className="rounded-2xl border border-border-subtle overflow-hidden">
+                <div className="flex items-center justify-between p-4 bg-surface-bg">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold text-slate-700 truncate">{u.email}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
+                      {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 ml-3 flex-none">
+                    {!u.isAdmin && (
+                      <>
+                        <button
+                          onClick={() => editingPermUser === u.id ? setEditingPermUser(null) : handleOpenPerms(u)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingPermUser === u.id ? "bg-primary-main text-white" : "bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-white"}`}
+                        >
+                          <Settings size={12} />
+                          Permissões
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u.id, u.email)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          title="Excluir usuário"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                    {u.isAdmin && (
+                      <span className="text-[10px] font-black px-3 py-1.5 bg-amber-50 text-amber-600 rounded-xl uppercase tracking-widest">
+                        Acesso Total
+                      </span>
+                    )}
+                  </div>
                 </div>
-                {!u.isAdmin && (
-                  <button
-                    onClick={() => handleDelete(u.id, u.email)}
-                    className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
-                    title="Excluir usuário"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
+
+                {/* Permissions panel */}
+                <AnimatePresence>
+                  {editingPermUser === u.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 border-t border-border-subtle bg-white space-y-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {ALL_SECTIONS_LIST.map((sec) => {
+                            const enabled = pendingPerms[sec] ?? false;
+                            return (
+                              <button
+                                key={sec}
+                                type="button"
+                                onClick={() => setPendingPerms(prev => ({ ...prev, [sec]: !enabled }))}
+                                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${enabled ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"}`}
+                              >
+                                <div className={`w-4 h-4 rounded flex items-center justify-center flex-none transition-all ${enabled ? "bg-primary-main text-white" : "border-2 border-slate-300"}`}>
+                                  {enabled && <Check size={10} />}
+                                </div>
+                                {SECTION_LABELS[sec]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-end gap-3 pt-1">
+                          <button onClick={() => setEditingPermUser(null)} className="btn-secondary px-5 py-2 text-xs">Cancelar</button>
+                          <button
+                            onClick={handleSavePerms}
+                            disabled={savingPerms}
+                            className="btn-primary px-6 py-2 text-xs flex items-center gap-2"
+                          >
+                            {savingPerms ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                            Salvar Permissões
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             ))}
           </div>
         )}
       </div>
+      {DeleteModal}
     </div>
   );
 };
 
 // --- Main App ---
 
-export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAdmin?: boolean }) {
+export default function App({ onLogout, isAdmin, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userEmail?: string; userPermissions?: Record<string, boolean> }) {
   const [section, setSection] = useState<Section>("dashboard");
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
@@ -7292,7 +7972,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
         const anyFailed = results.some(r => r.status === 'rejected');
         if (anyFailed) {
           const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
-          alert('Erro ao carregar dados:\n' + JSON.stringify(firstErr.reason));
+          alert('Erro ao conectar ao Supabase:\n' + JSON.stringify(firstErr.reason));
         }
 
         setIsLoaded(true);
@@ -7376,7 +8056,7 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
 
   const updateLotesInfo = (
     id: string,
-    info: Record<string, { rua: string }>,
+    info: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }>,
   ) => {
     const updated = developments.map((d) =>
       d.id === id
@@ -7601,13 +8281,19 @@ export default function App({ onLogout, isAdmin }: { onLogout?: () => void; isAd
     <div className="min-h-screen bg-surface-bg flex">
       <Sidebar
         currentSection={section}
-        setSection={setSection}
+        setSection={(s) => {
+          // Só navega se tiver permissão
+          if (userPermissions && !userPermissions[s] && !isAdmin) return;
+          setSection(s);
+        }}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
         onLogout={onLogout}
         isAdmin={isAdmin}
         forceDesktop={forceDesktop}
         onToggleDesktop={toggleDesktop}
+        userPermissions={userPermissions}
+        userEmail={userEmail}
       />
 
       <main className={`flex-1 ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>

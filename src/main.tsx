@@ -1,94 +1,227 @@
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
-import "./index.css";
 import App from "./App";
 import { LoginScreen, SetupScreen } from "./auth";
-import { setAuthToken } from "./dbService";
+import "./index.css";
 
-type AuthState = "loading" | "setup" | "login" | "authenticated";
+// Seções disponíveis no sistema
+export const ALL_SECTIONS = [
+  "dashboard",
+  "vendas",
+  "empreendimentos",
+  "proprietarios",
+  "contratos",
+  "clientes",
+  "aniversarios",
+  "calculadora",
+  "config",
+  "usuarios",
+] as const;
+
+// Permissões padrão para usuários não-admin
+export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
+  dashboard: true,
+  vendas: true,
+  empreendimentos: false,
+  proprietarios: false,
+  contratos: true,
+  clientes: true,
+  aniversarios: true,
+  calculadora: true,
+  config: false,
+  usuarios: false,
+};
+
+// ── JWT helpers ───────────────────────────────────────────────────────────────
+const TOKEN_KEY = "rumo_auth_token";
+
+export function getAuthToken(): string | null {
+  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+}
+
+export function setAuthToken(token: string) {
+  try { localStorage.setItem(TOKEN_KEY, token); } catch {}
+}
+
+export function clearAuthToken() {
+  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+}
+
+// authFetch — usa sempre em vez de fetch() para chamadas à API
+export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}): Promise<Response> {
+  const token = getAuthToken();
+  const headers = new Headers(init.headers ?? {});
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
+    headers.set("Content-Type", "application/json");
+  }
+  return fetch(input, { ...init, headers });
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+class ErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  { error: Error | null }
+> {
+  constructor(props: { children: React.ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ padding: 32, fontFamily: "monospace", background: "#fff1f1", minHeight: "100vh" }}>
+          <h2 style={{ color: "#c00", marginBottom: 16 }}>Erro no app — copie e envie para suporte:</h2>
+          <pre style={{ background: "#fff", border: "1px solid #fcc", padding: 16, borderRadius: 8, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {this.state.error.message}
+            {"\n\n"}
+            {this.state.error.stack}
+          </pre>
+          <button
+            onClick={() => this.setState({ error: null })}
+            style={{ marginTop: 16, padding: "8px 24px", background: "#c00", color: "#fff", border: "none", borderRadius: 8, cursor: "pointer" }}
+          >
+            Tentar novamente
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+type AuthState =
+  | { status: "loading" }
+  | { status: "setup" }
+  | { status: "login" }
+  | { status: "authenticated"; isAdmin: boolean; userId: string; email: string; permissions: Record<string, boolean> };
 
 function Root() {
-  const [authState, setAuthState] = useState<AuthState>("loading");
-  const [user, setUser] = useState<{ id: string; email: string; isAdmin: boolean } | null>(null);
+  const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+  const checkAuth = async () => {
+    try {
+      // 1. Verificar se precisa de setup
+      const setupRes = await fetch("/api/auth/setup");
+      if (setupRes.ok) {
+        const { needsSetup } = await setupRes.json();
+        if (needsSetup) {
+          setAuth({ status: "setup" });
+          return;
+        }
+      }
+
+      // 2. Verificar token JWT salvo no localStorage
+      const token = getAuthToken();
+      if (token) {
+        const userRes = await authFetch("/api/auth/user");
+        if (userRes.ok) {
+          const user = await userRes.json();
+          if (user?.id) {
+            setAuth({
+              status: "authenticated",
+              isAdmin: user.isAdmin ?? false,
+              userId: user.id,
+              email: user.email ?? "",
+              permissions: user.permissions ?? {},
+            });
+            return;
+          }
+        }
+        // Token inválido — limpa
+        clearAuthToken();
+      }
+
+      setAuth({ status: "login" });
+    } catch {
+      setAuth({ status: "login" });
+    }
+  };
 
   useEffect(() => {
-    const storedToken = localStorage.getItem("auth_token");
-    if (storedToken) {
-      setAuthToken(storedToken);
-    }
     checkAuth();
   }, []);
 
-  async function checkAuth() {
+  const handleLogin = async (loginData?: any) => {
+    // Salva o token JWT retornado pelo servidor
+    if (loginData?.token) {
+      setAuthToken(loginData.token);
+    }
+    // Busca dados atualizados do usuário
     try {
-      const setupRes = await fetch("/api/auth/setup");
-      const setupData = await setupRes.json();
-      if (setupData.needsSetup) {
-        setAuthState("setup");
-        return;
-      }
-
-      const token = localStorage.getItem("auth_token");
-      if (!token) {
-        setAuthState("login");
-        return;
-      }
-
-      const res = await fetch("/api/auth/user", {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const res = await authFetch("/api/auth/user");
       if (res.ok) {
-        const userData = await res.json();
-        setUser(userData);
-        setAuthState("authenticated");
-      } else {
-        localStorage.removeItem("auth_token");
-        setAuthToken(null);
-        setAuthState("login");
+        const user = await res.json();
+        setAuth({
+          status: "authenticated",
+          isAdmin: user.isAdmin ?? false,
+          userId: user.id,
+          email: user.email ?? "",
+          permissions: user.permissions ?? {},
+        });
+        return;
       }
-    } catch {
-      setAuthState("login");
+    } catch {}
+    // Fallback: usa os dados que vieram do login diretamente
+    if (loginData?.id) {
+      setAuth({
+        status: "authenticated",
+        isAdmin: loginData.isAdmin ?? false,
+        userId: loginData.id,
+        email: loginData.email ?? "",
+        permissions: loginData.permissions ?? {},
+      });
+    } else {
+      setAuth({ status: "login" });
     }
-  }
+  };
 
-  function handleLogin(data: any) {
-    if (data.token) {
-      localStorage.setItem("auth_token", data.token);
-      setAuthToken(data.token);
-    }
-    setUser({ id: data.id, email: data.email, isAdmin: data.isAdmin ?? false });
-    setAuthState("authenticated");
-  }
+  const handleLogout = async () => {
+    try {
+      await authFetch("/api/auth/logout", { method: "POST" });
+    } catch {}
+    clearAuthToken();
+    setAuth({ status: "login" });
+  };
 
-  function handleLogout() {
-    localStorage.removeItem("auth_token");
-    setAuthToken(null);
-    setUser(null);
-    fetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    setAuthState("login");
-  }
-
-  if (authState === "loading") {
+  if (auth.status === "loading") {
     return (
-      <div className="min-h-screen bg-[#1c1c1e] flex items-center justify-center">
-        <div className="w-8 h-8 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+      <div style={{ minHeight: "100vh", background: "#1c1c1e", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.2em", fontSize: 12, textTransform: "uppercase" }}>
+          Carregando...
+        </p>
       </div>
     );
   }
 
-  if (authState === "setup") {
-    return <SetupScreen onSetupComplete={() => setAuthState("login")} />;
+  if (auth.status === "setup") {
+    return <SetupScreen onSetupComplete={() => setAuth({ status: "login" })} />;
   }
 
-  if (authState === "login") {
+  if (auth.status === "login") {
     return <LoginScreen onLogin={handleLogin} />;
   }
 
-  return <App onLogout={handleLogout} isAdmin={user?.isAdmin ?? false} />;
+  // Permissões efetivas
+  const effectivePermissions: Record<string, boolean> = auth.isAdmin
+    ? Object.fromEntries(ALL_SECTIONS.map((s) => [s, true]))
+    : { ...DEFAULT_NON_ADMIN_PERMISSIONS, ...auth.permissions };
+
+  return (
+    <App
+      onLogout={handleLogout}
+      isAdmin={auth.isAdmin}
+      userEmail={auth.email}
+      userPermissions={effectivePermissions}
+    />
+  );
 }
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
-  <React.StrictMode>
+  <ErrorBoundary>
     <Root />
-  </React.StrictMode>
+  </ErrorBoundary>
 );
