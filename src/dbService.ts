@@ -37,32 +37,10 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
 }
 
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
-<<<<<<< HEAD
   await apiFetch('/api/empreendimentos', {
     method: 'POST',
     body: JSON.stringify(items),
   });
-=======
-  _suppressEmpreendimentosCallback = true;
-  try {
-    const toDelete = existing.filter(e => !ids.has(e.id)).map(e => e.id);
-    if (items.length > 0) {
-      const rows = items.map(item => ({ id: item.id, user_id: currentUserId, data: item }));
-      const { error } = await supabase.from('empreendimentos').upsert(rows);
-      if (error) throw error;
-    }
-    const existing = await throwIfError(
-      supabase.from('empreendimentos').select('id').eq('user_id', currentUserId)
-    ) as { id: string }[];
-    const ids = new Set(items.map(i => i.id));
-    if (toDelete.length > 0) {
-      const { error } = await supabase.from('empreendimentos').delete().in('id', toDelete);
-      if (error) throw error;
-    }
-  } finally {
-    setTimeout(() => { _suppressEmpreendimentosCallback = false; }, 1500);
-  }
->>>>>>> cd91ad8caf63df90180a184e9b6770eb977a1796
 }
 
 async function deleteEmpreendimento(id: string): Promise<void> {
