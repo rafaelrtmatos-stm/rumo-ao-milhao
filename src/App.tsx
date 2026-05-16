@@ -392,10 +392,10 @@ const Sidebar = ({
   // Filtra itens de menu por permissão (admin sempre vê tudo)
   const mainMenuItems = isAdmin
     ? allMenuItems
-    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
+    : allMenuItems.filter((item) => userPermissions?.[item.id] === true);
 
   const configItem = { id: "config", label: "Configurações", icon: Settings };
-  const showConfig = isAdmin || userPermissions?.["config"] !== false;
+  const showConfig = isAdmin || userPermissions?.["config"] === true;
 
   return (
     <>
