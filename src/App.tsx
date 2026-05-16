@@ -4927,6 +4927,10 @@ const ContratosSection = ({
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [empFilter, setEmpFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc">("data_desc");
   const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -5412,20 +5416,40 @@ const ContratosSection = ({
     ? developments.find((d) => d.id === selectedVenda.empreendimentoId)
     : null;
 
-  const filteredSales = sales.filter((venda) => {
-    const query = searchTerm.toLowerCase();
-    const matchesSearch = !query || (
-      venda.clienteNome.toLowerCase().includes(query) ||
-      venda.empreendimentoNome.toLowerCase().includes(query) ||
-      venda.numeroLote.toLowerCase().includes(query) ||
-      venda.quadra.toLowerCase().includes(query) ||
-      venda.numeroContrato.toLowerCase().includes(query) ||
-      venda.rua?.toLowerCase().includes(query) ||
-      venda.vendedor?.toLowerCase().includes(query)
-    );
-    const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
-    return matchesSearch && matchesCorretor;
-  });
+  const filteredSales = (() => {
+    const normalizeStatus = (s?: string) => {
+      if (!s || s === "pendente" || s === "rascunho") return "rascunho";
+      if (s === "pago" || s === "ativo") return "ativo";
+      return s;
+    };
+    let list = sales.filter((venda) => {
+      const query = searchTerm.toLowerCase();
+      const matchesSearch = !query || (
+        venda.clienteNome.toLowerCase().includes(query) ||
+        venda.empreendimentoNome.toLowerCase().includes(query) ||
+        venda.numeroLote.toLowerCase().includes(query) ||
+        venda.quadra.toLowerCase().includes(query) ||
+        venda.numeroContrato.toLowerCase().includes(query) ||
+        venda.rua?.toLowerCase().includes(query) ||
+        venda.vendedor?.toLowerCase().includes(query)
+      );
+      const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
+      const matchesStatus = !statusFilter || normalizeStatus(venda.status) === statusFilter;
+      const matchesEmp = !empFilter || venda.empreendimentoId === empFilter;
+      const matchesDate = !dateFilter || (venda.dataVenda || "").startsWith(dateFilter);
+      return matchesSearch && matchesCorretor && matchesStatus && matchesEmp && matchesDate;
+    });
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "data_asc": return (a.dataVenda || "").localeCompare(b.dataVenda || "");
+        case "valor_desc": return (b.valorLote || 0) - (a.valorLote || 0);
+        case "valor_asc": return (a.valorLote || 0) - (b.valorLote || 0);
+        case "nome_asc": return a.clienteNome.localeCompare(b.clienteNome, "pt-BR");
+        default: return (b.dataVenda || "").localeCompare(a.dataVenda || "");
+      }
+    });
+    return list;
+  })();
 
   // Ranking de corretores
   const rankingCorretores = (() => {
@@ -5498,8 +5522,11 @@ const ContratosSection = ({
     setShowGerarModal(true);
   };
 
+  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
+
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
+      {/* Header row */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
         <div className="space-y-1">
           <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
@@ -5507,36 +5534,11 @@ const ContratosSection = ({
             Contratos Gerados
           </h3>
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-            {sales.length} emitidos
+            {filteredSales.length} de {sales.length} exibidos
           </p>
         </div>
 
-        <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-          <div className="relative w-full sm:w-72">
-            <Search
-              size={18}
-              className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
-            />
-            <input
-              type="text"
-              placeholder="Pesquisar contratos..."
-              className="w-full h-12 pl-12 pr-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
-          </div>
-          {corretoresUnicos.length > 0 && (
-            <select
-              value={corretorFilter}
-              onChange={(e) => setCorretorFilter(e.target.value)}
-              className="h-12 px-4 bg-white border border-slate-200 rounded-2xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all text-slate-700"
-            >
-              <option value="">Todos os corretores</option>
-              {corretoresUnicos.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
-          )}
+        <div className="flex gap-3 w-full sm:w-auto">
           <button
             onClick={() => setShowRanking(true)}
             className="btn-secondary flex items-center gap-2 h-12 px-5 whitespace-nowrap"
@@ -5552,6 +5554,92 @@ const ContratosSection = ({
             <Plus size={18} />
             Novo Contrato
           </button>
+        </div>
+      </div>
+
+      {/* Filter & Sort bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+        {/* Search */}
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Pesquisar por cliente, empreendimento, lote, corretor..."
+            className="w-full h-10 pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {/* Filters row */}
+        <div className="flex flex-wrap gap-2">
+          {/* Status */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${statusFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+          >
+            <option value="">Todos os status</option>
+            <option value="ativo">Ativo</option>
+            <option value="rascunho">Rascunho</option>
+            <option value="cancelado">Cancelado</option>
+          </select>
+
+          {/* Empreendimento */}
+          {developments.length > 0 && (
+            <select
+              value={empFilter}
+              onChange={(e) => setEmpFilter(e.target.value)}
+              className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${empFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+            >
+              <option value="">Todos os empreendimentos</option>
+              {developments.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
+            </select>
+          )}
+
+          {/* Mês/Ano */}
+          <input
+            type="month"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${dateFilter ? "bg-primary-main text-white border-primary-main [color-scheme:dark]" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+          />
+
+          {/* Corretor */}
+          {corretoresUnicos.length > 0 && (
+            <select
+              value={corretorFilter}
+              onChange={(e) => setCorretorFilter(e.target.value)}
+              className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${corretorFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+            >
+              <option value="">Todos os corretores</option>
+              {corretoresUnicos.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+
+          {/* Ordenação */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="h-9 px-3 rounded-xl text-xs font-bold border bg-slate-50 text-slate-600 border-slate-200 transition-all ml-auto"
+          >
+            <option value="data_desc">Data ↓ (mais recente)</option>
+            <option value="data_asc">Data ↑ (mais antigo)</option>
+            <option value="valor_desc">Valor ↓ (maior)</option>
+            <option value="valor_asc">Valor ↑ (menor)</option>
+            <option value="nome_asc">Nome A–Z</option>
+          </select>
+
+          {/* Limpar filtros */}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); }}
+              className="h-9 px-3 rounded-xl text-xs font-bold border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all flex items-center gap-1"
+            >
+              <X size={12} />
+              Limpar ({activeFilterCount})
+            </button>
+          )}
         </div>
       </div>
 
