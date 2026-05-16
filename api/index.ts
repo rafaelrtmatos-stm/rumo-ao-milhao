@@ -367,4 +367,19 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
   }
 });
 
+
+// Export para Vercel Serverless Functions
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
+// Para desenvolvimento local
+if (process.env.NODE_ENV !== "production") {
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+}
+
+// Export para Vercel Serverless Functions
 export default app;
