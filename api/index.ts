@@ -10,6 +10,7 @@ import {
   appConfig,
 } from "../shared/schema.js";
 import { gerarContratoParceladoPadrao } from "../server/contratoParceladoPadrao.js";
+import { gerarReciboAVistaPadrao } from "../server/reciboAVistaPadrao.js";
 import { localUsersService } from "../server/localUsersService.js";
 
 const app = express();
@@ -367,23 +368,17 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
   }
 });
 
-// Contrato à vista: usa o mesmo template do parcelado com parcelas zeradas
+// Contrato à vista: usa o template do Recibo de Quitação de Compra e Venda
 app.post("/api/contrato/avista-padrao", isAuthenticated, async (req, res) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda)
       return res.status(400).json({ error: "Dados incompletos para gerar o contrato." });
-    // Para à vista, zera parcelas e vencimento
-    const vendaAvista = {
-      ...venda,
-      quantidadeParcelas: 0,
-      valorParcela: 0,
-      dataVencimento: "",
-    };
-    const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda: vendaAvista });
+
+    const buffer = await gerarReciboAVistaPadrao({ vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    const filename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    const filename = `recibo_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.send(buffer);

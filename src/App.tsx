@@ -4845,6 +4845,13 @@ const ContratosSection = ({
     }
   }, [initialVenda]);
 
+  // Sincroniza tipoContrato sempre que selectedVenda mudar
+  useEffect(() => {
+    if (selectedVenda) {
+      setTipoContrato(selectedVenda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
+    }
+  }, [selectedVenda]);
+
   const reciboRef = useRef<HTMLDivElement>(null);
   const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | null>(null);
 
@@ -5742,7 +5749,7 @@ const ContratosSection = ({
                     <span className="text-[9px] font-bold uppercase">Contrato</span>
                   </button>
                   <button
-                    onClick={() => { setSelectedVenda(venda); setViewMode("receipt"); }}
+                    onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
                     className="flex flex-col items-center gap-1 p-3 bg-white text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-white transition-all"
                   >
                     <FileCheck size={20} />
@@ -5811,7 +5818,7 @@ const ContratosSection = ({
                           <FileText size={18} />
                         </button>
                         <button
-                          onClick={() => { setSelectedVenda(venda); setViewMode("receipt"); }}
+                          onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
                           className="p-2.5 bg-surface-card text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-primary-contrast transition-all"
                           title="Recibo"
                         >
