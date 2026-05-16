@@ -158,7 +158,25 @@ const T = {
 
 // ─── Interface de parâmetros ──────────────────────────────────────────────────
 
+function buildCorretorXml(corretor: { nome?: string; creci?: string; telefone?: string }): string {
+  if (!corretor?.nome?.trim()) return "";
+  const xmlEscapeLocal = (s: string) => s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+  const rPr = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+  const rPrB = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+  const center = `<w:pPr><w:jc w:val="center"/></w:pPr>`;
+  const p = (rpr: string, text: string) =>
+    `<w:p>${center}<w:r>${rpr}<w:t xml:space="preserve">${xmlEscapeLocal(text)}</w:t></w:r></w:p>`;
+
+  let xml = `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="400"/></w:pPr></w:p>`;
+  xml += p(rPr, "________________________________________");
+  xml += p(rPrB, corretor.nome.toUpperCase());
+  if (corretor.creci?.trim()) xml += p(rPr, `CRECI: ${corretor.creci.trim()}`);
+  if (corretor.telefone?.trim()) xml += p(rPr, `Tel: ${corretor.telefone.trim()}`);
+  return xml;
+}
+
 export interface ContratoParams {
+  corretor?: { nome?: string; creci?: string; telefone?: string };
   vendedor: {
     nome: string;
     nacionalidade: string;
@@ -326,6 +344,12 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   // ── 6. Fórum e data ──────────────────────────────────────────────────────────
   xml = rep(xml, T.FORUM, forumCidade);
   xml = rep(xml, T.DATA,  dataExtenso(dataVenda));
+
+  // ── Bloco do corretor (recebedor) ────────────────────────────────────────────
+  const corretorXml = buildCorretorXml((params as any).corretor ?? {});
+  if (corretorXml) {
+    xml = xml.replace("<w:sectPr", corretorXml + "<w:sectPr");
+  }
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));

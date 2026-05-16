@@ -534,13 +534,15 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 });
 
 // --- Contrato Parcelado Padrão ---
-app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => {
+app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req: any, res) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda) {
       return res.status(400).json({ error: "Dados incompletos para gerar o contrato." });
     }
-    const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
+    const userRow = await localUsersService.findById(getUserId(req));
+    const corretor = { nome: userRow?.profile?.nome, creci: userRow?.profile?.creci, telefone: userRow?.profile?.telefone };
+    const buffer = await gerarContratoParceladoPadrao({ corretor, vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
     const filename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
@@ -554,13 +556,15 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
 });
 
 // --- Contrato À Vista Padrão (reutiliza o mesmo template com quantidadeParcelas=0) ---
-app.post("/api/contrato/avista-padrao", isAuthenticated, async (req, res) => {
+app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda) {
       return res.status(400).json({ error: "Dados incompletos para gerar o recibo à vista." });
     }
-    const buffer = await gerarReciboAVistaPadrao({ vendedor, cliente, empreendimento, venda });
+    const userRow = await localUsersService.findById(getUserId(req));
+    const corretor = { nome: userRow?.profile?.nome, creci: userRow?.profile?.creci, telefone: userRow?.profile?.telefone };
+    const buffer = await gerarReciboAVistaPadrao({ corretor, vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
     const filename = `recibo_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;

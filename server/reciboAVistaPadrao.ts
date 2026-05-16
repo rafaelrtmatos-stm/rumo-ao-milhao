@@ -89,7 +89,24 @@ function rep(xml: string, search: string, replacement: string): string {
 
 // ─── Interface ───────────────────────────────────────────────────────────────
 
+function buildCorretorXml(corretor: { nome?: string; creci?: string; telefone?: string }): string {
+  if (!corretor?.nome?.trim()) return "";
+  const rPr = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+  const rPrB = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:b/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+  const center = `<w:pPr><w:jc w:val="center"/></w:pPr>`;
+  const p = (rpr: string, text: string) =>
+    `<w:p>${center}<w:r>${rpr}<w:t xml:space="preserve">${xmlEscape(text)}</w:t></w:r></w:p>`;
+
+  let xml = `<w:p><w:pPr><w:jc w:val="center"/><w:spacing w:before="400"/></w:pPr></w:p>`;
+  xml += p(rPr, "________________________________________");
+  xml += p(rPrB, corretor.nome.toUpperCase());
+  if (corretor.creci?.trim()) xml += p(rPr, `CRECI: ${corretor.creci.trim()}`);
+  if (corretor.telefone?.trim()) xml += p(rPr, `Tel: ${corretor.telefone.trim()}`);
+  return xml;
+}
+
 export interface ReciboAVistaParams {
+  corretor?: { nome?: string; creci?: string; telefone?: string };
   vendedor: {
     nome: string;
     nacionalidade: string;
@@ -246,6 +263,12 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "[DIA]", dia);
   xml = rep(xml, "[MES_EXTENSO]", mesExtenso);
   xml = rep(xml, "[ANO]", ano);
+
+  // ── Bloco do corretor (recebedor) ─────────────────────────────────────────
+  const corretorXml = buildCorretorXml(params.corretor ?? {});
+  if (corretorXml) {
+    xml = xml.replace("<w:sectPr", corretorXml + "<w:sectPr");
+  }
 
   // ── Reempacotar ───────────────────────────────────────────────────────────
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));

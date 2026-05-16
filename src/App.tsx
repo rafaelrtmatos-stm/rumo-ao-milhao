@@ -8558,12 +8558,18 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const [loading, setLoading] = useState(true);
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [newNome, setNewNome] = useState("");
+  const [newCreci, setNewCreci] = useState("");
+  const [newTelefone, setNewTelefone] = useState("");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [editingPermUser, setEditingPermUser] = useState<string | null>(null);
   const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
   const [savingPerms, setSavingPerms] = useState(false);
+  const [editingProfileUser, setEditingProfileUser] = useState<string | null>(null);
+  const [editProfileData, setEditProfileData] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [savingUserProfile, setSavingUserProfile] = useState(false);
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
   const loadUsers = async () => {
@@ -8601,14 +8607,48 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permissions: defaultPerms }),
       });
+      // Salvar perfil (nome, CRECI, telefone) se informado
+      if (newNome.trim() || newCreci.trim() || newTelefone.trim()) {
+        await authFetch(`/api/admin/users/${data.id}/profile`, {
+          method: "PATCH",
+          body: JSON.stringify({ nome: newNome, creci: newCreci, telefone: newTelefone }),
+        });
+      }
       setSuccess(`Usuário ${newEmail} criado com sucesso!`);
       setNewEmail("");
       setNewPassword("");
+      setNewNome("");
+      setNewCreci("");
+      setNewTelefone("");
       await loadUsers();
     } catch (err: any) {
       setError(err.message);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleOpenEditProfile = (u: typeof users[0]) => {
+    setEditProfileData({ nome: u.profile?.nome || "", creci: u.profile?.creci || "", telefone: u.profile?.telefone || "" });
+    setEditingProfileUser(editingProfileUser === u.id ? null : u.id);
+    setEditingPermUser(null);
+  };
+
+  const handleSaveUserProfile = async () => {
+    if (!editingProfileUser) return;
+    setSavingUserProfile(true);
+    try {
+      const res = await authFetch(`/api/admin/users/${editingProfileUser}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify(editProfileData),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar");
+      await loadUsers();
+      setEditingProfileUser(null);
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar perfil.");
+    } finally {
+      setSavingUserProfile(false);
     }
   };
 
@@ -8758,6 +8798,36 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                 className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
               />
             </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Nome Completo</label>
+              <input
+                type="text"
+                value={newNome}
+                onChange={(e) => setNewNome(e.target.value)}
+                placeholder="Ex: João da Silva"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">CRECI <span className="normal-case text-slate-300">(opcional)</span></label>
+              <input
+                type="text"
+                value={newCreci}
+                onChange={(e) => setNewCreci(e.target.value)}
+                placeholder="Ex: 13919"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Telefone / WhatsApp <span className="normal-case text-slate-300">(opcional)</span></label>
+              <input
+                type="text"
+                value={newTelefone}
+                onChange={(e) => setNewTelefone(maskPhone(e.target.value))}
+                placeholder="Ex: (93) 99999-9999"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
           </div>
           {error && <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>}
           {success && <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>}
@@ -8790,6 +8860,14 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                     </p>
                   </div>
                   <div className="flex items-center gap-2 ml-3 flex-none">
+                    <button
+                      onClick={() => handleOpenEditProfile(u)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingProfileUser === u.id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white"}`}
+                      title="Editar nome, CRECI e telefone"
+                    >
+                      <User size={12} />
+                      Perfil
+                    </button>
                     {!u.isAdmin && (
                       <>
                         <button
@@ -8815,6 +8893,64 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                     )}
                   </div>
                 </div>
+
+                {/* Profile edit panel */}
+                <AnimatePresence>
+                  {editingProfileUser === u.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 border-t border-border-subtle bg-white space-y-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Perfil de <span className="text-slate-700">{u.email.split("@")[0]}</span> — aparece nos recibos
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Nome Completo</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: João da Silva"
+                              value={editProfileData.nome}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, nome: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">CRECI</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: 13919"
+                              value={editProfileData.creci}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, creci: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Telefone</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: (93) 99999-9999"
+                              value={editProfileData.telefone}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, telefone: maskPhone(e.target.value) })}
+                            />
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-1">
+                          <button onClick={() => setEditingProfileUser(null)} className="btn-secondary px-5 py-2 text-xs">Cancelar</button>
+                          <button
+                            onClick={handleSaveUserProfile}
+                            disabled={savingUserProfile}
+                            className="btn-primary px-6 py-2 text-xs flex items-center gap-2"
+                          >
+                            {savingUserProfile ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                            Salvar Perfil
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
 
                 {/* Permissions panel */}
                 <AnimatePresence>
