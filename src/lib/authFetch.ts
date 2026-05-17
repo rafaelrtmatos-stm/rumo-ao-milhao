@@ -11,5 +11,5 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers });
+  return fetch(input, { ...init, headers, credentials: "include" });
 }

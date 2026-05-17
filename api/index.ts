@@ -145,6 +145,28 @@ app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
   }
 });
 
+app.get("/api/auth/profile", isAuthenticated, async (req: any, res) => {
+  const u = (req.session as any)?.localUser;
+  try {
+    const row = await localUsersService.findById(u.id);
+    const profile = (row as any)?.profile ?? {};
+    res.json({ nome: profile.nome || "", creci: profile.creci || "", telefone: profile.telefone || "" });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao buscar perfil." });
+  }
+});
+
+app.patch("/api/auth/profile", isAuthenticated, async (req: any, res) => {
+  const u = (req.session as any)?.localUser;
+  try {
+    const { nome, creci, telefone } = req.body;
+    await localUsersService.updateProfile(u.id, { nome, creci, telefone });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro ao salvar perfil." });
+  }
+});
+
 // --- Admin ---
 app.get("/api/admin/users", isAuthenticated, async (req: any, res) => {
   try {
