@@ -9151,7 +9151,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const loadUsers = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/users");
+      const res = await authFetch("/api/admin/users");
       if (res.ok) setUsers(await res.json());
     } finally {
       setLoading(false);
@@ -9166,7 +9166,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     setError("");
     setSuccess("");
     try {
-      const res = await fetch("/api/admin/users", {
+      const res = await authFetch("/api/admin/users", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: newEmail, password: newPassword }),
@@ -9178,7 +9178,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
         dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
         contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
       };
-      await fetch(`/api/admin/users/${data.id}/permissions`, {
+      await authFetch(`/api/admin/users/${data.id}/permissions`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permissions: defaultPerms }),
@@ -9231,7 +9231,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const handleDelete = async (id: string, email: string) => {
     requestDelete(`Excluir o usuário ${email}? Esta ação não pode ser desfeita.`, async () => {
       try {
-        const res = await fetch(`/api/admin/users/${id}`, { method: "DELETE" });
+        const res = await authFetch(`/api/admin/users/${id}`, { method: "DELETE" });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
         await loadUsers();
@@ -9256,7 +9256,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     if (!editingPermUser) return;
     setSavingPerms(true);
     try {
-      const res = await fetch(`/api/admin/users/${editingPermUser}/permissions`, {
+      const res = await authFetch(`/api/admin/users/${editingPermUser}/permissions`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ permissions: pendingPerms }),
