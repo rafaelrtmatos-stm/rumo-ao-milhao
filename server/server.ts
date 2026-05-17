@@ -5,7 +5,7 @@ import { fileURLToPath } from "url";
 import { setupAuth } from "./replit_integrations/auth/index.js";
 import { db } from "./db.js";
 import { empreendimentos, clientes, vendas, appConfig } from "../shared/schema.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import { localUsersService } from "./localUsersService.js";
 import { gerarContratoParceladoPadrao } from "./contratoParceladoPadrao.js";
@@ -103,9 +103,13 @@ const isAuthenticated: RequestHandler = (req: any, res, next) => {
   return res.status(401).json({ message: "Unauthorized" });
 };
 
-function getUserId(req: any): string {
-  if (!AUTH_ENABLED) return DEFAULT_USER_ID;
-  return req.jwtUser?.id || (req.session as any)?.localUser?.id || req.user?.claims?.sub;
+// Dados compartilhados entre todos os usuários autenticados da empresa.
+// Usar um ID fixo garante que browser A e browser B vejam sempre os mesmos
+// empreendimentos, clientes e vendas, independentemente de qual usuário está logado.
+const SHARED_DATA_USER = "shared";
+
+function getUserId(_req: any): string {
+  return SHARED_DATA_USER;
 }
 
 // Middleware: only admin users can proceed
@@ -185,8 +189,9 @@ app.patch("/api/admin/users/:id/profile", isAuthenticated, isAdminUser, async (r
 app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any, res) => {
   try {
     const { id } = req.params;
-    const selfId = getUserId(req);
-    if (id === selfId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
+    // Verificar identidade real do solicitante (não o SHARED_DATA_USER)
+    const requesterId = req.jwtUser?.id || (req.session as any)?.localUser?.id || req.user?.claims?.sub;
+    if (id === requesterId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
     await localUsersService.deleteById(id);
     res.json({ ok: true });
   } catch (e: any) {
@@ -338,6 +343,7 @@ function safeParseJson(text: string | undefined | null): any {
 
 // --- Empreendimentos ---
 app.get("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     const userId = getUserId(req);
     const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.userId, userId));
@@ -384,6 +390,7 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
 
 // --- Clientes ---
 app.get("/api/clientes", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     const userId = getUserId(req);
     const rows = await db.select().from(clientes).where(eq(clientes.userId, userId));
@@ -418,6 +425,7 @@ app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
 
 // --- Vendas ---
 app.get("/api/vendas", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     const userId = getUserId(req);
     const rows = await db.select().from(vendas).where(eq(vendas.userId, userId));
@@ -452,6 +460,7 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
 
 // --- App Config ---
 app.get("/api/config", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
   try {
     const userId = getUserId(req);
     const [row] = await db.select().from(appConfig).where(eq(appConfig.userId, userId));
@@ -471,6 +480,135 @@ app.post("/api/config", isAuthenticated, async (req: any, res) => {
   } catch (e: any) {
     console.error(e);
     res.status(500).json({ error: "Failed to save config" });
+  }
+});
+
+// --- Migração de dados legados (userId individual → "shared") ---
+// Quando o sistema usava userId por usuário, os dados ficavam isolados.
+// Este endpoint move tudo para o userId "shared" sem perda de dados.
+app.post("/api/admin/migrate-to-shared", isAuthenticated, isAdminUser, async (_req: any, res) => {
+  try {
+    const SHARED = "shared";
+    let moved = { empreendimentos: 0, clientes: 0, vendas: 0, config: 0 };
+
+    // Empreendimentos
+    const oldDevs = await db.select().from(empreendimentos).where(ne(empreendimentos.userId, SHARED));
+    for (const row of oldDevs) {
+      await db.insert(empreendimentos)
+        .values({ id: row.id, userId: SHARED, data: row.data })
+        .onConflictDoUpdate({ target: empreendimentos.id, set: { data: row.data } });
+      await db.delete(empreendimentos).where(and(eq(empreendimentos.id, row.id), ne(empreendimentos.userId, SHARED)));
+      moved.empreendimentos++;
+    }
+
+    // Clientes
+    const oldClients = await db.select().from(clientes).where(ne(clientes.userId, SHARED));
+    for (const row of oldClients) {
+      await db.insert(clientes)
+        .values({ id: row.id, userId: SHARED, data: row.data })
+        .onConflictDoUpdate({ target: clientes.id, set: { data: row.data } });
+      await db.delete(clientes).where(and(eq(clientes.id, row.id), ne(clientes.userId, SHARED)));
+      moved.clientes++;
+    }
+
+    // Vendas
+    const oldVendas = await db.select().from(vendas).where(ne(vendas.userId, SHARED));
+    for (const row of oldVendas) {
+      await db.insert(vendas)
+        .values({ id: row.id, userId: SHARED, data: row.data })
+        .onConflictDoUpdate({ target: vendas.id, set: { data: row.data } });
+      await db.delete(vendas).where(and(eq(vendas.id, row.id), ne(vendas.userId, SHARED)));
+      moved.vendas++;
+    }
+
+    // Config (apenas copia a mais recente se não houver shared ainda)
+    const sharedConfig = await db.select().from(appConfig).where(eq(appConfig.userId, SHARED));
+    if (sharedConfig.length === 0) {
+      const oldConfigs = await db.select().from(appConfig).where(ne(appConfig.userId, SHARED));
+      if (oldConfigs.length > 0) {
+        await db.insert(appConfig)
+          .values({ userId: SHARED, data: oldConfigs[0].data })
+          .onConflictDoUpdate({ target: appConfig.userId, set: { data: oldConfigs[0].data } });
+        moved.config = oldConfigs.length;
+      }
+    }
+
+    res.json({ ok: true, moved });
+  } catch (e: any) {
+    console.error("migrate-to-shared error:", e);
+    res.status(500).json({ error: e?.message || "Erro na migração." });
+  }
+});
+
+// --- Endpoints atômicos individuais (PUT) ---
+// O frontend usa PUT para upsert de um único registro sem sobrescrever os outros.
+// Sem estas rotas, o upsertVenda/upsertCliente/upsertEmpreendimento retornava 404
+// silencioso e a venda nunca era persistida no banco.
+
+app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(vendas)
+      .values({ id: req.params.id, userId, data: item })
+      .onConflictDoUpdate({ target: vendas.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("PUT /api/vendas/:id error:", e);
+    res.status(500).json({ error: e?.message || "Failed to upsert venda" });
+  }
+});
+
+app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    await db.delete(vendas).where(and(eq(vendas.id, req.params.id), eq(vendas.userId, userId)));
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("DELETE /api/vendas/:id error:", e);
+    res.status(500).json({ error: e?.message || "Failed to delete venda" });
+  }
+});
+
+app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(clientes)
+      .values({ id: req.params.id, userId, data: item })
+      .onConflictDoUpdate({ target: clientes.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("PUT /api/clientes/:id error:", e);
+    res.status(500).json({ error: e?.message || "Failed to upsert cliente" });
+  }
+});
+
+app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    await db.delete(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, userId)));
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("DELETE /api/clientes/:id error:", e);
+    res.status(500).json({ error: e?.message || "Failed to delete cliente" });
+  }
+});
+
+app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
+  try {
+    const userId = getUserId(req);
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(empreendimentos)
+      .values({ id: req.params.id, userId, data: item })
+      .onConflictDoUpdate({ target: empreendimentos.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    console.error("PUT /api/empreendimentos/:id error:", e);
+    res.status(500).json({ error: e?.message || "Failed to upsert empreendimento" });
   }
 });
 

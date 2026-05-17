@@ -2,7 +2,7 @@ import express from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import pg from "pg";
-import { eq, and } from "drizzle-orm";
+import { eq, and, ne } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
 import { db } from "../server/db.js";
@@ -289,7 +289,8 @@ app.post("/api/admin/users", isAuthenticated, isAdminUser, async (req: any, res)
 
 app.delete("/api/admin/users/:id", isAuthenticated, isAdminUser, async (req: any, res) => {
   try {
-    if (req.params.id === getUserId(req)) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
+    const requesterId = (req as any).tokenUser?.id || (req.session as any)?.localUser?.id;
+    if (req.params.id === requesterId) return res.status(400).json({ error: "Você não pode excluir sua própria conta." });
     await localUsersService.deleteById(req.params.id);
     res.json({ ok: true });
   } catch (e: any) {
@@ -317,6 +318,48 @@ app.patch("/api/admin/users/:id/profile", isAuthenticated, isAdminUser, async (r
     res.json({ ok: true });
   } catch (e: any) {
     res.status(500).json({ error: e?.message || "Erro ao salvar perfil." });
+  }
+});
+
+// --- Migração de dados legados (userId individual → "shared") ---
+app.post("/api/admin/migrate-to-shared", isAuthenticated, isAdminUser, async (_req: any, res) => {
+  try {
+    const SHARED = "shared";
+    const moved = { empreendimentos: 0, clientes: 0, vendas: 0, config: 0 };
+
+    const oldDevs = await db.select().from(empreendimentos).where(ne(empreendimentos.userId, SHARED));
+    for (const row of oldDevs) {
+      await db.insert(empreendimentos).values({ id: row.id, userId: SHARED, data: row.data }).onConflictDoUpdate({ target: empreendimentos.id, set: { data: row.data } });
+      await db.delete(empreendimentos).where(and(eq(empreendimentos.id, row.id), ne(empreendimentos.userId, SHARED)));
+      moved.empreendimentos++;
+    }
+
+    const oldClients = await db.select().from(clientes).where(ne(clientes.userId, SHARED));
+    for (const row of oldClients) {
+      await db.insert(clientes).values({ id: row.id, userId: SHARED, data: row.data }).onConflictDoUpdate({ target: clientes.id, set: { data: row.data } });
+      await db.delete(clientes).where(and(eq(clientes.id, row.id), ne(clientes.userId, SHARED)));
+      moved.clientes++;
+    }
+
+    const oldVendas = await db.select().from(vendas).where(ne(vendas.userId, SHARED));
+    for (const row of oldVendas) {
+      await db.insert(vendas).values({ id: row.id, userId: SHARED, data: row.data }).onConflictDoUpdate({ target: vendas.id, set: { data: row.data } });
+      await db.delete(vendas).where(and(eq(vendas.id, row.id), ne(vendas.userId, SHARED)));
+      moved.vendas++;
+    }
+
+    const sharedConfig = await db.select().from(appConfig).where(eq(appConfig.userId, SHARED));
+    if (sharedConfig.length === 0) {
+      const oldConfigs = await db.select().from(appConfig).where(ne(appConfig.userId, SHARED));
+      if (oldConfigs.length > 0) {
+        await db.insert(appConfig).values({ userId: SHARED, data: oldConfigs[0].data }).onConflictDoUpdate({ target: appConfig.userId, set: { data: oldConfigs[0].data } });
+        moved.config = oldConfigs.length;
+      }
+    }
+
+    res.json({ ok: true, moved });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Erro na migração." });
   }
 });
 

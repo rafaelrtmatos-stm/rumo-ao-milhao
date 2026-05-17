@@ -8364,6 +8364,39 @@ const ConfigSection = ({
             <><Download size={16} /> Migrar dados do navegador para o banco de dados</>
           )}
         </button>
+
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <p className="text-sm text-slate-500">
+            <span className="font-semibold text-slate-700">Migração do banco:</span> Se seus dados aparecem em um navegador mas não em outro, clique abaixo para consolidar tudo em um único espaço compartilhado.
+          </p>
+          <button
+            onClick={async () => {
+              setMigrating(true);
+              setMigrateMsg('');
+              try {
+                const res = await fetch('/api/admin/migrate-to-shared', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('rumo_auth_token') ? { Authorization: `Bearer ${localStorage.getItem('rumo_auth_token')}` } : {}) }, credentials: 'include' });
+                const data = await res.json();
+                if (data.ok) {
+                  setMigrateMsg(`Migração concluída! ${data.moved.empreendimentos} empreendimento(s), ${data.moved.clientes} cliente(s), ${data.moved.vendas} venda(s) consolidados. Recarregue a página.`);
+                } else {
+                  setMigrateMsg('Erro: ' + (data.error || 'Tente novamente.'));
+                }
+              } catch (e: any) {
+                setMigrateMsg('Erro de conexão: ' + (e?.message || 'Tente novamente.'));
+              } finally {
+                setMigrating(false);
+              }
+            }}
+            disabled={migrating}
+            className="btn-ghost px-8 border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40"
+          >
+            {migrating ? (
+              <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
+            ) : (
+              <><ShieldCheck size={16} /> Consolidar dados de todos os navegadores</>
+            )}
+          </button>
+        </div>
       </div>
       {/* Exportar / Importar Dados */}
       <div className="card-premium space-y-6">
@@ -9673,10 +9706,30 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     };
     load();
 
+    // Recarrega dados quando a janela/aba volta ao foco — garante sincronização
+    // entre navegadores, abas e celular sem precisar de WebSocket.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        Promise.allSettled([
+          dbService.getEmpreendimentos(),
+          dbService.getClientes(),
+          dbService.getVendas(),
+          dbService.getAppConfig(),
+        ]).then((results) => {
+          if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+          if (results[1].status === 'fulfilled') setClients(results[1].value);
+          if (results[2].status === 'fulfilled') setSales(results[2].value);
+          if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       subDevs?.unsubscribe();
       subClientes?.unsubscribe();
       subVendas?.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -9711,7 +9764,10 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       updatedClients.push(newClient);
       setClients(updatedClients);
       // Upsert atômico: salva apenas este cliente sem tocar nos outros
-      dbService.upsertCliente(newClient).catch(console.error);
+      dbService.upsertCliente(newClient).catch((e) => {
+        console.error('Erro ao salvar cliente:', e);
+        alert('Erro ao salvar cliente no banco. Verifique a conexão.\n' + String(e?.message || e));
+      });
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
@@ -9719,7 +9775,10 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
     // Upsert atômico: salva apenas esta venda sem sobrescrever as outras
-    dbService.upsertVenda(newSale).catch(console.error);
+    dbService.upsertVenda(newSale).catch((e) => {
+      console.error('Erro ao salvar venda:', e);
+      alert('Erro ao salvar venda no banco. Verifique a conexão.\n' + String(e?.message || e));
+    });
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -9904,7 +9963,10 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const deleteVenda = (id: string) => {
     const updated = sales.filter((s) => s.id !== id);
     setSales(updated);
-    dbService.deleteVendaById(id).catch(console.error);
+    dbService.deleteVendaById(id).catch((e) => {
+      console.error('Erro ao excluir venda:', e);
+      alert('Erro ao excluir venda no banco.\n' + String(e?.message || e));
+    });
   };
 
   const updateVenda = (venda: Venda) => {
