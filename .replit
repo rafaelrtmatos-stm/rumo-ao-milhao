@@ -6,7 +6,7 @@ integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.
 
 [nix]
 channel = "stable-25_05"
-packages = ["psmisc"]
+packages = ["psmisc", "nano"]
 
 [workflows]
 runButton = "Project"

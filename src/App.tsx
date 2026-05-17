@@ -6952,8 +6952,8 @@ const ContratosSection = ({
                   </button>
                 </div>
               </div>
-              <div className="flex-1 overflow-y-auto p-4 sm:p-8 bg-slate-100/50">
-                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
+              <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
+                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
                   <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
                     <div>
                       <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
