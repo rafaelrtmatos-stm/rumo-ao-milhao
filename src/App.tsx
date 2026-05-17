@@ -9691,13 +9691,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       ? developments.map((d) => (d.id === newDev.id ? newDev : d))
       : [...developments, newDev];
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
+    // Upsert atômico: salva apenas este empreendimento
+    dbService.upsertEmpreendimento(newDev).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
   };
 
   const deleteDev = (id: string) => {
     const updated = developments.filter((d) => d.id !== id);
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch((e) => alert('Erro ao deletar empreendimento:\n' + JSON.stringify(e)));
+    dbService.deleteEmpreendimento(id).catch((e) => alert('Erro ao deletar empreendimento:\n' + JSON.stringify(e)));
   };
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
@@ -9709,14 +9710,16 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     if (existingClientIndex === -1) {
       updatedClients.push(newClient);
       setClients(updatedClients);
-      dbService.saveClientes(updatedClients).catch(console.error);
+      // Upsert atômico: salva apenas este cliente sem tocar nos outros
+      dbService.upsertCliente(newClient).catch(console.error);
     } else {
       newSale.clienteId = clients[existingClientIndex].id;
     }
 
     const updatedSales = [newSale, ...sales];
     setSales(updatedSales);
-    dbService.saveVendas(updatedSales).catch(console.error);
+    // Upsert atômico: salva apenas esta venda sem sobrescrever as outras
+    dbService.upsertVenda(newSale).catch(console.error);
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
@@ -9734,7 +9737,9 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       return d;
     });
     setDevelopments(updatedDevs);
-    dbService.saveEmpreendimentos(updatedDevs).catch(console.error);
+    // Upsert atômico apenas do empreendimento afetado
+    const devAfetado = updatedDevs.find((d) => d.id === newSale.empreendimentoId);
+    if (devAfetado) dbService.upsertEmpreendimento(devAfetado).catch(console.error);
 
     return newSale;
   };
@@ -9749,7 +9754,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         : d,
     );
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    const devAtualizado = updated.find((d) => d.id === id);
+    if (devAtualizado) dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
   };
 
   const deleteLot = (devId: string, key: string) => {
@@ -9760,7 +9766,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       return { ...d, lotesInfo: newLotesInfo };
     });
     setDevelopments(updated);
-    dbService.saveEmpreendimentos(updated).catch(console.error);
+    const devAtualizado = updated.find((d) => d.id === devId);
+    if (devAtualizado) dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
@@ -9850,12 +9857,12 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       s.id === updatedVenda.id ? updatedVenda : s
     );
     setSales(updatedSales);
-    dbService.saveVendas(updatedSales).catch(console.error);
+    dbService.upsertVenda(updatedVenda).catch(console.error);
     const updatedClients = clients.map((c) =>
       c.id === updatedCliente.id ? updatedCliente : c
     );
     setClients(updatedClients);
-    dbService.saveClientes(updatedClients).catch(console.error);
+    dbService.upsertCliente(updatedCliente).catch(console.error);
     setEditingVendaEntry(null);
   };
 
@@ -9866,7 +9873,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         : s
     );
     setSales(updatedSales);
-    dbService.saveVendas(updatedSales).catch(console.error);
+    // Upsert apenas das vendas que tiveram clienteId alterado
+    updatedSales
+      .filter((s) => {
+        const orig = sales.find((o) => o.id === s.id);
+        return orig && orig.clienteId !== s.clienteId;
+      })
+      .forEach((s) => dbService.upsertVenda(s).catch(console.error));
+    // Remove clientes duplicados via bulk save (operação de limpeza intencional)
     const updatedClients = clients.filter((c) => !duplicateIds.includes(c.id));
     setClients(updatedClients);
     dbService.saveClientes(updatedClients).catch(console.error);
@@ -9880,7 +9894,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       s.id === vendaId ? { ...s, status: newStatus } : s,
     );
     setSales(updated);
-    dbService.saveVendas(updated).catch(console.error);
+    const vendaAtualizada = updated.find((s) => s.id === vendaId);
+    if (vendaAtualizada) dbService.upsertVenda(vendaAtualizada).catch(console.error);
     if (contractToOpen && contractToOpen.id === vendaId) {
       setContractToOpen({ ...contractToOpen, status: newStatus });
     }
@@ -9889,13 +9904,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const deleteVenda = (id: string) => {
     const updated = sales.filter((s) => s.id !== id);
     setSales(updated);
-    dbService.saveVendas(updated).catch(console.error);
+    dbService.deleteVendaById(id).catch(console.error);
   };
 
   const updateVenda = (venda: Venda) => {
     const updated = sales.map((s) => (s.id === venda.id ? venda : s));
     setSales(updated);
-    dbService.saveVendas(updated).catch(console.error);
+    dbService.upsertVenda(venda).catch(console.error);
   };
 
   const renderSection = () => {
@@ -9974,7 +9989,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 c.id === updated.id ? updated : c
               );
               setClients(updatedList);
-              dbService.saveClientes(updatedList).catch(console.error);
+              dbService.upsertCliente(updated).catch(console.error);
             }}
           />
         );
@@ -10057,7 +10072,12 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             transition={{ duration: 0.3, ease: "easeOut" }}
             className="max-w-7xl mx-auto"
           >
-            {renderSection()}
+            {!isLoaded ? (
+              <div className="flex flex-col items-center justify-center py-32 gap-4">
+                <div className="w-8 h-8 border-4 border-primary-main border-t-transparent rounded-full animate-spin" />
+                <p className="text-slate-500 text-sm font-medium">Carregando dados do servidor...</p>
+              </div>
+            ) : renderSection()}
           </motion.div>
         </AnimatePresence>
       </main>

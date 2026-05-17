@@ -410,6 +410,61 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// --- Endpoints atômicos individuais (evitam sobrescrever dados entre navegadores) ---
+
+// Upsert individual de uma venda
+app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(vendas).values({ id: req.params.id, userId: SHARED_USER, data: item })
+      .onConflictDoUpdate({ target: vendas.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to upsert venda" });
+  }
+});
+
+// Delete individual de uma venda
+app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    await db.delete(vendas).where(and(eq(vendas.id, req.params.id), eq(vendas.userId, SHARED_USER)));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to delete venda" });
+  }
+});
+
+// Upsert individual de um cliente
+app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(clientes).values({ id: req.params.id, userId: SHARED_USER, data: item })
+      .onConflictDoUpdate({ target: clientes.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to upsert cliente" });
+  }
+});
+
+// Upsert individual de um empreendimento
+app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const item = req.body;
+    if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
+    await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_USER, data: item })
+      .onConflictDoUpdate({ target: empreendimentos.id, set: { data: item } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to upsert empreendimento" });
+  }
+});
+
 // --- Config ---
 // Config compartilhada entre todos (tema, configurações globais)
 app.get("/api/config", isAuthenticated, async (_req: any, res) => {

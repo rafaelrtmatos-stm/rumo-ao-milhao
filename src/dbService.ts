@@ -23,6 +23,25 @@ async function apiPost(path: string, body: unknown): Promise<void> {
   }
 }
 
+async function apiPut(path: string, body: unknown): Promise<void> {
+  const res = await authFetch(path, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any)?.error || `Erro ${res.status}`);
+  }
+}
+
+async function apiDelete(path: string): Promise<void> {
+  const res = await authFetch(path, { method: 'DELETE' });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any)?.error || `Erro ${res.status}`);
+  }
+}
+
 async function getEmpreendimentos(): Promise<Empreendimento[]> {
   return apiGet<Empreendimento[]>('/api/empreendimentos');
 }
@@ -31,12 +50,13 @@ async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
   return apiPost('/api/empreendimentos', items);
 }
 
+// Upsert atômico — não sobrescreve outros registros do banco
+async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
+  return apiPut(`/api/empreendimentos/${item.id}`, item);
+}
+
 async function deleteEmpreendimento(id: string): Promise<void> {
-  const res = await authFetch(`/api/empreendimentos/${id}`, { method: 'DELETE' });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || `Erro ${res.status}`);
-  }
+  return apiDelete(`/api/empreendimentos/${id}`);
 }
 
 async function getClientes(): Promise<Cliente[]> {
@@ -47,12 +67,27 @@ async function saveClientes(items: Cliente[]): Promise<void> {
   return apiPost('/api/clientes', items);
 }
 
+// Upsert atômico — não sobrescreve outros clientes
+async function upsertCliente(item: Cliente): Promise<void> {
+  return apiPut(`/api/clientes/${item.id}`, item);
+}
+
 async function getVendas(): Promise<Venda[]> {
   return apiGet<Venda[]>('/api/vendas');
 }
 
 async function saveVendas(items: Venda[]): Promise<void> {
   return apiPost('/api/vendas', items);
+}
+
+// Upsert atômico — salva apenas esta venda, sem tocar nas outras
+async function upsertVenda(item: Venda): Promise<void> {
+  return apiPut(`/api/vendas/${item.id}`, item);
+}
+
+// Delete atômico de uma venda
+async function deleteVendaById(id: string): Promise<void> {
+  return apiDelete(`/api/vendas/${id}`);
 }
 
 async function getAppConfig(): Promise<AppConfig> {
@@ -113,11 +148,15 @@ export const supabase = null;
 export const dbService = {
   getEmpreendimentos,
   saveEmpreendimentos,
+  upsertEmpreendimento,
   deleteEmpreendimento,
   getClientes,
   saveClientes,
+  upsertCliente,
   getVendas,
   saveVendas,
+  upsertVenda,
+  deleteVendaById,
   getAppConfig,
   saveAppConfig,
   subscribeToEmpreendimentos,
