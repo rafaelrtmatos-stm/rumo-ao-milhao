@@ -105,12 +105,20 @@ function Root() {
         }
       }
 
-      // 2. Verificar sessão ativa (cookie) ou token JWT salvo no localStorage
+      // 2. Token JWT salvo no localStorage
       const token = getAuthToken();
+      if (!token) {
+        setAuth({ status: "login" });
+        return;
+      }
+
+      // 3. Validar token com o servidor
       const userRes = await fetch("/api/auth/user", {
         credentials: "include",
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
+
       if (userRes.ok) {
         const user = await userRes.json();
         if (user?.id) {
@@ -124,12 +132,24 @@ function Root() {
           return;
         }
       }
-      // Sessão inválida — limpa token local
-      clearAuthToken();
 
+      // 401 explícito = token inválido → limpar e ir para login
+      if (userRes.status === 401) {
+        clearAuthToken();
+        setAuth({ status: "login" });
+        return;
+      }
+
+      // Erro de rede ou 5xx → não deslogar, tentar manter sessão
       setAuth({ status: "login" });
     } catch {
-      setAuth({ status: "login" });
+      // Erro de rede — se tinha token, não deslogar
+      const token = getAuthToken();
+      if (token) {
+        setAuth({ status: "login" });
+      } else {
+        setAuth({ status: "login" });
+      }
     }
   };
 

@@ -11,5 +11,6 @@ export async function authFetch(input: RequestInfo | URL, init: RequestInit = {}
   if (!headers.has("Content-Type") && !(init.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
-  return fetch(input, { ...init, headers, credentials: "include" });
+  // Evitar cache em todas as chamadas autenticadas
+  return fetch(input, { ...init, headers, credentials: "include", cache: "no-store" });
 }
