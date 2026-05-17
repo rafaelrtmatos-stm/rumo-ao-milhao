@@ -1,5 +1,6 @@
 import express from "express";
 import { eq, and } from "drizzle-orm";
+import { createHmac } from "crypto";
 import type { RequestHandler } from "express";
 import { db } from "../server/db.js";
 import {
@@ -38,17 +39,15 @@ function base64url(str: string): string {
 function signJwt(payload: object): string {
   const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
   const body = base64url(JSON.stringify({ ...payload, exp: Math.floor(Date.now() / 1000) + JWT_TTL }));
-  const crypto = require("crypto");
-  const sig = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64")
+  const sig = createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64")
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
   return `${header}.${body}.${sig}`;
 }
 
 function verifyJwt(token: string): any | null {
   try {
-    const crypto = require("crypto");
     const [header, body, sig] = token.split(".");
-    const expected = crypto.createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64")
+    const expected = createHmac("sha256", JWT_SECRET).update(`${header}.${body}`).digest("base64")
       .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
     if (sig !== expected) return null;
     const payload = JSON.parse(Buffer.from(body, "base64").toString());
