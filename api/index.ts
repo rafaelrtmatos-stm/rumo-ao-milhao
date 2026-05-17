@@ -17,6 +17,17 @@ const app = express();
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true }));
 
+// CORS com suporte a cookies
+app.use((req: any, res: any, next: any) => {
+  const origin = req.headers.origin;
+  if (origin) res.setHeader("Access-Control-Allow-Origin", origin);
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PATCH,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
 // Debug endpoint
 app.get("/api/debug", (_req: any, res: any) => {
   res.json({
@@ -139,9 +150,9 @@ app.get("/api/auth/user", isAuthenticated, async (req: any, res) => {
   const u = (req.session as any)?.localUser;
   try {
     const row = await localUsersService.findById(u.id);
-    res.json({ id: u.id, email: u.email, isAdmin: row?.is_admin ?? false });
+    res.json({ id: u.id, email: u.email, isAdmin: row?.is_admin ?? false, permissions: (row as any)?.permissions ?? {} });
   } catch {
-    res.json({ id: u.id, email: u.email, isAdmin: false });
+    res.json({ id: u.id, email: u.email, isAdmin: false, permissions: {} });
   }
 });
 

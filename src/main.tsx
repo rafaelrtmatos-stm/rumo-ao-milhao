@@ -105,26 +105,27 @@ function Root() {
         }
       }
 
-      // 2. Verificar token JWT salvo no localStorage
+      // 2. Verificar sessão ativa (cookie) ou token JWT salvo no localStorage
       const token = getAuthToken();
-      if (token) {
-        const userRes = await authFetch("/api/auth/user");
-        if (userRes.ok) {
-          const user = await userRes.json();
-          if (user?.id) {
-            setAuth({
-              status: "authenticated",
-              isAdmin: user.isAdmin ?? false,
-              userId: user.id,
-              email: user.email ?? "",
-              permissions: user.permissions ?? {},
-            });
-            return;
-          }
+      const userRes = await fetch("/api/auth/user", {
+        credentials: "include",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (userRes.ok) {
+        const user = await userRes.json();
+        if (user?.id) {
+          setAuth({
+            status: "authenticated",
+            isAdmin: user.isAdmin ?? false,
+            userId: user.id,
+            email: user.email ?? "",
+            permissions: user.permissions ?? {},
+          });
+          return;
         }
-        // Token inválido — limpa
-        clearAuthToken();
       }
+      // Sessão inválida — limpa token local
+      clearAuthToken();
 
       setAuth({ status: "login" });
     } catch {

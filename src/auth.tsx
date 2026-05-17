@@ -17,6 +17,7 @@ export function LoginScreen({ onLogin }: { onLogin: (data: any) => void }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
+        credentials: "include",
       });
       const text = await res.text();
       let data: any = {};
