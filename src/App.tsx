@@ -354,6 +354,14 @@ const BuscarCEPPorRua = ({
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Helper robusto para carregar jsPDF v2/v3/v4
+async function loadJsPDF() {
+  const mod = await import('jspdf');
+  const Cls = (mod as any).jsPDF ?? (mod as any).default?.jsPDF ?? (mod as any).default;
+  if (!Cls) throw new Error('jsPDF não pôde ser carregado.');
+  return Cls;
+}
+
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -5076,6 +5084,7 @@ const ContratosSection = ({
   proprietarios = [],
   onEditVenda,
   onUpdateProprietario,
+  onSaveProprietario,
   onClearInitialVenda,
   userProfile,
 }: {
@@ -5091,6 +5100,7 @@ const ContratosSection = ({
   proprietarios?: Proprietario[];
   initialMode?: 'recibo';
   onUpdateProprietario?: (p: Proprietario) => void;
+  onSaveProprietario?: (p: Proprietario) => void;
   onEditVenda?: (v: Venda) => void;
   onClearInitialVenda?: () => void;
   userProfile?: { nome?: string; creci?: string; telefone?: string };
@@ -5293,7 +5303,14 @@ const ContratosSection = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      onUpdateVenda({ ...selectedVenda, contratoGerado: true });
+      const snapshot = {
+        vendedor: gerarVendedor,
+        empreendimento: gerarEmp,
+        extra: gerarExtra,
+        tipoContrato: tipoContrato,
+        geradoEm: new Date().toISOString(),
+      };
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: snapshot });
     } catch (e: any) {
       alert("Erro ao gerar contrato: " + e.message);
     } finally {
@@ -5350,8 +5367,7 @@ const ContratosSection = ({
       // O servidor retorna DOCX; converte para PDF via jsPDF/mammoth não é viável client-side.
       // Estratégia: baixar como DOCX com extensão .pdf não é correto.
       // Em vez disso, geramos um PDF simples com os dados da prévia.
-      const jspdfModule = await import('jspdf');
-      const JsPDFClass = jspdfModule.jsPDF ?? (jspdfModule as any).default?.jsPDF ?? (jspdfModule as any).default;
+      const JsPDFClass = await loadJsPDF();
       const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
       const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR") : "";
@@ -5437,7 +5453,14 @@ const ContratosSection = ({
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      onUpdateVenda({ ...selectedVenda, contratoGerado: true });
+      const pdfSnapshot = {
+        vendedor: gerarVendedor,
+        empreendimento: gerarEmp,
+        extra: gerarExtra,
+        tipoContrato: tipoContrato,
+        geradoEm: new Date().toISOString(),
+      };
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
     } catch (e: any) {
       alert("Erro ao gerar PDF do contrato: " + e.message);
     } finally {
@@ -5732,9 +5755,7 @@ const ContratosSection = ({
     setReciboDownloading('pdf');
     try {
       const canvas = await captureReciboCanvas();
-      const jspdfModule = await import('jspdf');
-      // Compatível com jsPDF v2, v3 e v4
-      const JsPDFClass = jspdfModule.jsPDF ?? (jspdfModule as any).default?.jsPDF ?? (jspdfModule as any).default;
+      const JsPDFClass = await loadJsPDF();
       const imgData = canvas.toDataURL('image/png');
       const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfW = pdf.internal.pageSize.getWidth();
@@ -5843,16 +5864,17 @@ const ContratosSection = ({
 
   const handleOpenGerarContratoForVenda = (venda: Venda) => {
     const dev = developments.find((d) => d.id === venda.empreendimentoId);
-    // Pré-preenche gerarExtra/gerarEmp para quando o usuário quiser baixar depois
+    // Pré-preenche gerarExtra/gerarEmp a partir do snapshot salvo ou dados da venda
+    const snap = venda.contratoSnapshot;
     setGerarProprietarioId("");
-    setGerarVendedor(emptyGerarVendedor);
-    setGerarEmp({
+    setGerarVendedor(snap?.vendedor ?? emptyGerarVendedor);
+    setGerarEmp(snap?.empreendimento ?? {
       nome: dev?.nome || "",
       comunidade: dev?.comunidade || "",
       cidade: dev?.cidade || "",
       estado: dev?.estado || "",
     });
-    setGerarExtra({
+    setGerarExtra(snap?.extra ?? {
       rua: venda.rua || "",
       comunidade: dev?.comunidade || "",
       formaPagamento: venda.formaPagamento || "Dinheiro",
@@ -5862,10 +5884,17 @@ const ContratosSection = ({
       medidaFundos: venda.medidaFundos || "",
       areaTotal: venda.areaTotal || "",
     });
-    setTipoContrato(venda.quantidadeParcelas === 0 ? "avista" : "parcelado");
+    setTipoContrato(snap?.tipoContrato ?? (venda.quantidadeParcelas === 0 ? "avista" : "parcelado"));
     setGerarStep(0);
-    // Apenas abre a visualização — wizard só abre se usuário clicar PDF/DOCX
-    setSelectedVenda(venda);
+
+    if (venda.contratoGerado) {
+      // Contrato já gerado: abre direto a visualização final (não o wizard)
+      setSelectedVenda(venda);
+    } else {
+      // Contrato ainda não gerado: abre wizard de geração
+      setSelectedVenda(venda);
+      setShowGerarModal(true);
+    }
   };
 
   const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
@@ -6728,6 +6757,7 @@ const ContratosSection = ({
                     <X size={22} />
                   </button>
                 </div>
+                {/* Botões da visualização final: PDF + DOCX + Imprimir + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -6736,28 +6766,39 @@ const ContratosSection = ({
                     <ChevronLeft size={17} />
                     Voltar
                   </button>
+                  {/* PDF — verde, mesmo estilo que DOCX */}
+                  <button
+                    onClick={handleDownloadPdfContrato}
+                    disabled={downloadingPdfContrato || downloadingDocx}
+                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar PDF do contrato"
+                  >
+                    {downloadingPdfContrato ? <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</> : <><FileDown size={17} /> PDF</>}
+                  </button>
+                  {/* DOCX */}
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx || downloadingPdfContrato}
+                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar DOCX do contrato"
+                  >
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
+                  </button>
+                  {/* Imprimir */}
+                  <button
+                    onClick={() => window.print()}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                    title="Imprimir contrato"
+                  >
+                    <Printer size={17} /> Imprimir
+                  </button>
+                  {/* Editar venda */}
                   <button
                     onClick={() => { setEditingVenda(selectedVenda); setEditVendaForm({ ...selectedVenda }); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                   >
                     <Pencil size={17} />
                     Editar
-                  </button>
-                  <button
-                    onClick={() => handleOpenGerarContratoFormato('pdf')}
-                    disabled={downloadingPdfContrato || downloadingDocx}
-                    className="btn-ghost h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar PDF do contrato"
-                  >
-                    {downloadingPdfContrato ? <span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" /> : <><FileDown size={17} /> PDF</>}
-                  </button>
-                  <button
-                    onClick={() => handleOpenGerarContratoFormato('docx')}
-                    disabled={downloadingDocx || downloadingPdfContrato}
-                    className="btn-primary flex-1 h-11 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar DOCX do contrato"
-                  >
-                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -7279,6 +7320,7 @@ const ContratosSection = ({
               </div>
 
               {/* Footer com botões de navegação */}
+              {/* Footer: steps 0 e 1 → Voltar + Avançar; step 2 → Voltar + Editar + OK (PDF/DOCX só na view final) */}
               <div className="p-4 sm:p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
                 <button
                   onClick={() => gerarStep === 0 ? setShowGerarModal(false) : setGerarStep(gerarStep - 1)}
@@ -7289,26 +7331,77 @@ const ContratosSection = ({
 
                 {gerarStep < 2 ? (
                   <button
-                    onClick={() => setGerarStep(gerarStep + 1)}
+                    onClick={() => {
+                      // No step 1 (vendedor): validar CPF antes de avançar
+                      if (gerarStep === 1) {
+                        if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
+                        const cpfRaw = gerarVendedor.cpf.replace(/\D/g, "");
+                        if (cpfRaw.length > 0 && !validarCPF(gerarVendedor.cpf)) {
+                          alert("CPF do vendedor inválido. Verifique e tente novamente.");
+                          return;
+                        }
+                        const rgClean = gerarVendedor.rg.replace(/\s+/g, "").trim();
+                        if (rgClean.length > 0 && !validarRG(gerarVendedor.rg)) {
+                          alert("RG do vendedor inválido (mínimo 5 caracteres).");
+                          return;
+                        }
+                      }
+                      setGerarStep(gerarStep + 1);
+                    }}
                     className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 font-semibold"
                   >
                     Avançar <ChevronRight size={17} />
                   </button>
                 ) : (
+                  /* Step 2 (Preview): apenas Editar e OK — PDF/DOCX aparecem só na visualização final */
                   <div className="flex gap-2 flex-1">
                     <button
-                      onClick={handleDownloadPdfContrato}
-                      disabled={downloadingPdfContrato || downloadingDocx}
-                      className="btn-ghost h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50"
+                      onClick={() => setGerarStep(1)}
+                      className="btn-secondary h-11 px-4 flex items-center justify-center gap-2 text-sm font-semibold"
                     >
-                      {downloadingPdfContrato ? <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</> : <><FileDown size={17} /> Baixar PDF</>}
+                      <Pencil size={17} /> Editar
                     </button>
                     <button
-                      onClick={handleDownloadDocx}
-                      disabled={downloadingDocx || downloadingPdfContrato}
-                      className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold disabled:opacity-50"
+                      onClick={() => {
+                        // Salvar snapshot, fechar wizard e abrir visualização final
+                        if (selectedVenda) {
+                          const snapshot = {
+                            vendedor: gerarVendedor,
+                            empreendimento: gerarEmp,
+                            extra: gerarExtra,
+                            tipoContrato: tipoContrato,
+                            geradoEm: new Date().toISOString(),
+                          };
+                          onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: snapshot });
+                          // PROBLEMA 6: Salvar vendedor como Proprietário (upsert por CPF)
+                          if (onSaveProprietario && gerarVendedor.nome.trim()) {
+                            const cpfLimpo = gerarVendedor.cpf.replace(/\D/g, "");
+                            const jaExiste = cpfLimpo
+                              ? proprietarios.some((p) => p.cpf.replace(/\D/g, "") === cpfLimpo)
+                              : false;
+                            if (!jaExiste) {
+                              onSaveProprietario({
+                                id: `prop-${Date.now()}`,
+                                nome: gerarVendedor.nome,
+                                nacionalidade: gerarVendedor.nacionalidade || "Brasileiro",
+                                estadoCivil: gerarVendedor.estadoCivil || "Solteiro(a)",
+                                rg: gerarVendedor.rg || "",
+                                cpf: gerarVendedor.cpf || "",
+                                endereco: gerarVendedor.endereco || "",
+                                numero: gerarVendedor.numero || "",
+                                bairro: gerarVendedor.bairro || "",
+                                cidade: gerarVendedor.cidade || "",
+                                estado: gerarVendedor.estado || "",
+                                cep: gerarVendedor.cep || "",
+                              });
+                            }
+                          }
+                        }
+                        setShowGerarModal(false);
+                      }}
+                      className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
                     >
-                      {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> Baixar .docx</>}
+                      OK
                     </button>
                   </div>
                 )}
@@ -7317,8 +7410,6 @@ const ContratosSection = ({
           </div>
         )}
       </AnimatePresence>
-      {DeleteModal}
-
       {DeleteModal}
 
       {/* Modal: Duplicar ou Substituir contrato editado */}
@@ -8895,9 +8986,43 @@ const ProprietariosSection = ({
   };
 
   const handleSave = () => {
-    if (!form.nome.trim()) { triggerShake(propFormRef.current); return; }
-    const st = cpfStatus(form.cpf);
-    if (st === "invalid") { setCpfErr("CPF inválido"); triggerShake(propFormRef.current); return; }
+    if (!form.nome.trim()) {
+      setCpfErr("Informe o nome do proprietário.");
+      triggerShake(propFormRef.current);
+      return;
+    }
+    // Validar CPF matematicamente se preenchido
+    const cpfRaw = form.cpf.replace(/\D/g, "");
+    if (cpfRaw.length > 0) {
+      if (cpfRaw.length !== 11) {
+        setCpfErr("CPF deve ter 11 dígitos.");
+        triggerShake(propFormRef.current);
+        return;
+      }
+      if (!validarCPF(form.cpf)) {
+        setCpfErr("CPF inválido — verifique os dígitos.");
+        triggerShake(propFormRef.current);
+        return;
+      }
+    }
+    // Validar RG minimamente se preenchido
+    const rgClean = form.rg.replace(/\s+/g, "").trim();
+    if (rgClean.length > 0 && !validarRG(form.rg)) {
+      setCpfErr("RG inválido (mínimo 5 caracteres, apenas letras e números).");
+      triggerShake(propFormRef.current);
+      return;
+    }
+    // Verificar duplicidade por CPF (exceto na edição do mesmo registro)
+    if (cpfRaw.length === 11) {
+      const duplicado = proprietarios.find(
+        (p) => p.cpf.replace(/\D/g, "") === cpfRaw && p.id !== editingId
+      );
+      if (duplicado) {
+        setCpfErr(`CPF já cadastrado para: ${duplicado.nome}`);
+        triggerShake(propFormRef.current);
+        return;
+      }
+    }
     setCpfErr(null);
     let updated: Proprietario[];
     if (editingId) {
@@ -8986,7 +9111,7 @@ const ProprietariosSection = ({
                       const masked = maskCPF(e.target.value);
                       setForm({ ...form, cpf: masked });
                       const st = cpfStatus(masked);
-                      setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                      setCpfErr(st === "invalid" ? "CPF inválido — verifique os dígitos." : null);
                     }}
                   />
                   {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
@@ -9898,6 +10023,27 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
+  // Salva vendedor como proprietário (upsert por CPF — evita duplicidade)
+  const handleSaveProprietario = (p: Proprietario) => {
+    const lista = config.proprietarios || [];
+    const cpfLimpo = p.cpf.replace(/\D/g, "");
+    const existente = cpfLimpo
+      ? lista.find((x) => x.cpf.replace(/\D/g, "") === cpfLimpo)
+      : null;
+    let updated: Proprietario[];
+    if (existente) {
+      // Já existe — atualiza preservando o id original
+      updated = lista.map((x) =>
+        x.cpf.replace(/\D/g, "") === cpfLimpo ? { ...p, id: x.id } : x
+      );
+    } else {
+      updated = [...lista, p];
+    }
+    const newConfig = { ...config, proprietarios: updated };
+    setConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
+  };
+
   const handleStartSale = (data: Partial<Venda>) => {
     setPrefilledSale(data);
     setEditingVendaEntry(null);
@@ -10036,6 +10182,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             proprietarios={config.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
+            onSaveProprietario={handleSaveProprietario}
             onEditVenda={handleEditVenda}
             onClearInitialVenda={() => setContractToOpen(null)}
             userProfile={userProfile}

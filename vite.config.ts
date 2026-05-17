@@ -16,9 +16,16 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist/public',
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'jspdf': ['jspdf'],
+        },
+      },
+    },
   },
   optimizeDeps: {
-    include: ['lucide-react'],
+    include: ['lucide-react', 'jspdf'],
     exclude: ['canvg', 'html2canvas', 'dompurify'],
     esbuildOptions: {
       plugins: [
