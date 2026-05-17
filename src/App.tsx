@@ -5132,6 +5132,11 @@ const ContratosSection = ({
   const [gerarStep, setGerarStep] = useState(0);
   const [showDuplicarModal, setShowDuplicarModal] = useState(false);
   const [pendingEditVenda, setPendingEditVenda] = useState<Venda | null>(null);
+  // Quando editando um contrato existente via "Nova Venda", guarda a venda original
+  const [editandoVendaOriginal, setEditandoVendaOriginal] = useState<Venda | null>(null);
+  // Erros visuais CPF/RG vendedor no wizard
+  const [vendedorCpfError, setVendedorCpfError] = useState<string | null>(null);
+  const [vendedorRgError, setVendedorRgError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) {
@@ -5376,13 +5381,15 @@ const ContratosSection = ({
       if (cliente.cpf) addLine(`CPF: ${cliente.cpf}`);
       if (cliente.rg) addLine(`RG: ${cliente.rg}`);
       if (cliente.estadoCivil) addLine(`Estado Civil: ${cliente.estadoCivil}`);
-      if (cliente.profissao) addLine(`Profissão: ${cliente.profissao}`);
       addBlank();
 
       addLine("IMÓVEL", true, 12);
       addLine(`Empreendimento: ${eAtivo.nome || desenvolvimento.nome}`);
+      if (eAtivo.comunidade || xAtivo.comunidade) addLine(`Comunidade: ${eAtivo.comunidade || xAtivo.comunidade}`);
+      if (eAtivo.cidade || desenvolvimento.cidade) addLine(`Cidade/UF: ${eAtivo.cidade || desenvolvimento.cidade || ""}/${eAtivo.estado || desenvolvimento.estado || ""}`);
       addLine(`Quadra: ${selectedVenda.quadra}   Lote: ${selectedVenda.numeroLote}`);
       if (xAtivo.rua) addLine(`Logradouro: ${xAtivo.rua}`);
+      if (xAtivo.medidaFrente) addLine(`Medidas: ${xAtivo.medidaFrente}m frente, ${xAtivo.medidaLateralDir || "___"}m lat.dir., ${xAtivo.medidaLateralEsq || "___"}m lat.esq., ${xAtivo.medidaFundos || "___"}m fundos`);
       if (xAtivo.areaTotal) addLine(`Área Total: ${xAtivo.areaTotal} m²`);
       addBlank();
 
@@ -5391,7 +5398,10 @@ const ContratosSection = ({
       if (selectedVenda.quantidadeParcelas > 0) {
         addLine(`Entrada: ${fmtCurrency(selectedVenda.valorEntrada)}`);
         addLine(`Parcelas: ${selectedVenda.quantidadeParcelas}x de ${fmtCurrency(selectedVenda.valorParcela)}`);
-        if (selectedVenda.dataVencimento) addLine(`Vencimento: dia ${fmtDate(selectedVenda.dataVencimento).split("/")[0]} de cada mês`);
+        if (selectedVenda.dataVencimento) {
+          const diaVenc = new Date(selectedVenda.dataVencimento + "T12:00:00").getDate();
+          addLine(`Vencimento: dia ${isNaN(diaVenc) ? selectedVenda.dataVencimento : diaVenc} de cada mês`);
+        }
       }
       addLine(`Forma de Pagamento: ${xAtivo.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}`);
       addLine(`Data da Venda: ${fmtDate(selectedVenda.dataVenda)}`);
@@ -5443,6 +5453,55 @@ const ContratosSection = ({
     handleOpenGerarContrato();
   };
 
+  // Abre "Nova Venda" pré-preenchida para editar contrato existente
+  const handleEditarContrato = (venda: Venda) => {
+    const cliente = clients.find((c) => c.id === venda.clienteId);
+    const snap = venda.contratoSnapshot;
+
+    // Pré-preenche contratoData com dados financeiros/lote da venda
+    setContratoData({
+      empreendimentoId: venda.empreendimentoId || "",
+      quadra: venda.quadra || "",
+      numeroLote: venda.numeroLote || "",
+      rua: venda.rua || "",
+      valorLote: venda.valorLote || 0,
+      valorEntrada: venda.valorEntrada || 0,
+      quantidadeParcelas: venda.quantidadeParcelas ?? 1,
+      valorParcela: venda.valorParcela || 0,
+      dataVencimento: venda.dataVencimento || defaultVencimento(),
+      formaPagamento: venda.formaPagamento || "Dinheiro",
+      vendedor: venda.vendedor || "",
+      vendedorId: venda.vendedorId || "",
+      dataVenda: venda.dataVenda || new Date().toISOString().split("T")[0],
+    });
+
+    // Pré-preenche cliente
+    if (cliente) {
+      setClienteMode("existente");
+      setClienteSelecionadoId(cliente.id);
+    } else {
+      setClienteMode("existente");
+      setClienteSelecionadoId("");
+    }
+
+    // Restaura vendedor/extras do snapshot se disponível
+    if (snap?.vendedor) {
+      setGerarVendedor(snap.vendedor);
+    } else {
+      setGerarVendedor(emptyGerarVendedor);
+    }
+    if (snap?.empreendimento) {
+      setGerarEmp(snap.empreendimento);
+    }
+    if (snap?.extra) {
+      setGerarExtra(snap.extra);
+    }
+
+    // Guarda referência da venda original para update (não criar nova)
+    setEditandoVendaOriginal(venda);
+    setShowNovoContrato(true);
+  };
+
   const handleSalvarContrato = () => {
     let cliente: Cliente;
     if (clienteMode === "existente") {
@@ -5472,6 +5531,40 @@ const ContratosSection = ({
       };
     }
     const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+
+    // Modo edição: mostra Mesclar/Duplicar/Cancelar preservando snapshot
+    if (editandoVendaOriginal) {
+      const vendaAtualizada: Venda = {
+        ...editandoVendaOriginal,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        empreendimentoId: contratoData.empreendimentoId,
+        empreendimentoNome: dev?.nome || editandoVendaOriginal.empreendimentoNome,
+        numeroLote: contratoData.numeroLote,
+        quadra: contratoData.quadra,
+        rua: contratoData.rua,
+        valorLote: contratoData.valorLote,
+        valorEntrada: contratoData.valorEntrada,
+        quantidadeParcelas: contratoData.quantidadeParcelas,
+        valorParcela: contratoData.valorParcela,
+        dataVencimento: contratoData.dataVencimento,
+        vendedor: contratoData.vendedor,
+        vendedorId: contratoData.vendedorId,
+        dataVenda: contratoData.dataVenda,
+        formaPagamento: contratoData.formaPagamento,
+        contratoSnapshot: editandoVendaOriginal.contratoSnapshot ? {
+          ...editandoVendaOriginal.contratoSnapshot,
+          ...(gerarVendedor.nome.trim() ? { vendedor: gerarVendedor } : {}),
+          ...(gerarEmp.nome.trim() ? { empreendimento: gerarEmp } : {}),
+          ...(gerarExtra.rua !== undefined ? { extra: gerarExtra } : {}),
+        } : editandoVendaOriginal.contratoSnapshot,
+      };
+      setPendingEditVenda(vendaAtualizada);
+      setShowNovoContrato(false);
+      setShowDuplicarModal(true);
+      return;
+    }
+
     const venda: Venda = {
       id: `venda-${Date.now()}`,
       numeroContrato: `CONT-${Date.now()}`,
@@ -6175,9 +6268,9 @@ const ContratosSection = ({
                   <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
                     <FileText size={20} />
                   </div>
-                  <h3 className="text-lg font-display font-bold text-slate-800">Novo Contrato</h3>
+                  <h3 className="text-lg font-display font-bold text-slate-800">{editandoVendaOriginal ? "Editar Contrato" : "Novo Contrato"}</h3>
                 </div>
-                <button onClick={() => setShowNovoContrato(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                <button onClick={() => { setShowNovoContrato(false); setEditandoVendaOriginal(null); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
                   <X size={20} className="text-slate-500" />
                 </button>
               </div>
@@ -6216,7 +6309,6 @@ const ContratosSection = ({
                         { label: "CPF *", field: "cpf", placeholder: "000.000.000-00" },
                         { label: "RG", field: "rg", placeholder: "RG" },
                         { label: "Nascimento", field: "nascimento", placeholder: "DD/MM/AAAA" },
-                        { label: "Profissão", field: "profissao", placeholder: "Profissão" },
                         { label: "Telefone", field: "telefone1", placeholder: "(00) 00000-0000" },
                         { label: "Endereço", field: "endereco", placeholder: "Rua / Av." },
                         { label: "Número", field: "numero", placeholder: "Nº" },
@@ -6426,8 +6518,8 @@ const ContratosSection = ({
               </div>
 
               <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
-                <button onClick={() => setShowNovoContrato(false)} className="btn-secondary px-6">Cancelar</button>
-                <button onClick={handleSalvarContrato} className="btn-primary px-8">Gerar Contrato</button>
+                <button onClick={() => { setShowNovoContrato(false); setEditandoVendaOriginal(null); }} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleSalvarContrato} className="btn-primary px-8">{editandoVendaOriginal ? "Salvar Alterações" : "Gerar Contrato"}</button>
               </div>
             </motion.div>
           </div>
@@ -6570,7 +6662,7 @@ const ContratosSection = ({
                   </div>
                   <div>
                     <label className="label">Vencimento</label>
-                    <input className="input-field" placeholder="Ex: todo dia 10" value={editVendaForm.dataVencimento || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVencimento: e.target.value })} />
+                    <input type="date" className="input-field" value={editVendaForm.dataVencimento || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVencimento: e.target.value })} />
                   </div>
                   </>)}
                   <div>
@@ -6853,7 +6945,7 @@ const ContratosSection = ({
                   </button>
                   {/* Editar venda */}
                   <button
-                    onClick={() => { setEditingVenda(selectedVenda); setEditVendaForm({ ...selectedVenda }); }}
+                    onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                   >
                     <Pencil size={17} />
@@ -7309,11 +7401,33 @@ const ContratosSection = ({
                         </div>
                         <div>
                           <label className="label">RG</label>
-                          <input className="input-field" placeholder="0000000" value={gerarVendedor.rg} onChange={(e) => setGerarVendedor({ ...gerarVendedor, rg: maskRG(e.target.value) })} />
+                          <input
+                            className={`input-field ${vendedorRgError ? "border-red-400 focus:ring-red-400" : gerarVendedor.rg.replace(/\s+/g, "").length >= 5 ? "border-green-400 focus:ring-green-400" : ""}`}
+                            placeholder="0000000"
+                            value={gerarVendedor.rg}
+                            onChange={(e) => {
+                              const v = maskRG(e.target.value);
+                              setGerarVendedor({ ...gerarVendedor, rg: v });
+                              const clean = v.replace(/\s+/g, "").trim();
+                              setVendedorRgError(clean.length > 0 && !validarRG(v) ? "RG inválido (mínimo 5 caracteres)" : null);
+                            }}
+                          />
+                          {vendedorRgError && <p className="mt-1 text-[11px] text-red-500 font-semibold">{vendedorRgError}</p>}
                         </div>
                         <div>
                           <label className="label">CPF</label>
-                          <input className="input-field" placeholder="000.000.000-00" value={gerarVendedor.cpf} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cpf: maskCPF(e.target.value) })} />
+                          <input
+                            className={`input-field font-mono ${vendedorCpfError ? "border-red-400 focus:ring-red-400" : cpfStatus(gerarVendedor.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                            placeholder="000.000.000-00"
+                            value={gerarVendedor.cpf}
+                            onChange={(e) => {
+                              const v = maskCPF(e.target.value);
+                              setGerarVendedor({ ...gerarVendedor, cpf: v });
+                              const raw = v.replace(/\D/g, "");
+                              setVendedorCpfError(raw.length > 0 && cpfStatus(v) === "invalid" ? "CPF inválido" : null);
+                            }}
+                          />
+                          {vendedorCpfError && <p className="mt-1 text-[11px] text-red-500 font-semibold">{vendedorCpfError}</p>}
                         </div>
                         <div>
                           <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
@@ -7425,15 +7539,16 @@ const ContratosSection = ({
                       if (gerarStep === 1) {
                         if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
                         const cpfRaw = gerarVendedor.cpf.replace(/\D/g, "");
-                        if (cpfRaw.length > 0 && !validarCPF(gerarVendedor.cpf)) {
-                          alert("CPF do vendedor inválido. Verifique e tente novamente.");
+                        if (cpfRaw.length > 0 && cpfStatus(gerarVendedor.cpf) === "invalid") {
+                          setVendedorCpfError("CPF inválido. Verifique e tente novamente.");
                           return;
                         }
                         const rgClean = gerarVendedor.rg.replace(/\s+/g, "").trim();
                         if (rgClean.length > 0 && !validarRG(gerarVendedor.rg)) {
-                          alert("RG do vendedor inválido (mínimo 5 caracteres).");
+                          setVendedorRgError("RG inválido (mínimo 5 caracteres).");
                           return;
                         }
+                        if (vendedorCpfError || vendedorRgError) return;
                       }
                       setGerarStep(gerarStep + 1);
                     }}
@@ -7512,7 +7627,7 @@ const ContratosSection = ({
       </AnimatePresence>
       {DeleteModal}
 
-      {/* Modal: Duplicar ou Substituir contrato editado */}
+      {/* Modal: Mesclar / Duplicar / Cancelar */}
       <AnimatePresence>
         {showDuplicarModal && pendingEditVenda && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
@@ -7527,8 +7642,8 @@ const ContratosSection = ({
                   <FileText size={20} className="text-amber-600" />
                 </div>
                 <div>
-                  <h4 className="font-display font-bold text-slate-800">Salvar contrato editado</h4>
-                  <p className="text-xs text-slate-500 mt-0.5">O que deseja fazer com as alterações?</p>
+                  <h4 className="font-display font-bold text-slate-800">Salvar alterações</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">O que deseja fazer com este contrato?</p>
                 </div>
               </div>
               <div className="flex flex-col gap-3">
@@ -7536,28 +7651,33 @@ const ContratosSection = ({
                   onClick={() => {
                     onUpdateVenda(pendingEditVenda);
                     setEditingVenda(null);
+                    setEditandoVendaOriginal(null);
                     setShowDuplicarModal(false);
                     setPendingEditVenda(null);
+                    setSelectedVenda(pendingEditVenda);
                   }}
                   className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
                 >
-                  <Save size={17} /> Substituir contrato original
+                  <Save size={17} /> Mesclar (substituir original)
                 </button>
                 <button
                   onClick={() => {
                     const novoId = `venda-${Date.now()}`;
                     const novoContrato = `CONT-${Date.now()}`;
-                    onUpdateVenda({ ...pendingEditVenda, id: novoId, numeroContrato: novoContrato });
+                    const nova = { ...pendingEditVenda, id: novoId, numeroContrato: novoContrato };
+                    onUpdateVenda(nova);
                     setEditingVenda(null);
+                    setEditandoVendaOriginal(null);
                     setShowDuplicarModal(false);
                     setPendingEditVenda(null);
+                    setSelectedVenda(nova);
                   }}
                   className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
                 >
                   <Copy size={17} /> Duplicar como novo contrato
                 </button>
                 <button
-                  onClick={() => { setShowDuplicarModal(false); setPendingEditVenda(null); }}
+                  onClick={() => { setShowDuplicarModal(false); setPendingEditVenda(null); setEditandoVendaOriginal(null); }}
                   className="text-sm text-slate-400 hover:text-slate-600 font-semibold py-2 transition-colors"
                 >
                   Cancelar
@@ -7706,7 +7826,6 @@ const ClientesSection = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {[
                   { label: "Nome Completo", field: "nome" },
-                  { label: "Profissão", field: "profissao" },
                   { label: "Nacionalidade", field: "nacionalidade" },
                   { label: "Telefone 1", field: "telefone1" },
                   { label: "Telefone 2", field: "telefone2" },
@@ -8465,7 +8584,7 @@ const ConfigSection = ({
               </div>
               <div>
                 <label className="label">RG</label>
-                <input className="input-field" value={vendedorForm.rg} onChange={(e) => setVendedorForm({ ...vendedorForm, rg: e.target.value })} />
+                <input className="input-field" value={vendedorForm.rg} onChange={(e) => setVendedorForm({ ...vendedorForm, rg: maskRG(e.target.value) })} />
               </div>
               <div>
                 <label className="label">CPF</label>
