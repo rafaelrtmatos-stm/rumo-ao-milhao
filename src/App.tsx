@@ -354,14 +354,6 @@ const BuscarCEPPorRua = ({
 };
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Helper robusto para carregar jsPDF v2/v3/v4
-async function loadJsPDF() {
-  const mod = await import('jspdf');
-  const Cls = (mod as any).jsPDF ?? (mod as any).default?.jsPDF ?? (mod as any).default;
-  if (!Cls) throw new Error('jsPDF não pôde ser carregado.');
-  return Cls;
-}
-
 function validarCPF(cpf: string): boolean {
   const c = cpf.replace(/\D/g, "");
   if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
@@ -5087,6 +5079,7 @@ const ContratosSection = ({
   onSaveProprietario,
   onClearInitialVenda,
   userProfile,
+  initialMode,
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -5247,7 +5240,12 @@ const ContratosSection = ({
 
   const handleDownloadDocx = async () => {
     if (!selectedVenda) return;
-    if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
+    // Restaurar dados do snapshot se wizard não foi aberto
+    const snap = selectedVenda.contratoSnapshot;
+    const vendedorAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+    const empAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? gerarEmp);
+    const extraAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
+    if (!vendedorAtivo.nome.trim()) { alert("Informe o nome do vendedor."); return; }
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
@@ -5256,8 +5254,9 @@ const ContratosSection = ({
     setShowGerarModal(false);
     setDownloadingDocx(true);
     
-    // Determina qual endpoint usar baseado no tipo de contrato
-    const endpoint = tipoContrato === 'avista' 
+    // Determina qual endpoint usar baseado nos dados reais da venda (não do estado que pode estar desatualizado)
+    const isAvista = selectedVenda.quantidadeParcelas === 0;
+    const endpoint = isAvista 
       ? "/api/contrato/avista-padrao" 
       : "/api/contrato/parcelado-padrao";
     
@@ -5265,25 +5264,25 @@ const ContratosSection = ({
       const res = await authFetch(endpoint, {
         method: "POST",
         body: JSON.stringify({
-          vendedor: gerarVendedor,
+          vendedor: vendedorAtivo,
           cliente,
-          empreendimento: { nome: gerarEmp.nome || desenvolvimento.nome, comunidade: gerarEmp.comunidade || gerarExtra.comunidade, cidade: gerarEmp.cidade || desenvolvimento.cidade, estado: gerarEmp.estado || desenvolvimento.estado },
+          empreendimento: { nome: empAtivo.nome || desenvolvimento.nome, comunidade: empAtivo.comunidade || extraAtivo.comunidade, cidade: empAtivo.cidade || desenvolvimento.cidade, estado: empAtivo.estado || desenvolvimento.estado },
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
-            rua: gerarExtra.rua,
+            rua: extraAtivo.rua,
             valorLote: selectedVenda.valorLote,
             valorEntrada: selectedVenda.valorEntrada,
             quantidadeParcelas: selectedVenda.quantidadeParcelas,
             valorParcela: selectedVenda.valorParcela,
             dataVencimento: selectedVenda.dataVencimento,
             dataVenda: selectedVenda.dataVenda,
-            formaPagamento: gerarExtra.formaPagamento,
-            medidaFrente: gerarExtra.medidaFrente,
-            medidaLateralDir: gerarExtra.medidaLateralDir,
-            medidaLateralEsq: gerarExtra.medidaLateralEsq,
-            medidaFundos: gerarExtra.medidaFundos,
-            areaTotal: gerarExtra.areaTotal,
+            formaPagamento: extraAtivo.formaPagamento,
+            medidaFrente: extraAtivo.medidaFrente,
+            medidaLateralDir: extraAtivo.medidaLateralDir,
+            medidaLateralEsq: extraAtivo.medidaLateralEsq,
+            medidaFundos: extraAtivo.medidaFundos,
+            areaTotal: extraAtivo.areaTotal,
           },
         }),
       });
@@ -5304,10 +5303,10 @@ const ContratosSection = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       const snapshot = {
-        vendedor: gerarVendedor,
-        empreendimento: gerarEmp,
-        extra: gerarExtra,
-        tipoContrato: tipoContrato,
+        vendedor: vendedorAtivo,
+        empreendimento: empAtivo,
+        extra: extraAtivo,
+        tipoContrato: snap?.tipoContrato || tipoContrato,
         geradoEm: new Date().toISOString(),
       };
       onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: snapshot });
@@ -5320,7 +5319,7 @@ const ContratosSection = ({
 
   const [downloadingPdfContrato, setDownloadingPdfContrato] = useState(false);
 
-  // Baixa PDF do contrato usando jsPDF (captura a prévia renderizada)
+  // Baixa PDF do contrato usando jsPDF
   const handleDownloadPdfContrato = async () => {
     if (!selectedVenda) return;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
@@ -5328,47 +5327,16 @@ const ContratosSection = ({
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
 
-    setDownloadingPdfContrato(true);
-    const endpoint = tipoContrato === 'avista'
-      ? "/api/contrato/avista-padrao"
-      : "/api/contrato/parcelado-padrao";
+    // Restaurar dados do snapshot se wizard não foi aberto nesta sessão
+    const snapPdf = selectedVenda.contratoSnapshot;
+    const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snapPdf?.vendedor ?? gerarVendedor);
+    const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snapPdf?.empreendimento ?? { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade || "", cidade: desenvolvimento.cidade || "", estado: desenvolvimento.estado || "" });
+    const xAtivo = gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra);
 
+    setDownloadingPdfContrato(true);
     try {
-      const res = await authFetch(endpoint, {
-        method: "POST",
-        body: JSON.stringify({
-          vendedor: gerarVendedor,
-          cliente,
-          empreendimento: { nome: gerarEmp.nome || desenvolvimento.nome, comunidade: gerarEmp.comunidade || gerarExtra.comunidade, cidade: gerarEmp.cidade || desenvolvimento.cidade, estado: gerarEmp.estado || desenvolvimento.estado },
-          venda: {
-            numeroLote: selectedVenda.numeroLote,
-            quadra: selectedVenda.quadra,
-            rua: gerarExtra.rua,
-            valorLote: selectedVenda.valorLote,
-            valorEntrada: selectedVenda.valorEntrada,
-            quantidadeParcelas: selectedVenda.quantidadeParcelas,
-            valorParcela: selectedVenda.valorParcela,
-            dataVencimento: selectedVenda.dataVencimento,
-            dataVenda: selectedVenda.dataVenda,
-            formaPagamento: gerarExtra.formaPagamento,
-            medidaFrente: gerarExtra.medidaFrente,
-            medidaLateralDir: gerarExtra.medidaLateralDir,
-            medidaLateralEsq: gerarExtra.medidaLateralEsq,
-            medidaFundos: gerarExtra.medidaFundos,
-            areaTotal: gerarExtra.areaTotal,
-          },
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert("Erro: " + (err.error || "Falha ao gerar contrato."));
-        return;
-      }
-      // O servidor retorna DOCX; converte para PDF via jsPDF/mammoth não é viável client-side.
-      // Estratégia: baixar como DOCX com extensão .pdf não é correto.
-      // Em vez disso, geramos um PDF simples com os dados da prévia.
-      const JsPDFClass = await loadJsPDF();
-      const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
       const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR") : "";
 
@@ -5389,18 +5357,18 @@ const ContratosSection = ({
 
       pdf.setFontSize(16);
       pdf.setFont("helvetica", "bold");
-      pdf.text(tipoContrato === 'avista' ? "CONTRATO DE COMPRA E VENDA À VISTA" : "CONTRATO DE COMPRA E VENDA PARCELADO", pageW / 2, y, { align: "center" });
+      pdf.text(selectedVenda.quantidadeParcelas === 0 ? "CONTRATO DE COMPRA E VENDA À VISTA" : "CONTRATO DE COMPRA E VENDA PARCELADO", pageW / 2, y, { align: "center" });
       y += lineH * 2;
 
       addLine(`Nº ${selectedVenda.numeroContrato}`, true, 10);
       addBlank();
 
       addLine("VENDEDOR", true, 12);
-      addLine(`Nome: ${gerarVendedor.nome || "—"}`);
-      if (gerarVendedor.cpf) addLine(`CPF: ${gerarVendedor.cpf}`);
-      if (gerarVendedor.rg) addLine(`RG: ${gerarVendedor.rg}`);
-      if (gerarVendedor.estadoCivil) addLine(`Estado Civil: ${gerarVendedor.estadoCivil}`);
-      if (gerarVendedor.endereco) addLine(`Endereço: ${gerarVendedor.endereco}${gerarVendedor.numero ? ", " + gerarVendedor.numero : ""} — ${gerarVendedor.bairro || ""} — ${gerarVendedor.cidade || ""}/${gerarVendedor.estado || ""}`);
+      addLine(`Nome: ${vAtivo.nome || "—"}`);
+      if (vAtivo.cpf) addLine(`CPF: ${vAtivo.cpf}`);
+      if (vAtivo.rg) addLine(`RG: ${vAtivo.rg}`);
+      if (vAtivo.estadoCivil) addLine(`Estado Civil: ${vAtivo.estadoCivil}`);
+      if (vAtivo.endereco) addLine(`Endereço: ${vAtivo.endereco}${vAtivo.numero ? ", " + vAtivo.numero : ""} — ${vAtivo.bairro || ""} — ${vAtivo.cidade || ""}/${vAtivo.estado || ""}`);
       addBlank();
 
       addLine("COMPRADOR", true, 12);
@@ -5412,10 +5380,10 @@ const ContratosSection = ({
       addBlank();
 
       addLine("IMÓVEL", true, 12);
-      addLine(`Empreendimento: ${gerarEmp.nome || desenvolvimento.nome}`);
+      addLine(`Empreendimento: ${eAtivo.nome || desenvolvimento.nome}`);
       addLine(`Quadra: ${selectedVenda.quadra}   Lote: ${selectedVenda.numeroLote}`);
-      if (gerarExtra.rua) addLine(`Logradouro: ${gerarExtra.rua}`);
-      if (gerarExtra.areaTotal) addLine(`Área Total: ${gerarExtra.areaTotal} m²`);
+      if (xAtivo.rua) addLine(`Logradouro: ${xAtivo.rua}`);
+      if (xAtivo.areaTotal) addLine(`Área Total: ${xAtivo.areaTotal} m²`);
       addBlank();
 
       addLine("CONDIÇÕES DE PAGAMENTO", true, 12);
@@ -5425,7 +5393,7 @@ const ContratosSection = ({
         addLine(`Parcelas: ${selectedVenda.quantidadeParcelas}x de ${fmtCurrency(selectedVenda.valorParcela)}`);
         if (selectedVenda.dataVencimento) addLine(`Vencimento: dia ${fmtDate(selectedVenda.dataVencimento).split("/")[0]} de cada mês`);
       }
-      addLine(`Forma de Pagamento: ${gerarExtra.formaPagamento}`);
+      addLine(`Forma de Pagamento: ${xAtivo.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}`);
       addLine(`Data da Venda: ${fmtDate(selectedVenda.dataVenda)}`);
       addBlank();
       addBlank();
@@ -5436,7 +5404,7 @@ const ContratosSection = ({
       pdf.setFontSize(9);
       pdf.setFont("helvetica", "normal");
       pdf.text("Vendedor", margin + 40, y + 5, { align: "center" });
-      pdf.text(gerarVendedor.nome || "", margin + 40, y + 10, { align: "center" });
+      pdf.text(vAtivo.nome || "", margin + 40, y + 10, { align: "center" });
 
       pdf.line(pageW - margin - 80, y, pageW - margin, y);
       pdf.text("Comprador", pageW - margin - 40, y + 5, { align: "center" });
@@ -5454,10 +5422,10 @@ const ContratosSection = ({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       const pdfSnapshot = {
-        vendedor: gerarVendedor,
-        empreendimento: gerarEmp,
-        extra: gerarExtra,
-        tipoContrato: tipoContrato,
+        vendedor: vAtivo,
+        empreendimento: eAtivo,
+        extra: xAtivo,
+        tipoContrato: snapPdf?.tipoContrato || tipoContrato,
         geradoEm: new Date().toISOString(),
       };
       onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
@@ -5541,6 +5509,41 @@ const ContratosSection = ({
       setSelectedVenda(initialVenda);
       setViewMode("contract");
       onClearInitialVenda?.();
+
+      if ((initialMode as any) === 'recibo') {
+        // Botão "Gerar Recibo" pós-venda → abrir modal de recibo
+        setTimeout(() => setShowReciboModal(true), 100);
+      } else if (!initialVenda.contratoGerado) {
+        // Botão "Gerar Contrato" pós-venda (sem contrato ainda) → abrir wizard direto
+        const dev = developments.find((d) => d.id === initialVenda.empreendimentoId);
+        setGerarProprietarioId("");
+        setGerarVendedor(emptyGerarVendedor);
+        setGerarEmp({
+          nome: dev?.nome || "",
+          comunidade: dev?.comunidade || "",
+          cidade: dev?.cidade || "",
+          estado: dev?.estado || "",
+        });
+        setGerarExtra({
+          rua: initialVenda.rua || "",
+          comunidade: dev?.comunidade || "",
+          formaPagamento: initialVenda.formaPagamento || "Dinheiro",
+          medidaFrente: initialVenda.medidaFrente || "",
+          medidaLateralDir: initialVenda.medidaLateralDir || "",
+          medidaLateralEsq: initialVenda.medidaLateralEsq || "",
+          medidaFundos: initialVenda.medidaFundos || "",
+          areaTotal: initialVenda.areaTotal || "",
+        });
+        setGerarStep(0);
+        setTimeout(() => setShowGerarModal(true), 80);
+      } else if (initialVenda.contratoGerado && initialVenda.contratoSnapshot) {
+        // Contrato já gerado → restaurar snapshot nos estados do wizard
+        const snap = initialVenda.contratoSnapshot;
+        if (snap.vendedor) setGerarVendedor(snap.vendedor);
+        if (snap.empreendimento) setGerarEmp(snap.empreendimento);
+        if (snap.extra) setGerarExtra(snap.extra);
+        if (snap.tipoContrato) setTipoContrato(snap.tipoContrato);
+      }
     }
   }, [initialVenda]);
 
@@ -5552,7 +5555,7 @@ const ContratosSection = ({
   }, [selectedVenda]);
 
   const reciboRef = useRef<HTMLDivElement>(null);
-  const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | null>(null);
+  const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | 'docx' | null>(null);
 
   const handlePrint = () => {
     if (!reciboRef.current) {
@@ -5755,9 +5758,9 @@ const ContratosSection = ({
     setReciboDownloading('pdf');
     try {
       const canvas = await captureReciboCanvas();
-      const JsPDFClass = await loadJsPDF();
+      const { jsPDF: JsPDF } = await import("jspdf");
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new JsPDFClass({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = (canvas.height * pdfW) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
@@ -5767,6 +5770,62 @@ const ContratosSection = ({
     } catch (e: unknown) {
       console.error('Erro ao gerar PDF:', e);
       alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setReciboDownloading(null);
+    }
+  };
+
+  const handleDownloadReciboDocx = async () => {
+    if (!selectedVenda) { alert('Nenhuma venda selecionada.'); return; }
+    const reciboCliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const reciboDev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    if (!reciboCliente) { alert('Cliente não encontrado para este recibo.'); return; }
+    if (!reciboDev) { alert('Empreendimento não encontrado.'); return; }
+    setReciboDownloading('docx');
+    // Vendedor do recibo: usa snapshot do contrato se existir, senão objeto vazio
+    const snap = selectedVenda.contratoSnapshot;
+    const vendedorRecibo = snap?.vendedor ?? {
+      nome: '', nacionalidade: 'brasileiro', estadoCivil: 'Solteiro(a)',
+      rg: '', cpf: '', endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+    };
+    const empRecibo = {
+      nome: snap?.empreendimento?.nome || reciboDev.nome,
+      comunidade: snap?.empreendimento?.comunidade || reciboDev.comunidade || '',
+      cidade: snap?.empreendimento?.cidade || reciboDev.cidade || 'Santarém',
+      estado: snap?.empreendimento?.estado || reciboDev.estado || 'PA',
+    };
+    const endpoint = '/api/recibo/padrao';
+    try {
+      const res = await authFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          vendedor: vendedorRecibo,
+          cliente: reciboCliente,
+          empreendimento: empRecibo,
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: selectedVenda.rua || snap?.extra?.rua || '',
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: selectedVenda.formaPagamento || snap?.extra?.formaPagamento || 'Dinheiro',
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Erro ao gerar recibo DOCX: ' + (err.error || 'Falha no servidor.'));
+        return;
+      }
+      const blob = await res.blob();
+      const nome = reciboCliente.nome.replace(/\s+/g, '_');
+      triggerDownload(blob, `recibo_-_${nome}_-_Lote_${selectedVenda.numeroLote}_Q_${selectedVenda.quadra}.docx`);
+    } catch (e: any) {
+      alert('Erro ao gerar recibo DOCX: ' + e.message);
     } finally {
       setReciboDownloading(null);
     }
@@ -6960,7 +7019,7 @@ const ContratosSection = ({
                     <X size={22} />
                   </button>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={handleDownloadImage}
                     disabled={reciboDownloading !== null}
@@ -6981,6 +7040,18 @@ const ContratosSection = ({
                       <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
                     ) : (
                       <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>PDF</>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleDownloadReciboDocx}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                    title="Baixar recibo em Word (.docx)"
+                  >
+                    {reciboDownloading === 'docx' ? (
+                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
+                    ) : (
+                      <><FileDown size={17} />DOCX</>
                     )}
                   </button>
                   <button
@@ -7100,7 +7171,7 @@ const ContratosSection = ({
                     <div>
                       <h4 className="font-display font-bold text-slate-800">Gerar Contrato</h4>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {gerarStep === 0 ? "Dados do Terreno" : gerarStep === 1 ? "Dados do Vendedor" : "Preview do Contrato"}
+                        {gerarStep === 0 ? "Informações do Lote" : gerarStep === 1 ? "Proprietário / Vendedor" : "Prévia Final do Contrato"}
                       </p>
                     </div>
                   </div>
@@ -7110,7 +7181,7 @@ const ContratosSection = ({
                 </div>
                 {/* Steps indicator */}
                 <div className="flex items-center gap-2">
-                  {["Terreno", "Vendedor", "Preview"].map((label, i) => (
+                  {["Inf. do Lote", "Prop./Vendedor", "Prévia Final"].map((label, i) => (
                     <div key={i} className="flex items-center gap-2 flex-1">
                       <div className={`flex items-center gap-1.5 ${i <= gerarStep ? "text-primary-main" : "text-slate-300"}`}>
                         <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${i < gerarStep ? "bg-primary-main text-white" : i === gerarStep ? "bg-primary-main/20 text-primary-main border-2 border-primary-main" : "bg-slate-100 text-slate-400"}`}>
@@ -7129,6 +7200,24 @@ const ContratosSection = ({
                 {/* STEP 0: Terreno */}
                 {gerarStep === 0 && (
                   <div className="space-y-4">
+                    {/* Info do lote (somente leitura) */}
+                    <div className="bg-primary-main/5 border border-primary-main/20 rounded-2xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary-main mb-3">Dados da Venda</p>
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Empreendimento</p>
+                          <p className="font-bold text-slate-800 truncate">{gerarEmp.nome || selectedVenda.empreendimentoNome || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Quadra</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.quadra || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Lote</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.numeroLote || "—"}</p>
+                        </div>
+                      </div>
+                    </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="sm:col-span-2">
                         <label className="label">Rua do Lote</label>
@@ -7397,11 +7486,22 @@ const ContratosSection = ({
                             }
                           }
                         }
+                        // Atualiza selectedVenda localmente para que a prévia final mostre os dados corretos
+                        if (selectedVenda) {
+                          setSelectedVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: {
+                            vendedor: gerarVendedor,
+                            empreendimento: gerarEmp,
+                            extra: gerarExtra,
+                            tipoContrato: tipoContrato,
+                            geradoEm: new Date().toISOString(),
+                          }});
+                        }
                         setShowGerarModal(false);
+                        // selectedVenda continua setado → prévia final abre automaticamente
                       }}
                       className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
                     >
-                      OK
+                      <ChevronRight size={17} /> Finalizar Contrato
                     </button>
                   </div>
                 )}
