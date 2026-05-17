@@ -5075,6 +5075,7 @@ const ContratosSection = ({
   vendedores = [],
   proprietarios = [],
   onEditVenda,
+  onNovoContrato,
   onUpdateProprietario,
   onSaveProprietario,
   onClearInitialVenda,
@@ -5095,6 +5096,7 @@ const ContratosSection = ({
   onUpdateProprietario?: (p: Proprietario) => void;
   onSaveProprietario?: (p: Proprietario) => void;
   onEditVenda?: (v: Venda) => void;
+  onNovoContrato?: () => void;
   onClearInitialVenda?: () => void;
   userProfile?: { nome?: string; creci?: string; telefone?: string };
 }) => {
@@ -5336,7 +5338,7 @@ const ContratosSection = ({
     const snapPdf = selectedVenda.contratoSnapshot;
     const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snapPdf?.vendedor ?? gerarVendedor);
     const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snapPdf?.empreendimento ?? { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade || "", cidade: desenvolvimento.cidade || "", estado: desenvolvimento.estado || "" });
-    const xAtivo = gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra);
+    const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra)) : gerarExtra;
 
     setDownloadingPdfContrato(true);
     try {
@@ -6075,7 +6077,7 @@ const ContratosSection = ({
             <span className="hidden sm:inline">Ranking</span>
           </button>
           <button
-            onClick={() => setShowNovoContrato(true)}
+            onClick={() => onNovoContrato ? onNovoContrato() : setShowNovoContrato(true)}
             className="btn-primary flex items-center gap-2 flex-1 sm:flex-none justify-center"
           >
             <Plus size={18} />
@@ -6736,7 +6738,7 @@ const ContratosSection = ({
                   <span className="text-[9px] font-bold uppercase">Recibo</span>
                 </button>
                 <button
-                  onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
+                  onClick={() => handleEditarContrato(venda)}
                   className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
                 >
                   <Pencil size={20} />
@@ -6792,7 +6794,7 @@ const ContratosSection = ({
                     <FileCheck size={18} />
                   </button>
                   <button
-                    onClick={() => { if (onEditVenda) { onEditVenda(venda); } else { setEditingVenda(venda); setEditVendaForm({ ...venda }); } }}
+                    onClick={() => handleEditarContrato(venda)}
                     className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
                     title="Editar venda"
                   >
@@ -7135,24 +7137,20 @@ const ContratosSection = ({
                     )}
                   </button>
                   <button
-                    onClick={handleDownloadReciboDocx}
-                    disabled={reciboDownloading !== null}
-                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-                    title="Baixar recibo em Word (.docx)"
-                  >
-                    {reciboDownloading === 'docx' ? (
-                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
-                    ) : (
-                      <><FileDown size={17} />DOCX</>
-                    )}
-                  </button>
-                  <button
                     onClick={handlePrint}
                     disabled={reciboDownloading !== null}
-                    className="btn-primary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
                   >
                     <Printer size={17} />
                     Imprimir
+                  </button>
+                  <button
+                    onClick={() => { setShowReciboModal(false); if (selectedVenda) handleEditarContrato(selectedVenda); }}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <Pencil size={17} />
+                    Editar
                   </button>
                 </div>
               </div>
@@ -7199,10 +7197,23 @@ const ContratosSection = ({
                       </div>
                       <div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Localização</p>
+                        <p className="font-bold text-slate-800">
+                          {(() => {
+                            const reciboDev2 = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+                            const snap2 = selectedVenda.contratoSnapshot;
+                            const comunidade2 = snap2?.empreendimento?.comunidade || reciboDev2?.comunidade || '';
+                            const cidade2 = snap2?.empreendimento?.cidade || reciboDev2?.cidade || 'Santarém';
+                            const estado2 = snap2?.empreendimento?.estado || reciboDev2?.estado || 'PA';
+                            return comunidade2 ? `${comunidade2} - ${cidade2}/${estado2}` : `${cidade2}/${estado2}`;
+                          })()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Quadra/Lote</p>
                         <p className="font-bold text-slate-800">Q:{selectedVenda.quadra} / L:{selectedVenda.numeroLote}</p>
                       </div>
                       {selectedVenda.rua && (
-                        <div className="col-span-2">
+                        <div>
                           <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Logradouro</p>
                           <p className="font-bold text-slate-800">{selectedVenda.rua}</p>
                         </div>
@@ -10403,6 +10414,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onUpdateProprietario={handleUpdateProprietario}
             onSaveProprietario={handleSaveProprietario}
             onEditVenda={handleEditVenda}
+            onNovoContrato={() => { setEditingVendaEntry(null); setSection("vendas"); }}
             onClearInitialVenda={() => setContractToOpen(null)}
             userProfile={userProfile}
           />
