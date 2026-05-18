@@ -1,38 +1,12 @@
 /**
- * syncService.ts
- * Gerencia sincronização entre IndexedDB local e API remota.
- *
- * Fluxo:
- * 1. Toda gravação vai PRIMEIRO para IndexedDB (imediato, offline-safe)
- * 2. Uma entrada é adicionada à fila de sync
- * 3. Quando há internet, a fila é processada em background
- * 4. Pull periódico traz dados novos do servidor (last-write-wins por updatedAt)
+ * syncService.ts — usa authFetch em TODAS as chamadas de API
  */
 
 import { db } from './offlineDb';
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
-import { getAuthToken } from './main';
+import { authFetch } from './lib/authFetch';
 
-const API_BASE = '';
-
-// ── Helpers de fetch autenticado ────────────────────────────────────────────
-
-function authHeaders(): HeadersInit {
-  const token = getAuthToken();
-  return {
-    'Content-Type': 'application/json',
-    ...(token ? { Authorization: `Bearer ${token}` } : {}),
-  };
-}
-
-async function apiFetch(path: string, opts?: RequestInit): Promise<Response> {
-  return fetch(`${API_BASE}${path}`, {
-    ...opts,
-    headers: { ...authHeaders(), ...(opts?.headers ?? {}) },
-  });
-}
-
-// ── Adiciona item à fila de sync ─────────────────────────────────────────────
+// ── Fila de sync ─────────────────────────────────────────────────────────────
 
 export async function enqueue(
   entity: 'empreendimento' | 'cliente' | 'venda' | 'config',
@@ -40,7 +14,7 @@ export async function enqueue(
   entityId: string,
   payload?: unknown
 ) {
-  // Remove entradas antigas do mesmo entity+id (substituir pela mais recente)
+  // Remove entrada anterior do mesmo item (só mantém a mais recente)
   await db.syncQueue
     .where('entityId').equals(entityId)
     .and(item => item.entity === entity)
@@ -56,13 +30,12 @@ export async function enqueue(
   });
 }
 
-// ── Processa fila de sync ─────────────────────────────────────────────────────
+// ── Processa fila → envia para API com authFetch ──────────────────────────────
 
 let isSyncing = false;
 
 export async function processSyncQueue(): Promise<{ synced: number; errors: number }> {
-  if (isSyncing) return { synced: 0, errors: 0 };
-  if (!navigator.onLine) return { synced: 0, errors: 0 };
+  if (isSyncing || !navigator.onLine) return { synced: 0, errors: 0 };
 
   isSyncing = true;
   let synced = 0;
@@ -76,27 +49,31 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
         let res: Response;
 
         if (item.entity === 'config') {
-          res = await apiFetch('/api/config', {
+          res = await authFetch('/api/config', {
             method: 'POST',
             body: JSON.stringify(item.payload),
           });
         } else {
           const endpoint = entityEndpoint(item.entity);
-
           if (item.operation === 'delete') {
-            res = await apiFetch(`${endpoint}/${item.entityId}`, { method: 'DELETE' });
+            res = await authFetch(`${endpoint}/${item.entityId}`, { method: 'DELETE' });
           } else {
-            res = await apiFetch(`${endpoint}/${item.entityId}`, {
+            res = await authFetch(`${endpoint}/${item.entityId}`, {
               method: 'PUT',
               body: JSON.stringify(item.payload),
             });
           }
         }
 
+        if (res.status === 401) {
+          // Token inválido — para o sync, não apaga dados locais
+          console.warn('[sync] 401 — token expirado, sync pausado');
+          errors++;
+          break;
+        }
+
         if (res.ok) {
           await db.syncQueue.delete(item.id!);
-
-          // Marca como synced no banco local
           await markSynced(item.entity, item.entityId);
           synced++;
         } else {
@@ -133,26 +110,33 @@ async function markSynced(entity: string, id: string) {
   }
 }
 
-// ── Pull do servidor → IndexedDB (last-write-wins) ───────────────────────────
+// ── Pull do servidor → IndexedDB (com authFetch) ─────────────────────────────
 
 export async function pullFromServer(): Promise<void> {
   if (!navigator.onLine) return;
 
   try {
     const [empsRes, clsRes, vendasRes, cfgRes] = await Promise.all([
-      apiFetch('/api/empreendimentos'),
-      apiFetch('/api/clientes'),
-      apiFetch('/api/vendas'),
-      apiFetch('/api/config'),
+      authFetch('/api/empreendimentos'),
+      authFetch('/api/clientes'),
+      authFetch('/api/vendas'),
+      authFetch('/api/config'),
     ]);
+
+    // 401 em qualquer rota = token inválido, não apaga nada
+    if (empsRes.status === 401 || clsRes.status === 401 || vendasRes.status === 401) {
+      console.warn('[sync] 401 no pull — token expirado');
+      return;
+    }
+
+    const now = Date.now();
 
     if (empsRes.ok) {
       const emps: Empreendimento[] = await empsRes.json();
-      const now = Date.now();
       await db.transaction('rw', db.empreendimentos, async () => {
         for (const emp of emps) {
           const local = await db.empreendimentos.get(emp.id);
-          // Só atualiza se não tem alteração pendente local
+          // Só sobrescreve se não tem alteração pendente local
           if (!local || local.syncStatus === 'synced') {
             await db.empreendimentos.put({ id: emp.id, data: emp, syncStatus: 'synced', updatedAt: now });
           }
@@ -162,7 +146,6 @@ export async function pullFromServer(): Promise<void> {
 
     if (clsRes.ok) {
       const cls: Cliente[] = await clsRes.json();
-      const now = Date.now();
       await db.transaction('rw', db.clientes, async () => {
         for (const cl of cls) {
           const local = await db.clientes.get(cl.id);
@@ -175,7 +158,6 @@ export async function pullFromServer(): Promise<void> {
 
     if (vendasRes.ok) {
       const vendas: Venda[] = await vendasRes.json();
-      const now = Date.now();
       await db.transaction('rw', db.vendas, async () => {
         for (const venda of vendas) {
           const local = await db.vendas.get(venda.id);
@@ -188,14 +170,14 @@ export async function pullFromServer(): Promise<void> {
 
     if (cfgRes.ok) {
       const config: AppConfig = await cfgRes.json();
-      await db.config.put({ id: 'main', data: config, syncStatus: 'synced', updatedAt: Date.now() });
+      await db.config.put({ id: 'main', data: config, syncStatus: 'synced', updatedAt: now });
     }
   } catch (err) {
-    console.warn('[syncService] pullFromServer falhou:', err);
+    console.warn('[sync] pullFromServer erro de rede:', err);
   }
 }
 
-// ── Listener de conectividade ────────────────────────────────────────────────
+// ── Listeners de conectividade ────────────────────────────────────────────────
 
 let syncListeners: Array<(online: boolean) => void> = [];
 
@@ -208,31 +190,20 @@ export function getPendingCount(): Promise<number> {
   return db.syncQueue.count();
 }
 
-// Inicia listeners de conectividade
 export function initSyncListeners() {
-  const handleOnline = async () => {
+  window.addEventListener('online', async () => {
     syncListeners.forEach(cb => cb(true));
     await pullFromServer();
     await processSyncQueue();
     syncListeners.forEach(cb => cb(true));
-  };
+  });
 
-  const handleOffline = () => {
+  window.addEventListener('offline', () => {
     syncListeners.forEach(cb => cb(false));
-  };
-
-  window.addEventListener('online', handleOnline);
-  window.addEventListener('offline', handleOffline);
+  });
 
   // Sync periódico a cada 2 minutos quando online
   setInterval(async () => {
-    if (navigator.onLine) {
-      await processSyncQueue();
-    }
+    if (navigator.onLine) await processSyncQueue();
   }, 2 * 60 * 1000);
-
-  // Pull inicial se online
-  if (navigator.onLine) {
-    pullFromServer().then(() => processSyncQueue());
-  }
 }
