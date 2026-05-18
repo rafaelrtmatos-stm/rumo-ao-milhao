@@ -84,6 +84,35 @@ function diaDoMes(dateStr: string): number {
   return new Date(dateStr + "T12:00:00").getDate();
 }
 
+type GeneroBinario = "M" | "F";
+
+function genderizeEstadoCivil(raw: string, genero: GeneroBinario): string {
+  const base = (raw || "").toLowerCase().replace(/[()]/g, "").replace(/\ba\b/g, "").trim();
+  const masc: Record<string, string> = { solteiro: "solteiro", solteira: "solteiro", casado: "casado", casada: "casado", divorciado: "divorciado", divorciada: "divorciado", "viúvo": "viúvo", viuvo: "viúvo", "viúva": "viúvo", viuva: "viúvo" };
+  const fem: Record<string, string> = { solteiro: "solteira", solteira: "solteira", casado: "casada", casada: "casada", divorciado: "divorciada", divorciada: "divorciada", "viúvo": "viúva", viuvo: "viúva", "viúva": "viúva", viuva: "viúva" };
+  const map = genero === "F" ? fem : masc;
+  return map[base] || raw.toLowerCase();
+}
+
+function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
+  const genero: GeneroBinario = pessoa?.genero === "F" ? "F" : "M";
+  const feminino = genero === "F";
+  const papel = papelBase === "VENDEDOR" ? (feminino ? "VENDEDORA" : "VENDEDOR") : (feminino ? "COMPRADORA" : "COMPRADOR");
+  return {
+    genero,
+    tratamento: feminino ? "Sra." : "Sr.",
+    artigo: feminino ? "a" : "o",
+    nacionalidade: feminino ? "brasileira" : "brasileiro",
+    estadoCivil: genderizeEstadoCivil(pessoa?.estadoCivil || "", genero),
+    portador: feminino ? "portadora" : "portador",
+    domiciliado: feminino ? "domiciliada" : "domiciliado",
+    chamado: feminino ? "chamada" : "chamado",
+    papel,
+    aoA: feminino ? "à" : "ao",
+    peloPela: feminino ? "pela" : "pelo",
+  };
+}
+
 // ─── XML replacement ──────────────────────────────────────────────────────────
 
 function xmlEscape(s: string): string {
@@ -118,20 +147,20 @@ const T = {
   VEND_NAC:    "brasileiro",
   VEND_CIVIL:  "solteiro",
   VEND_RG:     "3215776",
-  VEND_CPF:    "632.939.002-91",
+  VEND_CPF:    "63293900291",
   // Endereço vendedor - contexto completo para evitar matches errados
   VEND_ADDR:   "Travessa Maranhão, n° 353, Aeroporto Velho, Santarém, PA, CEP 68020-070",
 
   // Comprador
   COMP_INTRO:  "a Sra. ",
-  COMP_NOME:   "MONIQUE DE NAZARE CASTRO VALENTE",
-  COMP_NAC:    "brasileira",
-  COMP_CIVIL:  "solteira",
-  COMP_RG:     "4478817 PC PA",
-  COMP_CPF:    "747.909.512-00",
-  COMP_FONES:  "(91) 98294-8762 (91) 98888-6169",
+  COMP_NOME:   "ANA BÁRBARA COSTA SANTOS",
+  COMP_NAC:    "brasileiro",
+  COMP_CIVIL:  "solteiro",
+  COMP_RG:     "5746450",
+  COMP_CPF:    "031.044.532-92",
+  COMP_FONES:  "(93) 99238-6266",
   // Endereço comprador - contexto completo
-  COMP_ADDR:   "Rua Oliveira Belo, n° 10, Umarizal, Belém, PA, CEP 66050-380",
+  COMP_ADDR:   "Beco Basílio Antunes, n° 68, Santa Clara, Santarém, PA, CEP 68005-630",
 
   // Imóvel
   EMP_NOME:    "DEUS DA PAZ",
@@ -179,6 +208,7 @@ export interface ContratoParams {
   corretor?: { nome?: string; creci?: string; telefone?: string };
   vendedor: {
     nome: string;
+    genero?: "M" | "F";
     nacionalidade: string;
     estadoCivil: string;
     rg: string;
@@ -251,8 +281,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   let xml = zip.readAsText("word/document.xml");
 
   // ── Valores calculados ──────────────────────────────────────────────────────
-  const isF         = cliente.genero === "F";
-  const compLabel   = isF ? "COMPRADORA" : "COMPRADOR";
+  const generoVendedor = getGeneroPessoa(vendedor, "VENDEDOR");
+  const generoComprador = getGeneroPessoa(cliente, "COMPRADOR");
+  const isF         = generoComprador.genero === "F";
+  const compLabel   = generoComprador.papel;
   const saldo       = vendaSegura.valorLote - vendaSegura.valorEntrada;
   const corretagem  = vendaSegura.valorLote * 0.08;
   const dataVenda   = new Date((vendaSegura.dataVenda || new Date().toISOString()).split("T")[0] + "T12:00:00");
@@ -270,24 +302,26 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   const primeiraPag = primeiraParcela(vendaSegura.dataVencimento);
 
   // ── 1. Vendedor ─────────────────────────────────────────────────────────────
-  xml = rep(xml, T.VEND_NOME,  vendedor.nome.toUpperCase());
-  xml = rep(xml, T.VEND_NAC,   vendedor.nacionalidade.toLowerCase());
-  xml = rep(xml, T.VEND_CIVIL, vendedor.estadoCivil.toLowerCase());
-  xml = rep(xml, T.VEND_RG,    vendedor.rg);
-  // CPF aparece no corpo E na assinatura — substitui ambas as ocorrências
-  xml = rep(xml, T.VEND_CPF, vendedor.cpf);
-
-  // Endereço completo em contexto para não colidir com outros valores
   const vendAddr = `${vendedor.endereco}, n° ${vendedor.numero}, ${vendedor.bairro}, ${vendedor.cidade}, ${vendedor.estado}, CEP ${vendedor.cep}`;
+  const vendIntroOriginal = `o Sr. ${T.VEND_NOME}, ${T.VEND_NAC}, ${T.VEND_CIVIL}, portador da carteira de identidade nº ${T.VEND_RG} e do CPF nº ${T.VEND_CPF}, residente e domiciliado na ${T.VEND_ADDR}, nesta cidade, ora em diante chamado simplesmente de VENDEDOR`;
+  const vendIntroNovo = `${generoVendedor.artigo} ${generoVendedor.tratamento} ${vendedor.nome.toUpperCase()}, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg || "___"} e do CPF nº ${vendedor.cpf || "___"}, residente e ${generoVendedor.domiciliado} na ${vendAddr}, nesta cidade, ora em diante ${generoVendedor.chamado} simplesmente ${generoVendedor.papel}`;
+  xml = rep(xml, vendIntroOriginal, vendIntroNovo);
+  xml = rep(xml, T.VEND_NOME,  vendedor.nome.toUpperCase());
+  // Nacionalidade e estado civil do vendedor já são tratados no bloco completo acima.
+  xml = rep(xml, T.VEND_RG,    vendedor.rg);
+  xml = rep(xml, T.VEND_CPF, vendedor.cpf);
   xml = rep(xml, T.VEND_ADDR, vendAddr);
 
   // ── 2. Comprador ────────────────────────────────────────────────────────────
-  xml = rep(xml, T.COMP_INTRO, isF ? "a Sra. " : "o Sr. ");
+  const compIntroOriginal = `de outro o Sr. ${T.COMP_NOME} , ${T.COMP_NAC}, ${T.COMP_CIVIL}, portador da carteira de identidade nº ${T.COMP_RG} e do CPF nº ${T.COMP_CPF}, Telefone ${T.COMP_FONES}, residente e domiciliado na ${T.COMP_ADDR}, ora em diante chamado simplesmente de COMPRADOR`;
+  const compAddr = `${cliente.endereco}, n° ${cliente.numero}, ${cliente.bairro}, ${cliente.cidade}, ${cliente.estado}, CEP ${cliente.cep}`;
+  const compIntroNovo = `de outro ${generoComprador.artigo} ${generoComprador.tratamento} ${cliente.nome.toUpperCase()}, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg || "___"} e do CPF nº ${cliente.cpf || "___"}${phones ? `, Telefone ${phones}` : ""}, residente e ${generoComprador.domiciliado} na ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}`;
+  xml = rep(xml, compIntroOriginal, compIntroNovo);
+  xml = rep(xml, T.COMP_INTRO, `${generoComprador.artigo} ${generoComprador.tratamento} `);
   xml = rep(xml, T.COMP_NOME,  cliente.nome.toUpperCase());
-  xml = rep(xml, T.COMP_NAC,   (cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase());
-  xml = rep(xml, T.COMP_CIVIL, cliente.estadoCivil.toLowerCase());
+  xml = rep(xml, T.COMP_NAC,   generoComprador.nacionalidade);
+  xml = rep(xml, T.COMP_CIVIL, generoComprador.estadoCivil);
   xml = rep(xml, T.COMP_RG,    cliente.rg);
-  // CPF aparece no corpo E na assinatura
   xml = rep(xml, T.COMP_CPF, cliente.cpf);
 
   // Telefones: substitui os dois juntos, ou remove "Telefone ..." se não houver
@@ -298,7 +332,6 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   }
 
   // Endereço completo
-  const compAddr = `${cliente.endereco}, n° ${cliente.numero}, ${cliente.bairro}, ${cliente.cidade}, ${cliente.estado}, CEP ${cliente.cep}`;
   xml = rep(xml, T.COMP_ADDR, compAddr);
 
   // Pronomes de gênero específicos na descrição do comprador
@@ -317,6 +350,26 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
     xml = rep(xml, "a COMPRADORA",   "o COMPRADOR");
     xml = rep(xml, "COMPRADORA",     "COMPRADOR");        // restantes
   }
+
+  // Correções obrigatórias de gênero no corpo do contrato e assinaturas
+  xml = rep(xml, "ao COMPRADOR", `${generoComprador.aoA} ${generoComprador.papel}`);
+  xml = rep(xml, "à COMPRADORA", `${generoComprador.aoA} ${generoComprador.papel}`);
+  xml = rep(xml, "pelo COMPRADOR", `${generoComprador.peloPela} ${generoComprador.papel}`);
+  xml = rep(xml, "pela COMPRADORA", `${generoComprador.peloPela} ${generoComprador.papel}`);
+  xml = rep(xml, "o VENDEDOR", `${generoVendedor.artigo} ${generoVendedor.papel}`);
+  xml = rep(xml, "a VENDEDORA", `${generoVendedor.artigo} ${generoVendedor.papel}`);
+  xml = rep(xml, "o COMPRADOR", `${generoComprador.artigo} ${generoComprador.papel}`);
+  xml = rep(xml, "a COMPRADORA", `${generoComprador.artigo} ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "VENDEDOR -", `${generoVendedor.papel} -`);
+  xml = rep(xml, "VENDEDOR-", `${generoVendedor.papel} -`);
+  xml = rep(xml, "VENDEDOR –", `${generoVendedor.papel} -`);
+  xml = rep(xml, "COMPRADOR -", `${generoComprador.papel} -`);
+  xml = rep(xml, "COMPRADOR-", `${generoComprador.papel} -`);
+  xml = rep(xml, "COMPRADOR –", `${generoComprador.papel} -`);
 
   // ── 4. Imóvel / Empreendimento ───────────────────────────────────────────────
   xml = rep(xml, T.EMP_NOME, empreendimento.nome.toUpperCase());

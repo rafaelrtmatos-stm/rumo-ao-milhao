@@ -562,6 +562,34 @@ function genderizeEstadoCivil(raw: string, genero: string): string {
   const map = genero === "F" ? fem : genero === "O" ? outro : masc;
   return map[base] || raw;
 }
+
+type GeneroBinario = "M" | "F";
+
+function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
+  const genero: GeneroBinario = pessoa?.genero === "F" ? "F" : "M";
+  const feminino = genero === "F";
+  const papel = papelBase === "VENDEDOR"
+    ? (feminino ? "VENDEDORA" : "VENDEDOR")
+    : (feminino ? "COMPRADORA" : "COMPRADOR");
+
+  return {
+    genero,
+    tratamento: feminino ? "Sra." : "Sr.",
+    artigo: feminino ? "a" : "o",
+    nacionalidade: feminino ? "brasileira" : "brasileiro",
+    estadoCivil: genderizeEstadoCivil(pessoa?.estadoCivil || "", genero).toLowerCase(),
+    portador: feminino ? "portadora" : "portador",
+    domiciliado: feminino ? "domiciliada" : "domiciliado",
+    chamado: feminino ? "chamada" : "chamado",
+    papel,
+    aoA: feminino ? "à" : "ao",
+    peloPela: feminino ? "pela" : "pelo",
+  };
+}
+
+function generoContratoValido(pessoa: any): boolean {
+  return pessoa?.genero === "M" || pessoa?.genero === "F";
+}
 import {
   Sparkles,
   Copy,
@@ -5597,7 +5625,7 @@ const ContratosSection = ({
   }, [contratoData.empreendimentoId, contratoData.quadra, contratoData.numeroLote, contratoData.rua, developments]);
 
   const emptyGerarVendedor = {
-    nome: "", nacionalidade: "brasileiro", estadoCivil: "Solteiro(a)",
+    nome: "", genero: "", nacionalidade: "brasileiro", estadoCivil: "Solteiro",
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
   };
   const [showGerarModal, setShowGerarModal] = useState(false);
@@ -5662,8 +5690,9 @@ const ContratosSection = ({
     if (prop) {
       setGerarVendedor({
         nome: prop.nome,
+        genero: (prop as any).genero || "",
         nacionalidade: prop.nacionalidade || "brasileiro",
-        estadoCivil: prop.estadoCivil || "Solteiro(a)",
+        estadoCivil: genderizeEstadoCivil(prop.estadoCivil || "Solteiro", ((prop as any).genero || "M")),
         rg: prop.rg || "",
         cpf: prop.cpf || "",
         endereco: prop.endereco || "",
@@ -5678,6 +5707,14 @@ const ContratosSection = ({
     }
   };
 
+  const validarGenerosAntesDeGerar = (vendedorAtivo: any, clienteAtivo: any): boolean => {
+    if (!generoContratoValido(vendedorAtivo) || !generoContratoValido(clienteAtivo)) {
+      alert("Selecione o gênero do vendedor e do comprador para gerar o contrato corretamente.");
+      return false;
+    }
+    return true;
+  };
+
   const handleDownloadDocx = async () => {
     if (!selectedVenda) return;
     // Restaurar dados do snapshot se wizard não foi aberto
@@ -5690,6 +5727,7 @@ const ContratosSection = ({
     const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (!validarGenerosAntesDeGerar(vendedorAtivo, cliente)) return;
 
     setShowGerarModal(false);
     setDownloadingDocx(true);
@@ -5812,8 +5850,8 @@ const ContratosSection = ({
     const diaVenc = venda.dataVencimento ? new Date(venda.dataVencimento+"T12:00:00").getDate() : "___";
     const primeiraParcela = (() => { if(!venda.dataVencimento)return "___/___/______"; const d=new Date(venda.dataVencimento+"T12:00:00"); d.setMonth(d.getMonth()+1); return d.toLocaleDateString("pt-BR"); })();
     const parcelasExt = cap(inteiroExtenso(nParcelas));
-    const isF = cliente.genero === "F" || (typeof cliente.genero === "undefined" && (cliente.nome||"").split(" ")[0].match(/a$/i));
-    const trat = isF ? "Sra." : "Sr.";
+    const generoVendedor = getGeneroPessoa(vendedor, "VENDEDOR");
+    const generoComprador = getGeneroPessoa(cliente, "COMPRADOR");
     const dimStr = xAtivo?.medidaFrente
       ? `${xAtivo.medidaFrente}m de frente, lateral direita ${xAtivo.medidaLateralDir||"___"}m, lateral esquerda ${xAtivo.medidaLateralEsq||"___"}m, fundos ${xAtivo.medidaFundos||"___"}m, área total ${xAtivo.areaTotal||"___"}m²`
       : "Dimensões não informadas";
@@ -5847,8 +5885,8 @@ const ContratosSection = ({
       <div class="sec">
         <div class="sec-title">I — Partes</div>
         <table>
-          <tr><td class="lbl">Vendedor (Outorgante)</td><td><strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${vendedor.nacionalidade||"brasileiro"}, ${vendedor.estadoCivil||"___"}, RG: ${vendedor.rg||"___"}, CPF: ${vendedor.cpf||"___"}<br>Endereço: ${vendAddr}</td></tr>
-          <tr><td class="lbl">Comprador (Outorgado)</td><td><strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${cliente.nacionalidade||"brasileiro"}, ${cliente.estadoCivil||"___"}, RG: ${cliente.rg||"___"}, CPF: ${cliente.cpf||"___"}${phones?`<br>Tel: ${phones}`:""}${compAddr.replace("___, nº s/n, , ,  , CEP ","")?"<br>Endereço: "+compAddr:""}</td></tr>
+          <tr><td class="lbl">${generoVendedor.papel} (Outorgante)</td><td>${generoVendedor.artigo} ${generoVendedor.tratamento} <strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil || "___"}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg||"___"} e do CPF nº ${vendedor.cpf||"___"}, residente e ${generoVendedor.domiciliado} no endereço ${vendAddr}, ora em diante ${generoVendedor.chamado} simplesmente ${generoVendedor.papel}</td></tr>
+          <tr><td class="lbl">${generoComprador.papel} (Outorgado)</td><td>${generoComprador.artigo} ${generoComprador.tratamento} <strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil || "___"}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg||"___"} e do CPF nº ${cliente.cpf||"___"}${phones?`, telefone ${phones}`:""}, residente e ${generoComprador.domiciliado} no endereço ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}</td></tr>
         </table>
       </div>
 
@@ -5878,11 +5916,11 @@ const ContratosSection = ({
 
       <div class="sec">
         ${isAvista
-          ? `<p>Pelo presente instrumento particular, o ${trat} VENDEDOR declara ter recebido do(a) ${trat} COMPRADOR(A) a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando plena, geral e irrevogável quitação do valor recebido.</p>
-           <p>O COMPRADOR(A) declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
-          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual o VENDEDOR vende ao COMPRADOR o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
-             <p>O COMPRADOR obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
-             <p>O COMPRADOR declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
+          ? `<p>Pelo presente instrumento particular, ${generoVendedor.artigo} ${generoVendedor.papel} declara ter recebido ${generoComprador.artigo === "a" ? "da" : "do"} ${generoComprador.papel} a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando ${generoComprador.aoA} ${generoComprador.papel} plena, geral e irrevogável quitação.</p>
+           <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
+          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual ${generoVendedor.artigo} ${generoVendedor.papel} vende ${generoComprador.aoA} ${generoComprador.papel} o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
+             <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
+             <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
         }
         <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
         <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataStr}.</p>
@@ -5891,8 +5929,8 @@ const ContratosSection = ({
       ${carimboPago}
 
       <div class="assin">
-        <div class="assin-item"><div class="assin-linha">${(vendedor.nome||"VENDEDOR").toUpperCase()}<br><span style="font-size:9pt">Vendedor / Outorgante</span>${vendedor.cpf?`<br><span style="font-size:9pt">CPF: ${vendedor.cpf}</span>`:""}</div></div>
-        <div class="assin-item"><div class="assin-linha">${(cliente.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Comprador / Outorgado</span>${cliente.cpf?`<br><span style="font-size:9pt">CPF: ${cliente.cpf}</span>`:""}</div></div>
+        <div class="assin-item"><div class="assin-linha">${generoVendedor.papel} - ${(vendedor.nome||"VENDEDOR").toUpperCase()}<br><span style="font-size:9pt">Outorgante</span>${vendedor.cpf?`<br><span style="font-size:9pt">CPF: ${vendedor.cpf}</span>`:""}</div></div>
+        <div class="assin-item"><div class="assin-linha">${generoComprador.papel} - ${(cliente.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Outorgado</span>${cliente.cpf?`<br><span style="font-size:9pt">CPF: ${cliente.cpf}</span>`:""}</div></div>
       </div>
       <div class="footer-info">
         <p>Nº do Contrato: ${venda.numeroContrato||"—"} &nbsp;|&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")}</p>
@@ -5913,6 +5951,7 @@ const ContratosSection = ({
     if (!cliente) { alert("Cliente não encontrado."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
     if (!vendedorAtivo.nome?.trim()) { alert("Informe o nome do vendedor antes de gerar o PDF."); return; }
+    if (!validarGenerosAntesDeGerar(vendedorAtivo, cliente)) return;
 
     const isAvista = selectedVenda.quantidadeParcelas === 0 ||
       (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
@@ -6938,7 +6977,6 @@ VENDEDOR: ${venda.vendedor}`;
                         <select className="input-field" value={novoCliente.genero || "M"} onChange={(e) => setNovoCliente({ ...novoCliente, genero: e.target.value as "M" | "F" | "O" })}>
                           <option value="M">Masculino</option>
                           <option value="F">Feminino</option>
-                          <option value="O">Outro</option>
                         </select>
                       </div>
                     </div>
@@ -7562,6 +7600,14 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
+                  <button
+                    onClick={handleDownloadPdfContrato}
+                    disabled={downloadingPdf}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar PDF do contrato"
+                  >
+                    {downloadingPdf ? "Gerando..." : <><FileDown size={17} /> PDF</>}
+                  </button>
                   {/* Editar venda */}
                   <button
                     onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
@@ -8076,13 +8122,24 @@ VENDEDOR: ${venda.vendedor}`;
                           <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
                         </div>
                         <div>
+                          <label className="label">Gênero do Vendedor *</label>
+                          <select className="input-field" value={gerarVendedor.genero || ""} onChange={(e) => {
+                            const genero = e.target.value as "" | "M" | "F";
+                            setGerarVendedor({ ...gerarVendedor, genero, estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", genero || "M") });
+                          }}>
+                            <option value="">Selecionar...</option>
+                            <option value="M">Masculino</option>
+                            <option value="F">Feminino</option>
+                          </select>
+                        </div>
+                        <div>
                           <label className="label">Nacionalidade</label>
                           <input className="input-field" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
                         </div>
                         <div>
                           <label className="label">Estado Civil</label>
                           <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
-                            {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o}>{o}</option>)}
+                            {(gerarVendedor.genero === "F" ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"] : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]).map((o) => <option key={o}>{o}</option>)}
                           </select>
                         </div>
                         <div>
@@ -8224,6 +8281,7 @@ VENDEDOR: ${venda.vendedor}`;
                       // No step 1 (vendedor): validar CPF antes de avançar
                       if (gerarStep === 1) {
                         if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
+                        if (!generoContratoValido(gerarVendedor)) { alert("Selecione o gênero do vendedor e do comprador para gerar o contrato corretamente."); return; }
                         const cpfRaw = gerarVendedor.cpf.replace(/\D/g, "");
                         if (cpfRaw.length > 0 && cpfStatus(gerarVendedor.cpf) === "invalid") {
                           setVendedorCpfError("CPF inválido. Verifique e tente novamente.");
@@ -8254,6 +8312,8 @@ VENDEDOR: ${venda.vendedor}`;
                     <button
                       onClick={() => {
                         // Salvar snapshot, fechar wizard e abrir visualização final
+                        const clienteContrato = selectedVenda ? clients.find((c) => c.id === selectedVenda.clienteId) : null;
+                        if (!clienteContrato || !validarGenerosAntesDeGerar(gerarVendedor, clienteContrato)) return;
                         if (selectedVenda) {
                           const snapshot = {
                             vendedor: gerarVendedor,
@@ -8273,8 +8333,9 @@ VENDEDOR: ${venda.vendedor}`;
                               onSaveProprietario({
                                 id: `prop-${Date.now()}`,
                                 nome: gerarVendedor.nome,
+                                genero: gerarVendedor.genero || "M",
                                 nacionalidade: gerarVendedor.nacionalidade || "Brasileiro",
-                                estadoCivil: gerarVendedor.estadoCivil || "Solteiro(a)",
+                                estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", gerarVendedor.genero || "M"),
                                 rg: gerarVendedor.rg || "",
                                 cpf: gerarVendedor.cpf || "",
                                 endereco: gerarVendedor.endereco || "",

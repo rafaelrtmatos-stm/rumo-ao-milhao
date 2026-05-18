@@ -66,6 +66,35 @@ function numExt(n: number | undefined | null): string {
   return `${brlNum(safe)} (${capitalizar(valorExtenso(safe))})`;
 }
 
+type GeneroBinario = "M" | "F";
+
+function genderizeEstadoCivil(raw: string, genero: GeneroBinario): string {
+  const base = (raw || "").toLowerCase().replace(/[()]/g, "").replace(/\ba\b/g, "").trim();
+  const masc: Record<string, string> = { solteiro: "solteiro", solteira: "solteiro", casado: "casado", casada: "casado", divorciado: "divorciado", divorciada: "divorciado", "viúvo": "viúvo", viuvo: "viúvo", "viúva": "viúvo", viuva: "viúvo" };
+  const fem: Record<string, string> = { solteiro: "solteira", solteira: "solteira", casado: "casada", casada: "casada", divorciado: "divorciada", divorciada: "divorciada", "viúvo": "viúva", viuvo: "viúva", "viúva": "viúva", viuva: "viúva" };
+  const map = genero === "F" ? fem : masc;
+  return map[base] || raw.toLowerCase();
+}
+
+function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
+  const genero: GeneroBinario = pessoa?.genero === "F" ? "F" : "M";
+  const feminino = genero === "F";
+  const papel = papelBase === "VENDEDOR" ? (feminino ? "VENDEDORA" : "VENDEDOR") : (feminino ? "COMPRADORA" : "COMPRADOR");
+  return {
+    genero,
+    tratamento: feminino ? "Sra." : "Sr.",
+    artigo: feminino ? "a" : "o",
+    nacionalidade: feminino ? "brasileira" : "brasileiro",
+    estadoCivil: genderizeEstadoCivil(pessoa?.estadoCivil || "", genero),
+    portador: feminino ? "portadora" : "portador",
+    domiciliado: feminino ? "domiciliada" : "domiciliado",
+    chamado: feminino ? "chamada" : "chamado",
+    papel,
+    aoA: feminino ? "à" : "ao",
+    peloPela: feminino ? "pela" : "pelo",
+  };
+}
+
 // ─── XML replacement ──────────────────────────────────────────────────────────
 
 function xmlEscape(s: string): string {
@@ -109,6 +138,7 @@ export interface ReciboAVistaParams {
   corretor?: { nome?: string; creci?: string; telefone?: string };
   vendedor: {
     nome: string;
+    genero?: "M" | "F";
     nacionalidade: string;
     estadoCivil: string;
     rg: string;
@@ -162,22 +192,20 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   const { vendedor, cliente, empreendimento, venda } = params;
 
   const valorTotal = Number(venda.valorLote) || 0;
-  const isCompF = cliente.genero === "F";
+  const generoVendedor = getGeneroPessoa(vendedor, "VENDEDOR");
+  const generoComprador = getGeneroPessoa(cliente, "COMPRADOR");
 
-  // Gênero do vendedor (padrão masculino para proprietário)
-  const generoV   = "o";
-  const generoV2  = "o";
-  const tratVend  = "Sr.";
+  const generoV   = generoVendedor.artigo;
+  const generoV2  = generoVendedor.genero === "F" ? "a" : "o";
+  const tratVend  = generoVendedor.tratamento;
 
-  // Gênero do comprador
-  const generoC   = isCompF ? "a" : "o";
-  const generoC2  = isCompF ? "a" : "o";
-  const generoC4  = isCompF ? "à" : "ao";
-  const tratComp  = isCompF ? "Sra." : "Sr.";
-  const portCard  = "portador(a)";
+  const generoC   = generoComprador.artigo;
+  const generoC2  = generoComprador.genero === "F" ? "a" : "o";
+  const generoC4  = generoComprador.aoA;
+  const tratComp  = generoComprador.tratamento;
 
-  const vendedorTermo  = "VENDEDOR";
-  const compradorTermo = isCompF ? "COMPRADORA" : "COMPRADOR";
+  const vendedorTermo  = generoVendedor.papel;
+  const compradorTermo = generoComprador.papel;
 
   // Data
   const dataVenda = new Date((venda.dataVenda || new Date().toISOString()).split("T")[0] + "T12:00:00");
@@ -208,9 +236,9 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "[GENEROV]", generoV);
   xml = rep(xml, "[TRATVENDEDOR]", tratVend);
   xml = rep(xml, "[VENDEDOR]", vendedor.nome.toUpperCase());
-  xml = rep(xml, "[NACIONALIDADE]", vendedor.nacionalidade.toLowerCase());
-  xml = rep(xml, "[ESTADO_CIVIL]", vendedor.estadoCivil.toLowerCase());
-  xml = rep(xml, "[PORT]", portCard);
+  xml = rep(xml, "[NACIONALIDADE]", generoVendedor.nacionalidade);
+  xml = rep(xml, "[ESTADO_CIVIL]", generoVendedor.estadoCivil);
+  xml = rep(xml, "[PORT] da carteira de identidade nº [RG] [EMISSAO] e do CPF nº [CPF]", `${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg || "___"} e do CPF nº ${vendedor.cpf || "___"}`);
   xml = rep(xml, "[RG]", vendedor.rg || "___");
   xml = rep(xml, "[EMISSAO]", "");
   xml = rep(xml, "[CPF]", vendedor.cpf);
@@ -226,8 +254,9 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "[GENEROC]", generoC);
   xml = rep(xml, "[TRATCOMPRADOR]", tratComp);
   xml = rep(xml, "[COMPRADOR]", cliente.nome.toUpperCase());
-  xml = rep(xml, "[NACIONALIDADE1]", (cliente.nacionalidade || (isCompF ? "brasileira" : "brasileiro")).toLowerCase());
-  xml = rep(xml, "[ESTADO_CIVIL1]", cliente.estadoCivil.toLowerCase());
+  xml = rep(xml, "[NACIONALIDADE1]", generoComprador.nacionalidade);
+  xml = rep(xml, "[ESTADO_CIVIL1]", generoComprador.estadoCivil);
+  xml = rep(xml, "[PORT] da carteira de identidade nº [RG1] [EMISSAO1] e do CPF nº [CPF1]", `${generoComprador.portador} da carteira de identidade nº ${cliente.rg || "___"} e do CPF nº ${cliente.cpf || "___"}`);
   xml = rep(xml, "[RG1]", cliente.rg || "___");
   xml = rep(xml, "[EMISSAO1]", "");
   xml = rep(xml, "[CPF1]", cliente.cpf);
@@ -241,6 +270,26 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "[ESTADO1]", cliente.estado || "___");
   xml = rep(xml, "[COMPRADOR_TERMO]", compradorTermo);
   xml = rep(xml, "[GENEROC4]", generoC4);
+
+  // Correções obrigatórias de gênero no recibo à vista
+  xml = rep(xml, "que a COMPRADORA pagou", `que ${generoComprador.artigo} ${generoComprador.papel} pagou`);
+  xml = rep(xml, "que o COMPRADOR pagou", `que ${generoComprador.artigo} ${generoComprador.papel} pagou`);
+  xml = rep(xml, "e a VENDEDORA recebeu", `e ${generoVendedor.artigo} ${generoVendedor.papel} recebeu`);
+  xml = rep(xml, "e o VENDEDOR recebeu", `e ${generoVendedor.artigo} ${generoVendedor.papel} recebeu`);
+  xml = rep(xml, "dá ao COMPRADOR pleno, geral e irrevogável quitação", `dando ${generoComprador.aoA} ${generoComprador.papel} plena, geral e irrevogável quitação`);
+  xml = rep(xml, "dá à COMPRADORA pleno, geral e irrevogável quitação", `dando ${generoComprador.aoA} ${generoComprador.papel} plena, geral e irrevogável quitação`);
+  xml = rep(xml, "ao COMPRADOR", `${generoComprador.aoA} ${generoComprador.papel}`);
+  xml = rep(xml, "à COMPRADORA", `${generoComprador.aoA} ${generoComprador.papel}`);
+  xml = rep(xml, "pelo COMPRADOR", `${generoComprador.peloPela} ${generoComprador.papel}`);
+  xml = rep(xml, "pela COMPRADORA", `${generoComprador.peloPela} ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "[VENDEDOR_TERMO]- [VENDEDOR]", `${generoVendedor.papel} - ${vendedor.nome.toUpperCase()}`);
+  xml = rep(xml, "[COMPRADOR_TERMO]- [COMPRADOR]", `${generoComprador.papel} - ${cliente.nome.toUpperCase()}`);
+  xml = rep(xml, `${generoVendedor.papel}- ${vendedor.nome.toUpperCase()}`, `${generoVendedor.papel} - ${vendedor.nome.toUpperCase()}`);
+  xml = rep(xml, `${generoComprador.papel}- ${cliente.nome.toUpperCase()}`, `${generoComprador.papel} - ${cliente.nome.toUpperCase()}`);
 
   // Imóvel
   xml = rep(xml, "[QUANTTERRENO]", "um");
