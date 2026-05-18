@@ -5110,6 +5110,7 @@ const ContratosSection = ({
   const [empFilter, setEmpFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc" | "emp_asc" | "status_asc" | "corretor_asc">("data_desc");
+  const [paymentFilter, setPaymentFilter] = useState<"" | "avista" | "parcelado">("");
   const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -5326,7 +5327,7 @@ const ContratosSection = ({
 
   const [downloadingPdfContrato, setDownloadingPdfContrato] = useState(false);
 
-  // Gera PDF do contrato via popup HTML (mesmos dados do DOCX, sem jsPDF)
+  // Gera PDF do contrato via servidor (DOCX → PDF via LibreOffice)
   const handleDownloadPdfContrato = async () => {
     if (!selectedVenda) return;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
@@ -5334,141 +5335,72 @@ const ContratosSection = ({
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
 
-    // Mesma lógica de dados do handleDownloadDocx
     const snapPdf = selectedVenda.contratoSnapshot;
     const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snapPdf?.vendedor ?? gerarVendedor);
     const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snapPdf?.empreendimento ?? { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade || "", cidade: desenvolvimento.cidade || "", estado: desenvolvimento.estado || "" });
     const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra)) : gerarExtra;
 
+    if (!vAtivo.nome?.trim()) { alert("Informe o nome do vendedor."); return; }
+
     const isAvista = selectedVenda.quantidadeParcelas === 0;
-    const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
-    const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "";
-    const numExtenso = (v: number): string => {
-      const n = Math.round(v * 100) / 100;
-      if (n === 0) return "zero Reais";
-      const uns = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
-      const dez = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
-      const cen = ["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
-      const ext = (x: number): string => {
-        if (x === 100) return "cem";
-        if (x === 1000) return "mil";
-        if (x < 20) return uns[x];
-        if (x < 100) return dez[Math.floor(x/10)] + (x%10 ? " e " + uns[x%10] : "");
-        if (x < 1000) return cen[Math.floor(x/100)] + (x%100 ? " e " + ext(x%100) : "");
-        if (x < 1000000) { const m = Math.floor(x/1000); const r = x%1000; return (m===1?"mil":ext(m)+" mil") + (r ? (r<100||r%100===0?" e ":" ") + ext(r) : ""); }
-        const m = Math.floor(x/1000000); const r = x%1000000;
-        return (m===1?"um milhão":ext(m)+" milhões") + (r ? " e " + ext(r) : "");
+    const endpoint = isAvista ? "/api/contrato/avista-padrao" : "/api/contrato/parcelado-padrao";
+
+    setDownloadingPdfContrato(true);
+    try {
+      const res = await authFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          vendedor: vAtivo,
+          cliente,
+          empreendimento: { nome: eAtivo.nome || desenvolvimento.nome, comunidade: eAtivo.comunidade || xAtivo.comunidade, cidade: eAtivo.cidade || desenvolvimento.cidade, estado: eAtivo.estado || desenvolvimento.estado },
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: xAtivo.rua,
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: xAtivo.formaPagamento,
+            medidaFrente: xAtivo.medidaFrente,
+            medidaLateralDir: xAtivo.medidaLateralDir,
+            medidaLateralEsq: xAtivo.medidaLateralEsq,
+            medidaFundos: xAtivo.medidaFundos,
+            areaTotal: xAtivo.areaTotal,
+          },
+          outputFormat: "pdf",
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Erro ao gerar PDF: " + (err.error || "Falha no servidor."));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      const isPdf = blob.type === "application/pdf";
+      a.href = url;
+      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra_${selectedVenda.quadra}.${isPdf ? "pdf" : "docx"}`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const pdfSnapshot = {
+        vendedor: vAtivo, empreendimento: eAtivo, extra: xAtivo,
+        tipoContrato: snapPdf?.tipoContrato || tipoContrato,
+        geradoEm: new Date().toISOString(),
       };
-      const intPart = Math.floor(n);
-      const cents = Math.round((n - intPart) * 100);
-      let result = ext(intPart) + (intPart === 1 ? " Real" : " Reais");
-      if (cents > 0) result += " e " + ext(cents) + (cents === 1 ? " centavo" : " centavos");
-      return result.charAt(0).toUpperCase() + result.slice(1);
-    };
-
-    const saldo = selectedVenda.valorLote - selectedVenda.valorEntrada;
-    const corretagem = selectedVenda.valorLote * 0.08;
-    const empCidade = eAtivo.cidade || desenvolvimento.cidade || "Santarém";
-    const empEstado = eAtivo.estado || desenvolvimento.estado || "PA";
-    const comunidade = eAtivo.comunidade || desenvolvimento.comunidade || "";
-    const diaVenc = selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "";
-    const primParcela = (() => {
-      if (!selectedVenda.dataVencimento) return "";
-      const d = new Date(selectedVenda.dataVencimento + "T12:00:00");
-      d.setMonth(d.getMonth() + 1);
-      return d.toLocaleDateString("pt-BR");
-    })();
-    const dimStr = xAtivo.medidaFrente
-      ? `${xAtivo.medidaFrente} metros de frente, lateral direita medindo ${xAtivo.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${xAtivo.medidaLateralEsq || "___"} e medindo ${xAtivo.medidaFundos || "___"} metros de fundos, com área total de ${xAtivo.areaTotal || "___"} metros quadrados`
-      : "";
-    const isF = cliente.genero === "F";
-    const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / ");
-
-    const vendedorAddr = [vAtivo.endereco, vAtivo.numero ? `nº ${vAtivo.numero}` : "", vAtivo.bairro, vAtivo.cidade, vAtivo.estado, vAtivo.cep ? `CEP ${vAtivo.cep}` : ""].filter(Boolean).join(", ");
-    const compradorAddr = [cliente.endereco, cliente.numero ? `nº ${cliente.numero}` : "", cliente.bairro, cliente.cidade, cliente.estado, cliente.cep ? `CEP ${cliente.cep}` : ""].filter(Boolean).join(", ");
-
-    const baseStyle = `
-      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; color: #000; margin: 0; padding: 0; }
-      .page { width: 21cm; min-height: 29.7cm; margin: 0 auto; padding: 2.5cm 2.5cm 2cm 3cm; box-sizing: border-box; }
-      h1 { font-size: 14pt; text-align: center; text-transform: uppercase; margin-bottom: 6pt; }
-      h2 { font-size: 12pt; text-transform: uppercase; margin: 14pt 0 4pt 0; }
-      p { text-align: justify; line-height: 1.6; margin: 0 0 8pt 0; }
-      .sig { display: flex; justify-content: space-around; margin-top: 60pt; }
-      .sig-block { text-align: center; width: 42%; }
-      .sig-line { border-top: 1px solid #000; margin-bottom: 4pt; }
-      @media print { @page { size: A4; margin: 0; } .page { padding: 2.5cm 2.5cm 2cm 3cm; } }
-    `;
-
-    let body = "";
-
-    if (isAvista) {
-      // ── Contrato À Vista — espelha recibo_avista_template.docx ──
-      const genV = "o", tratV = "Sr.";
-      const genC = isF ? "a" : "o", tratC = isF ? "Sra." : "Sr.";
-      const compTermo = isF ? "COMPRADORA" : "COMPRADOR";
-      body = `
-        <h1>Instrumento Particular de Compra e Venda de Imóvel</h1>
-        <h1>(Pagamento à Vista — ${fmtBRL(selectedVenda.valorLote)} / ${numExtenso(selectedVenda.valorLote)})</h1>
-        <h2>VENDEDOR</h2>
-        <p>${genV.toUpperCase()} ${tratV} <strong>${vAtivo.nome?.toUpperCase() || "___"}</strong>, ${vAtivo.nacionalidade?.toLowerCase() || "brasileiro"}, ${vAtivo.estadoCivil?.toLowerCase() || "___"}, portador${genV === "a" ? "a" : ""} do RG nº ${vAtivo.rg || "___"}, inscrit${genV === "a" ? "a" : "o"} no CPF/MF sob o nº ${vAtivo.cpf || "___"}, residente e domiciliad${genV} na ${vendedorAddr || "___"}, doravante denominad${genV} simplesmente VENDEDOR;</p>
-        <h2>${compTermo}</h2>
-        <p>${genC.toUpperCase()} ${tratC} <strong>${cliente.nome?.toUpperCase() || "___"}</strong>, ${(cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase()}, ${cliente.estadoCivil?.toLowerCase() || "___"}, portador${genC === "a" ? "a" : ""}(a) do RG nº ${cliente.rg || "___"}, inscrit${genC === "a" ? "a" : "o"} no CPF/MF sob o nº ${cliente.cpf || "___"}${phones ? ", Telefone: " + phones : ""}, residente e domiciliad${genC === "a" ? "a" : "o"} na ${compradorAddr || "___"}, doravante denominad${genC === "a" ? "a" : "o"} simplesmente ${compTermo};</p>
-        <h2>DO IMÓVEL</h2>
-        <p>O VENDEDOR vende ${genC === "a" ? "à" : "ao"} ${compTermo} um terreno de propriedade do${genV === "a" ? "a" : ""} VENDEDOR, localizado na ${comunidade ? comunidade + ", " : ""}${empCidade}/${empEstado}, no Empreendimento <strong>${eAtivo.nome?.toUpperCase() || "___"}</strong>, de Lote ${selectedVenda.numeroLote} da Quadra (${selectedVenda.quadra})${xAtivo.rua ? ", " + xAtivo.rua : ""}${dimStr ? ", medindo " + dimStr : ""}, pelo valor total de R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)}).</p>
-        <h2>DO PAGAMENTO</h2>
-        <p>O pagamento será efetuado à vista, em parcela única, no valor de <strong>R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)})</strong>, mediante ${xAtivo.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}, na data de ${fmtDate(selectedVenda.dataVenda)}.</p>
-        <h2>DA TRADIÇÃO E POSSE</h2>
-        <p>O VENDEDOR cede e transfere ${genC === "a" ? "à" : "ao"} ${compTermo} todos os direitos sobre o imóvel supradescrito, declarando que o mesmo está livre e desembaraçado de quaisquer ônus, dívidas ou encargos de qualquer natureza.</p>
-        <h2>DAS DISPOSIÇÕES GERAIS</h2>
-        <p>O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus herdeiros. Fica eleito o foro da comarca de ${empCidade}-${empEstado} para dirimir quaisquer dúvidas oriundas deste instrumento.</p>
-        <p style="margin-top:16pt">${empCidade}/${empEstado}, ${fmtDate(selectedVenda.dataVenda)}.</p>
-      `;
-    } else {
-      // ── Contrato Parcelado — espelha contrato_template.docx ──
-      const parcelasExt = numExtenso(selectedVenda.quantidadeParcelas).replace(/ Reais| Real/,"").trim();
-      const compLabel = isF ? "COMPRADORA" : "COMPRADOR";
-      body = `
-        <h1>Instrumento Particular de Compra e Venda de Imóvel a Prazo</h1>
-        <h1>(Parcelado)</h1>
-        <p>Pelo presente instrumento particular de compra e venda, de um lado como VENDEDOR:</p>
-        <h2>VENDEDOR</h2>
-        <p><strong>${vAtivo.nome?.toUpperCase() || "___"}</strong>, ${vAtivo.nacionalidade?.toLowerCase() || "brasileiro"}, ${vAtivo.estadoCivil?.toLowerCase() || "___"}, portador do RG nº ${vAtivo.rg || "___"}, inscrito no CPF/MF sob o nº ${vAtivo.cpf || "___"}, residente e domiciliado na ${vendedorAddr || "___"}, doravante denominado simplesmente VENDEDOR;</p>
-        <p>E de outro lado ${isF ? "a Sra." : "o Sr."} como ${compLabel}:</p>
-        <h2>${compLabel}</h2>
-        <p><strong>${cliente.nome?.toUpperCase() || "___"}</strong>, ${(cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase()}, ${cliente.estadoCivil?.toLowerCase() || "___"}, portador${isF ? "a" : ""} do RG nº ${cliente.rg || "___"}, inscrit${isF ? "a" : "o"} no CPF/MF sob o nº ${cliente.cpf || "___"}${phones ? ", Telefone " + phones : ""}, residente e domiciliad${isF ? "a" : "o"} na ${compradorAddr || "___"}, doravante denominad${isF ? "a" : "o"} simplesmente ${compLabel};</p>
-        <h2>DO IMÓVEL</h2>
-        <p>O VENDEDOR vende ${isF ? "à" : "ao"} ${compLabel}, que compra e aceita, um terreno de sua propriedade, localizado ${comunidade ? "na " + comunidade + ", " : ""}em ${empCidade}/${empEstado}, no Empreendimento <strong>${eAtivo.nome?.toUpperCase() || "___"}</strong>, correspondente ao Lote ${selectedVenda.numeroLote} da Quadra (${selectedVenda.quadra})${xAtivo.rua ? ", " + xAtivo.rua : ""}${dimStr ? ", medindo " + dimStr : ""}.</p>
-        <h2>DO PREÇO E FORMA DE PAGAMENTO</h2>
-        <p>O preço total do imóvel é de R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)}), pago da seguinte forma:</p>
-        <p><strong>a) Entrada:</strong> R$ ${fmtBRL(selectedVenda.valorEntrada).replace("R$","").trim()} (${numExtenso(selectedVenda.valorEntrada)}), na assinatura deste instrumento;</p>
-        <p><strong>b) Saldo:</strong> R$ ${fmtBRL(saldo).replace("R$","").trim()} (${numExtenso(saldo)}), dividido em ${selectedVenda.quantidadeParcelas} (${parcelasExt}) parcelas mensais e sucessivas, no valor de R$ ${fmtBRL(selectedVenda.valorParcela).replace("R$","").trim()} (${numExtenso(selectedVenda.valorParcela)}) cada, com vencimento no dia ${diaVenc} de cada mês, sendo a primeira parcela em ${primParcela};</p>
-        <p><strong>c) Comissão de corretagem:</strong> R$ ${fmtBRL(corretagem).replace("R$","").trim()} (${numExtenso(corretagem)}), a ser paga pelo VENDEDOR ao corretor mediador.</p>
-        <h2>DO INADIMPLEMENTO</h2>
-        <p>O não pagamento de qualquer parcela no vencimento implicará multa de 2% sobre o valor da parcela, acrescida de juros de mora de 1% ao mês e correção monetária pelo IGPM/FGV, sem prejuízo das demais cláusulas deste contrato.</p>
-        <h2>DA RESCISÃO</h2>
-        <p>O inadimplemento de 03 (três) ou mais parcelas consecutivas facultará ao VENDEDOR considerar rescindido o presente instrumento de pleno direito, com retenção de 20% dos valores pagos a título de multa compensatória, sendo o restante devolvido em até 90 dias.</p>
-        <h2>DAS DISPOSIÇÕES GERAIS</h2>
-        <p>O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus herdeiros e sucessores. Fica eleito o foro da comarca de ${empCidade}-${empEstado} para dirimir quaisquer dúvidas oriundas deste instrumento.</p>
-        <p style="margin-top:16pt">${empCidade}/${empEstado}, ${fmtDate(selectedVenda.dataVenda)}.</p>
-      `;
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
+    } catch (e: any) {
+      alert("Erro ao gerar PDF: " + e.message);
+    } finally {
+      setDownloadingPdfContrato(false);
     }
-
-    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contrato</title><style>${baseStyle}</style></head><body><div class="page">${body}<div class="sig"><div class="sig-block"><div class="sig-line"></div><p>${vAtivo.nome?.toUpperCase() || "VENDEDOR"}</p><p>CPF: ${vAtivo.cpf || "___"}</p><p>VENDEDOR</p></div><div class="sig-block"><div class="sig-line"></div><p>${cliente.nome?.toUpperCase() || "COMPRADOR"}</p><p>CPF: ${cliente.cpf || "___"}</p><p>${selectedVenda.quantidadeParcelas === 0 ? (isF ? "COMPRADORA" : "COMPRADOR") : (isF ? "COMPRADORA" : "COMPRADOR")}</p></div></div></div><script>window.onload=function(){window.print();}<\/script></body></html>`;
-
-    const popup = window.open("", "_blank", "width=900,height=700");
-    if (!popup) { alert("Popup bloqueado. Permita popups para este site."); return; }
-    popup.document.write(html);
-    popup.document.close();
-
-    // Salva snapshot igual ao DOCX
-    const pdfSnapshot = {
-      vendedor: vAtivo,
-      empreendimento: eAtivo,
-      extra: xAtivo,
-      tipoContrato: snapPdf?.tipoContrato || tipoContrato,
-      geradoEm: new Date().toISOString(),
-    };
-    onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
   };
 
   const [gerarFinalFormat, setGerarFinalFormat] = useState<'pdf' | 'docx'>('docx');
@@ -5521,6 +5453,9 @@ const ContratosSection = ({
     if (snap?.extra) {
       setGerarExtra(snap.extra);
     }
+
+    // Sincroniza tipo (à vista / parcelado) com a venda que está sendo editada
+    setTipoContrato(venda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
 
     // Guarda referência da venda original para update (não criar nova)
     setEditandoVendaOriginal(venda);
@@ -5977,7 +5912,8 @@ const ContratosSection = ({
       const matchesStatus = !statusFilter || normalizeStatus(venda.status) === statusFilter;
       const matchesEmp = !empFilter || venda.empreendimentoId === empFilter;
       const matchesDate = !dateFilter || (venda.dataVenda || "").startsWith(dateFilter);
-      return matchesSearch && matchesCorretor && matchesStatus && matchesEmp && matchesDate;
+      const matchesPayment = !paymentFilter || (paymentFilter === "avista" ? venda.quantidadeParcelas === 0 : venda.quantidadeParcelas > 0);
+      return matchesSearch && matchesCorretor && matchesStatus && matchesEmp && matchesDate && matchesPayment;
     });
     list = [...list].sort((a, b) => {
       switch (sortBy) {
@@ -6074,7 +6010,7 @@ const ContratosSection = ({
     }
   };
 
-  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter, paymentFilter].filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -6126,6 +6062,17 @@ const ContratosSection = ({
 
         {/* Filters row */}
         <div className="flex flex-wrap gap-2">
+          {/* Tipo de pagamento */}
+          <select
+            value={paymentFilter}
+            onChange={(e) => setPaymentFilter(e.target.value as "" | "avista" | "parcelado")}
+            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${paymentFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+          >
+            <option value="">Todos os tipos</option>
+            <option value="avista">À vista</option>
+            <option value="parcelado">Parcelado</option>
+          </select>
+
           {/* Status */}
           <select
             value={statusFilter}
@@ -6176,20 +6123,20 @@ const ContratosSection = ({
             onChange={(e) => setSortBy(e.target.value as any)}
             className="h-9 px-3 rounded-xl text-xs font-bold border bg-slate-50 text-slate-600 border-slate-200 transition-all ml-auto"
           >
-            <option value="data_desc">📅 Data ↓ (recente)</option>
-            <option value="data_asc">📅 Data ↑ (antigo)</option>
-            <option value="valor_desc">💰 Valor ↓ (maior)</option>
-            <option value="valor_asc">💰 Valor ↑ (menor)</option>
-            <option value="nome_asc">🔤 Cliente A–Z</option>
-            <option value="emp_asc">🏘️ Empreendimento A–Z</option>
-            <option value="status_asc">🔖 Status A–Z</option>
-            <option value="corretor_asc">👤 Corretor A–Z</option>
+            <option value="data_desc">Data (recente primeiro)</option>
+            <option value="data_asc">Data (antigo primeiro)</option>
+            <option value="valor_desc">Valor (maior primeiro)</option>
+            <option value="valor_asc">Valor (menor primeiro)</option>
+            <option value="nome_asc">Cliente A–Z</option>
+            <option value="emp_asc">Empreendimento A–Z</option>
+            <option value="status_asc">Status A–Z</option>
+            <option value="corretor_asc">Corretor A–Z</option>
           </select>
 
           {/* Limpar filtros */}
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); }}
+              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); setPaymentFilter(""); }}
               className="h-9 px-3 rounded-xl text-xs font-bold border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all flex items-center gap-1"
             >
               <X size={12} />
@@ -6737,9 +6684,14 @@ const ContratosSection = ({
                   <p className="font-bold text-slate-800 truncate">{venda.clienteNome}</p>
                   <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}</p>
                 </div>
-                <div className={`shrink-0 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
-                  <Icon size={11} />
-                  {s.label}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
+                    <Icon size={11} />
+                    {s.label}
+                  </div>
+                  <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${venda.quantidadeParcelas === 0 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
+                    {venda.quantidadeParcelas === 0 ? "À vista" : "Parcelado"}
+                  </span>
                 </div>
               </div>
               <p className="font-display font-bold text-primary-main text-lg">
@@ -6795,6 +6747,9 @@ const ContratosSection = ({
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
                 {venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}
+                <span className={`ml-2 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full ${venda.quantidadeParcelas === 0 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
+                  {venda.quantidadeParcelas === 0 ? "À vista" : "Parcelado"}
+                </span>
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
@@ -6866,7 +6821,7 @@ const ContratosSection = ({
             {semContrato.length > 0 && (
               <div className="card-premium space-y-3">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <span className="text-base">🟡</span>
+                  <Clock size={14} className="text-amber-500 shrink-0" />
                   <span className="text-xs font-black uppercase tracking-widest text-amber-600">Sem Contrato</span>
                   <span className="ml-auto text-xs font-bold text-slate-400">{semContrato.length} registro{semContrato.length !== 1 ? "s" : ""}</span>
                 </div>
@@ -6878,7 +6833,7 @@ const ContratosSection = ({
             {comContrato.length > 0 && (
               <div className="card-premium space-y-3">
                 <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <span className="text-base">🟢</span>
+                  <CheckCircle2 size={14} className="text-success-main shrink-0" />
                   <span className="text-xs font-black uppercase tracking-widest text-success-main">Com Contrato</span>
                   <span className="ml-auto text-xs font-bold text-slate-400">{comContrato.length} registro{comContrato.length !== 1 ? "s" : ""}</span>
                 </div>
@@ -6962,7 +6917,29 @@ const ContratosSection = ({
                   </button>
                   {/* Imprimir */}
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => {
+                      // Monta HTML do contrato em overlay para impressão correta
+                      const snap = selectedVenda?.contratoSnapshot;
+                      const vAtivo2 = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+                      const clienteImp = clients.find((c) => c.id === selectedVenda?.clienteId);
+                      if (!selectedVenda || !clienteImp) { window.print(); return; }
+                      const overlay = document.createElement('div');
+                      overlay.id = 'print-recibo-overlay';
+                      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white;padding:2rem;overflow:auto;font-family:Times New Roman,serif;font-size:12pt;';
+                      const isAv = selectedVenda.quantidadeParcelas === 0;
+                      overlay.innerHTML = `<div style="max-width:21cm;margin:0 auto;">
+                        <h2 style="text-align:center;text-transform:uppercase;">Contrato ${isAv ? "À Vista" : "Parcelado"}</h2>
+                        <p><strong>Comprador:</strong> ${clienteImp.nome} — CPF: ${clienteImp.cpf || "___"}</p>
+                        <p><strong>Vendedor:</strong> ${vAtivo2.nome || "___"} — CPF: ${vAtivo2.cpf || "___"}</p>
+                        <p><strong>Empreendimento:</strong> ${selectedVenda.empreendimentoNome} — Q${selectedVenda.quadra} L${selectedVenda.numeroLote}${selectedVenda.rua ? " — " + selectedVenda.rua : ""}</p>
+                        <p><strong>Valor:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                        ${isAv ? `<p><strong>Pagamento:</strong> À Vista — ${selectedVenda.formaPagamento || "Dinheiro"}</p>` : `<p><strong>Entrada:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)} — <strong>Parcelas:</strong> ${selectedVenda.quantidadeParcelas}x ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>`}
+                        <p style="margin-top:40px;">Para impressão completa com todas as cláusulas, use o botão <strong>PDF</strong> ou <strong>DOCX</strong>.</p>
+                      </div>`;
+                      document.body.appendChild(overlay);
+                      window.print();
+                      document.body.removeChild(overlay);
+                    }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Imprimir contrato"
                   >
