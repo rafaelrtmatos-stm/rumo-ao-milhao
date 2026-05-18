@@ -343,7 +343,26 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
 
   // ── 6. Fórum e data ──────────────────────────────────────────────────────────
   xml = rep(xml, T.FORUM, forumCidade);
-  xml = rep(xml, T.DATA,  dataExtenso(dataVenda));
+
+  // T.DATA ("12 de Maio de 2026") pode não bater porque o Word fragmenta a data
+  // em múltiplos <w:r> separados no XML. Por isso substituímos o bloco XML bruto
+  // que contém "Santarém-PA," + a data hardcoded por um parágrafo limpo e dinâmico.
+  const dataStr = dataExtenso(dataVenda);
+
+  // Fragmento exato que o Word gerou (data hardcoded "4 de Abril de 2026" partida em runs)
+  const FRAG_DATA_HARDCODED =
+    'Santarém-PA,</w:t></w:r><w:r><w:rPr><w:spacing w:val="-3"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r><w:proofErr w:type="gramStart"/><w:r><w:t>4</w:t></w:r><w:proofErr w:type="gramEnd"/><w:r><w:rPr><w:spacing w:val="-1"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r><w:r><w:t>de</w:t></w:r><w:r><w:rPr><w:spacing w:val="-1"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r><w:r><w:t>Abril de</w:t></w:r><w:r><w:rPr><w:spacing w:val="-6"/></w:rPr><w:t xml:space="preserve"> </w:t></w:r><w:r><w:rPr><w:spacing w:val="-4"/></w:rPr><w:t>2026</w:t></w:r>';
+
+  // Substitui pelo forum + data dinâmica num único run limpo
+  const FRAG_DATA_DINAMICO =
+    `${forumCidade},</w:t></w:r><w:r><w:t xml:space="preserve"> ${dataStr}</w:t></w:r>`;
+
+  if (xml.includes(FRAG_DATA_HARDCODED)) {
+    xml = xml.replace(FRAG_DATA_HARDCODED, FRAG_DATA_DINAMICO);
+  } else {
+    // Fallback: tenta o placeholder normal (caso o template seja atualizado)
+    xml = rep(xml, T.DATA, dataStr);
+  }
 
   // ── Bloco do corretor (recebedor) ────────────────────────────────────────────
   const corretorXml = buildCorretorXml((params as any).corretor ?? {});
