@@ -1745,6 +1745,7 @@ const LotDashboard = ({
   onClose,
   onViewContract,
   onSaveDev,
+  canEditMap = false,
 }: {
   dev: Empreendimento;
   sales: Venda[];
@@ -1753,6 +1754,7 @@ const LotDashboard = ({
   onClose: () => void;
   onViewContract: (v: Venda) => void;
   onSaveDev: (d: Empreendimento) => void;
+  canEditMap?: boolean;
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
@@ -1771,6 +1773,10 @@ const LotDashboard = ({
     setMapAction("visualizar");
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
+
+  useEffect(() => {
+    if (!canEditMap) setMapAction("visualizar");
+  }, [canEditMap]);
 
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
@@ -1808,6 +1814,7 @@ const LotDashboard = ({
         mapaPontos: mapaPontos,
       } as Empreendimento);
       setMode("mapa");
+      setMapAction("visualizar");
     };
     reader.readAsDataURL(file);
   };
@@ -1821,6 +1828,56 @@ const LotDashboard = ({
   const salvarTamanhoBolinhas = (size: "pequena" | "media" | "grande") => {
     setMapBallSize(size);
     persistDev({ ...localDev, mapaBolinhaTamanho: size } as Empreendimento);
+  };
+
+  const baixarMapaInterativo = () => {
+    if (!mapaImagem) {
+      alert("Nenhum mapa carregado para baixar.");
+      return;
+    }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = img.naturalWidth || img.width;
+      canvas.height = img.naturalHeight || img.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const baseSize = getBallPixelSize().size;
+      const scale = Math.max(canvas.width / 1000, 1);
+      const radius = Math.max((baseSize * scale) / 2, 10);
+      mapaPontos.forEach((ponto) => {
+        const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+        const indisponivel = ponto.status === "indisponivel" || !!venda;
+        const x = (Number(ponto.xPercent) / 100) * canvas.width;
+        const y = (Number(ponto.yPercent) / 100) * canvas.height;
+        ctx.beginPath();
+        ctx.arc(x, y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = indisponivel ? "#ef4444" : "#3b82f6";
+        ctx.fill();
+        ctx.lineWidth = Math.max(3 * scale, 2);
+        ctx.strokeStyle = "#ffffff";
+        ctx.stroke();
+        ctx.fillStyle = "#ffffff";
+        ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(String(ponto.lote || ""), x, y);
+      });
+      try {
+        const link = document.createElement("a");
+        link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
+        link.href = canvas.toDataURL("image/png");
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } catch {
+        alert("Não foi possível baixar o mapa com as bolinhas. Se a imagem veio de link externo, carregue o arquivo da imagem diretamente no sistema.");
+      }
+    };
+    img.onerror = () => alert("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente.");
+    img.src = mapaImagem;
   };
 
   const getSequenceRangeNumbers = () => {
@@ -1937,7 +1994,7 @@ const LotDashboard = ({
   };
 
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (mapAction === "visualizar") return;
+    if (!canEditMap || mapAction === "visualizar") return;
     const rect = e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
@@ -2116,7 +2173,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
 
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
-    const isEditingMap = mapAction !== "visualizar";
+    const isEditingMap = canEditMap && mapAction !== "visualizar";
     return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
@@ -2144,7 +2201,8 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
           {mapAction === "visualizar" ? <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
             <p className="text-xs text-slate-500">Neste modo o mapa serve apenas para ver as bolinhas, iniciar venda em lote disponível ou abrir venda vinculada.</p>
-            <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button>
+            <button onClick={baixarMapaInterativo} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Baixar mapa</button>
+            {canEditMap ? <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button> : <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
           </div> : <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
             <div className="grid grid-cols-3 gap-2">
@@ -2162,6 +2220,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
               <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
             </div>}
+            <button onClick={baixarMapaInterativo} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Baixar mapa</button>
             <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer"><Upload size={14} />Trocar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
             <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
           </div>}
@@ -2194,10 +2253,10 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
         </div>
         <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div className="flex gap-2 flex-wrap">
-            {mapaImagem && <button onClick={() => setMode("mapa")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
+            {mapaImagem && <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
             <button onClick={() => setMode("quadradinhos")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Quadradinhos/lotes atuais</button>
           </div>
-          {(!mapaImagem || mode !== "mapa" || mapAction !== "visualizar") && <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />Carregar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>}
+          {canEditMap && (!mapaImagem || mode !== "mapa" || mapAction !== "visualizar") && <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />Carregar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>}
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
@@ -2225,7 +2284,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
                 {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-primary" onClick={() => { onViewContract(selectedPoint.venda); onClose(); }}>Abrir contrato/venda</button>}
-                {mapAction !== "visualizar" && <>
+                {canEditMap && mapAction !== "visualizar" && <>
                   {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Marcar como indisponível</button>}
                   {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Liberar lote e manter histórico</button>}
                   {selectedPoint.status === "indisponivel" && !selectedPoint.vendaId && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}
@@ -2256,6 +2315,7 @@ const EmpreendimentosSection = ({
   onViewContract,
   onReleaseSoldLot,
   proprietarios = [],
+  canEditMap = false,
 }: {
   developments: Empreendimento[];
   sales: Venda[];
@@ -2271,6 +2331,7 @@ const EmpreendimentosSection = ({
   onViewContract: (v: Venda) => void;
   onReleaseSoldLot: (vendaId: string) => void;
   proprietarios?: Proprietario[];
+  canEditMap?: boolean;
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
@@ -3031,6 +3092,7 @@ const EmpreendimentosSection = ({
               onSave(updatedDev);
               setSelectedDevForMap(updatedDev);
             }}
+            canEditMap={canEditMap}
           />
         )}
       </AnimatePresence>
@@ -10851,9 +10913,10 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     calculadora: "Calculadora",
     config: "Configurações",
     usuarios: "Usuários",
+    editar_mapas: "Editar mapas",
   };
 
-  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","editar_mapas"];
 
   const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string } }[]>([]);
 
@@ -10938,7 +11001,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
       // Salvar permissões padrão para o novo usuário
       const defaultPerms: Record<string, boolean> = {
         dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
-        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false,
+        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false, editar_mapas: false,
       };
       await authFetch(`/api/admin/users/${data.id}/permissions`, {
         method: "PATCH",
@@ -11006,7 +11069,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const handleOpenPerms = (u: typeof users[0]) => {
     const defaults: Record<string, boolean> = {
       dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
-      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, editar_mapas: false,
     };
     // Se o usuário já tem permissões salvas, usa elas; senão usa os defaults
     const saved = u.permissions && Object.keys(u.permissions).length > 0 ? u.permissions : defaults;
@@ -11998,6 +12061,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
             onReleaseSoldLot={(vendaId) => updateVendaStatus(vendaId, "cancelado")}
             proprietarios={config.proprietarios || []}
+            canEditMap={!!isAdmin || userPermissions?.editar_mapas === true}
           />
         );
       case "proprietarios":
