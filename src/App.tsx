@@ -208,6 +208,32 @@ function getLotStatusForSale(
   return { exists: hasConfiguredLot(dev, q, l), status: "disponivel" };
 }
 
+function isVendaAtiva(venda?: Venda | null): boolean {
+  return !!venda && venda.status !== "cancelado" && venda.status !== "rascunho";
+}
+
+function findVendaAtivaDoLote(
+  vendas: Venda[],
+  empreendimentoId: string,
+  quadra: string,
+  lote: string,
+): Venda | undefined {
+  return vendas.find(
+    (s) =>
+      s.empreendimentoId === empreendimentoId &&
+      isVendaAtiva(s) &&
+      normalizeLotKeyPart(s.quadra) === normalizeLotKeyPart(quadra) &&
+      normalizeLotKeyPart(s.numeroLote) === normalizeLotKeyPart(lote),
+  );
+}
+
+function formatDateBR(date?: string): string {
+  if (!date) return "Não informada";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("pt-BR");
+}
+
 function countConfiguredLots(dev: Empreendimento): number {
   const lotesPorQuadraTotal = getQuadraList(dev).reduce(
     (sum, q) => sum + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length,
@@ -1851,6 +1877,7 @@ const EmpreendimentosSection = ({
   onDeleteLot,
   onStartSale,
   onViewContract,
+  onReleaseSoldLot,
   proprietarios = [],
 }: {
   developments: Empreendimento[];
@@ -1860,11 +1887,12 @@ const EmpreendimentosSection = ({
   onDelete: (id: string) => void;
   onUpdateLotesInfo: (
     id: string,
-    info: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }>,
+    info: Record<string, any>,
   ) => void;
   onDeleteLot: (devId: string, key: string) => void;
   onStartSale: (v: Partial<Venda>) => void;
   onViewContract: (v: Venda) => void;
+  onReleaseSoldLot: (vendaId: string) => void;
   proprietarios?: Proprietario[];
 }) => {
   const emptyForm: Partial<Empreendimento> = {
@@ -1885,6 +1913,54 @@ const EmpreendimentosSection = ({
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
   const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+  const [releaseLotPending, setReleaseLotPending] = useState<{
+    key: string;
+    quadra: string;
+    lote: string;
+    info: any;
+    venda: Venda;
+  } | null>(null);
+
+  const confirmarLiberarLoteVendido = () => {
+    if (!lotRegDev || !releaseLotPending) return;
+
+    const { key, info, venda } = releaseLotPending;
+    const infoAtualizada = {
+      ...(info || {}),
+      status: "disponivel",
+      historicoLiberacao: [
+        ...(((info || {}).historicoLiberacao as any[]) || []),
+        {
+          vendaId: venda.id,
+          clienteId: venda.clienteId,
+          clienteNome: venda.clienteNome || "Cliente não informado",
+          empreendimentoId: venda.empreendimentoId,
+          empreendimentoNome: venda.empreendimentoNome || lotRegDev.nome,
+          quadra: venda.quadra,
+          lote: venda.numeroLote,
+          dataVenda: venda.dataVenda || "",
+          dataLiberacao: new Date().toISOString(),
+        },
+      ],
+      desistente: {
+        clienteId: venda.clienteId,
+        clienteNome: venda.clienteNome || "Cliente não informado",
+        dataDesistencia: new Date().toISOString().split("T")[0],
+        dataVenda: venda.dataVenda || "",
+        vendaId: venda.id,
+      },
+    };
+    delete (infoAtualizada as any).vendaId;
+
+    onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+    setLotRegDev((prev) => {
+      if (!prev) return null;
+      return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
+    });
+
+    onReleaseSoldLot(venda.id);
+    setReleaseLotPending(null);
+  };
 
   const handleSalvarLote = () => {
     if (!lotRegDev || !lotRegForm.quadra || !lotRegForm.numeroLote) {
@@ -1893,6 +1969,17 @@ const EmpreendimentosSection = ({
     }
     const key = `${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase();
     const existing = lotRegDev.lotesInfo?.[key] || {};
+    const vendaAtiva = findVendaAtivaDoLote(sales, lotRegDev.id, lotRegForm.quadra, lotRegForm.numeroLote);
+    if (vendaAtiva && lotRegForm.status === "disponivel") {
+      setReleaseLotPending({
+        key,
+        quadra: lotRegForm.quadra,
+        lote: lotRegForm.numeroLote,
+        info: existing,
+        venda: vendaAtiva,
+      });
+      return;
+    }
     onUpdateLotesInfo(lotRegDev.id, { [key]: { ...existing, rua: lotRegForm.rua, status: lotRegForm.status } });
     setLotRegDev((prev) => {
       if (!prev) return null;
@@ -2789,11 +2876,7 @@ const EmpreendimentosSection = ({
                             .map(([key, info]) => {
                               const [quadra, ...loteParts] = key.split("-");
                               const lote = loteParts.join("-");
-                              const venda = sales.find(
-                                (s) => s.empreendimentoId === lotRegDev.id &&
-                                  s.quadra.toUpperCase() === quadra &&
-                                  s.numeroLote === lote
-                              );
+                              const venda = findVendaAtivaDoLote(sales, lotRegDev.id, quadra, lote);
                               const isIndisponivel = info.status === "indisponivel";
                               const temDesistente = !!(info as any).desistente;
                               return (
@@ -2859,37 +2942,12 @@ const EmpreendimentosSection = ({
                                           {isIndisponivel ? <Check size={13} /> : <X size={13} />}
                                         </button>
                                       )}
-                                      {/* Botão desistência — desvincular cliente mantendo histórico */}
+                                      {/* Botão liberar lote vendido — mantém histórico simples */}
                                       {venda && (
                                         <button
-                                          onClick={() => {
-                                            requestDelete(
-                                              `Desvincular ${venda.clienteNome} do lote ${key}? A venda será cancelada e o lote ficará disponível. O cliente permanece no sistema.`,
-                                              () => {
-                                                // Salva desistente no lotesInfo
-                                                const infoAtualizada = {
-                                                  ...(info as any),
-                                                  status: "disponivel",
-                                                  desistente: {
-                                                    clienteId: venda.clienteId,
-                                                    clienteNome: venda.clienteNome,
-                                                    dataDesistencia: new Date().toISOString().split("T")[0],
-                                                  }
-                                                };
-                                                onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
-                                                setLotRegDev((prev) => {
-                                                  if (!prev) return null;
-                                                  return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
-                                                });
-                                                // Cancela a venda (status cancelado)
-                                                const updatedSales = sales.map((s) => s.id === venda.id ? { ...s, status: "cancelado" as const } : s);
-                                                // Chama update via prop — acessa window temporariamente
-                                                (window as any).__onCancelVenda?.(venda.id);
-                                              }
-                                            );
-                                          }}
+                                          onClick={() => setReleaseLotPending({ key, quadra, lote, info, venda })}
                                           className="p-1.5 hover:bg-amber-50 text-amber-500 rounded-lg transition-colors"
-                                          title="Desvincular cliente do lote (lote ficará disponível)"
+                                          title="Liberar lote e manter histórico"
                                         >
                                           <ArrowLeft size={13} />
                                         </button>
@@ -3080,7 +3138,7 @@ const EmpreendimentosSection = ({
                             const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
                             lotes.forEach(l => {
                               const key = `${q}-${l}`.toUpperCase();
-                              const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
                               if (!temVendaAtiva) {
                                 newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
                               }
@@ -3092,7 +3150,7 @@ const EmpreendimentosSection = ({
                             const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
                             lotes.forEach(l => {
                               const key = `${q}-${l}`.toUpperCase();
-                              const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
                               if (!temVendaAtiva) {
                                 newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
                               }
@@ -3285,7 +3343,7 @@ const EmpreendimentosSection = ({
                         const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
                         lotes.forEach(l => {
                           const key = `${q}-${l}`.toUpperCase();
-                          const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                          const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
                           if (!temVendaAtiva) {
                             newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
                           }
@@ -3298,7 +3356,7 @@ const EmpreendimentosSection = ({
                         const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
                         lotes.forEach(l => {
                           const key = `${q}-${l}`.toUpperCase();
-                          const temVendaAtiva = vendas.some(s => s.quadra.toUpperCase() === q.toUpperCase() && s.numeroLote === l);
+                          const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
                           if (!temVendaAtiva) {
                             const isDisponivel = disponiveis.includes(l);
                             newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: isDisponivel ? "disponivel" : "indisponivel" };
@@ -3323,6 +3381,56 @@ const EmpreendimentosSection = ({
         )}
       </AnimatePresence>
 
+      {releaseLotPending && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[24px] shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h4 className="font-display font-bold text-slate-800">Liberar lote vendido</h4>
+                <p className="text-[11px] text-slate-400 font-medium">O histórico da venda será mantido</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">
+                Este lote está vinculado à venda de <span className="font-bold text-slate-800">{releaseLotPending.venda.clienteNome || "Cliente não informado"}</span>.
+                Ao marcar como disponível, o lote será liberado para nova venda, mas o histórico será mantido. Deseja continuar?
+              </p>
+              <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Cliente</p>
+                  <p className="font-bold text-slate-700 truncate">{releaseLotPending.venda.clienteNome || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Empreendimento</p>
+                  <p className="font-bold text-slate-700 truncate">{releaseLotPending.venda.empreendimentoNome || lotRegDev?.nome || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Quadra</p>
+                  <p className="font-bold text-slate-700">{releaseLotPending.quadra}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Lote</p>
+                  <p className="font-bold text-slate-700">{releaseLotPending.lote}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Data da venda</p>
+                  <p className="font-bold text-slate-700">{formatDateBR(releaseLotPending.venda.dataVenda)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+              <button onClick={() => setReleaseLotPending(null)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={confirmarLiberarLoteVendido} className="flex-1 h-11 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                <Check size={16} />
+                Liberar lote e manter histórico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {DeleteModal}
     </div>
   );
@@ -11128,7 +11236,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   const updateLotesInfo = (
     id: string,
-    info: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }>,
+    info: Record<string, any>,
   ) => {
     const updated = developments.map((d) =>
       d.id === id
@@ -11375,6 +11483,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onDeleteLot={deleteLot}
             onStartSale={handleStartSale}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+            onReleaseSoldLot={(vendaId) => updateVendaStatus(vendaId, "cancelado")}
             proprietarios={config.proprietarios || []}
           />
         );
