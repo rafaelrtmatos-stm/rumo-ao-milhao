@@ -5,10 +5,6 @@ import pg from "pg";
 import { eq, and, ne } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
-import { execFile } from "child_process";
-import { promisify } from "util";
-import { tmpdir } from "os";
-import { writeFile, readFile, unlink, mkdir } from "fs/promises";
 import { join } from "path";
 import { db } from "../server/db.js";
 import {
@@ -20,28 +16,6 @@ import {
 import { gerarContratoParceladoPadrao } from "../server/contratoParceladoPadrao.js";
 import { gerarReciboAVistaPadrao } from "../server/reciboAVistaPadrao.js";
 import { localUsersService } from "../server/localUsersService.js";
-
-const execFileAsync = promisify(execFile);
-
-// Converte buffer DOCX em PDF usando LibreOffice headless
-async function convertDocxToPdf(docxBuffer: Buffer): Promise<Buffer> {
-  const tmpDir = join(tmpdir(), `docx2pdf_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-  await mkdir(tmpDir, { recursive: true });
-  const docxPath = join(tmpDir, "input.docx");
-  await writeFile(docxPath, docxBuffer);
-  try {
-    await execFileAsync("libreoffice", [
-      "--headless", "--convert-to", "pdf", "--outdir", tmpDir, docxPath,
-    ], { timeout: 30000 });
-    const pdfPath = join(tmpDir, "input.pdf");
-    const pdfBuffer = await readFile(pdfPath);
-    return pdfBuffer;
-  } finally {
-    // cleanup async sem bloquear a resposta
-    unlink(docxPath).catch(() => {});
-    unlink(join(tmpDir, "input.pdf")).catch(() => {});
-  }
-}
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -642,13 +616,6 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
     const buffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    if (outputFormat === "pdf") {
-      const pdfBuffer = await convertDocxToPdf(buffer);
-      const filename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra_${(venda as any).quadra}.pdf`;
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Type", "application/pdf");
-      return res.send(pdfBuffer);
-    }
     const filename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
@@ -669,13 +636,6 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: a
     const buffer = await gerarReciboAVistaPadrao({ corretor, vendedor, cliente, empreendimento, venda });
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    if (outputFormat === "pdf") {
-      const pdfBuffer = await convertDocxToPdf(buffer);
-      const filename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra_${(venda as any).quadra}.pdf`;
-      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-      res.setHeader("Content-Type", "application/pdf");
-      return res.send(pdfBuffer);
-    }
     const filename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");

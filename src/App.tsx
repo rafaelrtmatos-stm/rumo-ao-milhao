@@ -36,6 +36,11 @@ import {
   AlertTriangle,
   Database,
   ShieldCheck,
+  Banknote,
+  CreditCard,
+  Layers,
+  Trophy,
+  Medal,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -910,6 +915,30 @@ const DashboardSection = ({
     0,
   );
 
+  // À vista: quantidadeParcelas === 0 ou formaPagamento indica "à vista"
+  const vendasAvista = sales.filter(
+    (s) =>
+      s.quantidadeParcelas === 0 ||
+      (typeof s.formaPagamento === "string" &&
+        s.formaPagamento.toLowerCase().includes("vista")),
+  );
+  const vendasParceladas = sales.filter(
+    (s) =>
+      (s.quantidadeParcelas ?? 0) > 0 &&
+      !(
+        typeof s.formaPagamento === "string" &&
+        s.formaPagamento.toLowerCase().includes("vista")
+      ),
+  );
+  const totalAvistaValor = vendasAvista.reduce((acc, s) => acc + s.valorLote, 0);
+  const totalParceladoValor = vendasParceladas.reduce((acc, s) => acc + s.valorLote, 0);
+  const fmtBRL = (v: number) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0,
+    }).format(v);
+
   // Chart Data: Sales per Day (last 7 days)
   const last7Days = Array.from({ length: 7 }, (_, i) => {
     const d = new Date();
@@ -952,7 +981,8 @@ const DashboardSection = ({
         </button>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6">
+      {/* Cards principais — 2 colunas no celular, 4 no desktop */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-6">
         <StatCard
           title="Vendas"
           value={sales.length.toString()}
@@ -961,11 +991,7 @@ const DashboardSection = ({
         />
         <StatCard
           title="Faturamento"
-          value={new Intl.NumberFormat("pt-BR", {
-            style: "currency",
-            currency: "BRL",
-            maximumFractionDigits: 0,
-          }).format(totalRevenue)}
+          value={fmtBRL(totalRevenue)}
           icon={DollarSign}
           colorClass="bg-gradient-to-br from-slate-800 to-slate-900"
         />
@@ -975,7 +1001,7 @@ const DashboardSection = ({
           icon={LayoutDashboard}
           colorClass="bg-gradient-to-br from-chumbo-base to-chumbo-muted text-primary-contrast"
           onClick={() => onNavigate?.("empreendimentos")}
-          subtitle={`em ${developments.length} empreendimento${developments.length !== 1 ? "s" : ""}`}
+          subtitle={`em ${developments.length} empreend.`}
         />
         <StatCard
           title="Clientes"
@@ -985,6 +1011,81 @@ const DashboardSection = ({
           onClick={() => onNavigate?.("clientes")}
           subtitle="cadastrados"
         />
+      </div>
+
+      {/* Indicadores de tipo de venda — 3 colunas em telas médias, 1 no celular pequeno */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
+        {/* À Vista */}
+        <div className="card-premium flex flex-col gap-2">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="p-2 bg-emerald-100 rounded-xl">
+              <Banknote size={18} className="text-emerald-700" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">À Vista</span>
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+                {vendasAvista.length}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm sm:text-base font-display font-bold text-emerald-700 leading-none">
+                {fmtBRL(totalAvistaValor)}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Parcelado */}
+        <div className="card-premium flex flex-col gap-2">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="p-2 bg-blue-100 rounded-xl">
+              <CreditCard size={18} className="text-blue-700" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Parcelado</span>
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+                {vendasParceladas.length}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm sm:text-base font-display font-bold text-blue-700 leading-none">
+                {fmtBRL(totalParceladoValor)}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Total Geral */}
+        <div className="card-premium flex flex-col gap-2 border-primary-main/20">
+          <div className="flex items-center gap-2 mb-1">
+            <div className="p-2 bg-primary-main/10 rounded-xl">
+              <Layers size={18} className="text-primary-main" />
+            </div>
+            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Total Geral</span>
+          </div>
+          <div className="flex items-end justify-between gap-2">
+            <div>
+              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+                {sales.length}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
+            </div>
+            <div className="text-right">
+              <p className="text-sm sm:text-base font-display font-bold text-primary-main leading-none">
+                {fmtBRL(totalRevenue)}
+              </p>
+              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
@@ -1157,6 +1258,119 @@ const DashboardSection = ({
           </table>
         </div>
       </div>
+
+      {/* Ranking de Vendedores */}
+      {(() => {
+        const rankMap: Record<string, {
+          nome: string;
+          totalVendas: number;
+          totalContratos: number;
+          totalValor: number;
+          avista: number;
+          parcelado: number;
+        }> = {};
+
+        sales.forEach((s) => {
+          const nome = (s.vendedor || "").trim() || "Sem vendedor";
+          if (!rankMap[nome]) {
+            rankMap[nome] = { nome, totalVendas: 0, totalContratos: 0, totalValor: 0, avista: 0, parcelado: 0 };
+          }
+          rankMap[nome].totalVendas += 1;
+          rankMap[nome].totalValor += s.valorLote;
+          if (s.contratoGerado || s.numeroContrato) rankMap[nome].totalContratos += 1;
+          const isAvista =
+            s.quantidadeParcelas === 0 ||
+            (typeof s.formaPagamento === "string" && s.formaPagamento.toLowerCase().includes("vista"));
+          if (isAvista) rankMap[nome].avista += 1;
+          else rankMap[nome].parcelado += 1;
+        });
+
+        const ranking = Object.values(rankMap).sort(
+          (a, b) => b.totalValor - a.totalValor || b.totalVendas - a.totalVendas
+        );
+
+        if (ranking.length === 0) return null;
+
+        const medalColors = ["text-yellow-500", "text-slate-400", "text-amber-700"];
+        const maxValor = ranking[0]?.totalValor || 1;
+
+        return (
+          <div className="card-premium">
+            <div className="flex items-center gap-2 mb-4 sm:mb-6">
+              <Trophy size={18} className="text-primary-main" />
+              <h3 className="text-lg font-display font-bold text-slate-800">Ranking de Vendedores</h3>
+            </div>
+
+            <div className="hidden sm:grid grid-cols-[2rem_1fr_repeat(5,auto)] items-center gap-x-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 pb-2 border-b border-slate-100 mb-2">
+              <span>#</span>
+              <span>Vendedor</span>
+              <span className="text-center w-12">Vendas</span>
+              <span className="text-center w-16">Contratos</span>
+              <span className="text-center w-14">À Vista</span>
+              <span className="text-center w-14">Parcelado</span>
+              <span className="text-right w-28">Total</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {ranking.map((v, i) => {
+                const pct = Math.round((v.totalValor / maxValor) * 100);
+                return (
+                  <div key={v.nome} className="rounded-2xl bg-slate-50 hover:bg-primary-main/5 transition-colors p-3 sm:p-4">
+                    {/* Mobile */}
+                    <div className="flex items-start justify-between gap-3 sm:hidden">
+                      <div className="flex items-center gap-2">
+                        {i < 3
+                          ? <Medal size={18} className={medalColors[i]} />
+                          : <span className="w-[18px] text-center text-xs font-bold text-slate-400">{i + 1}</span>
+                        }
+                        <span className="font-semibold text-slate-800 text-sm">{v.nome}</span>
+                      </div>
+                      <span className="font-display font-bold text-primary-main text-sm whitespace-nowrap">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v.totalValor)}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-2 sm:hidden text-[11px] text-slate-500 font-semibold flex-wrap">
+                      <span>{v.totalVendas} vendas</span>
+                      <span>·</span>
+                      <span>{v.totalContratos} contratos</span>
+                      <span>·</span>
+                      <span>{v.avista} à vista</span>
+                      <span>·</span>
+                      <span>{v.parcelado} parc.</span>
+                    </div>
+                    <div className="mt-2 h-1 rounded-full bg-slate-200 sm:hidden">
+                      <div className="h-1 rounded-full bg-primary-main transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+
+                    {/* Desktop */}
+                    <div className="hidden sm:grid grid-cols-[2rem_1fr_repeat(5,auto)] items-center gap-x-4">
+                      <div className="flex items-center justify-center">
+                        {i < 3
+                          ? <Medal size={16} className={medalColors[i]} />
+                          : <span className="text-xs font-bold text-slate-400">{i + 1}</span>
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{v.nome}</p>
+                        <div className="mt-1 h-1 rounded-full bg-slate-200">
+                          <div className="h-1 rounded-full bg-primary-main" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <span className="text-center text-sm font-bold text-slate-700 w-12">{v.totalVendas}</span>
+                      <span className="text-center text-sm font-bold text-slate-700 w-16">{v.totalContratos}</span>
+                      <span className="text-center text-sm font-bold text-emerald-700 w-14">{v.avista}</span>
+                      <span className="text-center text-sm font-bold text-blue-700 w-14">{v.parcelado}</span>
+                      <span className="text-right font-display font-bold text-primary-main text-sm whitespace-nowrap w-28">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v.totalValor)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };
@@ -5341,82 +5555,191 @@ const ContratosSection = ({
     }
   };
 
-  const [downloadingPdfContrato, setDownloadingPdfContrato] = useState(false);
+  // ─── Gerador de HTML do contrato (frontend-only, sem servidor) ────────────────
+  const gerarContratoHTML = (params: {
+    isAvista: boolean;
+    vendedor: any;
+    cliente: any;
+    empNome: string;
+    empCom: string;
+    empCidade: string;
+    empEstado: string;
+    venda: any;
+    xAtivo: any;
+    comCarimbo: boolean;
+  }): string => {
+    const { isAvista, vendedor, cliente, empNome, empCom, empCidade, empEstado, venda, xAtivo, comCarimbo: carimbo } = params;
 
-  // Gera PDF do contrato via servidor (DOCX → PDF via LibreOffice)
-  const handleDownloadPdfContrato = async () => {
+    // Utilitários
+    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+    const brlNum = (v: number) => (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+    // Extenso por extenso
+    function inteiroExtenso(n: number): string {
+      if (n === 0) return "zero";
+      const un = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
+      const dz = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
+      const ct = ["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
+      if (n === 100) return "cem"; if (n === 1000) return "mil";
+      if (n < 20) return un[n];
+      if (n < 100) { const d2=Math.floor(n/10); const u2=n%10; return dz[d2]+(u2>0?" e "+un[u2]:""); }
+      if (n < 1000) { const c2=Math.floor(n/100); const r2=n%100; return ct[c2]+(r2>0?" e "+inteiroExtenso(r2):""); }
+      if (n < 1000000) { const m2=Math.floor(n/1000); const r2=n%1000; const mt=m2===1?"mil":inteiroExtenso(m2)+" mil"; if(r2===0)return mt; return mt+(r2<100||r2%100===0?" e ":" ")+inteiroExtenso(r2); }
+      const mi=Math.floor(n/1000000); const r3=n%1000000; const mit=mi===1?"um milhão":inteiroExtenso(mi)+" milhões"; if(r3===0)return mit; return mit+" e "+inteiroExtenso(r3);
+    }
+    function valorExtenso(n: number): string {
+      const safe = Math.abs(Math.round((n||0)*100))/100;
+      const ip = Math.floor(safe); const cs = Math.round((safe-ip)*100);
+      const lbl = ip===1?"Real":"Reais";
+      if(cs===0) return inteiroExtenso(ip)+" "+lbl;
+      return inteiroExtenso(ip)+" "+lbl+" e "+inteiroExtenso(cs)+(cs===1?" centavo":" centavos");
+    }
+    function cap(s: string): string { return s?s.charAt(0).toUpperCase()+s.slice(1):""; }
+    function numExt(v: number): string { const s=v||0; return `${brlNum(s)} (${cap(valorExtenso(s))})`; }
+
+    const valorLote = Number(venda.valorLote)||0;
+    const valorEntrada = Number(venda.valorEntrada)||0;
+    const saldo = valorLote - valorEntrada;
+    const nParcelas = Number(venda.quantidadeParcelas)||0;
+    const valorParcela = Number(venda.valorParcela)||0;
+    const corretagem = valorLote * 0.08;
+    const dataVenda = venda.dataVenda ? new Date(venda.dataVenda.split("T")[0]+"T12:00:00") : new Date();
+    const dataStr = `${dataVenda.getDate()} de ${meses[dataVenda.getMonth()]} de ${dataVenda.getFullYear()}`;
+    const diaVenc = venda.dataVencimento ? new Date(venda.dataVencimento+"T12:00:00").getDate() : "___";
+    const primeiraParcela = (() => { if(!venda.dataVencimento)return "___/___/______"; const d=new Date(venda.dataVencimento+"T12:00:00"); d.setMonth(d.getMonth()+1); return d.toLocaleDateString("pt-BR"); })();
+    const parcelasExt = cap(inteiroExtenso(nParcelas));
+    const isF = cliente.genero === "F" || (typeof cliente.genero === "undefined" && (cliente.nome||"").split(" ")[0].match(/a$/i));
+    const trat = isF ? "Sra." : "Sr.";
+    const dimStr = xAtivo?.medidaFrente
+      ? `${xAtivo.medidaFrente}m de frente, lateral direita ${xAtivo.medidaLateralDir||"___"}m, lateral esquerda ${xAtivo.medidaLateralEsq||"___"}m, fundos ${xAtivo.medidaFundos||"___"}m, área total ${xAtivo.areaTotal||"___"}m²`
+      : "Dimensões não informadas";
+    const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / ");
+    const vendAddr = `${vendedor.endereco||"___"}, nº ${vendedor.numero||"s/n"}, ${vendedor.bairro||""}, ${vendedor.cidade||"Santarém"}, ${vendedor.estado||"PA"}, CEP ${vendedor.cep||""}`.replace(/,\s*,/g,",").trim();
+    const compAddr = `${cliente.endereco||"___"}, nº ${cliente.numero||"s/n"}, ${cliente.bairro||""}, ${cliente.cidade||""}, ${cliente.estado||""}, CEP ${cliente.cep||""}`.replace(/,\s*,/g,",").trim();
+    const carimboPago = carimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;">PAGO</div>` : "";
+
+    const titulo = isAvista ? "Recibo de Compra e Venda à Vista" : "Contrato de Compra e Venda a Prazo";
+
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${titulo}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+      body{margin:0;padding:40px 54px;font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;background:#fff;line-height:1.6;}
+      h1{text-align:center;text-transform:uppercase;font-size:14pt;margin:0 0 4px;letter-spacing:1px;}
+      h2{text-align:center;font-size:11pt;font-weight:normal;margin:0 0 24px;color:#444;}
+      .sec{margin:20px 0;}
+      .sec-title{font-weight:bold;text-transform:uppercase;font-size:10pt;border-bottom:1.5px solid #000;padding-bottom:3px;margin-bottom:10px;letter-spacing:.5px;}
+      p{margin:6px 0;text-align:justify;}
+      table{width:100%;border-collapse:collapse;margin:8px 0;}
+      td{padding:5px 10px;border:1px solid #bbb;font-size:11pt;vertical-align:top;}
+      td.lbl{font-size:9pt;font-weight:bold;text-transform:uppercase;color:#555;background:#f7f7f7;width:36%;white-space:nowrap;}
+      .assin{margin-top:60px;display:flex;justify-content:space-around;flex-wrap:wrap;gap:20px;}
+      .assin-item{width:200px;text-align:center;}
+      .assin-linha{border-top:1px solid #000;padding-top:6px;margin-top:50px;font-size:10pt;}
+      .footer-info{margin-top:32px;font-size:10pt;text-align:center;color:#555;}
+      @media print{body{padding:20px 30px;}@page{margin:1.5cm 2cm;}}
+    </style></head><body>
+      <h1>${titulo}</h1>
+      <h2>Instrumento Particular</h2>
+
+      <div class="sec">
+        <div class="sec-title">I — Partes</div>
+        <table>
+          <tr><td class="lbl">Vendedor (Outorgante)</td><td><strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${vendedor.nacionalidade||"brasileiro"}, ${vendedor.estadoCivil||"___"}, RG: ${vendedor.rg||"___"}, CPF: ${vendedor.cpf||"___"}<br>Endereço: ${vendAddr}</td></tr>
+          <tr><td class="lbl">Comprador (Outorgado)</td><td><strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${cliente.nacionalidade||"brasileiro"}, ${cliente.estadoCivil||"___"}, RG: ${cliente.rg||"___"}, CPF: ${cliente.cpf||"___"}${phones?`<br>Tel: ${phones}`:""}${compAddr.replace("___, nº s/n, , ,  , CEP ","")?"<br>Endereço: "+compAddr:""}</td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">II — Imóvel</div>
+        <table>
+          <tr><td class="lbl">Empreendimento</td><td>${empNome.toUpperCase()}${empCom?" — "+empCom:""}, ${empCidade}/${empEstado}</td></tr>
+          <tr><td class="lbl">Lote / Quadra</td><td>Lote <strong>${venda.numeroLote}</strong> da Quadra <strong>${venda.quadra}</strong>${venda.rua?" — "+venda.rua:""}</td></tr>
+          <tr><td class="lbl">Dimensões</td><td>${dimStr}</td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">III — Condições Financeiras</div>
+        <table>
+          <tr><td class="lbl">Valor Total do Imóvel</td><td><strong>R$ ${numExt(valorLote)}</strong></td></tr>
+          ${isAvista
+            ? `<tr><td class="lbl">Modalidade</td><td>À Vista — ${xAtivo?.formaPagamento||venda.formaPagamento||"Dinheiro"}</td></tr>`
+            : `<tr><td class="lbl">Entrada</td><td>R$ ${numExt(valorEntrada)}</td></tr>
+               <tr><td class="lbl">Saldo Financiado</td><td>R$ ${numExt(saldo)}</td></tr>
+               <tr><td class="lbl">Parcelas</td><td>${nParcelas} (${parcelasExt}) x R$ ${numExt(valorParcela)}, vencendo dia ${diaVenc} de cada mês, primeira em ${primeiraParcela}</td></tr>
+               <tr><td class="lbl">Corretagem (8%)</td><td>R$ ${numExt(corretagem)}</td></tr>`
+          }
+          <tr><td class="lbl">Data da Negociação</td><td>${dataStr}</td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        ${isAvista
+          ? `<p>Pelo presente instrumento particular, o ${trat} VENDEDOR declara ter recebido do(a) ${trat} COMPRADOR(A) a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando plena, geral e irrevogável quitação do valor recebido.</p>
+           <p>O COMPRADOR(A) declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
+          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual o VENDEDOR vende ao COMPRADOR o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
+             <p>O COMPRADOR obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
+             <p>O COMPRADOR declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
+        }
+        <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
+        <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataStr}.</p>
+      </div>
+
+      ${carimboPago}
+
+      <div class="assin">
+        <div class="assin-item"><div class="assin-linha">${(vendedor.nome||"VENDEDOR").toUpperCase()}<br><span style="font-size:9pt">Vendedor / Outorgante</span>${vendedor.cpf?`<br><span style="font-size:9pt">CPF: ${vendedor.cpf}</span>`:""}</div></div>
+        <div class="assin-item"><div class="assin-linha">${(cliente.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Comprador / Outorgado</span>${cliente.cpf?`<br><span style="font-size:9pt">CPF: ${cliente.cpf}</span>`:""}</div></div>
+      </div>
+      <div class="footer-info">
+        <p>Nº do Contrato: ${venda.numeroContrato||"—"} &nbsp;|&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")}</p>
+      </div>
+    </body></html>`;
+  };
+
+  // Gera PDF do contrato via HTML (sem LibreOffice, sem servidor)
+  const handleDownloadPdfContrato = () => {
     if (!selectedVenda) return;
+    const snap = selectedVenda.contratoSnapshot;
+    const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+    const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? { nome: selectedVenda.empreendimentoNome || "", comunidade: "", cidade: "", estado: "" });
+    const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
-    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
-    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (!cliente) { alert("Cliente não encontrado."); return; }
+    if (!vAtivo.nome?.trim()) { alert("Informe o nome do vendedor antes de gerar o PDF."); return; }
 
-    const snapPdf = selectedVenda.contratoSnapshot;
-    const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snapPdf?.vendedor ?? gerarVendedor);
-    const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snapPdf?.empreendimento ?? { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade || "", cidade: desenvolvimento.cidade || "", estado: desenvolvimento.estado || "" });
-    const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra)) : gerarExtra;
+    const isAvista = selectedVenda.quantidadeParcelas === 0 ||
+      (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
 
-    if (!vAtivo.nome?.trim()) { alert("Informe o nome do vendedor."); return; }
+    const html = gerarContratoHTML({
+      isAvista,
+      vendedor: vAtivo,
+      cliente,
+      empNome: eAtivo.nome || selectedVenda.empreendimentoNome || "",
+      empCom: eAtivo.comunidade || xAtivo.comunidade || "",
+      empCidade: eAtivo.cidade || "Santarém",
+      empEstado: eAtivo.estado || "PA",
+      venda: {
+        ...selectedVenda,
+        rua: xAtivo.rua || selectedVenda.rua || "",
+        medidaFrente: xAtivo.medidaFrente,
+        medidaLateralDir: xAtivo.medidaLateralDir,
+        medidaLateralEsq: xAtivo.medidaLateralEsq,
+        medidaFundos: xAtivo.medidaFundos,
+        areaTotal: xAtivo.areaTotal,
+      },
+      xAtivo,
+      comCarimbo,
+    });
 
-    const isAvista = selectedVenda.quantidadeParcelas === 0;
-    const endpoint = isAvista ? "/api/contrato/avista-padrao" : "/api/contrato/parcelado-padrao";
-
-    setDownloadingPdfContrato(true);
-    try {
-      const res = await authFetch(endpoint, {
-        method: "POST",
-        body: JSON.stringify({
-          vendedor: vAtivo,
-          cliente,
-          empreendimento: { nome: eAtivo.nome || desenvolvimento.nome, comunidade: eAtivo.comunidade || xAtivo.comunidade, cidade: eAtivo.cidade || desenvolvimento.cidade, estado: eAtivo.estado || desenvolvimento.estado },
-          comCarimbo,
-          venda: {
-            numeroLote: selectedVenda.numeroLote,
-            quadra: selectedVenda.quadra,
-            rua: xAtivo.rua,
-            valorLote: selectedVenda.valorLote,
-            valorEntrada: selectedVenda.valorEntrada,
-            quantidadeParcelas: selectedVenda.quantidadeParcelas,
-            valorParcela: selectedVenda.valorParcela,
-            dataVencimento: selectedVenda.dataVencimento,
-            dataVenda: selectedVenda.dataVenda,
-            formaPagamento: xAtivo.formaPagamento,
-            medidaFrente: xAtivo.medidaFrente,
-            medidaLateralDir: xAtivo.medidaLateralDir,
-            medidaLateralEsq: xAtivo.medidaLateralEsq,
-            medidaFundos: xAtivo.medidaFundos,
-            areaTotal: xAtivo.areaTotal,
-          },
-          outputFormat: "pdf",
-        }),
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        alert("Erro ao gerar PDF: " + (err.error || "Falha no servidor."));
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
-      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
-      const isPdf = blob.type === "application/pdf";
-      a.href = url;
-      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra_${selectedVenda.quadra}.${isPdf ? "pdf" : "docx"}`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      const pdfSnapshot = {
-        vendedor: vAtivo, empreendimento: eAtivo, extra: xAtivo,
-        tipoContrato: snapPdf?.tipoContrato || tipoContrato,
-        geradoEm: new Date().toISOString(),
-      };
-      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
-    } catch (e: any) {
-      alert("Erro ao gerar PDF: " + e.message);
-    } finally {
-      setDownloadingPdfContrato(false);
+    const w = window.open("", "_blank", "width=960,height=850");
+    if (w) {
+      w.document.write(html);
+      w.document.close();
+      w.focus();
+      setTimeout(() => { w.print(); }, 600);
+    } else {
+      alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente.");
     }
   };
 
@@ -7022,89 +7345,24 @@ VENDEDOR: ${venda.vendedor}`;
                       const eAtivo2 = snap?.empreendimento ?? gerarEmp;
                       const clienteImp = clients.find((c) => c.id === selectedVenda?.clienteId);
                       if (!selectedVenda || !clienteImp) { alert("Dados do contrato incompletos para impressão."); return; }
-                      const isAv = selectedVenda.quantidadeParcelas === 0;
-                      const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-                      const brlNum = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
-                      const dataVenda = selectedVenda.dataVenda ? new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "___/___/______";
-                      const diaVenc = selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "___";
-                      const empNome = eAtivo2.nome || selectedVenda.empreendimentoNome;
-                      const empCom = eAtivo2.comunidade || xAtivo2.comunidade || "";
-                      const empCidade = eAtivo2.cidade || "Santarém";
-                      const empEstado = eAtivo2.estado || "PA";
-                      const ruaLote = xAtivo2.rua || selectedVenda.rua || "";
-                      const dimStr = (xAtivo2.medidaFrente)
-                        ? `${xAtivo2.medidaFrente} metros de frente, lateral direita medindo ${xAtivo2.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${xAtivo2.medidaLateralEsq || "___"} e medindo ${xAtivo2.medidaFundos || "___"} metros de fundos, com área total de ${xAtivo2.areaTotal || "___"} metros quadrados`
-                        : "___ metros de frente, lateral direita medindo ___ metros, pela lateral esquerda medindo ___ e medindo ___ metros de fundos, com área total de ___ metros quadrados";
-                      const saldo = selectedVenda.valorLote - selectedVenda.valorEntrada;
-                      const carimboPago = comCarimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;">PAGO</div>` : "";
-                      const printHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato — ${clienteImp.nome}</title><style>
-                        * { box-sizing: border-box; }
-                        body { margin: 0; padding: 40px 48px; font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #000; background: #fff; }
-                        h1 { text-align: center; text-transform: uppercase; font-size: 15pt; margin-bottom: 6px; letter-spacing: 1px; }
-                        h2 { text-align: center; font-size: 12pt; font-weight: normal; margin-bottom: 24px; }
-                        .section { margin: 18px 0; }
-                        .section-title { font-weight: bold; text-transform: uppercase; font-size: 10pt; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px; }
-                        p { margin: 6px 0; line-height: 1.65; text-align: justify; }
-                        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
-                        td { padding: 4px 8px; border: 1px solid #ccc; font-size: 11pt; vertical-align: top; }
-                        td.lbl { font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #444; background: #f5f5f5; width: 38%; }
-                        .assinatura { margin-top: 64px; display: flex; justify-content: space-around; }
-                        .assinatura div { width: 220px; text-align: center; }
-                        .assinatura .linha { border-top: 1px solid #000; padding-top: 6px; margin-top: 40px; font-size: 10pt; }
-                        @media print { body { padding: 20px 28px; } }
-                      </style></head><body>
-                        <h1>Contrato de Compra e Venda${isAv ? " À Vista" : " a Prazo"}</h1>
-                        <h2>Instrumento Particular</h2>
-                        <div class="section">
-                          <div class="section-title">Partes</div>
-                          <table>
-                            <tr><td class="lbl">Vendedor</td><td>${vAtivo2.nome ? vAtivo2.nome.toUpperCase() : "___"}, ${vAtivo2.nacionalidade || "brasileiro"}, ${vAtivo2.estadoCivil || "___"}, RG: ${vAtivo2.rg || "___"}, CPF: ${vAtivo2.cpf || "___"}</td></tr>
-                            <tr><td class="lbl">Comprador</td><td>${clienteImp.nome.toUpperCase()}, ${clienteImp.nacionalidade || "brasileiro"}, ${clienteImp.estadoCivil || "___"}, RG: ${clienteImp.rg || "___"}, CPF: ${clienteImp.cpf || "___"}</td></tr>
-                          </table>
-                        </div>
-                        <div class="section">
-                          <div class="section-title">Imóvel</div>
-                          <table>
-                            <tr><td class="lbl">Empreendimento</td><td>${empNome}${empCom ? " — " + empCom : ""}, ${empCidade}/${empEstado}</td></tr>
-                            <tr><td class="lbl">Lote / Quadra</td><td>Lote ${selectedVenda.numeroLote} da Quadra ${selectedVenda.quadra}${ruaLote ? " — " + ruaLote : ""}</td></tr>
-                            <tr><td class="lbl">Dimensões</td><td>${dimStr}</td></tr>
-                          </table>
-                        </div>
-                        <div class="section">
-                          <div class="section-title">Condições Financeiras</div>
-                          <table>
-                            <tr><td class="lbl">Valor Total</td><td><strong>${brl(selectedVenda.valorLote)}</strong> (${brlNum(selectedVenda.valorLote)})</td></tr>
-                            ${isAv
-                              ? `<tr><td class="lbl">Modalidade</td><td>À Vista — ${xAtivo2.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}</td></tr>`
-                              : `<tr><td class="lbl">Entrada</td><td>${brl(selectedVenda.valorEntrada)}</td></tr>
-                                 <tr><td class="lbl">Saldo</td><td>${brl(saldo)}</td></tr>
-                                 <tr><td class="lbl">Parcelas</td><td>${selectedVenda.quantidadeParcelas}x de ${brl(selectedVenda.valorParcela)}, vencendo dia ${diaVenc} de cada mês</td></tr>
-                                 <tr><td class="lbl">Forma de pagamento</td><td>${xAtivo2.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}</td></tr>`
-                            }
-                            <tr><td class="lbl">Data da Venda</td><td>${dataVenda}</td></tr>
-                          </table>
-                        </div>
-                        <div class="section">
-                          <p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual o VENDEDOR vende ao COMPRADOR o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento, obrigando-se o COMPRADOR a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual.</p>
-                          <p>O COMPRADOR declara conhecer o imóvel objeto deste contrato, aceitando-o nas condições em que se encontra, ciente de que a posse do imóvel será transferida somente após a quitação integral do preço.</p>
-                          <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
-                          <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataVenda}.</p>
-                        </div>
-                        ${carimboPago}
-                        <div class="assinatura">
-                          <div><div class="linha">${clienteImp.nome.toUpperCase()}<br><span style="font-size:9pt">Comprador</span></div></div>
-                          <div><div class="linha">${vAtivo2.nome ? vAtivo2.nome.toUpperCase() : "___________________________"}<br><span style="font-size:9pt">Vendedor</span></div></div>
-                        </div>
-                      </body></html>`;
-                      const w = window.open("", "_blank", "width=900,height=750");
-                      if (w) {
-                        w.document.write(printHTML);
-                        w.document.close();
-                        w.focus();
-                        setTimeout(() => { w.print(); }, 500);
-                      } else {
-                        alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente.");
-                      }
+                      if (!vAtivo2.nome?.trim()) { alert("Informe o nome do vendedor."); return; }
+                      const isAv = selectedVenda.quantidadeParcelas === 0 ||
+                        (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
+                      const html = gerarContratoHTML({
+                        isAvista: isAv,
+                        vendedor: vAtivo2,
+                        cliente: clienteImp,
+                        empNome: eAtivo2.nome || selectedVenda.empreendimentoNome || "",
+                        empCom: eAtivo2.comunidade || xAtivo2.comunidade || "",
+                        empCidade: eAtivo2.cidade || "Santarém",
+                        empEstado: eAtivo2.estado || "PA",
+                        venda: { ...selectedVenda, rua: xAtivo2.rua || selectedVenda.rua || "", medidaFrente: xAtivo2.medidaFrente, medidaLateralDir: xAtivo2.medidaLateralDir, medidaLateralEsq: xAtivo2.medidaLateralEsq, medidaFundos: xAtivo2.medidaFundos, areaTotal: xAtivo2.areaTotal },
+                        xAtivo: xAtivo2,
+                        comCarimbo,
+                      });
+                      const w = window.open("", "_blank", "width=960,height=850");
+                      if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => { w.print(); }, 600); }
+                      else { alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente."); }
                     }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Imprimir contrato"
@@ -9817,7 +10075,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     usuarios: "Usuários",
   };
 
-  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","historico"];
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
 
   const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string } }[]>([]);
 
