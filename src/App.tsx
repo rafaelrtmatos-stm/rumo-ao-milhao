@@ -256,6 +256,113 @@ function getConfiguredLotKeys(dev: Empreendimento): Set<string> {
   return keys;
 }
 
+function getConfiguredLotKeysFromRanges(dev: Empreendimento): Set<string> {
+  const keys = new Set<string>();
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      keys.add(getLotInfoKey(quadra, lote));
+    });
+  });
+  return keys;
+}
+
+function getActiveSaleLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<string> {
+  const keys = new Set<string>();
+  vendas.forEach((v) => {
+    if (v.empreendimentoId === dev.id && isVendaAtiva(v) && v.quadra && v.numeroLote) {
+      keys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+  return keys;
+}
+
+function removeLotFromLotesPorQuadra(dev: Empreendimento, quadra: string, lote: string): { quadras: string; lotesPorQuadra: Record<string, any> } {
+  const wantedQuadra = normalizeLotKeyPart(quadra);
+  const wantedLote = normalizeLotKeyPart(lote);
+  const nextLotesPorQuadra: Record<string, any> = { ...(dev.lotesPorQuadra || {}) };
+  const quadras = getQuadraList(dev);
+  const realQuadra = quadras.find((q) => normalizeLotKeyPart(q) === wantedQuadra) || quadra;
+  const currentLots = getLotesDeQuadra(nextLotesPorQuadra[realQuadra]);
+  if (currentLots.length > 0) {
+    const remaining = currentLots.filter((l) => normalizeLotKeyPart(l) !== wantedLote);
+    if (remaining.length > 0) {
+      nextLotesPorQuadra[realQuadra] = { especificos: remaining.join(",") };
+    } else {
+      delete nextLotesPorQuadra[realQuadra];
+      delete nextLotesPorQuadra[wantedQuadra];
+    }
+  }
+  const nextQuadras = quadras.filter((q) => {
+    if (normalizeLotKeyPart(q) !== wantedQuadra) return true;
+    return getLotesDeQuadra(nextLotesPorQuadra[q]).length > 0;
+  });
+  return { quadras: nextQuadras.join(", "), lotesPorQuadra: nextLotesPorQuadra };
+}
+
+function deleteLotFromEmpreendimento(dev: Empreendimento, key: string, vendas: Venda[] = []): Empreendimento {
+  const normalizedKey = key.toUpperCase();
+  const [quadra, ...loteParts] = normalizedKey.split("-");
+  const lote = loteParts.join("-");
+  const newLotesInfo = { ...(dev.lotesInfo || {}) };
+  delete newLotesInfo[normalizedKey];
+  const nextMapaPontos = ((dev as any).mapaPontos || []).filter((ponto: any) => getLotInfoKey(ponto.quadra, ponto.lote) !== normalizedKey);
+  const { quadras, lotesPorQuadra } = removeLotFromLotesPorQuadra(dev, quadra, lote);
+  return recalcularEstatisticasEmpreendimento({ ...dev, quadras, lotesPorQuadra, lotesInfo: newLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
+function applyLotesInfoPatchToEmpreendimento(dev: Empreendimento, info: Record<string, any>, vendas: Venda[] = []): Empreendimento {
+  let nextDev: Empreendimento = dev;
+  const nextLotesInfo: Record<string, any> = { ...(dev.lotesInfo || {}) };
+  Object.entries(info || {}).forEach(([rawKey, rawInfo]) => {
+    const key = rawKey.toUpperCase();
+    const [quadra, ...loteParts] = key.split("-");
+    const lote = loteParts.join("-");
+    const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, lote);
+    nextDev = ensured.dev;
+    nextLotesInfo[ensured.lotInfoKey] = { ...(nextLotesInfo[ensured.lotInfoKey] || {}), ...(rawInfo || {}) };
+  });
+  const nextMapaPontos = ((nextDev as any).mapaPontos || []).map((ponto: any) => {
+    const key = getLotInfoKey(ponto.quadra, ponto.lote);
+    const changed = nextLotesInfo[key];
+    if (!changed?.status) return ponto;
+    const venda = findVendaAtivaDoLote(vendas, nextDev.id, ponto.quadra, ponto.lote);
+    return {
+      ...ponto,
+      status: changed.status === "disponivel" && !venda ? "disponivel" : "indisponivel",
+      observacao: changed.observacao ?? ponto.observacao,
+      vendaId: venda?.id || ponto.vendaId,
+      clienteNome: venda?.clienteNome || ponto.clienteNome,
+      dataVenda: venda?.dataVenda || ponto.dataVenda,
+      atualizadoEm: new Date().toISOString(),
+    };
+  });
+  return recalcularEstatisticasEmpreendimento({ ...nextDev, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
+function syncEmpreendimentoConfigWithMapa(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
+  const rangeKeys = getConfiguredLotKeysFromRanges(dev);
+  const quadras = getQuadraList(dev);
+  const activeSaleKeys = getActiveSaleLotKeys(dev, vendas);
+
+  if (rangeKeys.size === 0) {
+    // Se não existe nenhum lote configurado nas quadras, o mapa também não pode manter bolinhas antigas.
+    // Mantém o nome das quadras quando houver, mas zera lotes, mapa e contadores.
+    return recalcularEstatisticasEmpreendimento({
+      ...dev,
+      totalLotes: 0,
+      lotesInfo: {},
+      mapaPontos: [],
+      lotesPorQuadra: dev.lotesPorQuadra || {},
+      quadras: quadras.join(", "),
+    } as Empreendimento, vendas);
+  }
+
+  const keepKey = (key: string) => rangeKeys.has(key.toUpperCase()) || activeSaleKeys.has(key.toUpperCase());
+  const nextLotesInfo = Object.fromEntries(Object.entries(dev.lotesInfo || {}).filter(([key]) => keepKey(key)));
+  const nextMapaPontos = ((dev as any).mapaPontos || []).filter((ponto: any) => keepKey(getLotInfoKey(ponto.quadra, ponto.lote)));
+  return recalcularEstatisticasEmpreendimento({ ...dev, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
 function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
   const soldKeys = new Set<string>();
   vendas.forEach((v) => {
@@ -1819,10 +1926,21 @@ const LotDashboard = ({
     reader.readAsDataURL(file);
   };
 
-  const getBallPixelSize = () => {
+  const getBallBasePixelSize = () => {
     if (mapBallSize === "pequena") return { size: 22, font: 8 };
     if (mapBallSize === "grande") return { size: 36, font: 11 };
     return { size: 28, font: 9 };
+  };
+
+  const getBallPixelSize = () => {
+    const base = getBallBasePixelSize();
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      // No celular a bolinha precisa ser menor apenas na visualização.
+      // O download continua usando getBallBasePixelSize(), mantendo o tamanho normal.
+      const mobileSize = Math.round(base.size * 0.45);
+      return { size: Math.max(10, mobileSize), font: Math.max(6, Math.round(base.font * 0.65)) };
+    }
+    return base;
   };
 
   const salvarTamanhoBolinhas = (size: "pequena" | "media" | "grande") => {
@@ -1830,54 +1948,87 @@ const LotDashboard = ({
     persistDev({ ...localDev, mapaBolinhaTamanho: size } as Empreendimento);
   };
 
-  const baixarMapaInterativo = () => {
-    if (!mapaImagem) {
-      alert("Nenhum mapa carregado para baixar.");
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = img.naturalWidth || img.width;
-      canvas.height = img.naturalHeight || img.height;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      const baseSize = getBallPixelSize().size;
-      const scale = Math.max(canvas.width / 1000, 1);
-      const radius = Math.max((baseSize * scale) / 2, 10);
-      mapaPontos.forEach((ponto) => {
-        const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-        const indisponivel = ponto.status === "indisponivel" || !!venda;
-        const x = (Number(ponto.xPercent) / 100) * canvas.width;
-        const y = (Number(ponto.yPercent) / 100) * canvas.height;
-        ctx.beginPath();
-        ctx.arc(x, y, radius, 0, Math.PI * 2);
-        ctx.fillStyle = indisponivel ? "#ef4444" : "#3b82f6";
-        ctx.fill();
-        ctx.lineWidth = Math.max(3 * scale, 2);
-        ctx.strokeStyle = "#ffffff";
-        ctx.stroke();
-        ctx.fillStyle = "#ffffff";
-        ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(String(ponto.lote || ""), x, y);
-      });
-      try {
-        const link = document.createElement("a");
-        link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
-        link.href = canvas.toDataURL("image/png");
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } catch {
-        alert("Não foi possível baixar o mapa com as bolinhas. Se a imagem veio de link externo, carregue o arquivo da imagem diretamente no sistema.");
+  const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
+    return new Promise((resolve, reject) => {
+      if (!mapaImagem) {
+        reject(new Error("Nenhum mapa carregado para baixar."));
+        return;
       }
-    };
-    img.onerror = () => alert("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente.");
-    img.src = mapaImagem;
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Não foi possível preparar o mapa."));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const baseSize = getBallBasePixelSize().size;
+        const scale = Math.max(canvas.width / 1000, 1);
+        const radius = Math.max((baseSize * scale) / 2, 10);
+        mapaPontos.forEach((ponto) => {
+          const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+          const indisponivel = ponto.status === "indisponivel" || !!venda;
+          const x = (Number(ponto.xPercent) / 100) * canvas.width;
+          const y = (Number(ponto.yPercent) / 100) * canvas.height;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = indisponivel ? "#ef4444" : "#3b82f6";
+          ctx.fill();
+          ctx.lineWidth = Math.max(3 * scale, 2);
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
+          ctx.fillStyle = "#ffffff";
+          ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText(String(ponto.lote || ""), x, y);
+        });
+        resolve(canvas);
+      };
+      img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
+      img.src = mapaImagem;
+    });
+  };
+
+  const baixarMapaInterativoImagem = async () => {
+    try {
+      const canvas = await gerarCanvasMapaInterativo();
+      const link = document.createElement("a");
+      link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
+      link.href = canvas.toDataURL("image/png");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error: any) {
+      alert(error?.message || "Não foi possível baixar o mapa com as bolinhas. Se a imagem veio de link externo, carregue o arquivo da imagem diretamente no sistema.");
+    }
+  };
+
+  const baixarMapaInterativoPdf = async () => {
+    try {
+      const canvas = await gerarCanvasMapaInterativo();
+      const { jsPDF } = await import("jspdf");
+      const landscape = canvas.width >= canvas.height;
+      const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 6;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = (pageHeight - imgHeight) / 2;
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
+      pdf.save(`mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`);
+    } catch (error: any) {
+      alert(error?.message || "Não foi possível baixar o mapa em PDF.");
+    }
   };
 
   const getSequenceRangeNumbers = () => {
@@ -2146,10 +2297,13 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
       {quadras.length > 0 ? quadras.map((q) => {
         const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
         const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter((key) => key.startsWith(q.toUpperCase() + "-")).map((key) => key.split("-")[1]);
-        const displayLots = configuredLots.length > 0 ? configuredLots : lotesInfoKeys.length > 0 ? lotesInfoKeys.sort((a, b) => Number(a) - Number(b)) : Array.from({ length: 12 }, (_, i) => (i + 1).toString());
+        const displayLots = configuredLots.length > 0 ? configuredLots : lotesInfoKeys.length > 0 ? lotesInfoKeys.sort((a, b) => Number(a) - Number(b)) : [];
         return (
           <div key={q} className="space-y-4">
             <div className="flex items-center gap-3"><h4 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-display font-bold text-sm">Quadra {q}</h4><div className="h-px flex-1 bg-slate-100" /></div>
+            {displayLots.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-slate-50 text-sm text-slate-400 font-medium">Nenhum lote cadastrado nesta quadra.</div>
+            ) : (
             <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
               {displayLots.map((l) => {
                 const soldData = vendaDoLote(q, l);
@@ -2165,6 +2319,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
                 );
               })}
             </div>
+            )}
           </div>
         );
       }) : <div className="text-center py-20 space-y-4"><div className="p-4 bg-slate-50 rounded-full w-fit mx-auto text-slate-300"><Info size={32} /></div><p className="text-slate-400 font-medium">Nenhuma quadra cadastrada para este empreendimento.</p><p className="text-xs text-slate-300 max-w-xs mx-auto">Cadastre lotes manualmente ou carregue uma imagem do mapa.</p></div>}
@@ -2201,7 +2356,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
           {mapAction === "visualizar" ? <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
             <p className="text-xs text-slate-500">Neste modo o mapa serve apenas para ver as bolinhas, iniciar venda em lote disponível ou abrir venda vinculada.</p>
-            <button onClick={baixarMapaInterativo} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Baixar mapa</button>
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
             {canEditMap ? <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button> : <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
           </div> : <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
@@ -2220,7 +2375,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
               <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
             </div>}
-            <button onClick={baixarMapaInterativo} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Baixar mapa</button>
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
             <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer"><Upload size={14} />Trocar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
             <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
           </div>}
@@ -2393,7 +2548,7 @@ const EmpreendimentosSection = ({
     onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
     setLotRegDev((prev) => {
       if (!prev) return null;
-      return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } } as Empreendimento, sales);
+      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
     });
 
     onReleaseSoldLot(venda.id);
@@ -2422,7 +2577,7 @@ const EmpreendimentosSection = ({
     setLotRegDev((prev) => {
       if (!prev) return null;
       const existingInfo = prev.lotesInfo?.[key] || {};
-      return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } } } as Empreendimento, sales);
+      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
     });
     setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
     setLotRegTab("lotes");
@@ -2456,10 +2611,11 @@ const EmpreendimentosSection = ({
     }
     const formDataNormalizado = { ...formData, nome: textoMaiusculo(formData.nome).trim(), estado: (formData.estado || "").toUpperCase() };
     if (editingDev) {
-      onSave({
+      const mergedDev = {
         ...editingDev,
         ...formDataNormalizado,
-      } as Empreendimento);
+      } as Empreendimento;
+      onSave(syncEmpreendimentoConfigWithMapa(mergedDev, sales));
     } else {
       onSave({
         ...(formDataNormalizado as Empreendimento),
@@ -3360,7 +3516,7 @@ const EmpreendimentosSection = ({
                                             onUpdateLotesInfo(lotRegDev.id, { [key]: { ...(info as any), status: novoStatus } });
                                             setLotRegDev((prev) => {
                                               if (!prev) return null;
-                                              return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...(info as any), status: novoStatus } } } as Empreendimento, sales);
+                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...(info as any), status: novoStatus } }, sales);
                                             });
                                           }}
                                           className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
@@ -3388,7 +3544,7 @@ const EmpreendimentosSection = ({
                                             onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
                                             setLotRegDev((prev) => {
                                               if (!prev) return null;
-                                              return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } } as Empreendimento, sales);
+                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
                                             });
                                           }}
                                           className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
@@ -3405,9 +3561,7 @@ const EmpreendimentosSection = ({
                                               onDeleteLot(lotRegDev.id, key);
                                               setLotRegDev((prev) => {
                                                 if (!prev) return null;
-                                                const newInfo = { ...(prev.lotesInfo || {}) };
-                                                delete newInfo[key];
-                                                return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: newInfo } as Empreendimento, sales);
+                                                return deleteLotFromEmpreendimento(prev, key, sales);
                                               });
                                             });
                                           }}
@@ -3585,7 +3739,7 @@ const EmpreendimentosSection = ({
                           });
                         }
                         onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
-                        setLotRegDev(prev => prev ? recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: newLotesInfo } as Empreendimento, sales) : null);
+                        setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
                         setBulkSelectedQuadras([]);
                         setBulkLotesEspecificos({});
                         setLotRegTab("lotes");
@@ -5954,7 +6108,7 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                       value={saleData.vendedorId || ""}
                       onChange={(e) => {
                         const v = vendedores.find(x => x.id === e.target.value);
-                        setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                        setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
                       }}
                     >
                       <option value="">Selecionar vendedor...</option>
@@ -7672,7 +7826,7 @@ VENDEDOR: ${venda.vendedor}`;
                           value={contratoData.vendedorId || ""}
                           onChange={(e) => {
                             const v = vendedores.find(x => x.id === e.target.value);
-                            setContratoData({ ...contratoData, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                            setContratoData({ ...contratoData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
                           }}
                         >
                           <option value="">Selecionar vendedor...</option>
@@ -7681,7 +7835,7 @@ VENDEDOR: ${venda.vendedor}`;
                           ))}
                         </select>
                       ) : (
-                        <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: e.target.value })} />
+                        <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: textoMaiusculo(e.target.value) })} />
                       )}
                     </div>
                   </div>
@@ -7745,14 +7899,14 @@ VENDEDOR: ${venda.vendedor}`;
                         value={editVendaForm.vendedorId || ""}
                         onChange={(e) => {
                           const v = vendedores.find(x => x.id === e.target.value);
-                          setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: v?.nome || "" });
+                          setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
                         }}
                       >
                         <option value="">Selecionar...</option>
                         {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
                       </select>
                     ) : (
-                      <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: e.target.value })} />
+                      <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: textoMaiusculo(e.target.value) })} />
                     )}
                   </div>
                   <div>
@@ -8287,16 +8441,10 @@ VENDEDOR: ${venda.vendedor}`;
                   </div>
                 </div>
 
-                {/* Seller and date */}
-                <div className="flex flex-col sm:flex-row gap-3">
-                  <div className="flex-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vendedor</p>
-                    <p className="font-bold text-slate-800">{selectedVenda.vendedor || "—"}</p>
-                  </div>
-                  <div className="flex-1 bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
-                    <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Data da Venda</p>
-                    <p className="font-bold text-slate-800">{new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
-                  </div>
+                {/* Data da venda — o corretor/vendedor da venda fica apenas no ranking e no resumo copiado */}
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Data da Venda</p>
+                  <p className="font-bold text-slate-800">{new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
                 </div>
               </div>
             </motion.div>
@@ -8879,26 +9027,24 @@ VENDEDOR: ${venda.vendedor}`;
                           // PROBLEMA 6: Salvar vendedor como Proprietário (upsert por CPF)
                           if (onSaveProprietario && gerarVendedor.nome.trim()) {
                             const cpfLimpo = gerarVendedor.cpf.replace(/\D/g, "");
-                            const jaExiste = cpfLimpo
-                              ? proprietarios.some((p) => p.cpf.replace(/\D/g, "") === cpfLimpo)
-                              : false;
-                            if (!jaExiste) {
-                              onSaveProprietario({
-                                id: `prop-${Date.now()}`,
-                                nome: gerarVendedor.nome,
-                                genero: gerarVendedor.genero || "M",
-                                nacionalidade: gerarVendedor.nacionalidade || "Brasileiro",
-                                estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", gerarVendedor.genero || "M"),
-                                rg: gerarVendedor.rg || "",
-                                cpf: gerarVendedor.cpf || "",
-                                endereco: gerarVendedor.endereco || "",
-                                numero: gerarVendedor.numero || "",
-                                bairro: gerarVendedor.bairro || "",
-                                cidade: gerarVendedor.cidade || "",
-                                estado: gerarVendedor.estado || "",
-                                cep: gerarVendedor.cep || "",
-                              });
-                            }
+                            const existenteProp = cpfLimpo
+                              ? proprietarios.find((p) => p.cpf.replace(/\D/g, "") === cpfLimpo)
+                              : null;
+                            onSaveProprietario(normalizarNomeObrigatorio({
+                              id: existenteProp?.id || `prop-${Date.now()}`,
+                              nome: gerarVendedor.nome,
+                              genero: gerarVendedor.genero || "M",
+                              nacionalidade: gerarVendedor.nacionalidade || "Brasileiro",
+                              estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", gerarVendedor.genero || "M"),
+                              rg: gerarVendedor.rg || "",
+                              cpf: gerarVendedor.cpf || "",
+                              endereco: gerarVendedor.endereco || "",
+                              numero: gerarVendedor.numero || "",
+                              bairro: gerarVendedor.bairro || "",
+                              cidade: gerarVendedor.cidade || "",
+                              estado: (gerarVendedor.estado || "").toUpperCase(),
+                              cep: gerarVendedor.cep || "",
+                            } as Proprietario));
                           }
                         }
                         // Atualiza selectedVenda localmente para que a prévia final mostre os dados corretos
@@ -9845,10 +9991,10 @@ const ConfigSection = ({
     let updated: Vendedor[];
     if (editingVendedor) {
       updated = (formData.vendedores || []).map((v) =>
-        v.id === editingVendedor.id ? { ...vendedorForm, id: editingVendedor.id } : v
+        v.id === editingVendedor.id ? normalizarNomeObrigatorio({ ...vendedorForm, estado: (vendedorForm.estado || "").toUpperCase(), id: editingVendedor.id } as any) : v
       );
     } else {
-      updated = [...(formData.vendedores || []), { ...vendedorForm, id: `vend-${Date.now()}` }];
+      updated = [...(formData.vendedores || []), normalizarNomeObrigatorio({ ...vendedorForm, estado: (vendedorForm.estado || "").toUpperCase(), id: `vend-${Date.now()}` } as any)];
     }
     const newFormData = { ...formData, vendedores: updated };
     setFormData(newFormData);
@@ -9930,7 +10076,13 @@ const ConfigSection = ({
         <div className="pt-4 flex justify-end">
           <button
             onClick={() => {
-              onSave(formData);
+              const normalizedConfig = {
+                ...formData,
+                vendedores: (formData.vendedores || []).map((v: any) => normalizarNomeObrigatorio({ ...v, estado: (v.estado || "").toUpperCase() })),
+                proprietarios: ((formData as any).proprietarios || []).map((p: any) => normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase() })),
+              };
+              setFormData(normalizedConfig);
+              onSave(normalizedConfig);
               alert("Configurações salvas com sucesso!");
             }}
             className="btn-primary px-12"
@@ -11762,22 +11914,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     let devAtualizado: Empreendimento | null = null;
     const updated = developments.map((d) => {
       if (d.id !== id) return d;
-      const nextLotesInfo = { ...(d.lotesInfo || {}), ...info };
-      const nextMapaPontos = ((d as any).mapaPontos || []).map((ponto: any) => {
-        const key = getLotInfoKey(ponto.quadra, ponto.lote);
-        const changed = info[key];
-        if (!changed?.status) return ponto;
-        return {
-          ...ponto,
-          status: changed.status === "disponivel" ? "disponivel" : "indisponivel",
-          observacao: changed.observacao ?? ponto.observacao,
-          atualizadoEm: new Date().toISOString(),
-        };
-      });
-      devAtualizado = recalcularEstatisticasEmpreendimento(
-        { ...d, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento,
-        sales,
-      );
+      devAtualizado = applyLotesInfoPatchToEmpreendimento(d, info, sales);
       return devAtualizado;
     });
     setDevelopments(updated);
@@ -11788,10 +11925,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     let devAtualizado: Empreendimento | null = null;
     const updated = developments.map((d) => {
       if (d.id !== devId) return d;
-      const newLotesInfo = { ...(d.lotesInfo || {}) };
-      delete newLotesInfo[key];
-      const nextMapaPontos = ((d as any).mapaPontos || []).filter((ponto: any) => getLotInfoKey(ponto.quadra, ponto.lote) !== key.toUpperCase());
-      devAtualizado = recalcularEstatisticasEmpreendimento({ ...d, lotesInfo: newLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, sales);
+      devAtualizado = deleteLotFromEmpreendimento(d, key, sales);
       return devAtualizado;
     });
     setDevelopments(updated);
@@ -11878,10 +12012,10 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     if (existente) {
       // Já existe — atualiza preservando o id original
       updated = lista.map((x) =>
-        x.cpf.replace(/\D/g, "") === cpfLimpo ? { ...p, id: x.id } : x
+        x.cpf.replace(/\D/g, "") === cpfLimpo ? normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase(), id: x.id } as any) : x
       );
     } else {
-      updated = [...lista, p];
+      updated = [...lista, normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase() } as any)];
     }
     const newConfig = { ...config, proprietarios: updated };
     setConfig(newConfig);
