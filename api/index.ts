@@ -13,6 +13,7 @@ import {
   appConfig,
 } from "../shared/schema.js";
 import { gerarContratoParceladoPadrao } from "../server/contratoParceladoPadrao.js";
+import { gerarReciboAVistaPadrao } from "../server/reciboAVistaPadrao.js";
 import { localUsersService } from "../server/localUsersService.js";
 
 const app = express();
@@ -615,6 +616,26 @@ app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => 
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
     const filename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    res.send(buffer);
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// --- Contrato À Vista Padrão (usa recibo_avista_template.docx) ---
+app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { vendedor, cliente, empreendimento, venda } = req.body;
+    if (!vendedor || !cliente || !empreendimento || !venda)
+      return res.status(400).json({ error: "Dados incompletos para gerar o contrato à vista." });
+    const userRow = await localUsersService.findById((req as any).userId || req.user?.id || "");
+    const corretor = { nome: userRow?.profile?.nome, creci: userRow?.profile?.creci, telefone: userRow?.profile?.telefone };
+    const buffer = await gerarReciboAVistaPadrao({ corretor, vendedor, cliente, empreendimento, venda });
+    const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
+    const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
+    const filename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
     res.send(buffer);

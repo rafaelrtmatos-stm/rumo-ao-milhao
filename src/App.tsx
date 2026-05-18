@@ -5326,7 +5326,7 @@ const ContratosSection = ({
 
   const [downloadingPdfContrato, setDownloadingPdfContrato] = useState(false);
 
-  // Baixa PDF do contrato usando jsPDF
+  // Gera PDF do contrato via popup HTML (mesmos dados do DOCX, sem jsPDF)
   const handleDownloadPdfContrato = async () => {
     if (!selectedVenda) return;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
@@ -5334,118 +5334,141 @@ const ContratosSection = ({
     if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
     if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
 
-    // Restaurar dados do snapshot se wizard não foi aberto nesta sessão
+    // Mesma lógica de dados do handleDownloadDocx
     const snapPdf = selectedVenda.contratoSnapshot;
     const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snapPdf?.vendedor ?? gerarVendedor);
     const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snapPdf?.empreendimento ?? { nome: desenvolvimento.nome, comunidade: desenvolvimento.comunidade || "", cidade: desenvolvimento.cidade || "", estado: desenvolvimento.estado || "" });
     const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snapPdf?.extra ?? gerarExtra)) : gerarExtra;
 
-    setDownloadingPdfContrato(true);
-    try {
-      const { jsPDF } = await import("jspdf");
-      const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
-      const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
-      const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR") : "";
-
-      const margin = 20;
-      let y = margin;
-      const lineH = 7;
-      const pageW = pdf.internal.pageSize.getWidth();
-
-      const addLine = (text: string, bold = false, size = 11) => {
-        if (y > 270) { pdf.addPage(); y = margin; }
-        pdf.setFontSize(size);
-        pdf.setFont("helvetica", bold ? "bold" : "normal");
-        const lines = pdf.splitTextToSize(text, pageW - margin * 2);
-        pdf.text(lines, margin, y);
-        y += lineH * lines.length;
+    const isAvista = selectedVenda.quantidadeParcelas === 0;
+    const fmtBRL = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+    const fmtDate = (d: string) => d ? new Date(d + "T12:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "";
+    const numExtenso = (v: number): string => {
+      const n = Math.round(v * 100) / 100;
+      if (n === 0) return "zero Reais";
+      const uns = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
+      const dez = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
+      const cen = ["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
+      const ext = (x: number): string => {
+        if (x === 100) return "cem";
+        if (x === 1000) return "mil";
+        if (x < 20) return uns[x];
+        if (x < 100) return dez[Math.floor(x/10)] + (x%10 ? " e " + uns[x%10] : "");
+        if (x < 1000) return cen[Math.floor(x/100)] + (x%100 ? " e " + ext(x%100) : "");
+        if (x < 1000000) { const m = Math.floor(x/1000); const r = x%1000; return (m===1?"mil":ext(m)+" mil") + (r ? (r<100||r%100===0?" e ":" ") + ext(r) : ""); }
+        const m = Math.floor(x/1000000); const r = x%1000000;
+        return (m===1?"um milhão":ext(m)+" milhões") + (r ? " e " + ext(r) : "");
       };
-      const addBlank = () => { y += 4; };
+      const intPart = Math.floor(n);
+      const cents = Math.round((n - intPart) * 100);
+      let result = ext(intPart) + (intPart === 1 ? " Real" : " Reais");
+      if (cents > 0) result += " e " + ext(cents) + (cents === 1 ? " centavo" : " centavos");
+      return result.charAt(0).toUpperCase() + result.slice(1);
+    };
 
-      pdf.setFontSize(16);
-      pdf.setFont("helvetica", "bold");
-      pdf.text(selectedVenda.quantidadeParcelas === 0 ? "CONTRATO DE COMPRA E VENDA À VISTA" : "CONTRATO DE COMPRA E VENDA PARCELADO", pageW / 2, y, { align: "center" });
-      y += lineH * 2;
+    const saldo = selectedVenda.valorLote - selectedVenda.valorEntrada;
+    const corretagem = selectedVenda.valorLote * 0.08;
+    const empCidade = eAtivo.cidade || desenvolvimento.cidade || "Santarém";
+    const empEstado = eAtivo.estado || desenvolvimento.estado || "PA";
+    const comunidade = eAtivo.comunidade || desenvolvimento.comunidade || "";
+    const diaVenc = selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "";
+    const primParcela = (() => {
+      if (!selectedVenda.dataVencimento) return "";
+      const d = new Date(selectedVenda.dataVencimento + "T12:00:00");
+      d.setMonth(d.getMonth() + 1);
+      return d.toLocaleDateString("pt-BR");
+    })();
+    const dimStr = xAtivo.medidaFrente
+      ? `${xAtivo.medidaFrente} metros de frente, lateral direita medindo ${xAtivo.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${xAtivo.medidaLateralEsq || "___"} e medindo ${xAtivo.medidaFundos || "___"} metros de fundos, com área total de ${xAtivo.areaTotal || "___"} metros quadrados`
+      : "";
+    const isF = cliente.genero === "F";
+    const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / ");
 
-      addLine(`Nº ${selectedVenda.numeroContrato}`, true, 10);
-      addBlank();
+    const vendedorAddr = [vAtivo.endereco, vAtivo.numero ? `nº ${vAtivo.numero}` : "", vAtivo.bairro, vAtivo.cidade, vAtivo.estado, vAtivo.cep ? `CEP ${vAtivo.cep}` : ""].filter(Boolean).join(", ");
+    const compradorAddr = [cliente.endereco, cliente.numero ? `nº ${cliente.numero}` : "", cliente.bairro, cliente.cidade, cliente.estado, cliente.cep ? `CEP ${cliente.cep}` : ""].filter(Boolean).join(", ");
 
-      addLine("VENDEDOR", true, 12);
-      addLine(`Nome: ${vAtivo.nome || "—"}`);
-      if (vAtivo.cpf) addLine(`CPF: ${vAtivo.cpf}`);
-      if (vAtivo.rg) addLine(`RG: ${vAtivo.rg}`);
-      if (vAtivo.estadoCivil) addLine(`Estado Civil: ${vAtivo.estadoCivil}`);
-      if (vAtivo.endereco) addLine(`Endereço: ${vAtivo.endereco}${vAtivo.numero ? ", " + vAtivo.numero : ""} — ${vAtivo.bairro || ""} — ${vAtivo.cidade || ""}/${vAtivo.estado || ""}`);
-      addBlank();
+    const baseStyle = `
+      body { font-family: "Times New Roman", Times, serif; font-size: 12pt; color: #000; margin: 0; padding: 0; }
+      .page { width: 21cm; min-height: 29.7cm; margin: 0 auto; padding: 2.5cm 2.5cm 2cm 3cm; box-sizing: border-box; }
+      h1 { font-size: 14pt; text-align: center; text-transform: uppercase; margin-bottom: 6pt; }
+      h2 { font-size: 12pt; text-transform: uppercase; margin: 14pt 0 4pt 0; }
+      p { text-align: justify; line-height: 1.6; margin: 0 0 8pt 0; }
+      .sig { display: flex; justify-content: space-around; margin-top: 60pt; }
+      .sig-block { text-align: center; width: 42%; }
+      .sig-line { border-top: 1px solid #000; margin-bottom: 4pt; }
+      @media print { @page { size: A4; margin: 0; } .page { padding: 2.5cm 2.5cm 2cm 3cm; } }
+    `;
 
-      addLine("COMPRADOR", true, 12);
-      addLine(`Nome: ${cliente.nome}`);
-      if (cliente.cpf) addLine(`CPF: ${cliente.cpf}`);
-      if (cliente.rg) addLine(`RG: ${cliente.rg}`);
-      if (cliente.estadoCivil) addLine(`Estado Civil: ${cliente.estadoCivil}`);
-      addBlank();
+    let body = "";
 
-      addLine("IMÓVEL", true, 12);
-      addLine(`Empreendimento: ${eAtivo.nome || desenvolvimento.nome}`);
-      if (eAtivo.comunidade || xAtivo.comunidade) addLine(`Comunidade: ${eAtivo.comunidade || xAtivo.comunidade}`);
-      if (eAtivo.cidade || desenvolvimento.cidade) addLine(`Cidade/UF: ${eAtivo.cidade || desenvolvimento.cidade || ""}/${eAtivo.estado || desenvolvimento.estado || ""}`);
-      addLine(`Quadra: ${selectedVenda.quadra}   Lote: ${selectedVenda.numeroLote}`);
-      if (xAtivo.rua) addLine(`Logradouro: ${xAtivo.rua}`);
-      if (xAtivo.medidaFrente) addLine(`Medidas: ${xAtivo.medidaFrente}m frente, ${xAtivo.medidaLateralDir || "___"}m lat.dir., ${xAtivo.medidaLateralEsq || "___"}m lat.esq., ${xAtivo.medidaFundos || "___"}m fundos`);
-      if (xAtivo.areaTotal) addLine(`Área Total: ${xAtivo.areaTotal} m²`);
-      addBlank();
-
-      addLine("CONDIÇÕES DE PAGAMENTO", true, 12);
-      addLine(`Valor Total: ${fmtCurrency(selectedVenda.valorLote)}`);
-      if (selectedVenda.quantidadeParcelas > 0) {
-        addLine(`Entrada: ${fmtCurrency(selectedVenda.valorEntrada)}`);
-        addLine(`Parcelas: ${selectedVenda.quantidadeParcelas}x de ${fmtCurrency(selectedVenda.valorParcela)}`);
-        if (selectedVenda.dataVencimento) {
-          const diaVenc = new Date(selectedVenda.dataVencimento + "T12:00:00").getDate();
-          addLine(`Vencimento: dia ${isNaN(diaVenc) ? selectedVenda.dataVencimento : diaVenc} de cada mês`);
-        }
-      }
-      addLine(`Forma de Pagamento: ${xAtivo.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}`);
-      addLine(`Data da Venda: ${fmtDate(selectedVenda.dataVenda)}`);
-      addBlank();
-      addBlank();
-
-      y += 20;
-      pdf.setDrawColor(0);
-      pdf.line(margin, y, margin + 80, y);
-      pdf.setFontSize(9);
-      pdf.setFont("helvetica", "normal");
-      pdf.text("Vendedor", margin + 40, y + 5, { align: "center" });
-      pdf.text(vAtivo.nome || "", margin + 40, y + 10, { align: "center" });
-
-      pdf.line(pageW - margin - 80, y, pageW - margin, y);
-      pdf.text("Comprador", pageW - margin - 40, y + 5, { align: "center" });
-      pdf.text(cliente.nome, pageW - margin - 40, y + 10, { align: "center" });
-
-      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
-      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
-      const blob = pdf.output('blob');
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra_${selectedVenda.quadra}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      const pdfSnapshot = {
-        vendedor: vAtivo,
-        empreendimento: eAtivo,
-        extra: xAtivo,
-        tipoContrato: snapPdf?.tipoContrato || tipoContrato,
-        geradoEm: new Date().toISOString(),
-      };
-      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
-    } catch (e: any) {
-      alert("Erro ao gerar PDF do contrato: " + e.message);
-    } finally {
-      setDownloadingPdfContrato(false);
+    if (isAvista) {
+      // ── Contrato À Vista — espelha recibo_avista_template.docx ──
+      const genV = "o", tratV = "Sr.";
+      const genC = isF ? "a" : "o", tratC = isF ? "Sra." : "Sr.";
+      const compTermo = isF ? "COMPRADORA" : "COMPRADOR";
+      body = `
+        <h1>Instrumento Particular de Compra e Venda de Imóvel</h1>
+        <h1>(Pagamento à Vista — ${fmtBRL(selectedVenda.valorLote)} / ${numExtenso(selectedVenda.valorLote)})</h1>
+        <h2>VENDEDOR</h2>
+        <p>${genV.toUpperCase()} ${tratV} <strong>${vAtivo.nome?.toUpperCase() || "___"}</strong>, ${vAtivo.nacionalidade?.toLowerCase() || "brasileiro"}, ${vAtivo.estadoCivil?.toLowerCase() || "___"}, portador${genV === "a" ? "a" : ""} do RG nº ${vAtivo.rg || "___"}, inscrit${genV === "a" ? "a" : "o"} no CPF/MF sob o nº ${vAtivo.cpf || "___"}, residente e domiciliad${genV} na ${vendedorAddr || "___"}, doravante denominad${genV} simplesmente VENDEDOR;</p>
+        <h2>${compTermo}</h2>
+        <p>${genC.toUpperCase()} ${tratC} <strong>${cliente.nome?.toUpperCase() || "___"}</strong>, ${(cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase()}, ${cliente.estadoCivil?.toLowerCase() || "___"}, portador${genC === "a" ? "a" : ""}(a) do RG nº ${cliente.rg || "___"}, inscrit${genC === "a" ? "a" : "o"} no CPF/MF sob o nº ${cliente.cpf || "___"}${phones ? ", Telefone: " + phones : ""}, residente e domiciliad${genC === "a" ? "a" : "o"} na ${compradorAddr || "___"}, doravante denominad${genC === "a" ? "a" : "o"} simplesmente ${compTermo};</p>
+        <h2>DO IMÓVEL</h2>
+        <p>O VENDEDOR vende ${genC === "a" ? "à" : "ao"} ${compTermo} um terreno de propriedade do${genV === "a" ? "a" : ""} VENDEDOR, localizado na ${comunidade ? comunidade + ", " : ""}${empCidade}/${empEstado}, no Empreendimento <strong>${eAtivo.nome?.toUpperCase() || "___"}</strong>, de Lote ${selectedVenda.numeroLote} da Quadra (${selectedVenda.quadra})${xAtivo.rua ? ", " + xAtivo.rua : ""}${dimStr ? ", medindo " + dimStr : ""}, pelo valor total de R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)}).</p>
+        <h2>DO PAGAMENTO</h2>
+        <p>O pagamento será efetuado à vista, em parcela única, no valor de <strong>R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)})</strong>, mediante ${xAtivo.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}, na data de ${fmtDate(selectedVenda.dataVenda)}.</p>
+        <h2>DA TRADIÇÃO E POSSE</h2>
+        <p>O VENDEDOR cede e transfere ${genC === "a" ? "à" : "ao"} ${compTermo} todos os direitos sobre o imóvel supradescrito, declarando que o mesmo está livre e desembaraçado de quaisquer ônus, dívidas ou encargos de qualquer natureza.</p>
+        <h2>DAS DISPOSIÇÕES GERAIS</h2>
+        <p>O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus herdeiros. Fica eleito o foro da comarca de ${empCidade}-${empEstado} para dirimir quaisquer dúvidas oriundas deste instrumento.</p>
+        <p style="margin-top:16pt">${empCidade}/${empEstado}, ${fmtDate(selectedVenda.dataVenda)}.</p>
+      `;
+    } else {
+      // ── Contrato Parcelado — espelha contrato_template.docx ──
+      const parcelasExt = numExtenso(selectedVenda.quantidadeParcelas).replace(/ Reais| Real/,"").trim();
+      const compLabel = isF ? "COMPRADORA" : "COMPRADOR";
+      body = `
+        <h1>Instrumento Particular de Compra e Venda de Imóvel a Prazo</h1>
+        <h1>(Parcelado)</h1>
+        <p>Pelo presente instrumento particular de compra e venda, de um lado como VENDEDOR:</p>
+        <h2>VENDEDOR</h2>
+        <p><strong>${vAtivo.nome?.toUpperCase() || "___"}</strong>, ${vAtivo.nacionalidade?.toLowerCase() || "brasileiro"}, ${vAtivo.estadoCivil?.toLowerCase() || "___"}, portador do RG nº ${vAtivo.rg || "___"}, inscrito no CPF/MF sob o nº ${vAtivo.cpf || "___"}, residente e domiciliado na ${vendedorAddr || "___"}, doravante denominado simplesmente VENDEDOR;</p>
+        <p>E de outro lado ${isF ? "a Sra." : "o Sr."} como ${compLabel}:</p>
+        <h2>${compLabel}</h2>
+        <p><strong>${cliente.nome?.toUpperCase() || "___"}</strong>, ${(cliente.nacionalidade || (isF ? "brasileira" : "brasileiro")).toLowerCase()}, ${cliente.estadoCivil?.toLowerCase() || "___"}, portador${isF ? "a" : ""} do RG nº ${cliente.rg || "___"}, inscrit${isF ? "a" : "o"} no CPF/MF sob o nº ${cliente.cpf || "___"}${phones ? ", Telefone " + phones : ""}, residente e domiciliad${isF ? "a" : "o"} na ${compradorAddr || "___"}, doravante denominad${isF ? "a" : "o"} simplesmente ${compLabel};</p>
+        <h2>DO IMÓVEL</h2>
+        <p>O VENDEDOR vende ${isF ? "à" : "ao"} ${compLabel}, que compra e aceita, um terreno de sua propriedade, localizado ${comunidade ? "na " + comunidade + ", " : ""}em ${empCidade}/${empEstado}, no Empreendimento <strong>${eAtivo.nome?.toUpperCase() || "___"}</strong>, correspondente ao Lote ${selectedVenda.numeroLote} da Quadra (${selectedVenda.quadra})${xAtivo.rua ? ", " + xAtivo.rua : ""}${dimStr ? ", medindo " + dimStr : ""}.</p>
+        <h2>DO PREÇO E FORMA DE PAGAMENTO</h2>
+        <p>O preço total do imóvel é de R$ ${fmtBRL(selectedVenda.valorLote).replace("R$","").trim()} (${numExtenso(selectedVenda.valorLote)}), pago da seguinte forma:</p>
+        <p><strong>a) Entrada:</strong> R$ ${fmtBRL(selectedVenda.valorEntrada).replace("R$","").trim()} (${numExtenso(selectedVenda.valorEntrada)}), na assinatura deste instrumento;</p>
+        <p><strong>b) Saldo:</strong> R$ ${fmtBRL(saldo).replace("R$","").trim()} (${numExtenso(saldo)}), dividido em ${selectedVenda.quantidadeParcelas} (${parcelasExt}) parcelas mensais e sucessivas, no valor de R$ ${fmtBRL(selectedVenda.valorParcela).replace("R$","").trim()} (${numExtenso(selectedVenda.valorParcela)}) cada, com vencimento no dia ${diaVenc} de cada mês, sendo a primeira parcela em ${primParcela};</p>
+        <p><strong>c) Comissão de corretagem:</strong> R$ ${fmtBRL(corretagem).replace("R$","").trim()} (${numExtenso(corretagem)}), a ser paga pelo VENDEDOR ao corretor mediador.</p>
+        <h2>DO INADIMPLEMENTO</h2>
+        <p>O não pagamento de qualquer parcela no vencimento implicará multa de 2% sobre o valor da parcela, acrescida de juros de mora de 1% ao mês e correção monetária pelo IGPM/FGV, sem prejuízo das demais cláusulas deste contrato.</p>
+        <h2>DA RESCISÃO</h2>
+        <p>O inadimplemento de 03 (três) ou mais parcelas consecutivas facultará ao VENDEDOR considerar rescindido o presente instrumento de pleno direito, com retenção de 20% dos valores pagos a título de multa compensatória, sendo o restante devolvido em até 90 dias.</p>
+        <h2>DAS DISPOSIÇÕES GERAIS</h2>
+        <p>O presente instrumento é celebrado em caráter irrevogável e irretratável, obrigando as partes e seus herdeiros e sucessores. Fica eleito o foro da comarca de ${empCidade}-${empEstado} para dirimir quaisquer dúvidas oriundas deste instrumento.</p>
+        <p style="margin-top:16pt">${empCidade}/${empEstado}, ${fmtDate(selectedVenda.dataVenda)}.</p>
+      `;
     }
+
+    const html = `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>Contrato</title><style>${baseStyle}</style></head><body><div class="page">${body}<div class="sig"><div class="sig-block"><div class="sig-line"></div><p>${vAtivo.nome?.toUpperCase() || "VENDEDOR"}</p><p>CPF: ${vAtivo.cpf || "___"}</p><p>VENDEDOR</p></div><div class="sig-block"><div class="sig-line"></div><p>${cliente.nome?.toUpperCase() || "COMPRADOR"}</p><p>CPF: ${cliente.cpf || "___"}</p><p>${selectedVenda.quantidadeParcelas === 0 ? (isF ? "COMPRADORA" : "COMPRADOR") : (isF ? "COMPRADORA" : "COMPRADOR")}</p></div></div></div><script>window.onload=function(){window.print();}<\/script></body></html>`;
+
+    const popup = window.open("", "_blank", "width=900,height=700");
+    if (!popup) { alert("Popup bloqueado. Permita popups para este site."); return; }
+    popup.document.write(html);
+    popup.document.close();
+
+    // Salva snapshot igual ao DOCX
+    const pdfSnapshot = {
+      vendedor: vAtivo,
+      empreendimento: eAtivo,
+      extra: xAtivo,
+      tipoContrato: snapPdf?.tipoContrato || tipoContrato,
+      geradoEm: new Date().toISOString(),
+    };
+    onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: pdfSnapshot });
   };
 
   const [gerarFinalFormat, setGerarFinalFormat] = useState<'pdf' | 'docx'>('docx');
@@ -6919,19 +6942,19 @@ const ContratosSection = ({
                     <ChevronLeft size={17} />
                     Voltar
                   </button>
-                  {/* PDF — verde, mesmo estilo que DOCX */}
+                  {/* PDF — abre janela de impressão com HTML idêntico ao DOCX */}
                   <button
                     onClick={handleDownloadPdfContrato}
-                    disabled={downloadingPdfContrato || downloadingDocx}
+                    disabled={downloadingDocx}
                     className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar PDF do contrato"
+                    title="Gerar PDF do contrato (abre para imprimir/salvar)"
                   >
-                    {downloadingPdfContrato ? <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</> : <><FileDown size={17} /> PDF</>}
+                    <FileDown size={17} /> PDF
                   </button>
                   {/* DOCX */}
                   <button
                     onClick={handleDownloadDocx}
-                    disabled={downloadingDocx || downloadingPdfContrato}
+                    disabled={downloadingDocx}
                     className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                     title="Baixar DOCX do contrato"
                   >
