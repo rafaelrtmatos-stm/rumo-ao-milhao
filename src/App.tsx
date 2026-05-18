@@ -5915,22 +5915,64 @@ const ContratosSection = ({
     : null;
 
   const copyResumoVenda = (venda: Venda) => {
-    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
-    const isAv = venda.quantidadeParcelas === 0;
-    const texto = [
-      `📋 RESUMO DA VENDA`,
-      `Cliente: ${venda.clienteNome}`,
-      `Empreendimento: ${venda.empreendimentoNome}`,
-      `Lote: ${venda.numeroLote} — Quadra: ${venda.quadra}`,
-      `Valor: ${brl(venda.valorLote)}`,
-      isAv
-        ? `Pagamento: À Vista`
-        : `Entrada: ${brl(venda.valorEntrada)} | Parcelas: ${venda.quantidadeParcelas}x ${brl(venda.valorParcela)}`,
-      venda.vendedor ? `Vendedor: ${venda.vendedor}` : "",
-      venda.dataVenda ? `Data: ${new Date(venda.dataVenda).toLocaleDateString("pt-BR")}` : "",
-      `Contrato: ${venda.contratoGerado ? "Gerado ✓" : "Pendente"}`,
-    ].filter(Boolean).join("\n");
-    navigator.clipboard.writeText(texto).catch(() => {});
+    const cliente = clients.find((c) => c.id === venda.clienteId);
+    const brl = (v: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+    const fmtPhone = (raw: string) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 11)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      return raw;
+    };
+
+    const fmtNasc = (d: string) => {
+      if (!d) return "";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+
+    const diaVenc = venda.dataVencimento
+      ? new Date(venda.dataVencimento + "T12:00:00").getDate()
+      : "";
+
+    const phones = [cliente?.telefone1, (cliente as any)?.telefone2]
+      .filter(Boolean)
+      .map((p) => fmtPhone(p as string));
+    const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
+
+    const summary = `CADASTRO DO COMPRADOR
+NOME: ${(cliente?.nome || venda.clienteNome || "").toUpperCase()}
+RG: ${(cliente?.rg || "").toUpperCase()}
+CPF: ${cliente?.cpf || ""}
+ESTADO CIVIL: ${genderizeEstadoCivil(cliente?.estadoCivil || "", cliente?.genero || "M").toUpperCase()}
+DATA DE ANIVERSÁRIO: ${fmtNasc(cliente?.nascimento || "")}
+ENDEREÇO: ${(cliente?.endereco || "").toUpperCase()}
+Nº: ${cliente?.numero || ""}
+BAIRRO: ${(cliente?.bairro || "").toUpperCase()}
+CEP: ${cliente?.cep || ""}
+${phoneLabel}
+LOTE: ${venda.numeroLote}
+QUADRA: ${venda.quadra}
+EMPREENDIMENTO: ${venda.empreendimentoNome.toUpperCase()}
+VALOR TOTAL: ${brl(venda.valorLote)}
+ENTRADA: ${brl(venda.valorEntrada)}
+QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}
+DATA DE VENCIMENTO: ${diaVenc}
+VENDEDOR: ${venda.vendedor}`;
+
+    navigator.clipboard.writeText(summary).catch(() => {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = summary;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    });
+    alert("Resumo copiado para a área de transferência!");
   };
 
   const filteredSales = (() => {
@@ -6974,49 +7016,87 @@ const ContratosSection = ({
                   {/* Imprimir */}
                   <button
                     onClick={() => {
-                      // Abre janela de impressão com HTML completo do contrato
                       const snap = selectedVenda?.contratoSnapshot;
                       const vAtivo2 = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+                      const xAtivo2 = snap?.extra ?? gerarExtra;
+                      const eAtivo2 = snap?.empreendimento ?? gerarEmp;
                       const clienteImp = clients.find((c) => c.id === selectedVenda?.clienteId);
                       if (!selectedVenda || !clienteImp) { alert("Dados do contrato incompletos para impressão."); return; }
                       const isAv = selectedVenda.quantidadeParcelas === 0;
                       const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+                      const brlNum = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
                       const dataVenda = selectedVenda.dataVenda ? new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "___/___/______";
+                      const diaVenc = selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "___";
+                      const empNome = eAtivo2.nome || selectedVenda.empreendimentoNome;
+                      const empCom = eAtivo2.comunidade || xAtivo2.comunidade || "";
+                      const empCidade = eAtivo2.cidade || "Santarém";
+                      const empEstado = eAtivo2.estado || "PA";
+                      const ruaLote = xAtivo2.rua || selectedVenda.rua || "";
+                      const dimStr = (xAtivo2.medidaFrente)
+                        ? `${xAtivo2.medidaFrente} metros de frente, lateral direita medindo ${xAtivo2.medidaLateralDir || "___"} metros, pela lateral esquerda medindo ${xAtivo2.medidaLateralEsq || "___"} e medindo ${xAtivo2.medidaFundos || "___"} metros de fundos, com área total de ${xAtivo2.areaTotal || "___"} metros quadrados`
+                        : "___ metros de frente, lateral direita medindo ___ metros, pela lateral esquerda medindo ___ e medindo ___ metros de fundos, com área total de ___ metros quadrados";
+                      const saldo = selectedVenda.valorLote - selectedVenda.valorEntrada;
+                      const carimboPago = comCarimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;">PAGO</div>` : "";
                       const printHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato — ${clienteImp.nome}</title><style>
                         * { box-sizing: border-box; }
-                        body { margin: 0; padding: 32px; font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #000; background: #fff; }
-                        h2 { text-align: center; text-transform: uppercase; font-size: 16pt; margin-bottom: 24px; }
-                        p { margin: 8px 0; line-height: 1.6; }
-                        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; border: 1px solid #ccc; padding: 16px; }
-                        .label { font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #555; }
-                        .val { font-weight: bold; }
-                        .assinatura { margin-top: 64px; display: flex; justify-content: space-between; }
-                        .assinatura div { width: 220px; text-align: center; border-top: 1px solid #000; padding-top: 8px; font-size: 10pt; }
-                        @media print { body { padding: 16px; } }
+                        body { margin: 0; padding: 40px 48px; font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #000; background: #fff; }
+                        h1 { text-align: center; text-transform: uppercase; font-size: 15pt; margin-bottom: 6px; letter-spacing: 1px; }
+                        h2 { text-align: center; font-size: 12pt; font-weight: normal; margin-bottom: 24px; }
+                        .section { margin: 18px 0; }
+                        .section-title { font-weight: bold; text-transform: uppercase; font-size: 10pt; border-bottom: 1px solid #000; padding-bottom: 3px; margin-bottom: 8px; }
+                        p { margin: 6px 0; line-height: 1.65; text-align: justify; }
+                        table { width: 100%; border-collapse: collapse; margin: 10px 0; }
+                        td { padding: 4px 8px; border: 1px solid #ccc; font-size: 11pt; vertical-align: top; }
+                        td.lbl { font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #444; background: #f5f5f5; width: 38%; }
+                        .assinatura { margin-top: 64px; display: flex; justify-content: space-around; }
+                        .assinatura div { width: 220px; text-align: center; }
+                        .assinatura .linha { border-top: 1px solid #000; padding-top: 6px; margin-top: 40px; font-size: 10pt; }
+                        @media print { body { padding: 20px 28px; } }
                       </style></head><body>
-                        <h2>Contrato de Compra e Venda ${isAv ? "À Vista" : "a Prazo"}</h2>
-                        <p><span class="label">Comprador:</span> <span class="val">${clienteImp.nome}</span> &nbsp; CPF: <span class="val">${clienteImp.cpf || "___"}</span></p>
-                        <p><span class="label">Vendedor:</span> <span class="val">${vAtivo2.nome || "___"}</span> &nbsp; CPF: <span class="val">${vAtivo2.cpf || "___"}</span></p>
-                        <div class="grid">
-                          <div><p class="label">Empreendimento</p><p class="val">${selectedVenda.empreendimentoNome}</p></div>
-                          <div><p class="label">Localização</p><p class="val">Quadra ${selectedVenda.quadra} — Lote ${selectedVenda.numeroLote}${selectedVenda.rua ? " — " + selectedVenda.rua : ""}</p></div>
-                          <div><p class="label">Valor do Lote</p><p class="val">${brl(selectedVenda.valorLote)}</p></div>
-                          ${isAv
-                            ? `<div><p class="label">Forma de Pagamento</p><p class="val">À Vista — ${selectedVenda.formaPagamento || "Dinheiro"}</p></div>`
-                            : `<div><p class="label">Entrada</p><p class="val">${brl(selectedVenda.valorEntrada)}</p></div>
-                               <div><p class="label">Parcelas</p><p class="val">${selectedVenda.quantidadeParcelas}x de ${brl(selectedVenda.valorParcela)}</p></div>
-                               <div><p class="label">Vencimento</p><p class="val">Dia ${selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "___"} de cada mês</p></div>`
-                          }
-                          <div><p class="label">Data da Venda</p><p class="val">${dataVenda}</p></div>
+                        <h1>Contrato de Compra e Venda${isAv ? " À Vista" : " a Prazo"}</h1>
+                        <h2>Instrumento Particular</h2>
+                        <div class="section">
+                          <div class="section-title">Partes</div>
+                          <table>
+                            <tr><td class="lbl">Vendedor</td><td>${vAtivo2.nome ? vAtivo2.nome.toUpperCase() : "___"}, ${vAtivo2.nacionalidade || "brasileiro"}, ${vAtivo2.estadoCivil || "___"}, RG: ${vAtivo2.rg || "___"}, CPF: ${vAtivo2.cpf || "___"}</td></tr>
+                            <tr><td class="lbl">Comprador</td><td>${clienteImp.nome.toUpperCase()}, ${clienteImp.nacionalidade || "brasileiro"}, ${clienteImp.estadoCivil || "___"}, RG: ${clienteImp.rg || "___"}, CPF: ${clienteImp.cpf || "___"}</td></tr>
+                          </table>
                         </div>
-                        <p style="margin-top:32px;font-size:10pt;font-style:italic;">Para impressão do contrato completo com todas as cláusulas, utilize o botão <strong>PDF</strong> ou <strong>DOCX</strong> na tela de contratos.</p>
-                        ${comCarimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.75;letter-spacing:4px;pointer-events:none;">PAGO</div>` : ''}
+                        <div class="section">
+                          <div class="section-title">Imóvel</div>
+                          <table>
+                            <tr><td class="lbl">Empreendimento</td><td>${empNome}${empCom ? " — " + empCom : ""}, ${empCidade}/${empEstado}</td></tr>
+                            <tr><td class="lbl">Lote / Quadra</td><td>Lote ${selectedVenda.numeroLote} da Quadra ${selectedVenda.quadra}${ruaLote ? " — " + ruaLote : ""}</td></tr>
+                            <tr><td class="lbl">Dimensões</td><td>${dimStr}</td></tr>
+                          </table>
+                        </div>
+                        <div class="section">
+                          <div class="section-title">Condições Financeiras</div>
+                          <table>
+                            <tr><td class="lbl">Valor Total</td><td><strong>${brl(selectedVenda.valorLote)}</strong> (${brlNum(selectedVenda.valorLote)})</td></tr>
+                            ${isAv
+                              ? `<tr><td class="lbl">Modalidade</td><td>À Vista — ${xAtivo2.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}</td></tr>`
+                              : `<tr><td class="lbl">Entrada</td><td>${brl(selectedVenda.valorEntrada)}</td></tr>
+                                 <tr><td class="lbl">Saldo</td><td>${brl(saldo)}</td></tr>
+                                 <tr><td class="lbl">Parcelas</td><td>${selectedVenda.quantidadeParcelas}x de ${brl(selectedVenda.valorParcela)}, vencendo dia ${diaVenc} de cada mês</td></tr>
+                                 <tr><td class="lbl">Forma de pagamento</td><td>${xAtivo2.formaPagamento || selectedVenda.formaPagamento || "Dinheiro"}</td></tr>`
+                            }
+                            <tr><td class="lbl">Data da Venda</td><td>${dataVenda}</td></tr>
+                          </table>
+                        </div>
+                        <div class="section">
+                          <p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual o VENDEDOR vende ao COMPRADOR o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento, obrigando-se o COMPRADOR a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual.</p>
+                          <p>O COMPRADOR declara conhecer o imóvel objeto deste contrato, aceitando-o nas condições em que se encontra, ciente de que a posse do imóvel será transferida somente após a quitação integral do preço.</p>
+                          <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
+                          <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataVenda}.</p>
+                        </div>
+                        ${carimboPago}
                         <div class="assinatura">
-                          <div>${clienteImp.nome}<br><span style="font-size:9pt">Comprador</span></div>
-                          <div>${vAtivo2.nome || "___"}<br><span style="font-size:9pt">Vendedor</span></div>
+                          <div><div class="linha">${clienteImp.nome.toUpperCase()}<br><span style="font-size:9pt">Comprador</span></div></div>
+                          <div><div class="linha">${vAtivo2.nome ? vAtivo2.nome.toUpperCase() : "___________________________"}<br><span style="font-size:9pt">Vendedor</span></div></div>
                         </div>
                       </body></html>`;
-                      const w = window.open("", "_blank", "width=800,height=700");
+                      const w = window.open("", "_blank", "width=900,height=750");
                       if (w) {
                         w.document.write(printHTML);
                         w.document.close();
@@ -7807,14 +7887,48 @@ const ContratosSection = ({
               <div className="flex flex-col gap-3">
                 <button
                   onClick={() => {
-                    // Mesclar: abre Nova Venda com editingEntry = venda original
+                    // Editar dados e gerar contrato: abre o wizard completo pré-preenchido
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    const dev = developments.find((d) => d.id === v.empreendimentoId);
+                    const snap = v.contratoSnapshot;
+                    setGerarProprietarioId("");
+                    setGerarVendedor(snap?.vendedor ?? emptyGerarVendedor);
+                    setGerarEmp(snap?.empreendimento ?? {
+                      nome: dev?.nome || "",
+                      comunidade: dev?.comunidade || "",
+                      cidade: dev?.cidade || "",
+                      estado: dev?.estado || "",
+                    });
+                    setGerarExtra(snap?.extra ?? {
+                      rua: v.rua || "",
+                      comunidade: dev?.comunidade || "",
+                      formaPagamento: v.formaPagamento || "Dinheiro",
+                      medidaFrente: v.medidaFrente || "",
+                      medidaLateralDir: v.medidaLateralDir || "",
+                      medidaLateralEsq: v.medidaLateralEsq || "",
+                      medidaFundos: v.medidaFundos || "",
+                      areaTotal: v.areaTotal || "",
+                    });
+                    setTipoContrato(snap?.tipoContrato ?? (v.quantidadeParcelas === 0 ? "avista" : "parcelado"));
+                    setSelectedVenda(v);
+                    setGerarStep(0);
+                    setTimeout(() => setShowGerarModal(true), 60);
+                  }}
+                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <FileDown size={17} /> Editar dados e gerar contrato
+                </button>
+                <button
+                  onClick={() => {
+                    // Mesclar: abre Nova Venda com editingEntry = venda original (edita dados da venda)
                     const v = preEditVenda;
                     setPreEditVenda(null);
                     onEditVenda?.(v);
                   }}
-                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
                 >
-                  <Save size={17} /> Mesclar com a venda existente
+                  <Save size={17} /> Editar dados da venda (Nova Venda)
                 </button>
                 <button
                   onClick={() => {
