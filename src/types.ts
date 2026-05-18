@@ -138,6 +138,7 @@ export interface Empreendimento {
   mapaImagemUrl?: string;
   mapaImagemBase64?: string;
   mapaPontos?: MapaPonto[];
+  mapaBolinhaTamanho?: "pequena" | "media" | "grande";
   mapaHistorico?: any[];
   [key: string]: any;
 }

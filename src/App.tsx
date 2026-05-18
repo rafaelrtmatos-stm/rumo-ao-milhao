@@ -545,6 +545,14 @@ function defaultVencimento(): string {
   return d.toISOString().split("T")[0];
 }
 
+function textoMaiusculo(valor: any): string {
+  return String(valor || "").toLocaleUpperCase("pt-BR");
+}
+
+function normalizarNomeObrigatorio<T extends Record<string, any>>(obj: T): T {
+  return { ...obj, nome: textoMaiusculo(obj?.nome).trim() };
+}
+
 // ─── Componente: Busca de CEP por Rua / Cidade ──────────────────────────────
 type CepResultado = {
   cep: string;
@@ -1748,16 +1756,19 @@ const LotDashboard = ({
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
-  const [mapAction, setMapAction] = useState<"manual" | "sequencia" | "visualizar">("manual");
+  const [mapAction, setMapAction] = useState<"manual" | "sequencia" | "visualizar">("visualizar");
   const [pendingPoint, setPendingPoint] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as "disponivel" | "indisponivel", observacao: "" });
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
   const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as "disponivel" | "indisponivel", observacao: "", atual: null as number | null });
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
+  const [mapBallSize, setMapBallSize] = useState<"pequena" | "media" | "grande">(((dev as any).mapaBolinhaTamanho as any) || "media");
 
   useEffect(() => {
     setLocalDev(dev);
+    setMapBallSize(((dev as any).mapaBolinhaTamanho as any) || "media");
+    setMapAction("visualizar");
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
 
@@ -1799,6 +1810,66 @@ const LotDashboard = ({
       setMode("mapa");
     };
     reader.readAsDataURL(file);
+  };
+
+  const getBallPixelSize = () => {
+    if (mapBallSize === "pequena") return { size: 22, font: 8 };
+    if (mapBallSize === "grande") return { size: 36, font: 11 };
+    return { size: 28, font: 9 };
+  };
+
+  const salvarTamanhoBolinhas = (size: "pequena" | "media" | "grande") => {
+    setMapBallSize(size);
+    persistDev({ ...localDev, mapaBolinhaTamanho: size } as Empreendimento);
+  };
+
+  const getSequenceRangeNumbers = () => {
+    const inicial = Number(sequence.loteInicial);
+    const final = Number(sequence.loteFinal);
+    if (!sequence.quadra || !Number.isFinite(inicial) || !Number.isFinite(final)) return null;
+    const min = Math.min(inicial, final);
+    const max = Math.max(inicial, final);
+    return { quadra: normalizeLotText(sequence.quadra), inicial, final, min, max };
+  };
+
+  const alinharSequencia = (tipo: "reta" | "bezier") => {
+    const range = getSequenceRangeNumbers();
+    if (!range) {
+      alert("Informe quadra, lote inicial e lote final para alinhar a sequência.");
+      return;
+    }
+    const pontosSequencia = mapaPontos
+      .filter((p) => normalizeLotText(p.quadra) === range.quadra && Number.isFinite(Number(p.lote)) && Number(p.lote) >= range.min && Number(p.lote) <= range.max)
+      .sort((a, b) => range.inicial <= range.final ? Number(a.lote) - Number(b.lote) : Number(b.lote) - Number(a.lote));
+    if (pontosSequencia.length < 2) {
+      alert("Marque pelo menos dois pontos dessa sequência para alinhar.");
+      return;
+    }
+    const primeiro = pontosSequencia[0];
+    const ultimo = pontosSequencia[pontosSequencia.length - 1];
+    const meioExistente = pontosSequencia[Math.floor(pontosSequencia.length / 2)];
+    const controle = tipo === "bezier"
+      ? { xPercent: meioExistente?.xPercent ?? ((primeiro.xPercent + ultimo.xPercent) / 2), yPercent: meioExistente?.yPercent ?? (Math.min(primeiro.yPercent, ultimo.yPercent) - 10) }
+      : null;
+    const ids = new Set(pontosSequencia.map((p) => p.id));
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    pontosSequencia.forEach((p, idx) => {
+      const t = pontosSequencia.length === 1 ? 0 : idx / (pontosSequencia.length - 1);
+      if (tipo === "reta" || !controle) {
+        posicoes.set(p.id, {
+          xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
+          yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t,
+        });
+      } else {
+        const inv = 1 - t;
+        posicoes.set(p.id, {
+          xPercent: (inv * inv * primeiro.xPercent) + (2 * inv * t * controle.xPercent) + (t * t * ultimo.xPercent),
+          yPercent: (inv * inv * primeiro.yPercent) + (2 * inv * t * controle.yPercent) + (t * t * ultimo.yPercent),
+        });
+      }
+    });
+    const nextPontos = mapaPontos.map((p) => ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p);
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
   };
 
   const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: "disponivel" | "indisponivel"; observacao?: string; moveExisting?: boolean }) => {
@@ -1922,23 +1993,74 @@ const LotDashboard = ({
   };
 
   const editarPonto = (ponto: any) => {
-    const quadra = window.prompt("Quadra", ponto.quadra) || ponto.quadra;
-    const lote = window.prompt("Lote", ponto.lote) || ponto.lote;
+    const quadraOriginal = normalizeLotText(ponto.quadra);
+    const loteOriginal = normalizeLotText(ponto.lote);
+    const quadra = normalizeLotText(window.prompt("Quadra", ponto.quadra) || ponto.quadra);
+    const lote = normalizeLotText(window.prompt("Lote", ponto.lote) || ponto.lote);
     const statusInput = (window.prompt("Status: disponivel ou indisponivel", ponto.status) || ponto.status).toLowerCase();
     const status = statusInput === "indisponivel" ? "indisponivel" : "disponivel";
     const observacao = window.prompt("Observação", ponto.observacao || "") || "";
-    const duplicate = mapaPontos.find((p) => p.id !== ponto.id && getLotInfoKey(p.quadra, p.lote) === getLotInfoKey(quadra, lote));
+    const oldNum = Number(loteOriginal);
+    const newNum = Number(lote);
+    const mudouNumeroSequencial = quadra === quadraOriginal && lote !== loteOriginal && Number.isFinite(oldNum) && Number.isFinite(newNum);
+    const renumerarSequencia = mudouNumeroSequencial
+      ? window.confirm(`Você alterou o lote ${loteOriginal} para ${lote}. Deseja continuar a sequência a partir do lote ${lote}?
+
+OK = renumerar este e os próximos pontos.
+Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
+      : false;
+
+    const pontosAfetados = renumerarSequencia
+      ? mapaPontos
+          .filter((p) => normalizeLotText(p.quadra) === quadraOriginal && Number.isFinite(Number(p.lote)) && Number(p.lote) >= oldNum)
+          .sort((a, b) => Number(a.lote) - Number(b.lote))
+      : [ponto];
+    const affectedIds = new Set(pontosAfetados.map((p) => p.id));
+
+    const targetKeys = renumerarSequencia
+      ? new Set(pontosAfetados.map((_, idx) => getLotInfoKey(quadra, String(newNum + idx))))
+      : new Set([getLotInfoKey(quadra, lote)]);
+    const duplicate = mapaPontos.find((p) => !affectedIds.has(p.id) && targetKeys.has(getLotInfoKey(p.quadra, p.lote)));
     if (duplicate) {
       alert("Já existe uma bolinha com esta quadra/lote.");
       return;
     }
-    const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
-    const oldKey = getLotInfoKey(ponto.quadra, ponto.lote);
-    const nextPontos = mapaPontos.map((p) => p.id === ponto.id ? { ...p, quadra: ensured.quadraName, lote, status, observacao, atualizadoEm: new Date().toISOString() } : p);
-    const nextInfo = { ...(ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {}), status, observacao };
-    const lotesInfo = { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo };
-    if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) delete (lotesInfo as any)[oldKey];
-    persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
+
+    let nextDev: Empreendimento = localDev;
+    const atualizacaoPorId: Record<string, { quadra: string; lote: string }> = {};
+
+    if (renumerarSequencia) {
+      pontosAfetados.forEach((pAfetado, idx) => {
+        const targetLote = String(newNum + idx);
+        const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, targetLote);
+        const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+        nextDev = {
+          ...ensured.dev,
+          lotesInfo: {
+            ...(ensured.dev.lotesInfo || {}),
+            [ensured.lotInfoKey]: {
+              ...existingInfo,
+              status: pAfetado.id === ponto.id ? status : (existingInfo.status || pAfetado.status || "disponivel"),
+              observacao: pAfetado.id === ponto.id ? observacao : (existingInfo.observacao || pAfetado.observacao || ""),
+            },
+          },
+        } as Empreendimento;
+        atualizacaoPorId[pAfetado.id] = { quadra: ensured.quadraName, lote: targetLote };
+      });
+      const nextPontos = mapaPontos.map((p) => atualizacaoPorId[p.id]
+        ? { ...p, ...atualizacaoPorId[p.id], status: p.id === ponto.id ? status : p.status, observacao: p.id === ponto.id ? observacao : p.observacao, atualizadoEm: new Date().toISOString() }
+        : p
+      );
+      persistDev({ ...nextDev, mapaPontos: nextPontos } as Empreendimento);
+    } else {
+      const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
+      const oldKey = getLotInfoKey(ponto.quadra, ponto.lote);
+      const nextPontos = mapaPontos.map((p) => p.id === ponto.id ? { ...p, quadra: ensured.quadraName, lote, status, observacao, atualizadoEm: new Date().toISOString() } : p);
+      const nextInfo = { ...(ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {}), status, observacao };
+      const lotesInfo = { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo };
+      if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) delete (lotesInfo as any)[oldKey];
+      persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
+    }
     setSelectedPoint(null);
   };
 
@@ -1992,17 +2114,26 @@ const LotDashboard = ({
     </div>
   );
 
-  const renderMapa = () => (
+  const renderMapa = () => {
+    const ballSize = getBallPixelSize();
+    const isEditingMap = mapAction !== "visualizar";
+    return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
         <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
-          <div onClick={handleMapClick} className="relative mx-auto bg-white rounded-2xl overflow-hidden cursor-crosshair min-w-[320px]" style={{ maxWidth: "1000px" }}>
+          <div onClick={handleMapClick} className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] ${isEditingMap ? "cursor-crosshair" : "cursor-default"}`} style={{ maxWidth: "1000px" }}>
             <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto select-none" draggable={false} />
             {mapaPontos.map((ponto) => {
               const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
               const unavailable = ponto.status === "indisponivel" || !!venda;
               return (
-                <button key={ponto.id} onClick={(ev) => { ev.stopPropagation(); setSelectedPoint({ ...ponto, venda }); }} title={`Q${ponto.quadra} L${ponto.lote}`} className={`absolute -translate-x-1/2 -translate-y-1/2 w-6 h-6 sm:w-7 sm:h-7 rounded-full border-2 border-white shadow-lg text-[9px] font-black text-white flex items-center justify-center ${unavailable ? "bg-red-500" : "bg-blue-500"}`} style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%` }}>
+                <button
+                  key={ponto.id}
+                  onClick={(ev) => { ev.stopPropagation(); setSelectedPoint({ ...ponto, venda }); }}
+                  title={`Q${ponto.quadra} L${ponto.lote}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg font-black text-white flex items-center justify-center ${unavailable ? "bg-red-500" : "bg-blue-500"}`}
+                  style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
+                >
                   {ponto.lote}
                 </button>
               );
@@ -2010,15 +2141,31 @@ const LotDashboard = ({
           </div>
         </div>
         <div className="space-y-3">
-          <div className="card-premium p-4 space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ferramentas do mapa</p>
+          {mapAction === "visualizar" ? <div className="card-premium p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
+            <p className="text-xs text-slate-500">Neste modo o mapa serve apenas para ver as bolinhas, iniciar venda em lote disponível ou abrir venda vinculada.</p>
+            <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button>
+          </div> : <div className="card-premium p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
             <div className="grid grid-cols-3 gap-2">
-              {(["manual", "sequencia", "visualizar"] as const).map((m) => <button key={m} onClick={() => setMapAction(m)} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === m ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>{m === "sequencia" ? "Seq." : m}</button>)}
+              <button onClick={() => setMapAction("manual")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "manual" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Manual</button>
+              <button onClick={() => setMapAction("sequencia")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Seq.</button>
+              <button onClick={() => setMapAction("visualizar")} className="py-2 rounded-xl text-[10px] font-black uppercase bg-slate-100 text-slate-600">Ver</button>
             </div>
+            <div className="space-y-2">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tamanho das bolinhas</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(["pequena", "media", "grande"] as const).map((size) => <button key={size} onClick={() => salvarTamanhoBolinhas(size)} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapBallSize === size ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>{size === "media" ? "Média" : size}</button>)}
+              </div>
+            </div>
+            {mapAction === "sequencia" && <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
+              <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
+            </div>}
             <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer"><Upload size={14} />Trocar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
             <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
-          </div>
-          {mapAction === "sequencia" && <div className="card-premium p-4 space-y-3">
+          </div>}
+          {isEditingMap && mapAction === "sequencia" && <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcar lotes em sequência</p>
             <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => setSequence({ ...sequence, quadra: e.target.value, atual: null })} />
             <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => setSequence({ ...sequence, loteInicial: e.target.value, atual: null })} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => setSequence({ ...sequence, loteFinal: e.target.value, atual: null })} /></div>
@@ -2034,7 +2181,8 @@ const LotDashboard = ({
         </div>
       </div>
     </div>
-  );
+    );
+  };
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6">
@@ -2049,7 +2197,7 @@ const LotDashboard = ({
             {mapaImagem && <button onClick={() => setMode("mapa")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
             <button onClick={() => setMode("quadradinhos")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Quadradinhos/lotes atuais</button>
           </div>
-          <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />Carregar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
+          {(!mapaImagem || mode !== "mapa" || mapAction !== "visualizar") && <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />Carregar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>}
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
@@ -2058,7 +2206,36 @@ const LotDashboard = ({
 
         <AnimatePresence>
           {pendingPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30"><div className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3 shadow-2xl"><h4 className="font-bold text-slate-800">Criar bolinha</h4><input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} /><input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} /><select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="indisponivel">Indisponível</option></select><input className="input-field" placeholder="Observação opcional" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} /><div className="flex justify-end gap-2 pt-2"><button className="btn-secondary px-4" onClick={() => setPendingPoint(null)}>Cancelar</button><button className="btn-primary px-4" onClick={() => { if (ensureMapLotAndPoint({ ...pointForm, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent })) setPendingPoint(null); }}>Salvar</button></div></div></motion.div>}
-          {selectedPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30"><div className="bg-white rounded-3xl p-5 w-full max-w-md space-y-4 shadow-2xl"><div><h4 className="font-display font-bold text-slate-800 text-lg">Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</h4><p className="text-sm text-slate-500">{selectedPoint.status === "disponivel" && !selectedPoint.venda ? "Disponível" : "Indisponível"}</p>{selectedPoint.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {selectedPoint.observacao}</p>}</div>{selectedPoint.vendaId || selectedPoint.venda ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700"><p>Comprador: <strong>{selectedPoint.venda?.clienteNome || selectedPoint.clienteNome || "Cliente não informado"}</strong></p><p>{localDev.nome} · Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</p><p>Data da venda: {formatDateBR(selectedPoint.venda?.dataVenda || selectedPoint.dataVenda)}</p></div> : selectedPoint.status === "indisponivel" ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div> : null}{selectedPoint.historico?.length > 0 && <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500"><p className="font-bold text-slate-700 mb-1">Histórico:</p>{selectedPoint.historico.slice(-3).map((h: any, idx: number) => <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>)}</div>}<div className="grid grid-cols-1 sm:grid-cols-2 gap-2">{selectedPoint.status === "disponivel" && !selectedPoint.venda && <><button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button><button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Marcar como indisponível</button></>}{(selectedPoint.vendaId || selectedPoint.venda) && <><button className="btn-primary" onClick={() => { onViewContract(selectedPoint.venda); onClose(); }}>Abrir contrato/venda</button><button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Liberar lote e manter histórico</button></>}{selectedPoint.status === "indisponivel" && !selectedPoint.vendaId && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}<button className="btn-secondary" onClick={() => editarPonto(selectedPoint)}>Editar bolinha</button><button className="btn-secondary text-red-600" onClick={() => excluirPonto(selectedPoint)}>Excluir bolinha</button><button className="btn-secondary" onClick={() => setSelectedPoint(null)}>Cancelar</button></div></div></motion.div>}
+          {selectedPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
+            <div className="bg-white rounded-3xl p-5 w-full max-w-md space-y-4 shadow-2xl">
+              <div>
+                <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</h4>
+                <p className="text-sm text-slate-500">{selectedPoint.status === "disponivel" && !selectedPoint.venda ? "Disponível" : "Indisponível"}</p>
+                {selectedPoint.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {selectedPoint.observacao}</p>}
+              </div>
+              {selectedPoint.vendaId || selectedPoint.venda ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">
+                <p>Comprador: <strong>{selectedPoint.venda?.clienteNome || selectedPoint.clienteNome || "Cliente não informado"}</strong></p>
+                <p>{localDev.nome} · Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</p>
+                <p>Data da venda: {formatDateBR(selectedPoint.venda?.dataVenda || selectedPoint.dataVenda)}</p>
+              </div> : selectedPoint.status === "indisponivel" ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div> : null}
+              {selectedPoint.historico?.length > 0 && <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500">
+                <p className="font-bold text-slate-700 mb-1">Histórico:</p>
+                {selectedPoint.historico.slice(-3).map((h: any, idx: number) => <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>)}
+              </div>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
+                {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-primary" onClick={() => { onViewContract(selectedPoint.venda); onClose(); }}>Abrir contrato/venda</button>}
+                {mapAction !== "visualizar" && <>
+                  {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Marcar como indisponível</button>}
+                  {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Liberar lote e manter histórico</button>}
+                  {selectedPoint.status === "indisponivel" && !selectedPoint.vendaId && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}
+                  <button className="btn-secondary" onClick={() => editarPonto(selectedPoint)}>Editar bolinha</button>
+                  <button className="btn-secondary text-red-600" onClick={() => excluirPonto(selectedPoint)}>Excluir bolinha</button>
+                </>}
+                <button className="btn-secondary" onClick={() => setSelectedPoint(null)}>Cancelar</button>
+              </div>
+            </div>
+          </motion.div>}
           {selectedLotSale && <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 32 }} className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[28px]"><div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50"><button onClick={() => setSelectedLotSale(null)} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400"><ArrowLeft size={20} /></button><div className="flex-1"><h3 className="text-xl font-display font-bold text-slate-800">Quadra {selectedLotSale.quadra} · Lote {selectedLotSale.numeroLote}</h3><p className="text-sm text-red-400 font-medium">{localDev.nome} — Lote Indisponível</p></div></div><div className="flex-1 overflow-y-auto p-6 space-y-5"><div className="card-premium space-y-4"><h4 className="font-bold text-slate-800">Comprador</h4><p className="text-lg font-display font-bold text-slate-800">{selectedLotSale.clienteNome}</p></div><div className="card-premium space-y-2 text-sm"><p><span className="text-slate-400">Valor total:</span> <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorLote)}</strong></p><p><span className="text-slate-400">Data venda:</span> {formatDateBR(selectedLotSale.dataVenda)}</p></div></div><div className="p-6 border-t border-slate-100 flex justify-between"><button onClick={() => setSelectedLotSale(null)} className="btn-secondary px-6">Voltar ao Mapa</button><button onClick={() => { onViewContract(selectedLotSale); onClose(); }} className="btn-primary px-8">Ver Contrato</button></div></motion.div>}
         </AnimatePresence>
       </motion.div>
@@ -2216,14 +2393,15 @@ const EmpreendimentosSection = ({
       triggerShake(devFormRef.current);
       return;
     }
+    const formDataNormalizado = { ...formData, nome: textoMaiusculo(formData.nome).trim(), estado: (formData.estado || "").toUpperCase() };
     if (editingDev) {
       onSave({
         ...editingDev,
-        ...formData,
+        ...formDataNormalizado,
       } as Empreendimento);
     } else {
       onSave({
-        ...(formData as Empreendimento),
+        ...(formDataNormalizado as Empreendimento),
         id: Date.now().toString(),
         lotesVendidos: 0,
         lotesInfo: {},
@@ -2319,7 +2497,7 @@ const EmpreendimentosSection = ({
                   className="input-field"
                   value={formData.nome}
                   onChange={(e) =>
-                    setFormData({ ...formData, nome: e.target.value })
+                    setFormData({ ...formData, nome: textoMaiusculo(e.target.value) })
                   }
                   placeholder="Nome Completo"
                 />
@@ -3721,7 +3899,7 @@ const VendasSection = ({
     if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
     const novo: Empreendimento = {
       id: `dev-${Date.now()}`,
-      nome: novoDevData.nome,
+      nome: textoMaiusculo(novoDevData.nome).trim(),
       endereco: "",
       cidade: "",
       estado: "",
@@ -3842,7 +4020,7 @@ const VendasSection = ({
 
     setClientData((prev) => ({
       ...prev,
-      ...(data.nome ? { nome: data.nome } : {}),
+      ...(data.nome ? { nome: textoMaiusculo(data.nome) } : {}),
       ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
       ...(data.rg ? { rg: data.rg } : {}),
       ...(data.cpf ? { cpf: maskCPF(String(data.cpf)) } : {}),
@@ -3956,6 +4134,8 @@ DATA DE ANIVERSÁRIO: ${fmtNasc(clientData.nascimento || "")}
 ENDEREÇO: ${(clientData.endereco || "").toUpperCase()}
 Nº: ${clientData.numero || ""}
 BAIRRO: ${(clientData.bairro || "").toUpperCase()}
+CIDADE: ${(clientData.cidade || "").toUpperCase()}
+ESTADO: ${(clientData.estado || "").toUpperCase()}
 CEP: ${clientData.cep || ""}
 ${phoneLabel}
 LOTE: ${lastSavedVenda.numeroLote}
@@ -3965,7 +4145,7 @@ VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
 ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
 QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
 DATA DE VENCIMENTO: ${diaVenc}
-VENDEDOR: ${lastSavedVenda.vendedor}`;
+VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
 
     navigator.clipboard.writeText(summary);
     alert("Resumo copiado para a área de transferência!");
@@ -4169,10 +4349,11 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
 
     if (editingEntry && onUpdateVendaFull) {
-      const updatedCliente: Cliente = {
+      const updatedCliente: Cliente = normalizarNomeObrigatorio({
         ...(editingEntry.cliente || ({ id: Date.now().toString(), dataCadastro: new Date().toISOString() } as Cliente)),
         ...(clientData as Cliente),
-      };
+        estado: (clientData.estado || "").toUpperCase(),
+      } as Cliente);
       const updatedVenda: Venda = {
         ...editingEntry.venda,
         ...(saleData as Venda),
@@ -4187,11 +4368,12 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       return;
     }
 
-    const cliente: Cliente = {
+    const cliente: Cliente = normalizarNomeObrigatorio({
       ...(clientData as Cliente),
+      estado: (clientData.estado || "").toUpperCase(),
       id: Date.now().toString(),
       dataCadastro: new Date().toISOString(),
-    };
+    } as Cliente);
     const venda: Venda = {
       ...(saleData as Venda),
       id: (Date.now() + 1).toString(),
@@ -4758,7 +4940,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                     className="input-field"
                     value={clientData.nome}
                     onChange={(e) => {
-                      setClientData({ ...clientData, nome: e.target.value });
+                      setClientData({ ...clientData, nome: textoMaiusculo(e.target.value) });
                       setShowNameDropdown(true);
                     }}
                     onFocus={() => setShowNameDropdown(true)}
@@ -4778,7 +4960,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                             key={c.id}
                             type="button"
                             onMouseDown={() => {
-                              setClientData({ ...clientData, ...c });
+                              setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
                               setShowNameDropdown(false);
                               setShowCpfDropdown(false);
                             }}
@@ -4894,7 +5076,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                           key={c.id}
                           type="button"
                           onMouseDown={() => {
-                            setClientData({ ...clientData, ...c });
+                            setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
                             setShowCpfDropdown(false);
                             setShowNameDropdown(false);
                           }}
@@ -5086,20 +5268,24 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                 placeholder="Bairro"
               />
             </div>
-            <div className="hidden">
-              <label className="label">Cidade / UF (Auto)</label>
-              <div className="flex gap-2">
-                <input
-                  className="input-field flex-1"
-                  value={clientData.cidade}
-                  readOnly
-                />
-                <input
-                  className="input-field w-16 text-center font-bold"
-                  value={clientData.estado}
-                  readOnly
-                />
-              </div>
+            <div>
+              <label className="label">Cidade</label>
+              <input
+                className="input-field"
+                value={clientData.cidade}
+                onChange={(e) => setClientData({ ...clientData, cidade: e.target.value })}
+                placeholder="Cidade"
+              />
+            </div>
+            <div>
+              <label className="label">Estado (UF)</label>
+              <input
+                className="input-field text-center font-bold uppercase"
+                maxLength={2}
+                value={clientData.estado}
+                onChange={(e) => setClientData({ ...clientData, estado: e.target.value.toUpperCase() })}
+                placeholder="PA"
+              />
             </div>
             <div>
               <label className="label">Contato Principal</label>
@@ -5169,7 +5355,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                         onChange={(e) =>
                           setSecondBuyerData({
                             ...secondBuyerData!,
-                            nome: e.target.value,
+                            nome: textoMaiusculo(e.target.value),
                           })
                         }
                         placeholder="Nome Completo"
@@ -5380,7 +5566,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
                       <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="sm:col-span-2">
                           <label className="label">Nome do Empreendimento *</label>
-                          <input className="input-field" placeholder="Ex: Loteamento Villa Nova" value={novoDevData.nome} onChange={(e) => setNovoDevData({ ...novoDevData, nome: e.target.value })} />
+                          <input className="input-field" placeholder="Ex: Loteamento Villa Nova" value={novoDevData.nome} onChange={(e) => setNovoDevData({ ...novoDevData, nome: textoMaiusculo(e.target.value) })} />
                         </div>
                         <div>
                           <label className="label">Comunidade / Região</label>
@@ -7247,7 +7433,7 @@ VENDEDOR: ${venda.vendedor}`;
                             className="input-field"
                             placeholder={placeholder}
                             value={(novoCliente as any)[field] || ""}
-                            onChange={(e) => setNovoCliente({ ...novoCliente, [field]: e.target.value })}
+                            onChange={(e) => setNovoCliente({ ...novoCliente, [field]: field === "nome" ? textoMaiusculo(e.target.value) : field === "estado" ? e.target.value.toUpperCase() : e.target.value })}
                           />
                           {field === "cep" && (
                             <BuscarCEPPorRua
@@ -8384,7 +8570,7 @@ VENDEDOR: ${venda.vendedor}`;
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
                           <label className="label">Nome do Empreendimento</label>
-                          <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: e.target.value })} />
+                          <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: textoMaiusculo(e.target.value) })} />
                         </div>
                         <div className="sm:col-span-2">
                           <label className="label">Comunidade / Região</label>
@@ -8424,7 +8610,7 @@ VENDEDOR: ${venda.vendedor}`;
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <div className="sm:col-span-2">
                           <label className="label">Nome Completo *</label>
-                          <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: e.target.value })} />
+                          <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: textoMaiusculo(e.target.value) })} />
                         </div>
                         <div>
                           <label className="label">Gênero do Vendedor *</label>
@@ -8872,7 +9058,7 @@ const ClientesSection = ({
   const saveEdit = () => {
     if (!editingCliente) return;
     if (fieldErrors.cpf || fieldErrors.rg) return;
-    const updated: Cliente = { ...editingCliente, ...editForm } as Cliente;
+    const updated: Cliente = normalizarNomeObrigatorio({ ...editingCliente, ...editForm, estado: (editForm.estado || "").toUpperCase() } as Cliente);
     onUpdateCliente(updated);
     setEditingCliente(null);
   };
@@ -9750,7 +9936,7 @@ const ConfigSection = ({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="sm:col-span-2">
                 <label className="label">Nome Completo</label>
-                <input className="input-field" placeholder="Nome Completo" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: e.target.value })} />
+                <input className="input-field" placeholder="Nome Completo" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: textoMaiusculo(e.target.value) })} />
               </div>
               <div>
                 <label className="label">Nacionalidade</label>
@@ -10429,9 +10615,9 @@ const ProprietariosSection = ({
     setCpfErr(null);
     let updated: Proprietario[];
     if (editingId) {
-      updated = proprietarios.map((p) => p.id === editingId ? { ...form, id: editingId } : p);
+      updated = proprietarios.map((p) => p.id === editingId ? normalizarNomeObrigatorio({ ...form, estado: (form.estado || "").toUpperCase(), id: editingId } as any) : p);
     } else {
-      updated = [...proprietarios, { ...form, id: `prop-${Date.now()}` }];
+      updated = [...proprietarios, normalizarNomeObrigatorio({ ...form, estado: (form.estado || "").toUpperCase(), id: `prop-${Date.now()}` } as any)];
     }
     onSave({ ...config, proprietarios: updated });
     setShowForm(false);
@@ -10484,7 +10670,7 @@ const ProprietariosSection = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="sm:col-span-2">
                   <label className="label">Nome Completo *</label>
-                  <input className="input-field" placeholder="Nome Completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
+                  <input className="input-field" placeholder="Nome Completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: textoMaiusculo(e.target.value) })} />
                 </div>
                 <div>
                   <label className="label">Gênero / Tratamento *</label>
@@ -11432,6 +11618,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       (c) => c.cpf === newClient.cpf,
     );
     if (existingClientIndex === -1) {
+      newClient = normalizarNomeObrigatorio({ ...newClient, estado: (newClient.estado || "").toUpperCase() });
       updatedClients.push(newClient);
       setClients(updatedClients);
       // Upsert atômico: salva apenas este cliente sem tocar nos outros
@@ -11441,14 +11628,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       });
     } else {
       const existingClient = clients[existingClientIndex];
-      const mergedClient: Cliente = {
+      const mergedClient: Cliente = normalizarNomeObrigatorio({
         ...existingClient,
         ...newClient,
+        estado: (newClient.estado || existingClient.estado || "").toUpperCase(),
         id: existingClient.id,
         dataCadastro: existingClient.dataCadastro || newClient.dataCadastro,
         genero: (newClient.genero || existingClient.genero || "") as any,
         estadoCivil: newClient.estadoCivil || existingClient.estadoCivil,
-      };
+      } as Cliente);
       updatedClients = updatedClients.map((c, idx) => idx === existingClientIndex ? mergedClient : c);
       setClients(updatedClients);
       dbService.upsertCliente(mergedClient).catch((e) => {
