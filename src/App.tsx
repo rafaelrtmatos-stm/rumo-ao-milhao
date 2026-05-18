@@ -5816,8 +5816,12 @@ const ContratosSection = ({
   };
 
   const validarGenerosAntesDeGerar = (vendedorAtivo: any, clienteAtivo: any): boolean => {
-    if (!generoContratoValido(vendedorAtivo) || !generoContratoValido(clienteAtivo)) {
-      alert("Selecione o gênero do vendedor e do comprador para gerar o contrato corretamente.");
+    if (!generoContratoValido(vendedorAtivo)) {
+      alert("Selecione o gênero do vendedor para gerar o contrato corretamente.");
+      return false;
+    }
+    if (!generoContratoValido(clienteAtivo)) {
+      alert("Selecione o gênero do comprador para gerar o contrato corretamente.");
       return false;
     }
     return true;
@@ -8389,7 +8393,7 @@ VENDEDOR: ${venda.vendedor}`;
                       // No step 1 (vendedor): validar CPF antes de avançar
                       if (gerarStep === 1) {
                         if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
-                        if (!generoContratoValido(gerarVendedor)) { alert("Selecione o gênero do vendedor e do comprador para gerar o contrato corretamente."); return; }
+                        if (!generoContratoValido(gerarVendedor)) { alert("Selecione o gênero do vendedor para gerar o contrato corretamente."); return; }
                         const cpfRaw = gerarVendedor.cpf.replace(/\D/g, "");
                         if (cpfRaw.length > 0 && cpfStatus(gerarVendedor.cpf) === "invalid") {
                           setVendedorCpfError("CPF inválido. Verifique e tente novamente.");
@@ -11209,7 +11213,23 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         alert('Erro ao salvar cliente no banco. Verifique a conexão.\n' + String(e?.message || e));
       });
     } else {
-      newSale.clienteId = clients[existingClientIndex].id;
+      const existingClient = clients[existingClientIndex];
+      const mergedClient: Cliente = {
+        ...existingClient,
+        ...newClient,
+        id: existingClient.id,
+        dataCadastro: existingClient.dataCadastro || newClient.dataCadastro,
+        genero: (newClient.genero || existingClient.genero || "") as any,
+        estadoCivil: newClient.estadoCivil || existingClient.estadoCivil,
+      };
+      updatedClients = updatedClients.map((c, idx) => idx === existingClientIndex ? mergedClient : c);
+      setClients(updatedClients);
+      dbService.upsertCliente(mergedClient).catch((e) => {
+        console.error('Erro ao atualizar cliente:', e);
+        alert('Erro ao atualizar cliente no banco. Verifique a conexão.\n' + String(e?.message || e));
+      });
+      newSale.clienteId = mergedClient.id;
+      newSale.clienteNome = mergedClient.nome;
     }
 
     const updatedSales = [newSale, ...sales];
