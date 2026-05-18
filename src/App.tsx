@@ -3577,6 +3577,16 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
           >
             <span>Novo Cadastro</span>
           </button>
+          <button
+            onClick={() => {
+              // Volta para o formulário sem apagar os dados já preenchidos
+              setLastSavedVenda(null);
+            }}
+            className="btn-ghost px-6"
+          >
+            <ChevronLeft size={18} />
+            <span>Voltar</span>
+          </button>
         </div>
       </motion.div>
     );
@@ -5110,7 +5120,7 @@ const ContratosSection = ({
   const [empFilter, setEmpFilter] = useState("");
   const [dateFilter, setDateFilter] = useState("");
   const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc" | "emp_asc" | "status_asc" | "corretor_asc">("data_desc");
-  const [paymentFilter, setPaymentFilter] = useState<"" | "avista" | "parcelado">("");
+  const [paymentFilter] = useState<"" | "avista" | "parcelado">("");
   const [showRanking, setShowRanking] = useState(false);
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
@@ -5137,6 +5147,8 @@ const ContratosSection = ({
   const [pendingEditVenda, setPendingEditVenda] = useState<Venda | null>(null);
   // Quando editando um contrato existente via "Nova Venda", guarda a venda original
   const [editandoVendaOriginal, setEditandoVendaOriginal] = useState<Venda | null>(null);
+  // Dialog de confirmação antes de editar: pede Mesclar, Duplicar ou Cancelar
+  const [preEditVenda, setPreEditVenda] = useState<Venda | null>(null);
   // Erros visuais CPF/RG vendedor no wizard
   const [vendedorCpfError, setVendedorCpfError] = useState<string | null>(null);
   const [vendedorRgError, setVendedorRgError] = useState<string | null>(null);
@@ -5412,6 +5424,11 @@ const ContratosSection = ({
 
   // Abre "Nova Venda" pré-preenchida para editar contrato existente
   const handleEditarContrato = (venda: Venda) => {
+    // Antes de editar, pergunta: Mesclar, Duplicar ou Cancelar
+    setPreEditVenda(venda);
+  };
+
+  const handleEditarContratoLegacy = (venda: Venda) => {
     const cliente = clients.find((c) => c.id === venda.clienteId);
     const snap = venda.contratoSnapshot;
 
@@ -5891,12 +5908,26 @@ const ContratosSection = ({
     ? developments.find((d) => d.id === selectedVenda.empreendimentoId)
     : null;
 
+  const copyResumoVenda = (venda: Venda) => {
+    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+    const isAv = venda.quantidadeParcelas === 0;
+    const texto = [
+      `📋 RESUMO DA VENDA`,
+      `Cliente: ${venda.clienteNome}`,
+      `Empreendimento: ${venda.empreendimentoNome}`,
+      `Lote: ${venda.numeroLote} — Quadra: ${venda.quadra}`,
+      `Valor: ${brl(venda.valorLote)}`,
+      isAv
+        ? `Pagamento: À Vista`
+        : `Entrada: ${brl(venda.valorEntrada)} | Parcelas: ${venda.quantidadeParcelas}x ${brl(venda.valorParcela)}`,
+      venda.vendedor ? `Vendedor: ${venda.vendedor}` : "",
+      venda.dataVenda ? `Data: ${new Date(venda.dataVenda).toLocaleDateString("pt-BR")}` : "",
+      `Contrato: ${venda.contratoGerado ? "Gerado ✓" : "Pendente"}`,
+    ].filter(Boolean).join("\n");
+    navigator.clipboard.writeText(texto).catch(() => {});
+  };
+
   const filteredSales = (() => {
-    const normalizeStatus = (s?: string) => {
-      if (!s || s === "pendente" || s === "rascunho") return "rascunho";
-      if (s === "pago" || s === "ativo") return "ativo";
-      return s;
-    };
     let list = sales.filter((venda) => {
       const query = searchTerm.toLowerCase();
       const matchesSearch = !query || (
@@ -5909,11 +5940,15 @@ const ContratosSection = ({
         venda.vendedor?.toLowerCase().includes(query)
       );
       const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
-      const matchesStatus = !statusFilter || normalizeStatus(venda.status) === statusFilter;
       const matchesEmp = !empFilter || venda.empreendimentoId === empFilter;
       const matchesDate = !dateFilter || (venda.dataVenda || "").startsWith(dateFilter);
-      const matchesPayment = !paymentFilter || (paymentFilter === "avista" ? venda.quantidadeParcelas === 0 : venda.quantidadeParcelas > 0);
-      return matchesSearch && matchesCorretor && matchesStatus && matchesEmp && matchesDate && matchesPayment;
+      // Filtro unificado: avista | parcelado | comcontrato | semcontrato
+      let matchesCombined = true;
+      if (statusFilter === "avista") matchesCombined = venda.quantidadeParcelas === 0;
+      else if (statusFilter === "parcelado") matchesCombined = venda.quantidadeParcelas > 0;
+      else if (statusFilter === "comcontrato") matchesCombined = !!venda.contratoGerado;
+      else if (statusFilter === "semcontrato") matchesCombined = !venda.contratoGerado;
+      return matchesSearch && matchesCorretor && matchesCombined && matchesEmp && matchesDate;
     });
     list = [...list].sort((a, b) => {
       switch (sortBy) {
@@ -5944,35 +5979,18 @@ const ContratosSection = ({
   const totalGeralVendas = rankingCorretores.reduce((s, r) => s + r.total, 0);
   const corretoresUnicos = [...new Set(sales.map(v => v.vendedor?.trim()).filter(Boolean))] as string[];
 
-  const getStatusInfo = (status?: string) => {
-    switch (status) {
-      case "pago":
-      case "ativo":
-        return {
-          label: "Ativo",
-          color: "text-success-main bg-success-main/10",
-          icon: CheckCircle2,
-        };
-      case "cancelado":
-        return {
-          label: "Cancelado",
-          color: "text-red-500 bg-red-50",
-          icon: AlertCircle,
-        };
-      case "rascunho":
-      case "pendente":
-        return {
-          label: "Rascunho",
-          color: "text-amber-500 bg-amber-50",
-          icon: Clock,
-        };
-      default:
-        return {
-          label: "Ativo",
-          color: "text-success-main bg-success-main/10",
-          icon: CheckCircle2,
-        };
+  const getContratoInfo = (venda: Venda) => {
+    if (venda.contratoGerado) {
+      return { label: "Com Contrato", color: "text-emerald-700 bg-emerald-50", icon: "contrato" };
     }
+    return { label: "Sem Contrato", color: "text-amber-600 bg-amber-50", icon: "sem" };
+  };
+
+  const getPagamentoInfo = (venda: Venda) => {
+    if (venda.quantidadeParcelas === 0) {
+      return { label: "À Vista", color: "text-sky-700 bg-sky-50", icon: "avista" };
+    }
+    return { label: "Parcelado", color: "text-violet-700 bg-violet-50", icon: "parcelado" };
   };
 
   const handleOpenGerarContratoForVenda = (venda: Venda) => {
@@ -6010,7 +6028,7 @@ const ContratosSection = ({
     }
   };
 
-  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter, paymentFilter].filter(Boolean).length;
+  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
 
   return (
     <div className="space-y-6">
@@ -6062,27 +6080,17 @@ const ContratosSection = ({
 
         {/* Filters row */}
         <div className="flex flex-wrap gap-2">
-          {/* Tipo de pagamento */}
-          <select
-            value={paymentFilter}
-            onChange={(e) => setPaymentFilter(e.target.value as "" | "avista" | "parcelado")}
-            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${paymentFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
-          >
-            <option value="">Todos os tipos</option>
-            <option value="avista">À vista</option>
-            <option value="parcelado">Parcelado</option>
-          </select>
-
-          {/* Status */}
+          {/* Filtro unificado */}
           <select
             value={statusFilter}
             onChange={(e) => setStatusFilter(e.target.value)}
             className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${statusFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
           >
-            <option value="">Todos os status</option>
-            <option value="ativo">Ativo</option>
-            <option value="rascunho">Rascunho</option>
-            <option value="cancelado">Cancelado</option>
+            <option value="">Todos</option>
+            <option value="avista">À Vista</option>
+            <option value="parcelado">Parcelado</option>
+            <option value="comcontrato">Com Contrato</option>
+            <option value="semcontrato">Sem Contrato</option>
           </select>
 
           {/* Empreendimento */}
@@ -6136,7 +6144,7 @@ const ContratosSection = ({
           {/* Limpar filtros */}
           {activeFilterCount > 0 && (
             <button
-              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); setPaymentFilter(""); }}
+              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); }}
               className="h-9 px-3 rounded-xl text-xs font-bold border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all flex items-center gap-1"
             >
               <X size={12} />
@@ -6675,8 +6683,8 @@ const ContratosSection = ({
         const comContrato = filteredSales.filter((v) => v.contratoGerado);
 
         const renderMobileCard = (venda: Venda) => {
-          const s = getStatusInfo(venda.status);
-          const Icon = s.icon;
+          const ci = getContratoInfo(venda);
+          const pi = getPagamentoInfo(venda);
           return (
             <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
@@ -6685,12 +6693,23 @@ const ContratosSection = ({
                   <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}</p>
                 </div>
                 <div className="flex flex-col items-end gap-1 shrink-0">
-                  <div className={`px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
-                    <Icon size={11} />
-                    {s.label}
-                  </div>
-                  <span className={`text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${venda.quantidadeParcelas === 0 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
-                    {venda.quantidadeParcelas === 0 ? "À vista" : "Parcelado"}
+                  {/* Badge: Contrato */}
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 ${ci.color}`}>
+                    {ci.icon === "contrato" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm1-5C6.47 2 2 6.5 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2zm0 18a8 8 0 0 1-8-8 8 8 0 0 1 8-8 8 8 0 0 1 8 8 8 8 0 0 1-8 8z"/></svg>
+                    )}
+                    {ci.label}
+                  </span>
+                  {/* Badge: Pagamento */}
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 ${pi.color}`}>
+                    {pi.icon === "avista" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 14h16v2H4zm0-7h16v2H4z"/></svg>
+                    )}
+                    {pi.label}
                   </span>
                 </div>
               </div>
@@ -6700,30 +6719,34 @@ const ContratosSection = ({
               <div className="grid grid-cols-4 gap-2">
                 <button
                   onClick={() => handleOpenGerarContratoForVenda(venda)}
+                  title="Ver contrato"
                   className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${venda.contratoGerado ? "bg-white text-primary-main border-border-subtle hover:bg-primary-main hover:text-white" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
                 >
-                  <FileDown size={20} />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                   <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
                 </button>
                 <button
-                  onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
-                  className="flex flex-col items-center gap-1 p-3 bg-white text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-white transition-all"
+                  onClick={() => copyResumoVenda(venda)}
+                  title="Copiar resumo"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
                 >
-                  <FileCheck size={20} />
-                  <span className="text-[9px] font-bold uppercase">Recibo</span>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                  <span className="text-[9px] font-bold uppercase">Copiar</span>
                 </button>
                 <button
                   onClick={() => handleEditarContrato(venda)}
+                  title="Editar"
                   className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
                 >
-                  <Pencil size={20} />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   <span className="text-[9px] font-bold uppercase">Editar</span>
                 </button>
                 <button
                   onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                  title="Excluir"
                   className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
                 >
-                  <Trash2 size={20} />
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                   <span className="text-[9px] font-bold uppercase">Excluir</span>
                 </button>
               </div>
@@ -6732,14 +6755,30 @@ const ContratosSection = ({
         };
 
         const renderDesktopRow = (venda: Venda) => {
-          const s = getStatusInfo(venda.status);
-          const Icon = s.icon;
+          const ci = getContratoInfo(venda);
+          const pi = getPagamentoInfo(venda);
           return (
             <tr key={venda.id} className="group">
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
-                <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${s.color}`}>
-                  <Icon size={12} />
-                  {s.label}
+                <div className="flex flex-col gap-1.5">
+                  {/* Contrato badge */}
+                  <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${ci.color}`}>
+                    {ci.icon === "contrato" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm1-5C6.47 2 2 6.5 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2zm0 18a8 8 0 0 1-8-8 8 8 0 0 1 8-8 8 8 0 0 1 8 8 8 8 0 0 1-8 8z"/></svg>
+                    )}
+                    {ci.label}
+                  </div>
+                  {/* Pagamento badge */}
+                  <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${pi.color}`}>
+                    {pi.icon === "avista" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 14h16v2H4zm0-7h16v2H4z"/></svg>
+                    )}
+                    {pi.label}
+                  </div>
                 </div>
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-semibold text-slate-700">
@@ -6747,43 +6786,40 @@ const ContratosSection = ({
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
                 {venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}
-                <span className={`ml-2 text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded-full ${venda.quantidadeParcelas === 0 ? "bg-emerald-50 text-emerald-700" : "bg-blue-50 text-blue-700"}`}>
-                  {venda.quantidadeParcelas === 0 ? "À vista" : "Parcelado"}
-                </span>
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
-                <div className="flex justify-center gap-2">
+                <div className="flex justify-center gap-1.5">
                   <button
                     onClick={() => handleOpenGerarContratoForVenda(venda)}
                     className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center gap-1.5 text-xs font-bold ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
-                    title={venda.contratoGerado ? "Baixar contrato novamente" : "Gerar contrato"}
+                    title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}
                   >
-                    <FileDown size={15} />
-                    {venda.contratoGerado ? "Contrato" : "Gerar Contrato"}
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                    {venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}
                   </button>
                   <button
-                    onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
-                    className="p-2.5 bg-surface-card text-chumbo-base rounded-xl shadow-sm border border-border-subtle hover:bg-chumbo-base hover:text-primary-contrast transition-all"
-                    title="Recibo"
+                    onClick={() => copyResumoVenda(venda)}
+                    className="p-2.5 bg-surface-card text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
+                    title="Copiar resumo"
                   >
-                    <FileCheck size={18} />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
                   </button>
                   <button
                     onClick={() => handleEditarContrato(venda)}
                     className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
                     title="Editar venda"
                   >
-                    <Pencil size={18} />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   </button>
                   <button
                     onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
                     className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
                     title="Excluir"
                   >
-                    <Trash2 size={18} />
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                   </button>
                 </div>
               </td>
@@ -6796,7 +6832,7 @@ const ContratosSection = ({
             <table className="w-full text-left border-separate border-spacing-y-2">
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                  <th className="pb-3 px-4">Status</th>
+                  <th className="pb-3 px-4">Tipo</th>
                   <th className="pb-3 px-4">Titular</th>
                   <th className="pb-3 px-4">Loteamento</th>
                   <th className="pb-3 px-4 text-right">Montante</th>
@@ -6866,18 +6902,16 @@ const ContratosSection = ({
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
                           {selectedVenda.numeroContrato}
                         </p>
-                        <span className="text-slate-300">•</span>
-                        <div className="flex gap-1">
-                          {(["pendente", "pago", "cancelado"] as const).map((status) => (
-                            <button
-                              key={status}
-                              onClick={() => onUpdateStatus(selectedVenda.id, status)}
-                              className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition-colors ${selectedVenda.status === status ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-400 hover:bg-slate-200"}`}
-                            >
-                              {status}
-                            </button>
-                          ))}
-                        </div>
+                        {(() => {
+                          const ci = getContratoInfo(selectedVenda);
+                          const pi = getPagamentoInfo(selectedVenda);
+                          return (
+                            <>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${ci.color}`}>{ci.label}</span>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${pi.color}`}>{pi.label}</span>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -6918,27 +6952,56 @@ const ContratosSection = ({
                   {/* Imprimir */}
                   <button
                     onClick={() => {
-                      // Monta HTML do contrato em overlay para impressão correta
+                      // Abre janela de impressão com HTML completo do contrato
                       const snap = selectedVenda?.contratoSnapshot;
                       const vAtivo2 = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
                       const clienteImp = clients.find((c) => c.id === selectedVenda?.clienteId);
-                      if (!selectedVenda || !clienteImp) { window.print(); return; }
-                      const overlay = document.createElement('div');
-                      overlay.id = 'print-recibo-overlay';
-                      overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white;padding:2rem;overflow:auto;font-family:Times New Roman,serif;font-size:12pt;';
+                      if (!selectedVenda || !clienteImp) { alert("Dados do contrato incompletos para impressão."); return; }
                       const isAv = selectedVenda.quantidadeParcelas === 0;
-                      overlay.innerHTML = `<div style="max-width:21cm;margin:0 auto;">
-                        <h2 style="text-align:center;text-transform:uppercase;">Contrato ${isAv ? "À Vista" : "Parcelado"}</h2>
-                        <p><strong>Comprador:</strong> ${clienteImp.nome} — CPF: ${clienteImp.cpf || "___"}</p>
-                        <p><strong>Vendedor:</strong> ${vAtivo2.nome || "___"} — CPF: ${vAtivo2.cpf || "___"}</p>
-                        <p><strong>Empreendimento:</strong> ${selectedVenda.empreendimentoNome} — Q${selectedVenda.quadra} L${selectedVenda.numeroLote}${selectedVenda.rua ? " — " + selectedVenda.rua : ""}</p>
-                        <p><strong>Valor:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
-                        ${isAv ? `<p><strong>Pagamento:</strong> À Vista — ${selectedVenda.formaPagamento || "Dinheiro"}</p>` : `<p><strong>Entrada:</strong> ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)} — <strong>Parcelas:</strong> ${selectedVenda.quantidadeParcelas}x ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>`}
-                        <p style="margin-top:40px;">Para impressão completa com todas as cláusulas, use o botão <strong>PDF</strong> ou <strong>DOCX</strong>.</p>
-                      </div>`;
-                      document.body.appendChild(overlay);
-                      window.print();
-                      document.body.removeChild(overlay);
+                      const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+                      const dataVenda = selectedVenda.dataVenda ? new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }) : "___/___/______";
+                      const printHTML = `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Contrato — ${clienteImp.nome}</title><style>
+                        * { box-sizing: border-box; }
+                        body { margin: 0; padding: 32px; font-family: 'Times New Roman', Times, serif; font-size: 12pt; color: #000; background: #fff; }
+                        h2 { text-align: center; text-transform: uppercase; font-size: 16pt; margin-bottom: 24px; }
+                        p { margin: 8px 0; line-height: 1.6; }
+                        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 16px 0; border: 1px solid #ccc; padding: 16px; }
+                        .label { font-size: 9pt; font-weight: bold; text-transform: uppercase; color: #555; }
+                        .val { font-weight: bold; }
+                        .assinatura { margin-top: 64px; display: flex; justify-content: space-between; }
+                        .assinatura div { width: 220px; text-align: center; border-top: 1px solid #000; padding-top: 8px; font-size: 10pt; }
+                        @media print { body { padding: 16px; } }
+                      </style></head><body>
+                        <h2>Contrato de Compra e Venda ${isAv ? "À Vista" : "a Prazo"}</h2>
+                        <p><span class="label">Comprador:</span> <span class="val">${clienteImp.nome}</span> &nbsp; CPF: <span class="val">${clienteImp.cpf || "___"}</span></p>
+                        <p><span class="label">Vendedor:</span> <span class="val">${vAtivo2.nome || "___"}</span> &nbsp; CPF: <span class="val">${vAtivo2.cpf || "___"}</span></p>
+                        <div class="grid">
+                          <div><p class="label">Empreendimento</p><p class="val">${selectedVenda.empreendimentoNome}</p></div>
+                          <div><p class="label">Localização</p><p class="val">Quadra ${selectedVenda.quadra} — Lote ${selectedVenda.numeroLote}${selectedVenda.rua ? " — " + selectedVenda.rua : ""}</p></div>
+                          <div><p class="label">Valor do Lote</p><p class="val">${brl(selectedVenda.valorLote)}</p></div>
+                          ${isAv
+                            ? `<div><p class="label">Forma de Pagamento</p><p class="val">À Vista — ${selectedVenda.formaPagamento || "Dinheiro"}</p></div>`
+                            : `<div><p class="label">Entrada</p><p class="val">${brl(selectedVenda.valorEntrada)}</p></div>
+                               <div><p class="label">Parcelas</p><p class="val">${selectedVenda.quantidadeParcelas}x de ${brl(selectedVenda.valorParcela)}</p></div>
+                               <div><p class="label">Vencimento</p><p class="val">Dia ${selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").getDate() : "___"} de cada mês</p></div>`
+                          }
+                          <div><p class="label">Data da Venda</p><p class="val">${dataVenda}</p></div>
+                        </div>
+                        <p style="margin-top:32px;font-size:10pt;font-style:italic;">Para impressão do contrato completo com todas as cláusulas, utilize o botão <strong>PDF</strong> ou <strong>DOCX</strong> na tela de contratos.</p>
+                        <div class="assinatura">
+                          <div>${clienteImp.nome}<br><span style="font-size:9pt">Comprador</span></div>
+                          <div>${vAtivo2.nome || "___"}<br><span style="font-size:9pt">Vendedor</span></div>
+                        </div>
+                      </body></html>`;
+                      const w = window.open("", "_blank", "width=800,height=700");
+                      if (w) {
+                        w.document.write(printHTML);
+                        w.document.close();
+                        w.focus();
+                        setTimeout(() => { w.print(); }, 500);
+                      } else {
+                        alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente.");
+                      }
                     }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Imprimir contrato"
@@ -7137,7 +7200,29 @@ const ContratosSection = ({
                     )}
                   </button>
                   <button
-                    onClick={handlePrint}
+                    onClick={() => {
+                      if (!reciboRef.current) { alert('Recibo não encontrado.'); return; }
+                      const w = window.open("", "_blank", "width=900,height=800");
+                      if (w) {
+                        w.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Recibo</title><style>
+                          * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+                          html, body { margin: 0; padding: 0; background: #fff; }
+                          @media print { body { padding: 0; } }
+                        </style></head><body><div style="padding:16px;">${reciboRef.current.outerHTML}</div></body></html>`);
+                        w.document.close();
+                        w.focus();
+                        setTimeout(() => { w.print(); }, 600);
+                      } else {
+                        // fallback: overlay
+                        const overlay = document.createElement('div');
+                        overlay.id = 'print-recibo-overlay';
+                        overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white;padding:1rem;overflow:auto;';
+                        overlay.innerHTML = `<div style="max-width:21cm;margin:0 auto;">${reciboRef.current.outerHTML}</div>`;
+                        document.body.appendChild(overlay);
+                        window.print();
+                        document.body.removeChild(overlay);
+                      }
+                    }}
                     disabled={reciboDownloading !== null}
                     className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
                   >
@@ -7640,6 +7725,63 @@ const ContratosSection = ({
 
       {/* Modal: Mesclar / Duplicar / Cancelar */}
       <AnimatePresence>
+        {/* Dialog: Escolha antes de editar contrato */}
+        {preEditVenda && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col gap-6"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-xl">
+                  <Pencil size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Editar Contrato</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    O lote pode estar marcado como vendido. Como deseja prosseguir?
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    // Mesclar: abre Nova Venda com editingEntry = venda original
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    onEditVenda?.(v);
+                  }}
+                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Save size={17} /> Mesclar com a venda existente
+                </button>
+                <button
+                  onClick={() => {
+                    // Duplicar: cria cópia da venda e abre Nova Venda para editar a cópia
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    const novoId = `venda-${Date.now()}`;
+                    const novoContrato = `CONT-${Date.now()}`;
+                    const copia: Venda = { ...v, id: novoId, numeroContrato: novoContrato };
+                    onSaveVenda(copia, clients.find(c => c.id === copia.clienteId) || { id: copia.clienteId, nome: copia.clienteNome, nacionalidade: "Brasileira", genero: "M", rg: "", cpf: "", estadoCivil: "Solteiro(a)", profissao: "", nascimento: "", cep: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", telefone1: "", dataCadastro: new Date().toISOString() });
+                    onEditVenda?.(copia);
+                  }}
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Copy size={17} /> Duplicar como nova venda
+                </button>
+                <button
+                  onClick={() => setPreEditVenda(null)}
+                  className="text-sm text-slate-400 hover:text-slate-600 font-semibold py-2 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
         {showDuplicarModal && pendingEditVenda && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
             <motion.div
