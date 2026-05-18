@@ -43,6 +43,7 @@ import {
   Empreendimento,
   Cliente,
   Venda,
+  VendaExcluida,
   Vendedor,
   Proprietario,
   Address,
@@ -615,6 +616,7 @@ const Sidebar = ({
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "calculadora", label: "Calculadora", icon: Calculator },
+    { id: "historico", label: "Lixeira", icon: Trash2 },
     { id: "usuarios", label: "Usuários", icon: User },
   ];
 
@@ -8082,7 +8084,15 @@ const ClientesSection = ({
   );
 };
 
-const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sales?: Venda[] }) => {
+const AniversariosSection = ({
+  clients,
+  sales = [],
+  onViewContract,
+}: {
+  clients: Cliente[];
+  sales?: Venda[];
+  onViewContract?: (v: Venda) => void;
+}) => {
   const today = new Date();
   const currentMonth = today.getMonth();
   const currentDay = today.getDate();
@@ -8125,9 +8135,13 @@ const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sale
         : `Olá ${c.nome}, tudo bem? Aqui é da equipe de vendas. Passando para desejar um Feliz Aniversário! 🎂`
     )}`;
 
+  // Exclui rascunhos — apenas compras reais
   const clientSales = selectedClient
-    ? sales.filter((s) => s.clienteId === selectedClient.id)
+    ? sales.filter((s) => s.clienteId === selectedClient.id && s.status !== "rascunho")
     : [];
+
+  const isAvista = (s: Venda) =>
+    !s.quantidadeParcelas || s.quantidadeParcelas === 0 || s.formaPagamento === "avista";
 
   const copyPhone = (phone: string) => {
     navigator.clipboard.writeText(phone.replace(/\D/g, ""));
@@ -8254,7 +8268,7 @@ const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sale
                   </div>
                 </div>
 
-                {/* Purchases */}
+                {/* Purchases — clicáveis, sem badge de status */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
                     Compras ({clientSales.length})
@@ -8262,24 +8276,35 @@ const AniversariosSection = ({ clients, sales = [] }: { clients: Cliente[]; sale
                   {clientSales.length === 0 ? (
                     <p className="text-sm text-slate-400 italic p-3">Nenhuma compra registrada.</p>
                   ) : (
-                    clientSales.map((s) => (
-                      <div key={s.id} className="p-3 bg-slate-50 rounded-2xl flex justify-between items-start gap-3">
-                        <div>
-                          <p className="font-bold text-slate-800 text-sm">{s.empreendimentoNome}</p>
-                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-                            Quadra {s.quadra} / Lote {s.numeroLote} · {new Date(s.dataVenda).toLocaleDateString("pt-BR")}
-                          </p>
-                        </div>
-                        <div className="text-right flex-shrink-0">
-                          <p className="font-display font-bold text-primary-main text-sm">
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(s.valorLote)}
-                          </p>
-                          <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${s.status === "pago" ? "bg-green-100 text-green-700" : s.status === "cancelado" ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700"}`}>
-                            {s.status}
-                          </span>
-                        </div>
-                      </div>
-                    ))
+                    clientSales.map((s) => {
+                      const avista = isAvista(s);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setSelectedClient(null);
+                            onViewContract?.(s);
+                          }}
+                          className="w-full text-left p-3 bg-slate-50 hover:bg-primary-main/5 border border-transparent hover:border-primary-main/20 rounded-2xl flex justify-between items-start gap-3 transition-all group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 text-sm truncate">{s.empreendimentoNome}</p>
+                            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                              Quadra {s.quadra} · Lote {s.numeroLote}
+                            </p>
+                            <span className={`inline-block mt-1.5 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${avista ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                              {avista ? "À Vista" : `Parcelado ${s.quantidadeParcelas}x`}
+                            </span>
+                          </div>
+                          <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
+                            <p className="font-display font-bold text-primary-main text-sm">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(s.valorLote)}
+                            </p>
+                            <ChevronRight size={14} className="text-slate-300 group-hover:text-primary-main transition-colors" />
+                          </div>
+                        </button>
+                      );
+                    })
                   )}
                 </div>
               </div>
@@ -9621,7 +9646,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     usuarios: "Usuários",
   };
 
-  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config"];
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","historico"];
 
   const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string } }[]>([]);
 
@@ -10121,6 +10146,132 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   );
 };
 
+// --- Histórico de Exclusões ---
+
+const LIXEIRA_KEY = "lotes_lixeira_vendas";
+
+function loadLixeira(): VendaExcluida[] {
+  try {
+    const raw = localStorage.getItem(LIXEIRA_KEY);
+    if (!raw) return [];
+    const items: VendaExcluida[] = JSON.parse(raw);
+    // Filtrar expirados (> 30 dias)
+    const agora = new Date();
+    return items.filter((item) => new Date(item.expiresAt) > agora);
+  } catch {
+    return [];
+  }
+}
+
+function saveLixeira(items: VendaExcluida[]): void {
+  try {
+    localStorage.setItem(LIXEIRA_KEY, JSON.stringify(items));
+  } catch {
+    console.error("Erro ao salvar lixeira");
+  }
+}
+
+const HistoricoExclusoesSection = ({
+  vendasExcluidas,
+  onRestore,
+}: {
+  vendasExcluidas: VendaExcluida[];
+  onRestore: (item: VendaExcluida) => void;
+}) => {
+  const [search, setSearch] = useState("");
+
+  const diasRestantes = (expiresAt: string) => {
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const tipoLabel = (venda: Venda) => {
+    if (venda.quantidadeParcelas && venda.quantidadeParcelas > 0) return "Parcelado";
+    return "À Vista";
+  };
+
+  const filtered = vendasExcluidas.filter((item) => {
+    const q = search.toLowerCase();
+    return (
+      !q ||
+      (item.venda.clienteNome || "").toLowerCase().includes(q) ||
+      (item.venda.empreendimentoNome || "").toLowerCase().includes(q) ||
+      (item.venda.quadra || "").toLowerCase().includes(q) ||
+      (item.venda.numeroLote || "").toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por comprador, empreendimento ou lote..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 border border-border-subtle rounded-xl bg-surface-card text-sm focus:outline-none focus:ring-2 focus:ring-primary-main/30"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4 text-slate-400">
+          <Trash2 size={48} className="opacity-30" />
+          <p className="text-lg font-semibold">Nenhuma venda excluída</p>
+          <p className="text-sm text-center max-w-xs">
+            Vendas excluídas aparecem aqui por 30 dias e podem ser restauradas.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((item) => {
+            const dias = diasRestantes(item.expiresAt);
+            const tipo = tipoLabel(item.venda);
+            const isAvista = tipo === "À Vista";
+            return (
+              <div
+                key={item.venda.id + item.dataExclusao}
+                className="bg-surface-card border border-border-subtle rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4"
+              >
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-800 text-sm">
+                      {item.venda.clienteNome || "—"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${isAvista ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                      {tipo}
+                    </span>
+                    {dias <= 7 && (
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-red-100 text-red-600">
+                        Expira em {dias}d
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {item.venda.empreendimentoNome || "—"} · Quadra {item.venda.quadra} · Lote {item.venda.numeroLote}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Excluído em {new Date(item.dataExclusao).toLocaleDateString("pt-BR")} · Restaurável por mais {dias} dia{dias !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onRestore(item)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-main text-primary-contrast rounded-xl text-xs font-bold hover:opacity-90 transition-all self-end sm:self-auto whitespace-nowrap"
+                >
+                  <ArrowLeft size={14} />
+                  Restaurar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- Main App ---
 
 export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
@@ -10128,6 +10279,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [developments, setDevelopments] = useState<Empreendimento[]>([]);
   const [clients, setClients] = useState<Cliente[]>([]);
   const [sales, setSales] = useState<Venda[]>([]);
+  const [vendasExcluidas, setVendasExcluidas] = useState<VendaExcluida[]>(() => loadLixeira());
   const [config, setConfig] = useState<AppConfig>({
     theme: "standard",
     vendedores: [],
@@ -10479,12 +10631,44 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
 
   const deleteVenda = (id: string) => {
+    const venda = sales.find((s) => s.id === id);
+    if (!venda) return;
+
+    // Mover para lixeira em vez de excluir permanentemente
+    const agora = new Date();
+    const expiresAt = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const novaExclusao: VendaExcluida = {
+      venda,
+      dataExclusao: agora.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+    const novaLixeira = [...vendasExcluidas.filter((e) => e.venda.id !== id), novaExclusao];
+    setVendasExcluidas(novaLixeira);
+    saveLixeira(novaLixeira);
+
     const updated = sales.filter((s) => s.id !== id);
     setSales(updated);
     dbService.deleteVendaById(id).catch((e) => {
       console.error('Erro ao excluir venda:', e);
       alert('Erro ao excluir venda no banco.\n' + String(e?.message || e));
     });
+  };
+
+  const restoreVenda = (item: VendaExcluida) => {
+    // Restaurar: re-inserir no estado de sales e no backend
+    const venda = item.venda;
+    setSales((prev) => {
+      if (prev.find((s) => s.id === venda.id)) return prev;
+      return [...prev, venda];
+    });
+    dbService.upsertVenda(venda).catch((e) => {
+      console.error('Erro ao restaurar venda:', e);
+      alert('Erro ao restaurar venda no banco.\n' + String(e?.message || e));
+    });
+    // Remover da lixeira
+    const novaLixeira = vendasExcluidas.filter((e) => e.venda.id !== venda.id);
+    setVendasExcluidas(novaLixeira);
+    saveLixeira(novaLixeira);
   };
 
   const updateVenda = (venda: Venda) => {
@@ -10576,7 +10760,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           />
         );
       case "aniversarios":
-        return <AniversariosSection clients={clients} sales={sales} />;
+        return (
+          <AniversariosSection
+            clients={clients}
+            sales={sales}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+          />
+        );
       case "calculadora":
         return <CalculatorSection />;
       case "config":
@@ -10598,6 +10788,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             userEmail={userEmail}
           />
         );
+      case "historico":
+        return (
+          <HistoricoExclusoesSection
+            vendasExcluidas={vendasExcluidas}
+            onRestore={restoreVenda}
+          />
+        );
       default:
         return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
     }
@@ -10615,6 +10812,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       calculadora: "Simulador de Vendas",
       config: "Configurações do Sistema",
       usuarios: "Gerenciar Usuários",
+      historico: "Histórico de Exclusões",
     };
     return titles[section];
   };
