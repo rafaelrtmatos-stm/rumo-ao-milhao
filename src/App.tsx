@@ -5697,49 +5697,81 @@ const ContratosSection = ({
     </body></html>`;
   };
 
-  // Gera PDF do contrato via HTML (sem LibreOffice, sem servidor)
-  const handleDownloadPdfContrato = () => {
+  // Gera PDF do contrato via DOCX → CloudConvert → PDF (fiel ao DOCX)
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadPdfContrato = async () => {
     if (!selectedVenda) return;
     const snap = selectedVenda.contratoSnapshot;
-    const vAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
-    const eAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? { nome: selectedVenda.empreendimentoNome || "", comunidade: "", cidade: "", estado: "" });
-    const xAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
+    const vendedorAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+    const empAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? { nome: selectedVenda.empreendimentoNome || "", comunidade: "", cidade: "", estado: "" });
+    const extraAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
     const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
     if (!cliente) { alert("Cliente não encontrado."); return; }
-    if (!vAtivo.nome?.trim()) { alert("Informe o nome do vendedor antes de gerar o PDF."); return; }
+    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (!vendedorAtivo.nome?.trim()) { alert("Informe o nome do vendedor antes de gerar o PDF."); return; }
 
     const isAvista = selectedVenda.quantidadeParcelas === 0 ||
       (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
 
-    const html = gerarContratoHTML({
-      isAvista,
-      vendedor: vAtivo,
-      cliente,
-      empNome: eAtivo.nome || selectedVenda.empreendimentoNome || "",
-      empCom: eAtivo.comunidade || xAtivo.comunidade || "",
-      empCidade: eAtivo.cidade || "Santarém",
-      empEstado: eAtivo.estado || "PA",
-      venda: {
-        ...selectedVenda,
-        rua: xAtivo.rua || selectedVenda.rua || "",
-        medidaFrente: xAtivo.medidaFrente,
-        medidaLateralDir: xAtivo.medidaLateralDir,
-        medidaLateralEsq: xAtivo.medidaLateralEsq,
-        medidaFundos: xAtivo.medidaFundos,
-        areaTotal: xAtivo.areaTotal,
-      },
-      xAtivo,
-      comCarimbo,
-    });
+    const endpoint = isAvista
+      ? "/api/contrato/avista-padrao-pdf"
+      : "/api/contrato/parcelado-padrao-pdf";
 
-    const w = window.open("", "_blank", "width=960,height=850");
-    if (w) {
-      w.document.write(html);
-      w.document.close();
-      w.focus();
-      setTimeout(() => { w.print(); }, 600);
-    } else {
-      alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente.");
+    setDownloadingPdf(true);
+    try {
+      const res = await authFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          vendedor: vendedorAtivo,
+          cliente,
+          empreendimento: {
+            nome: empAtivo.nome || desenvolvimento.nome,
+            comunidade: empAtivo.comunidade || extraAtivo.comunidade,
+            cidade: empAtivo.cidade || desenvolvimento.cidade,
+            estado: empAtivo.estado || desenvolvimento.estado,
+          },
+          comCarimbo,
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: extraAtivo.rua || selectedVenda.rua || "",
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: extraAtivo.formaPagamento,
+            medidaFrente: extraAtivo.medidaFrente,
+            medidaLateralDir: extraAtivo.medidaLateralDir,
+            medidaLateralEsq: extraAtivo.medidaLateralEsq,
+            medidaFundos: extraAtivo.medidaFundos,
+            areaTotal: extraAtivo.areaTotal,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Erro ao gerar PDF: " + (err.error || "Falha desconhecida."));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      const prefix = isAvista ? "contrato_avista" : "contrato";
+      a.href = url;
+      a.download = `${prefix}_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra__${selectedVenda.quadra}_.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Erro ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDownloadingPdf(false);
     }
   };
 
@@ -7318,14 +7350,14 @@ VENDEDOR: ${venda.vendedor}`;
                     <ChevronLeft size={17} />
                     Voltar
                   </button>
-                  {/* PDF — abre janela de impressão com HTML idêntico ao DOCX */}
+                  {/* PDF — gerado via DOCX → CloudConvert → PDF (fiel ao contrato) */}
                   <button
                     onClick={handleDownloadPdfContrato}
-                    disabled={downloadingDocx}
+                    disabled={downloadingDocx || downloadingPdf}
                     className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Gerar PDF do contrato (abre para imprimir/salvar)"
+                    title="Baixar PDF do contrato (gerado a partir do DOCX)"
                   >
-                    <FileDown size={17} /> PDF
+                    {downloadingPdf ? "Gerando PDF..." : <><FileDown size={17} /> PDF</>}
                   </button>
                   {/* DOCX */}
                   <button

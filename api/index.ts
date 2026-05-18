@@ -645,6 +645,167 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: a
   }
 });
 
+// --- Helper: DOCX Buffer → PDF via CloudConvert ---
+async function convertDocxToPdfViaCloudConvert(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  const apiKey = process.env.CLOUDCONVERT_API_KEY;
+  if (!apiKey) throw new Error("CLOUDCONVERT_API_KEY não configurada.");
+
+  // 1. Criar job de conversão
+  const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      tasks: {
+        "upload-docx": {
+          operation: "import/upload",
+        },
+        "convert-to-pdf": {
+          operation: "convert",
+          input: "upload-docx",
+          input_format: "docx",
+          output_format: "pdf",
+          engine: "libreoffice",
+        },
+        "export-pdf": {
+          operation: "export/url",
+          input: "convert-to-pdf",
+        },
+      },
+      tag: "contrato-pdf",
+    }),
+  });
+
+  if (!jobRes.ok) {
+    const errText = await jobRes.text();
+    throw new Error(`CloudConvert criar job falhou: ${errText}`);
+  }
+
+  const job = (await jobRes.json()) as any;
+
+  // 2. Encontrar a task de upload
+  const uploadTask = job.data.tasks.find((t: any) => t.name === "upload-docx");
+  if (!uploadTask?.result?.form) {
+    throw new Error("CloudConvert: task de upload não retornou formulário.");
+  }
+
+  const { url: uploadUrl, parameters: formParams } = uploadTask.result.form;
+
+  // 3. Fazer upload do DOCX via multipart/form-data
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(formParams as Record<string, string>)) {
+    formData.append(key, value);
+  }
+  formData.append("file", new Blob([docxBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), filename);
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`CloudConvert upload falhou: ${errText}`);
+  }
+
+  // 4. Aguardar conclusão do job (polling)
+  const jobId = job.data.id;
+  let pdfUrl: string | null = null;
+  const maxAttempts = 30;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const statusRes = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+
+    if (!statusRes.ok) continue;
+
+    const statusData = (await statusRes.json()) as any;
+    const tasks: any[] = statusData.data.tasks || [];
+
+    const exportTask = tasks.find((t: any) => t.name === "export-pdf");
+    if (exportTask?.status === "finished" && exportTask?.result?.files?.[0]?.url) {
+      pdfUrl = exportTask.result.files[0].url;
+      break;
+    }
+
+    const anyFailed = tasks.some((t: any) => t.status === "error");
+    if (anyFailed) {
+      const failedTask = tasks.find((t: any) => t.status === "error");
+      throw new Error(`CloudConvert erro na conversão: ${failedTask?.message || "Falha desconhecida"}`);
+    }
+  }
+
+  if (!pdfUrl) throw new Error("CloudConvert: timeout aguardando conversão.");
+
+  // 5. Baixar o PDF resultante
+  const pdfRes = await fetch(pdfUrl);
+  if (!pdfRes.ok) throw new Error("Falha ao baixar PDF do CloudConvert.");
+
+  const arrayBuffer = await pdfRes.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// --- PDF do Contrato Parcelado (DOCX → CloudConvert → PDF) ---
+app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { vendedor, cliente, empreendimento, venda } = req.body;
+    if (!vendedor || !cliente || !empreendimento || !venda)
+      return res.status(400).json({ error: "Dados incompletos para gerar o PDF." });
+
+    // 1. Gerar DOCX
+    const docxBuffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
+
+    const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
+    const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
+    const docxFilename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    const pdfFilename = docxFilename.replace(/\.docx$/, ".pdf");
+
+    // 2. Converter DOCX → PDF via CloudConvert
+    const pdfBuffer = await convertDocxToPdfViaCloudConvert(docxBuffer, docxFilename);
+
+    // 3. Enviar PDF
+    res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
+// --- PDF do Contrato À Vista (DOCX → CloudConvert → PDF) ---
+app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { vendedor, cliente, empreendimento, venda } = req.body;
+    if (!vendedor || !cliente || !empreendimento || !venda)
+      return res.status(400).json({ error: "Dados incompletos para gerar o PDF à vista." });
+
+    // 1. Gerar DOCX
+    const userRow = await localUsersService.findById((req as any).userId || req.user?.id || "");
+    const corretor = { nome: userRow?.profile?.nome, creci: userRow?.profile?.creci, telefone: userRow?.profile?.telefone };
+    const docxBuffer = await gerarReciboAVistaPadrao({ corretor, vendedor, cliente, empreendimento, venda });
+
+    const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
+    const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
+    const docxFilename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    const pdfFilename = docxFilename.replace(/\.docx$/, ".pdf");
+
+    // 2. Converter DOCX → PDF via CloudConvert
+    const pdfBuffer = await convertDocxToPdfViaCloudConvert(docxBuffer, docxFilename);
+
+    // 3. Enviar PDF
+    res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 export default app;
 
 // Export para Vercel Serverless Functions
