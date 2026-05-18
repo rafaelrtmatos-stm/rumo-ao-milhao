@@ -146,6 +146,145 @@ function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?:
   return [];
 }
 
+
+function normalizeLotText(value?: string | number | null): string {
+  return String(value ?? "").trim();
+}
+
+function normalizeLotKeyPart(value?: string | number | null): string {
+  return normalizeLotText(value).toUpperCase();
+}
+
+function getQuadraList(dev?: Empreendimento | null): string[] {
+  return (dev?.quadras || "")
+    .split(",")
+    .map((q) => q.trim())
+    .filter(Boolean);
+}
+
+function findQuadraName(dev: Empreendimento, quadra: string): string | null {
+  const wanted = normalizeLotKeyPart(quadra);
+  return getQuadraList(dev).find((q) => normalizeLotKeyPart(q) === wanted) || null;
+}
+
+function getLotInfoKey(quadra: string, lote: string): string {
+  return `${normalizeLotKeyPart(quadra)}-${normalizeLotKeyPart(lote)}`;
+}
+
+function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
+  const quadraName = findQuadraName(dev, quadra);
+  const key = getLotInfoKey(quadra, lote);
+  if (dev.lotesInfo?.[key]) return true;
+  if (!quadraName) return false;
+  return getLotesDeQuadra(dev.lotesPorQuadra?.[quadraName]).some(
+    (l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote)
+  );
+}
+
+function getLotStatusForSale(
+  dev: Empreendimento | undefined,
+  quadra: string | undefined,
+  lote: string | undefined,
+  vendas: Venda[],
+  ignoreVendaId?: string
+): { exists: boolean; status: "disponivel" | "indisponivel" | "vendido" } {
+  if (!dev || !quadra || !lote) return { exists: true, status: "disponivel" };
+  const q = normalizeLotText(quadra);
+  const l = normalizeLotText(lote);
+  const key = getLotInfoKey(q, l);
+  const info = dev.lotesInfo?.[key];
+  const hasActiveSale = vendas.some(
+    (v) =>
+      v.id !== ignoreVendaId &&
+      v.empreendimentoId === dev.id &&
+      normalizeLotKeyPart(v.quadra) === normalizeLotKeyPart(q) &&
+      normalizeLotKeyPart(v.numeroLote) === normalizeLotKeyPart(l) &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho"
+  );
+
+  if (hasActiveSale || info?.status === "vendido") return { exists: hasConfiguredLot(dev, q, l), status: "vendido" };
+  if (info?.status === "indisponivel") return { exists: hasConfiguredLot(dev, q, l), status: "indisponivel" };
+  return { exists: hasConfiguredLot(dev, q, l), status: "disponivel" };
+}
+
+function countConfiguredLots(dev: Empreendimento): number {
+  const lotesPorQuadraTotal = getQuadraList(dev).reduce(
+    (sum, q) => sum + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length,
+    0
+  );
+  if (lotesPorQuadraTotal > 0) return lotesPorQuadraTotal;
+  return Object.keys(dev.lotesInfo || {}).length || dev.totalLotes || 0;
+}
+
+function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
+  const soldKeys = new Set<string>();
+  vendas.forEach((v) => {
+    if (
+      v.empreendimentoId === dev.id &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho" &&
+      v.quadra &&
+      v.numeroLote
+    ) {
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    if (info?.status === "vendido") soldKeys.add(key.toUpperCase());
+  });
+  return soldKeys.size;
+}
+
+function addOrUpdateSoldLotFromSale(dev: Empreendimento, venda: Venda, vendas: Venda[]): Empreendimento {
+  const quadra = normalizeLotText(venda.quadra);
+  const lote = normalizeLotText(venda.numeroLote);
+  if (!quadra || !lote) return dev;
+
+  const existingQuadra = findQuadraName(dev, quadra);
+  const quadraName = existingQuadra || quadra;
+  const quadras = getQuadraList(dev);
+  const nextQuadras = existingQuadra ? quadras : [...quadras, quadraName];
+
+  const currentLotesPorQuadra = { ...(dev.lotesPorQuadra || {}) };
+  const currentEntry = currentLotesPorQuadra[quadraName] || {};
+  const currentLots = getLotesDeQuadra(currentEntry);
+  const lotExistsInQuadra = currentLots.some((l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote));
+
+  if (!lotExistsInQuadra) {
+    const updatedLots = [...currentLots, lote].filter(Boolean);
+    updatedLots.sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return String(a).localeCompare(String(b), "pt-BR", { numeric: true });
+    });
+    currentLotesPorQuadra[quadraName] = { especificos: Array.from(new Set(updatedLots)).join(",") };
+  }
+
+  const lotInfoKey = getLotInfoKey(quadraName, lote);
+  const nextDev = {
+    ...dev,
+    quadras: nextQuadras.join(", "),
+    lotesPorQuadra: currentLotesPorQuadra,
+    lotesInfo: {
+      ...(dev.lotesInfo || {}),
+      [lotInfoKey]: {
+        ...(dev.lotesInfo?.[lotInfoKey] || {}),
+        rua: venda.rua || dev.lotesInfo?.[lotInfoKey]?.rua || "",
+        status: "vendido",
+        vendaId: venda.id,
+      },
+    },
+  } as Empreendimento;
+
+  return {
+    ...nextDev,
+    totalLotes: countConfiguredLots(nextDev),
+    lotesVendidos: countSoldLots(nextDev, vendas),
+  };
+}
+
 function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
   const loteNum = parseInt(lote.replace(/\D/g, ""), 10);
   if (!isNaN(loteNum) && dev.ruasFaixas && dev.ruasFaixas.length > 0) {
@@ -3333,6 +3472,7 @@ const VendasSection = ({
   const [isExtractingFiles, setIsExtractingFiles] = useState(false);
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
+  const [pendingMissingLotSale, setPendingMissingLotSale] = useState<{ venda: Venda; cliente: Cliente } | null>(null);
 
   const [pasteSuccess, setPasteSuccess] = useState(false);
   const [pasteError, setPasteError] = useState<string | null>(null);
@@ -3675,24 +3815,10 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
     setSaleData(updatedData);
   };
 
-
-  const normalizarQuadra = (valor?: string) => String(valor || "").trim().toUpperCase();
-  const normalizarLote = (valor?: string) => String(valor || "").trim();
-  const loteKey = (quadra?: string, lote?: string) => `${normalizarQuadra(quadra)}-${normalizarLote(lote)}`.toUpperCase();
-
-  const garantirLoteNoEmpreendimento = (): boolean => {
-    const dev = developments.find((d) => d.id === saleData.empreendimentoId);
-    const quadra = normalizarQuadra(saleData.quadra);
-    const lote = normalizarLote(saleData.numeroLote);
-    if (!dev || !quadra || !lote) return true;
-
-    const key = loteKey(quadra, lote);
-    const existeLote = !!dev.lotesInfo?.[key];
-    if (existeLote) return true;
-
-    return window.confirm(
-      "Este lote/quadra não existe no empreendimento. Deseja adicionar automaticamente ao empreendimento e vincular a esta venda?"
-    );
+  const finalizeVenda = (venda: Venda, cliente: Cliente) => {
+    const savedVenda = onSaveVenda(venda, cliente);
+    setPendingMissingLotSale(null);
+    setLastSavedVenda(savedVenda);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -3718,7 +3844,6 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       return;
     }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
-    if (!garantirLoteNoEmpreendimento()) return;
 
     if (editingEntry && onUpdateVendaFull) {
       const updatedCliente: Cliente = {
@@ -3756,8 +3881,30 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       status: "pendente",
       comprador2: hasSecondBuyer ? secondBuyerData : undefined,
     };
-    const savedVenda = onSaveVenda(venda, cliente);
-    setLastSavedVenda(savedVenda);
+    const lotSituation = getLotStatusForSale(
+      dev,
+      venda.quadra,
+      venda.numeroLote,
+      sales,
+      editingEntry?.venda?.id
+    );
+
+    if (lotSituation.status === "vendido") {
+      alert("Este lote já está vendido/vinculado a uma venda. Verifique a quadra e o lote antes de continuar.");
+      return;
+    }
+
+    if (lotSituation.status === "indisponivel") {
+      alert("Este lote está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.");
+      return;
+    }
+
+    if (!lotSituation.exists) {
+      setPendingMissingLotSale({ venda, cliente });
+      return;
+    }
+
+    finalizeVenda(venda, cliente);
   };
 
   if (lastSavedVenda) {
@@ -3822,6 +3969,50 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
 
   return (
     <div className="space-y-8 pb-32 lg:pb-0">
+      <AnimatePresence>
+        {pendingMissingLotSale && (
+          <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-start gap-3">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl flex-shrink-0">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Quadra/lote não cadastrado</h4>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Esta quadra/lote não existe no empreendimento. Deseja adicionar ao empreendimento e continuar a venda?
+                  </p>
+                  <p className="text-xs text-slate-400 mt-3 font-bold uppercase tracking-widest">
+                    Quadra {pendingMissingLotSale.venda.quadra} · Lote {pendingMissingLotSale.venda.numeroLote}
+                  </p>
+                </div>
+              </div>
+              <div className="p-5 flex flex-col sm:flex-row justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingMissingLotSale(null)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => finalizeVenda(pendingMissingLotSale.venda, pendingMissingLotSale.cliente)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-primary-main text-white hover:opacity-90 transition-opacity"
+                >
+                  Adicionar e continuar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Edit mode banner */}
       {editingEntry && (
         <motion.div
@@ -10862,49 +11053,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
-        const quadraNormalizada = String(newSale.quadra || "").trim().toUpperCase();
-        const loteNormalizado = String(newSale.numeroLote || "").trim();
-        const lotInfoKey = `${quadraNormalizada}-${loteNormalizado}`.toUpperCase();
-        const lotesInfoAnterior = d.lotesInfo || {};
-        const loteJaMapeado = !!lotesInfoAnterior[lotInfoKey];
-        const jaVendido = lotesInfoAnterior[lotInfoKey]?.status === "vendido" || sales.some((s) =>
-          s.id !== newSale.id &&
-          s.empreendimentoId === newSale.empreendimentoId &&
-          String(s.quadra || "").trim().toUpperCase() === quadraNormalizada &&
-          String(s.numeroLote || "").trim() === loteNormalizado
-        );
-
-        const quadrasAtuais = (d.quadras || "").split(",").map((q) => q.trim()).filter(Boolean);
-        const quadraExiste = quadrasAtuais.some((q) => q.toUpperCase() === quadraNormalizada);
-        const lotesPorQuadraAtual: any = { ...(d.lotesPorQuadra || {}) };
-        const entradaQuadra = lotesPorQuadraAtual[quadraNormalizada];
-        if (Array.isArray(entradaQuadra)) {
-          if (!entradaQuadra.map(String).includes(loteNormalizado)) lotesPorQuadraAtual[quadraNormalizada] = [...entradaQuadra, loteNormalizado];
-        } else if (entradaQuadra && Array.isArray(entradaQuadra.lotes)) {
-          if (!entradaQuadra.lotes.map(String).includes(loteNormalizado)) lotesPorQuadraAtual[quadraNormalizada] = { ...entradaQuadra, lotes: [...entradaQuadra.lotes, loteNormalizado] };
-        } else if (!loteJaMapeado) {
-          lotesPorQuadraAtual[quadraNormalizada] = [loteNormalizado];
-        }
-
-        return {
-          ...d,
-          quadras: quadraExiste ? d.quadras : [...quadrasAtuais, quadraNormalizada].join(", "),
-          totalLotes: loteJaMapeado ? (d.totalLotes || 0) : (d.totalLotes || 0) + 1,
-          lotesVendidos: jaVendido ? (d.lotesVendidos || 0) : (d.lotesVendidos || 0) + 1,
-          lotesPorQuadra: lotesPorQuadraAtual,
-          lotesInfo: {
-            ...lotesInfoAnterior,
-            [lotInfoKey]: {
-              ...(lotesInfoAnterior[lotInfoKey] || {}),
-              rua: newSale.rua || lotesInfoAnterior[lotInfoKey]?.rua || "",
-              status: "vendido",
-              vendaId: newSale.id,
-              clienteId: newSale.clienteId,
-              clienteNome: newSale.clienteNome,
-              origem: loteJaMapeado ? lotesInfoAnterior[lotInfoKey]?.origem : "contrato/venda",
-            },
-          },
-        };
+        return addOrUpdateSoldLotFromSale(d, newSale, updatedSales);
       }
       return d;
     });
