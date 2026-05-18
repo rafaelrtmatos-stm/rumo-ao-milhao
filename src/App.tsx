@@ -243,6 +243,19 @@ function countConfiguredLots(dev: Empreendimento): number {
   return Object.keys(dev.lotesInfo || {}).length || dev.totalLotes || 0;
 }
 
+function getConfiguredLotKeys(dev: Empreendimento): Set<string> {
+  const keys = new Set<string>();
+
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      keys.add(getLotInfoKey(quadra, lote));
+    });
+  });
+
+  Object.keys(dev.lotesInfo || {}).forEach((key) => keys.add(key.toUpperCase()));
+  return keys;
+}
+
 function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
   const soldKeys = new Set<string>();
   vendas.forEach((v) => {
@@ -257,58 +270,181 @@ function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
     }
   });
   Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
-    if (info?.status === "vendido") soldKeys.add(key.toUpperCase());
+    if ((info as any)?.status === "vendido") soldKeys.add(key.toUpperCase());
   });
   return soldKeys.size;
 }
 
-function addOrUpdateSoldLotFromSale(dev: Empreendimento, venda: Venda, vendas: Venda[]): Empreendimento {
-  const quadra = normalizeLotText(venda.quadra);
-  const lote = normalizeLotText(venda.numeroLote);
-  if (!quadra || !lote) return dev;
+function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
+  const configuredKeys = getConfiguredLotKeys(dev);
+  const totalLotes = configuredKeys.size > 0 ? configuredKeys.size : Number(dev.totalLotes || 0);
+  const soldKeys = new Set<string>();
+  const indisponiveis = new Set<string>();
 
-  const existingQuadra = findQuadraName(dev, quadra);
-  const quadraName = existingQuadra || quadra;
+  vendas.forEach((v) => {
+    if (
+      v.empreendimentoId === dev.id &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho" &&
+      v.quadra &&
+      v.numeroLote
+    ) {
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    const normalizedKey = key.toUpperCase();
+    if ((info as any)?.status === "vendido") soldKeys.add(normalizedKey);
+    if ((info as any)?.status === "indisponivel") indisponiveis.add(normalizedKey);
+  });
+
+  soldKeys.forEach((key) => indisponiveis.delete(key));
+
+  const lotesVendidos = soldKeys.size;
+  const lotesIndisponiveis = indisponiveis.size;
+  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesIndisponiveis);
+
+  return {
+    ...dev,
+    totalLotes,
+    lotesVendidos,
+    lotesIndisponiveis,
+    lotesDisponiveis,
+  } as Empreendimento;
+}
+
+function ensureLotExistsInEmpreendimento(dev: Empreendimento, quadra: string, lote: string): { dev: Empreendimento; quadraName: string; lotInfoKey: string } {
+  const quadraText = normalizeLotText(quadra);
+  const loteText = normalizeLotText(lote);
+  const existingQuadra = findQuadraName(dev, quadraText);
+  const quadraName = existingQuadra || quadraText;
   const quadras = getQuadraList(dev);
   const nextQuadras = existingQuadra ? quadras : [...quadras, quadraName];
 
   const currentLotesPorQuadra = { ...(dev.lotesPorQuadra || {}) };
   const currentEntry = currentLotesPorQuadra[quadraName] || {};
   const currentLots = getLotesDeQuadra(currentEntry);
-  const lotExistsInQuadra = currentLots.some((l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote));
+  const lotExistsInQuadra = currentLots.some((l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(loteText));
 
   if (!lotExistsInQuadra) {
-    const updatedLots = [...currentLots, lote].filter(Boolean);
-    updatedLots.sort((a, b) => {
+    const uniqueLots: string[] = [];
+    [...currentLots, loteText].filter(Boolean).forEach((item) => {
+      if (!uniqueLots.some((existing) => normalizeLotKeyPart(existing) === normalizeLotKeyPart(item))) {
+        uniqueLots.push(item);
+      }
+    });
+    uniqueLots.sort((a, b) => {
       const na = Number(a);
       const nb = Number(b);
       if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
       return String(a).localeCompare(String(b), "pt-BR", { numeric: true });
     });
-    currentLotesPorQuadra[quadraName] = { especificos: Array.from(new Set(updatedLots)).join(",") };
+    currentLotesPorQuadra[quadraName] = { especificos: uniqueLots.join(",") };
   }
 
-  const lotInfoKey = getLotInfoKey(quadraName, lote);
+  const lotInfoKey = getLotInfoKey(quadraName, loteText);
+  return {
+    dev: {
+      ...dev,
+      quadras: nextQuadras.join(", "),
+      lotesPorQuadra: currentLotesPorQuadra,
+      lotesInfo: { ...(dev.lotesInfo || {}) },
+    } as Empreendimento,
+    quadraName,
+    lotInfoKey,
+  };
+}
+
+function updateLoteStatusInEmpreendimento(
+  dev: Empreendimento,
+  vendas: Venda[],
+  quadra: string,
+  lote: string,
+  novoStatus: "disponivel" | "indisponivel" | "vendido",
+  options: Record<string, any> = {},
+): Empreendimento {
+  const loteText = normalizeLotText(lote);
+  const { dev: ensuredDev, quadraName, lotInfoKey } = ensureLotExistsInEmpreendimento(dev, quadra, loteText);
+  const existingInfo = (ensuredDev.lotesInfo || {})[lotInfoKey] || {};
+  const historicoStatus = [
+    ...(((existingInfo as any).historicoStatus as any[]) || []),
+    {
+      statusAnterior: (existingInfo as any).status || "disponivel",
+      novoStatus,
+      data: new Date().toISOString(),
+      origem: options.origem || "manual",
+      vendaId: options.venda?.id || options.vendaId || (existingInfo as any).vendaId || null,
+      clienteId: options.venda?.clienteId || options.clienteId || (existingInfo as any).clienteId || null,
+      clienteNome: options.venda?.clienteNome || options.clienteNome || (existingInfo as any).clienteNome || null,
+    },
+  ];
+
+  const nextInfo: Record<string, any> = {
+    ...existingInfo,
+    rua: options.rua ?? options.venda?.rua ?? (existingInfo as any).rua ?? "",
+    status: novoStatus,
+    historicoStatus,
+  };
+
+  if (novoStatus === "vendido") {
+    nextInfo.vendaId = options.venda?.id || options.vendaId || nextInfo.vendaId;
+    nextInfo.clienteId = options.venda?.clienteId || options.clienteId || nextInfo.clienteId;
+    nextInfo.clienteNome = options.venda?.clienteNome || options.clienteNome || nextInfo.clienteNome;
+    nextInfo.dataVenda = options.venda?.dataVenda || options.dataVenda || nextInfo.dataVenda;
+    nextInfo.empreendimentoNome = options.venda?.empreendimentoNome || options.empreendimentoNome || dev.nome;
+  }
+
+  if (novoStatus === "disponivel" && options.removerVinculoAtivo !== false) {
+    if (nextInfo.vendaId || nextInfo.clienteNome || nextInfo.dataVenda || options.venda) {
+      nextInfo.historicoLiberacao = [
+        ...(((existingInfo as any).historicoLiberacao as any[]) || []),
+        {
+          vendaId: nextInfo.vendaId || options.venda?.id || "",
+          clienteId: nextInfo.clienteId || options.venda?.clienteId || "",
+          clienteNome: nextInfo.clienteNome || options.venda?.clienteNome || "Cliente não informado",
+          empreendimentoId: dev.id,
+          empreendimentoNome: nextInfo.empreendimentoNome || options.venda?.empreendimentoNome || dev.nome,
+          quadra: quadraName,
+          lote: loteText,
+          dataVenda: nextInfo.dataVenda || options.venda?.dataVenda || "",
+          dataLiberacao: new Date().toISOString(),
+        },
+      ];
+      nextInfo.desistente = {
+        clienteId: nextInfo.clienteId || options.venda?.clienteId || "",
+        clienteNome: nextInfo.clienteNome || options.venda?.clienteNome || "Cliente não informado",
+        dataDesistencia: new Date().toISOString().split("T")[0],
+        dataVenda: nextInfo.dataVenda || options.venda?.dataVenda || "",
+        vendaId: nextInfo.vendaId || options.venda?.id || "",
+      };
+    }
+    delete nextInfo.vendaId;
+    delete nextInfo.clienteId;
+    delete nextInfo.clienteNome;
+    delete nextInfo.dataVenda;
+    delete nextInfo.empreendimentoNome;
+  }
+
   const nextDev = {
-    ...dev,
-    quadras: nextQuadras.join(", "),
-    lotesPorQuadra: currentLotesPorQuadra,
+    ...ensuredDev,
     lotesInfo: {
-      ...(dev.lotesInfo || {}),
-      [lotInfoKey]: {
-        ...(dev.lotesInfo?.[lotInfoKey] || {}),
-        rua: venda.rua || dev.lotesInfo?.[lotInfoKey]?.rua || "",
-        status: "vendido",
-        vendaId: venda.id,
-      },
+      ...(ensuredDev.lotesInfo || {}),
+      [lotInfoKey]: nextInfo,
     },
   } as Empreendimento;
 
-  return {
-    ...nextDev,
-    totalLotes: countConfiguredLots(nextDev),
-    lotesVendidos: countSoldLots(nextDev, vendas),
-  };
+  return recalcularEstatisticasEmpreendimento(nextDev, vendas);
+}
+
+function addOrUpdateSoldLotFromSale(dev: Empreendimento, venda: Venda, vendas: Venda[]): Empreendimento {
+  if (!venda.quadra || !venda.numeroLote) return recalcularEstatisticasEmpreendimento(dev, vendas);
+  return updateLoteStatusInEmpreendimento(dev, vendas, venda.quadra, venda.numeroLote, "vendido", {
+    venda,
+    origem: "venda",
+    rua: venda.rua || "",
+    removerVinculoAtivo: false,
+  });
 }
 
 function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
@@ -1955,7 +2091,7 @@ const EmpreendimentosSection = ({
     onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
     setLotRegDev((prev) => {
       if (!prev) return null;
-      return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
+      return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } } as Empreendimento, sales);
     });
 
     onReleaseSoldLot(venda.id);
@@ -1984,7 +2120,7 @@ const EmpreendimentosSection = ({
     setLotRegDev((prev) => {
       if (!prev) return null;
       const existingInfo = prev.lotesInfo?.[key] || {};
-      return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } } };
+      return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } } } as Empreendimento, sales);
     });
     setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
     setLotRegTab("lotes");
@@ -2933,7 +3069,7 @@ const EmpreendimentosSection = ({
                                             onUpdateLotesInfo(lotRegDev.id, { [key]: { ...(info as any), status: novoStatus } });
                                             setLotRegDev((prev) => {
                                               if (!prev) return null;
-                                              return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...(info as any), status: novoStatus } } };
+                                              return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: { ...(info as any), status: novoStatus } } } as Empreendimento, sales);
                                             });
                                           }}
                                           className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
@@ -2961,7 +3097,7 @@ const EmpreendimentosSection = ({
                                             onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
                                             setLotRegDev((prev) => {
                                               if (!prev) return null;
-                                              return { ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } };
+                                              return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: { ...(prev.lotesInfo || {}), [key]: infoAtualizada } } as Empreendimento, sales);
                                             });
                                           }}
                                           className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
@@ -2980,7 +3116,7 @@ const EmpreendimentosSection = ({
                                                 if (!prev) return null;
                                                 const newInfo = { ...(prev.lotesInfo || {}) };
                                                 delete newInfo[key];
-                                                return { ...prev, lotesInfo: newInfo };
+                                                return recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: newInfo } as Empreendimento, sales);
                                               });
                                             });
                                           }}
@@ -3158,7 +3294,7 @@ const EmpreendimentosSection = ({
                           });
                         }
                         onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
-                        setLotRegDev(prev => prev ? { ...prev, lotesInfo: newLotesInfo } : null);
+                        setLotRegDev(prev => prev ? recalcularEstatisticasEmpreendimento({ ...prev, lotesInfo: newLotesInfo } as Empreendimento, sales) : null);
                         setBulkSelectedQuadras([]);
                         setBulkLotesEspecificos({});
                         setLotRegTab("lotes");
@@ -11222,13 +11358,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   const saveDev = (newDev: Empreendimento) => {
     if (!isLoaded) return;
+    const devRecalculado = recalcularEstatisticasEmpreendimento(newDev, sales);
     const exists = developments.some((d) => d.id === newDev.id);
     const updated = exists
-      ? developments.map((d) => (d.id === newDev.id ? newDev : d))
-      : [...developments, newDev];
+      ? developments.map((d) => (d.id === newDev.id ? devRecalculado : d))
+      : [...developments, devRecalculado];
     setDevelopments(updated);
     // Upsert atômico: salva apenas este empreendimento
-    dbService.upsertEmpreendimento(newDev).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
+    dbService.upsertEmpreendimento(devRecalculado).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
   };
 
   const deleteDev = (id: string) => {
@@ -11293,30 +11430,57 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     return newSale;
   };
 
+  const persistEmpreendimentoAtualizado = (devAtualizado: Empreendimento) => {
+    dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
+  };
+
+  const updateLoteStatus = (
+    empreendimentoId: string,
+    quadra: string,
+    lote: string,
+    novoStatus: "disponivel" | "indisponivel" | "vendido",
+    options: Record<string, any> = {},
+  ): Empreendimento | null => {
+    let devAtualizado: Empreendimento | null = null;
+    const vendasReferencia = options.vendasReferencia || sales;
+    const updated = developments.map((d) => {
+      if (d.id !== empreendimentoId) return d;
+      devAtualizado = updateLoteStatusInEmpreendimento(d, vendasReferencia, quadra, lote, novoStatus, options);
+      return devAtualizado;
+    });
+    setDevelopments(updated);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
+    return devAtualizado;
+  };
+
   const updateLotesInfo = (
     id: string,
     info: Record<string, any>,
   ) => {
-    const updated = developments.map((d) =>
-      d.id === id
-        ? { ...d, lotesInfo: { ...(d.lotesInfo || {}), ...info } }
-        : d,
-    );
+    let devAtualizado: Empreendimento | null = null;
+    const updated = developments.map((d) => {
+      if (d.id !== id) return d;
+      devAtualizado = recalcularEstatisticasEmpreendimento(
+        { ...d, lotesInfo: { ...(d.lotesInfo || {}), ...info } } as Empreendimento,
+        sales,
+      );
+      return devAtualizado;
+    });
     setDevelopments(updated);
-    const devAtualizado = updated.find((d) => d.id === id);
-    if (devAtualizado) dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
   };
 
   const deleteLot = (devId: string, key: string) => {
+    let devAtualizado: Empreendimento | null = null;
     const updated = developments.map((d) => {
       if (d.id !== devId) return d;
       const newLotesInfo = { ...(d.lotesInfo || {}) };
       delete newLotesInfo[key];
-      return { ...d, lotesInfo: newLotesInfo };
+      devAtualizado = recalcularEstatisticasEmpreendimento({ ...d, lotesInfo: newLotesInfo } as Empreendimento, sales);
+      return devAtualizado;
     });
     setDevelopments(updated);
-    const devAtualizado = updated.find((d) => d.id === devId);
-    if (devAtualizado) dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
@@ -11475,6 +11639,45 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     const venda = sales.find((s) => s.id === id);
     if (!venda) return;
 
+    const dev = developments.find((d) => d.id === venda.empreendimentoId);
+    const lotInfoKey = venda.quadra && venda.numeroLote ? getLotInfoKey(venda.quadra, venda.numeroLote) : "";
+    const lotInfo = lotInfoKey ? (dev?.lotesInfo || {})[lotInfoKey] : null;
+    const contratoComLoteVendido = !!(
+      dev &&
+      venda.quadra &&
+      venda.numeroLote &&
+      (lotInfo?.status === "vendido" || findVendaAtivaDoLote(sales, dev.id, venda.quadra, venda.numeroLote))
+    );
+
+    let liberarLote = false;
+    if (contratoComLoteVendido) {
+      const continuar = window.confirm(
+        `Este contrato está vinculado a um lote vendido.\n\n` +
+        `Cliente: ${venda.clienteNome || "Cliente não informado"}\n` +
+        `Empreendimento: ${venda.empreendimentoNome || dev?.nome || "Não informado"}\n` +
+        `Quadra: ${venda.quadra}\n` +
+        `Lote: ${venda.numeroLote}\n\n` +
+        `Deseja continuar?`,
+      );
+      if (!continuar) return;
+
+      liberarLote = window.confirm(
+        `Escolha a ação para o lote ${venda.quadra}-${venda.numeroLote}:\n\n` +
+        `OK = Excluir contrato e liberar lote, mantendo histórico.\n` +
+        `Cancelar = Excluir apenas o contrato e manter lote vendido.`,
+      );
+    }
+
+    const updated = sales.filter((s) => s.id !== id);
+
+    if (liberarLote && dev && venda.quadra && venda.numeroLote) {
+      updateLoteStatus(dev.id, venda.quadra, venda.numeroLote, "disponivel", {
+        venda,
+        origem: "exclusao_contrato",
+        vendasReferencia: updated,
+      });
+    }
+
     // Mover para lixeira em vez de excluir permanentemente
     const agora = new Date();
     const expiresAt = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
@@ -11487,7 +11690,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     setVendasExcluidas(novaLixeira);
     saveLixeira(novaLixeira);
 
-    const updated = sales.filter((s) => s.id !== id);
     setSales(updated);
     dbService.deleteVendaById(id).catch((e) => {
       console.error('Erro ao excluir venda:', e);
