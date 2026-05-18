@@ -1,3 +1,22 @@
+export type Section =
+  | "dashboard"
+  | "vendas"
+  | "empreendimentos"
+  | "proprietarios"
+  | "contratos"
+  | "clientes"
+  | "aniversarios"
+  | "calculadora"
+  | "config"
+  | "usuarios"
+  | "historico";
+
+export interface VendaExcluida {
+  venda: Venda;
+  dataExclusao: string; // ISO string
+  expiresAt: string;    // ISO string (dataExclusao + 30 dias)
+}
+
 export interface Venda {
   id: string;
   clienteId: string;
