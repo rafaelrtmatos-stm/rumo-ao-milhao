@@ -867,28 +867,28 @@ const StatCard = ({
     className={`stat-card-gradient ${colorClass} ${onClick ? "cursor-pointer hover:scale-[1.03] hover:-translate-y-1 transition-transform duration-200" : ""}`}
     onClick={onClick}
   >
-    <div className="flex justify-between items-start">
-      <div>
-        <p className="text-xs font-bold uppercase tracking-widest opacity-80 mb-2">
+    <div className="flex justify-between items-start gap-1">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1.5">
           {title}
         </p>
-        <p className="text-2xl sm:text-4xl font-display font-bold tracking-tight">
+        <p className="text-base sm:text-2xl lg:text-3xl font-display font-bold tracking-tight break-all leading-tight">
           {value}
         </p>
         {subtitle && (
-          <p className="text-[10px] opacity-70 mt-1 font-semibold">{subtitle}</p>
+          <p className="text-[9px] opacity-70 mt-1 font-semibold">{subtitle}</p>
         )}
       </div>
-      <div className="p-3 bg-white/20 rounded-2xl backdrop-blur-md">
-        <Icon size={24} className="stroke-[2.5]" />
+      <div className="p-2 sm:p-3 bg-white/20 rounded-xl sm:rounded-2xl backdrop-blur-md shrink-0">
+        <Icon size={20} className="stroke-[2.5]" />
       </div>
     </div>
-    <div className="absolute -right-6 -bottom-6 opacity-10">
-      <Icon size={120} />
+    <div className="absolute -right-4 -bottom-4 opacity-10">
+      <Icon size={80} />
     </div>
     {onClick && (
-      <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mt-3 flex items-center gap-1">
-        Clique para ver <span className="text-base leading-none">›</span>
+      <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mt-2 flex items-center gap-1">
+        Ver <span className="text-base leading-none">›</span>
       </p>
     )}
   </div>
@@ -965,7 +965,7 @@ const DashboardSection = ({
   }));
 
   return (
-    <div className="space-y-5 sm:space-y-8">
+    <div className="space-y-4 sm:space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
         <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
           <LayoutDashboard className="text-primary-main" />
@@ -1013,90 +1013,81 @@ const DashboardSection = ({
         />
       </div>
 
-      {/* Indicadores de tipo de venda — 3 colunas em telas médias, 1 no celular pequeno */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
+      {/* Indicadores de tipo de venda */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-6">
         {/* À Vista */}
         <div className="card-premium flex flex-col gap-2">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-2 bg-emerald-100 rounded-xl">
-              <Banknote size={18} className="text-emerald-700" />
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-emerald-100 rounded-lg sm:rounded-xl">
+              <Banknote size={14} className="text-emerald-700 sm:hidden" />
+              <Banknote size={18} className="text-emerald-700 hidden sm:block" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">À Vista</span>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">À Vista</span>
           </div>
-          <div className="flex items-end justify-between gap-2">
-            <div>
-              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
-                {vendasAvista.length}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm sm:text-base font-display font-bold text-emerald-700 leading-none">
-                {fmtBRL(totalAvistaValor)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {vendasAvista.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-emerald-700 leading-none mt-1 break-all">
+              {fmtBRL(totalAvistaValor)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
           </div>
         </div>
 
         {/* Parcelado */}
         <div className="card-premium flex flex-col gap-2">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-2 bg-blue-100 rounded-xl">
-              <CreditCard size={18} className="text-blue-700" />
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg sm:rounded-xl">
+              <CreditCard size={14} className="text-blue-700 sm:hidden" />
+              <CreditCard size={18} className="text-blue-700 hidden sm:block" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Parcelado</span>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Parcelado</span>
           </div>
-          <div className="flex items-end justify-between gap-2">
-            <div>
-              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
-                {vendasParceladas.length}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm sm:text-base font-display font-bold text-blue-700 leading-none">
-                {fmtBRL(totalParceladoValor)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {vendasParceladas.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-blue-700 leading-none mt-1 break-all">
+              {fmtBRL(totalParceladoValor)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
           </div>
         </div>
 
         {/* Total Geral */}
         <div className="card-premium flex flex-col gap-2 border-primary-main/20">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="p-2 bg-primary-main/10 rounded-xl">
-              <Layers size={18} className="text-primary-main" />
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-primary-main/10 rounded-lg sm:rounded-xl">
+              <Layers size={14} className="text-primary-main sm:hidden" />
+              <Layers size={18} className="text-primary-main hidden sm:block" />
             </div>
-            <span className="text-xs font-bold uppercase tracking-widest text-slate-500">Total Geral</span>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Total</span>
           </div>
-          <div className="flex items-end justify-between gap-2">
-            <div>
-              <p className="text-2xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
-                {sales.length}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">unidades</p>
-            </div>
-            <div className="text-right">
-              <p className="text-sm sm:text-base font-display font-bold text-primary-main leading-none">
-                {fmtBRL(totalRevenue)}
-              </p>
-              <p className="text-[10px] text-slate-400 font-semibold mt-1">faturado</p>
-            </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {sales.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-primary-main leading-none mt-1 break-all">
+              {fmtBRL(totalRevenue)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
           </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-8">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-8">
         <div className="card-premium">
-          <div className="flex items-center gap-2 mb-4 sm:mb-8">
-            <BarChart3 size={18} className="text-primary-main" />
-            <h4 className="font-display font-bold text-slate-800">
-              Tendência de Vendas (7 dias)
+          <div className="flex items-center gap-2 mb-3 sm:mb-6">
+            <BarChart3 size={16} className="text-primary-main" />
+            <h4 className="font-display font-bold text-slate-800 text-sm sm:text-base">
+              Vendas (7 dias)
             </h4>
           </div>
-          <div className="h-64 w-full">
+          <div className="h-48 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={salesData}
@@ -1140,13 +1131,13 @@ const DashboardSection = ({
         </div>
 
         <div className="card-premium">
-          <div className="flex items-center gap-2 mb-4 sm:mb-8">
-            <PieChartIcon size={18} className="text-primary-main" />
-            <h4 className="font-display font-bold text-slate-800">
+          <div className="flex items-center gap-2 mb-3 sm:mb-6">
+            <PieChartIcon size={16} className="text-primary-main" />
+            <h4 className="font-display font-bold text-slate-800 text-sm sm:text-base">
               Ocupação por Loteamento
             </h4>
           </div>
-          <div className="h-64 w-full">
+          <div className="h-48 sm:h-64 w-full">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart
                 data={occupancyData}
@@ -7341,7 +7332,7 @@ VENDEDOR: ${venda.vendedor}`;
                     Com carimbo PAGO
                   </button>
                 </div>
-                {/* Botões da visualização final: PDF + DOCX + Imprimir + Editar + OK */}
+                {/* Botões da visualização final: DOCX + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -7349,15 +7340,6 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     <ChevronLeft size={17} />
                     Voltar
-                  </button>
-                  {/* PDF — gerado via DOCX → CloudConvert → PDF (fiel ao contrato) */}
-                  <button
-                    onClick={handleDownloadPdfContrato}
-                    disabled={downloadingDocx || downloadingPdf}
-                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar PDF do contrato (gerado a partir do DOCX)"
-                  >
-                    {downloadingPdf ? "Gerando PDF..." : <><FileDown size={17} /> PDF</>}
                   </button>
                   {/* DOCX */}
                   <button
@@ -7367,39 +7349,6 @@ VENDEDOR: ${venda.vendedor}`;
                     title="Baixar DOCX do contrato"
                   >
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
-                  </button>
-                  {/* Imprimir */}
-                  <button
-                    onClick={() => {
-                      const snap = selectedVenda?.contratoSnapshot;
-                      const vAtivo2 = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
-                      const xAtivo2 = snap?.extra ?? gerarExtra;
-                      const eAtivo2 = snap?.empreendimento ?? gerarEmp;
-                      const clienteImp = clients.find((c) => c.id === selectedVenda?.clienteId);
-                      if (!selectedVenda || !clienteImp) { alert("Dados do contrato incompletos para impressão."); return; }
-                      if (!vAtivo2.nome?.trim()) { alert("Informe o nome do vendedor."); return; }
-                      const isAv = selectedVenda.quantidadeParcelas === 0 ||
-                        (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
-                      const html = gerarContratoHTML({
-                        isAvista: isAv,
-                        vendedor: vAtivo2,
-                        cliente: clienteImp,
-                        empNome: eAtivo2.nome || selectedVenda.empreendimentoNome || "",
-                        empCom: eAtivo2.comunidade || xAtivo2.comunidade || "",
-                        empCidade: eAtivo2.cidade || "Santarém",
-                        empEstado: eAtivo2.estado || "PA",
-                        venda: { ...selectedVenda, rua: xAtivo2.rua || selectedVenda.rua || "", medidaFrente: xAtivo2.medidaFrente, medidaLateralDir: xAtivo2.medidaLateralDir, medidaLateralEsq: xAtivo2.medidaLateralEsq, medidaFundos: xAtivo2.medidaFundos, areaTotal: xAtivo2.areaTotal },
-                        xAtivo: xAtivo2,
-                        comCarimbo,
-                      });
-                      const w = window.open("", "_blank", "width=960,height=850");
-                      if (w) { w.document.write(html); w.document.close(); w.focus(); setTimeout(() => { w.print(); }, 600); }
-                      else { alert("Pop-up bloqueado. Permita pop-ups para este site e tente novamente."); }
-                    }}
-                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
-                    title="Imprimir contrato"
-                  >
-                    <Printer size={17} /> Imprimir
                   </button>
                   {/* Editar venda */}
                   <button
