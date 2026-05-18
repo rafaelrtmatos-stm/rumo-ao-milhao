@@ -3675,6 +3675,26 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
     setSaleData(updatedData);
   };
 
+
+  const normalizarQuadra = (valor?: string) => String(valor || "").trim().toUpperCase();
+  const normalizarLote = (valor?: string) => String(valor || "").trim();
+  const loteKey = (quadra?: string, lote?: string) => `${normalizarQuadra(quadra)}-${normalizarLote(lote)}`.toUpperCase();
+
+  const garantirLoteNoEmpreendimento = (): boolean => {
+    const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+    const quadra = normalizarQuadra(saleData.quadra);
+    const lote = normalizarLote(saleData.numeroLote);
+    if (!dev || !quadra || !lote) return true;
+
+    const key = loteKey(quadra, lote);
+    const existeLote = !!dev.lotesInfo?.[key];
+    if (existeLote) return true;
+
+    return window.confirm(
+      "Este lote/quadra não existe no empreendimento. Deseja adicionar automaticamente ao empreendimento e vincular a esta venda?"
+    );
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!clientData.nome || !saleData.empreendimentoId) {
@@ -3698,6 +3718,7 @@ VENDEDOR: ${lastSavedVenda.vendedor}`;
       return;
     }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+    if (!garantirLoteNoEmpreendimento()) return;
 
     if (editingEntry && onUpdateVendaFull) {
       const updatedCliente: Cliente = {
@@ -10841,14 +10862,47 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
     const updatedDevs = developments.map((d) => {
       if (d.id === newSale.empreendimentoId) {
-        const lotInfoKey =
-          `${newSale.quadra}-${newSale.numeroLote}`.toUpperCase();
+        const quadraNormalizada = String(newSale.quadra || "").trim().toUpperCase();
+        const loteNormalizado = String(newSale.numeroLote || "").trim();
+        const lotInfoKey = `${quadraNormalizada}-${loteNormalizado}`.toUpperCase();
+        const lotesInfoAnterior = d.lotesInfo || {};
+        const loteJaMapeado = !!lotesInfoAnterior[lotInfoKey];
+        const jaVendido = lotesInfoAnterior[lotInfoKey]?.status === "vendido" || sales.some((s) =>
+          s.id !== newSale.id &&
+          s.empreendimentoId === newSale.empreendimentoId &&
+          String(s.quadra || "").trim().toUpperCase() === quadraNormalizada &&
+          String(s.numeroLote || "").trim() === loteNormalizado
+        );
+
+        const quadrasAtuais = (d.quadras || "").split(",").map((q) => q.trim()).filter(Boolean);
+        const quadraExiste = quadrasAtuais.some((q) => q.toUpperCase() === quadraNormalizada);
+        const lotesPorQuadraAtual: any = { ...(d.lotesPorQuadra || {}) };
+        const entradaQuadra = lotesPorQuadraAtual[quadraNormalizada];
+        if (Array.isArray(entradaQuadra)) {
+          if (!entradaQuadra.map(String).includes(loteNormalizado)) lotesPorQuadraAtual[quadraNormalizada] = [...entradaQuadra, loteNormalizado];
+        } else if (entradaQuadra && Array.isArray(entradaQuadra.lotes)) {
+          if (!entradaQuadra.lotes.map(String).includes(loteNormalizado)) lotesPorQuadraAtual[quadraNormalizada] = { ...entradaQuadra, lotes: [...entradaQuadra.lotes, loteNormalizado] };
+        } else if (!loteJaMapeado) {
+          lotesPorQuadraAtual[quadraNormalizada] = [loteNormalizado];
+        }
+
         return {
           ...d,
-          lotesVendidos: (d.lotesVendidos || 0) + 1,
+          quadras: quadraExiste ? d.quadras : [...quadrasAtuais, quadraNormalizada].join(", "),
+          totalLotes: loteJaMapeado ? (d.totalLotes || 0) : (d.totalLotes || 0) + 1,
+          lotesVendidos: jaVendido ? (d.lotesVendidos || 0) : (d.lotesVendidos || 0) + 1,
+          lotesPorQuadra: lotesPorQuadraAtual,
           lotesInfo: {
-            ...(d.lotesInfo || {}),
-            [lotInfoKey]: { rua: newSale.rua },
+            ...lotesInfoAnterior,
+            [lotInfoKey]: {
+              ...(lotesInfoAnterior[lotInfoKey] || {}),
+              rua: newSale.rua || lotesInfoAnterior[lotInfoKey]?.rua || "",
+              status: "vendido",
+              vendaId: newSale.id,
+              clienteId: newSale.clienteId,
+              clienteNome: newSale.clienteNome,
+              origem: loteJaMapeado ? lotesInfoAnterior[lotInfoKey]?.origem : "contrato/venda",
+            },
           },
         };
       }
