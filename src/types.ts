@@ -66,3 +66,88 @@ export interface Venda {
   areaTotal?: string;
   comprador2?: any;
 }
+
+
+export interface Cliente {
+  id: string;
+  nome: string;
+  cpf?: string;
+  rg?: string;
+  dataNascimento?: string;
+  estadoCivil?: string;
+  profissao?: string;
+  endereco?: string;
+  numero?: string;
+  bairro?: string;
+  cidade?: string;
+  estado?: string;
+  cep?: string;
+  telefone1?: string;
+  telefone2?: string;
+  telefone3?: string;
+  genero?: string;
+  dataCadastro?: string;
+  [key: string]: any;
+}
+
+export interface MapaPontoHistorico {
+  clienteAnterior?: string;
+  vendaIdAnterior?: string;
+  dataVenda?: string;
+  dataLiberacao?: string;
+  status?: string;
+  observacao?: string;
+  [key: string]: any;
+}
+
+export interface MapaPonto {
+  id: string;
+  empreendimentoId: string;
+  quadra: string;
+  lote: string;
+  xPercent: number;
+  yPercent: number;
+  status: "disponivel" | "indisponivel";
+  observacao?: string;
+  vendaId?: string;
+  clienteNome?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  historico?: MapaPontoHistorico[];
+  [key: string]: any;
+}
+
+export interface Empreendimento {
+  id: string;
+  nome: string;
+  endereco?: string;
+  cidade?: string;
+  estado?: string;
+  totalLotes: number;
+  lotesVendidos: number;
+  lotesDisponiveis?: number;
+  lotesIndisponiveis?: number;
+  descricao?: string;
+  comunidade?: string;
+  quadras?: string;
+  ruas?: string;
+  ruasPorQuadra?: Record<string, string>;
+  ruasFaixas?: any[];
+  lotesPorQuadra?: Record<string, { inicio?: number; fim?: number; especificos?: string }>;
+  lotesInfo?: Record<string, any>;
+  mapaImagemUrl?: string;
+  mapaImagemBase64?: string;
+  mapaPontos?: MapaPonto[];
+  mapaHistorico?: any[];
+  [key: string]: any;
+}
+
+export interface Vendedor { id: string; nome: string; [key: string]: any; }
+export interface Proprietario { id: string; nome: string; cpf: string; genero?: string; estadoCivil?: string; [key: string]: any; }
+export interface Address { [key: string]: any; }
+export interface AppTheme { [key: string]: any; }
+export interface AppConfig {
+  vendedores?: Vendedor[];
+  proprietarios?: Proprietario[];
+  [key: string]: any;
+}
