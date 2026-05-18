@@ -252,33 +252,70 @@ function renderReciboAvistaHtmlPdf(params: any): string {
 
 async function criarPdfPorNavegador(html: string): Promise<Buffer> {
   const puppeteer = await import("puppeteer-core");
+
+  const gerarNoBrowser = async (browser: any) => {
+    try {
+      const page = await browser.newPage();
+      await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+      await page.setContent(html, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
+      await page.evaluateHandle("document.fonts.ready");
+      const pdf = await page.pdf({
+        format: "A4",
+        printBackground: true,
+        margin: { top: "0", right: "0", bottom: "0", left: "0" },
+        preferCSSPageSize: true,
+      });
+      return Buffer.from(pdf);
+    } finally {
+      await browser.close();
+    }
+  };
+
+  const browserlessWsUrl = process.env.BROWSERLESS_WS_URL || "";
+  if (browserlessWsUrl) {
+    const browser = await puppeteer.connect({ browserWSEndpoint: browserlessWsUrl });
+    return gerarNoBrowser(browser);
+  }
+
   let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_EXECUTABLE_PATH || "";
   let args: string[] = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"];
   let headless: any = true;
+  let defaultViewport: any = { width: 794, height: 1123, deviceScaleFactor: 1 };
+
   try {
     const chromium = await import("@sparticuz/chromium");
     const c: any = chromium.default || chromium;
+    if ("setGraphicsMode" in c) c.setGraphicsMode = false;
     executablePath = executablePath || await c.executablePath();
-    args = c.args || args;
+    args = Array.from(new Set([...(c.args || []), ...args, "--disable-extensions", "--hide-scrollbars", "--font-render-hinting=none"]));
     headless = c.headless ?? true;
+    defaultViewport = c.defaultViewport || defaultViewport;
   } catch {
     const candidates = ["/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"];
     executablePath = executablePath || candidates.find((x) => existsSync(x)) || "";
   }
-  if (!executablePath) throw new Error("Chromium não encontrado. No Vercel, instale @sparticuz/chromium e puppeteer-core.");
-  const browser = await puppeteer.launch({ executablePath, args, headless });
+
+  if (!executablePath) {
+    throw new Error("Chromium não encontrado. No Vercel, instale @sparticuz/chromium e puppeteer-core ou configure BROWSERLESS_WS_URL.");
+  }
+
   try {
-    const page = await browser.newPage();
-    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
-    await page.setContent(html, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
-    await page.evaluateHandle("document.fonts.ready");
-    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "0", right: "0", bottom: "0", left: "0" }, preferCSSPageSize: true });
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close();
+    const browser = await puppeteer.launch({
+      executablePath,
+      args,
+      headless,
+      defaultViewport,
+      ignoreHTTPSErrors: true,
+    });
+    return gerarNoBrowser(browser);
+  } catch (error: any) {
+    const msg = String(error?.message || error || "");
+    if (msg.includes("libnss3") || msg.includes("libnspr4") || msg.includes("Failed to launch")) {
+      throw new Error(`Erro ao iniciar Chromium no servidor. Atualize @sparticuz/chromium/puppeteer-core no Shell e redeploy. Detalhe: ${msg}`);
+    }
+    throw error;
   }
 }
-
 
 function safeParseJson(text: string | undefined | null): any {
   if (!text) return {};
