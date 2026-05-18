@@ -5,9 +5,8 @@ import pg from "pg";
 import { eq, and, ne } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import jwt from "jsonwebtoken";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
-import fs from "fs/promises";
+import { join } from "path";
+import { existsSync } from "fs";
 import { db } from "../server/db.js";
 import {
   empreendimentos,
@@ -18,8 +17,6 @@ import {
 import { gerarContratoParceladoPadrao } from "../server/contratoParceladoPadrao.js";
 import { gerarReciboAVistaPadrao } from "../server/reciboAVistaPadrao.js";
 import { localUsersService } from "../server/localUsersService.js";
-import chromium from "@sparticuz/chromium";
-import puppeteer from "puppeteer-core";
 
 const app = express();
 app.use(express.json({ limit: "50mb" }));
@@ -117,6 +114,172 @@ const isAdminUser: RequestHandler = async (req: any, res, next) => {
   }
 };
 
+
+// --- HTML/PDF helpers: renderizacao real via Puppeteer/Chromium ---
+function escapeHtml(value: any): string {
+  return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function brl(value: any): string {
+  const n = Number(value) || 0;
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function dataExtensoPdf(value: any): string {
+  const d = value ? new Date(String(value).split("T")[0] + "T12:00:00") : new Date();
+  const meses = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
+  return `${d.getDate()} de ${meses[d.getMonth()]} de ${d.getFullYear()}`;
+}
+
+function normalizarGenero(value: any): "M" | "F" {
+  return String(value || "").toUpperCase().startsWith("F") ? "F" : "M";
+}
+
+function genderizeEstadoCivilPdf(raw: any, generoRaw: any): string {
+  const genero = normalizarGenero(generoRaw);
+  const base = String(raw || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[()]/g, "").replace(/\ba\b/g, "").replace(/_/g, " ").trim();
+  const masc: Record<string, string> = { solteiro: "solteiro", casado: "casado", divorciado: "divorciado", viuvo: "viúvo", separado: "separado", "uniao estavel": "união estável" };
+  const fem: Record<string, string> = { solteiro: "solteira", casado: "casada", divorciado: "divorciada", viuvo: "viúva", separado: "separada", "uniao estavel": "união estável" };
+  return (genero === "F" ? fem : masc)[base] || String(raw || "").toLowerCase();
+}
+
+function generoPessoaPdf(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
+  const genero = normalizarGenero(pessoa?.genero);
+  const fem = genero === "F";
+  const papel = papelBase === "VENDEDOR" ? (fem ? "VENDEDORA" : "VENDEDOR") : (fem ? "COMPRADORA" : "COMPRADOR");
+  return {
+    genero,
+    tratamento: fem ? "Sra." : "Sr.",
+    artigo: fem ? "a" : "o",
+    nacionalidade: fem ? "brasileira" : "brasileiro",
+    estadoCivil: genderizeEstadoCivilPdf(pessoa?.estadoCivil, genero),
+    portador: fem ? "portadora" : "portador",
+    domiciliado: fem ? "domiciliada" : "domiciliado",
+    chamado: fem ? "chamada" : "chamado",
+    papel,
+    aoA: fem ? "à" : "ao",
+  };
+}
+
+function enderecoPessoaPdf(pessoa: any): string {
+  return [pessoa?.endereco, pessoa?.numero ? `nº ${pessoa.numero}` : "", pessoa?.bairro ? `Bairro ${pessoa.bairro}` : "", [pessoa?.cidade, pessoa?.estado].filter(Boolean).join(" - "), pessoa?.cep ? `CEP ${pessoa.cep}` : ""].filter(Boolean).join(", ");
+}
+
+function dimensoesLotePdf(venda: any): string {
+  return `${venda?.medidaFrente || "___"} metros de frente, ${venda?.medidaLateralDir || "___"} metros pela lateral direita, ${venda?.medidaLateralEsq || "___"} metros pela lateral esquerda e ${venda?.medidaFundos || "___"} metros de fundos, com área total de ${venda?.areaTotal || "___"} m²`;
+}
+
+function primeiraParcelaPdf(dateStr: any): string {
+  if (!dateStr) return "___/___/______";
+  const d = new Date(String(dateStr).split("T")[0] + "T12:00:00");
+  d.setMonth(d.getMonth() + 1);
+  return d.toLocaleDateString("pt-BR");
+}
+
+function contratoBaseCssPdf(): string {
+  return `
+    @page { size: A4; margin: 0; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    body { font-family: "Times New Roman", serif; color: #000; }
+    .page { width: 210mm; min-height: 297mm; padding: 18mm 20mm; margin: 0 auto; background: #fff; page-break-after: always; }
+    .page:last-child { page-break-after: auto; }
+    h1 { text-align: center; font-size: 14pt; margin: 0 0 12mm; text-transform: uppercase; }
+    p { font-size: 12pt; line-height: 1.42; margin: 0 0 4mm; text-align: justify; }
+    .valor { text-align: center; font-weight: bold; margin-bottom: 7mm; }
+    .clausula { font-weight: bold; text-transform: uppercase; margin-top: 5mm; }
+    .assinaturas { display: grid; grid-template-columns: 1fr 1fr; gap: 18mm; margin-top: 24mm; break-inside: avoid; page-break-inside: avoid; }
+    .assinatura { text-align: center; font-size: 11pt; border-top: 1px solid #000; padding-top: 2mm; }
+    .logo { width: 34mm; height: auto; object-fit: contain; }
+    .avoid-break { break-inside: avoid; page-break-inside: avoid; }
+  `;
+}
+
+function wrapContratoHtmlPdf(titulo: string, body: string): string {
+  return `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(titulo)}</title><style>${contratoBaseCssPdf()}</style></head><body><main class="page">${body}</main></body></html>`;
+}
+
+function renderContratoParceladoHtmlPdf(params: any): string {
+  const { vendedor, cliente, empreendimento, venda } = params;
+  const gv = generoPessoaPdf(vendedor, "VENDEDOR");
+  const gc = generoPessoaPdf(cliente, "COMPRADOR");
+  const valorTotal = Number(venda?.valorLote) || 0;
+  const entrada = Number(venda?.valorEntrada) || 0;
+  const saldo = Math.max(0, valorTotal - entrada);
+  const qtd = Number(venda?.quantidadeParcelas) || 0;
+  const valorParcela = Number(venda?.valorParcela) || 0;
+  const cidadeForum = empreendimento?.cidade || vendedor?.cidade || "Santarém";
+  const estadoForum = empreendimento?.estado || vendedor?.estado || "PA";
+  const phones = [cliente?.telefone1, cliente?.telefone2].filter(Boolean).join(" / ");
+  const body = `
+    <h1>Contrato Particular de Compra e Venda de Imóvel</h1>
+    <p class="valor">R$ ${brl(valorTotal)}</p>
+    <p>Pelo presente instrumento particular de compra e venda de imóvel, de um lado ${gv.artigo} ${gv.tratamento} <strong>${escapeHtml(String(vendedor?.nome || "").toUpperCase())}</strong>, ${gv.nacionalidade}, ${gv.estadoCivil}, ${gv.portador} da carteira de identidade nº ${escapeHtml(vendedor?.rg || "___")} e do CPF nº ${escapeHtml(vendedor?.cpf || "___")}, residente e ${gv.domiciliado} em ${escapeHtml(enderecoPessoaPdf(vendedor))}, ora em diante ${gv.chamado} simplesmente ${gv.papel}; e de outro lado ${gc.artigo} ${gc.tratamento} <strong>${escapeHtml(String(cliente?.nome || "").toUpperCase())}</strong>, ${gc.nacionalidade}, ${gc.estadoCivil}, ${gc.portador} da carteira de identidade nº ${escapeHtml(cliente?.rg || "___")} e do CPF nº ${escapeHtml(cliente?.cpf || "___")}${phones ? `, telefone ${escapeHtml(phones)}` : ""}, residente e ${gc.domiciliado} em ${escapeHtml(enderecoPessoaPdf(cliente))}, ora em diante ${gc.chamado} simplesmente ${gc.papel}, têm entre si justo e contratado o seguinte:</p>
+    <p class="clausula">Cláusula Primeira - Do Imóvel</p>
+    <p>${gv.artigo.toUpperCase()} ${gv.papel} vende ${gc.aoA} ${gc.papel} o Lote ${escapeHtml(venda?.numeroLote || "___")} da Quadra ${escapeHtml(venda?.quadra || "___")}, situado no empreendimento ${escapeHtml(empreendimento?.nome || "___")}, ${escapeHtml(empreendimento?.comunidade || "")}, ${escapeHtml(empreendimento?.cidade || "")}/${escapeHtml(empreendimento?.estado || "")}, com as seguintes dimensões: ${escapeHtml(dimensoesLotePdf(venda))}.</p>
+    <p class="clausula">Cláusula Segunda - Do Preço e Pagamento</p>
+    <p>O valor total da venda é de R$ ${brl(valorTotal)}, que ${gc.artigo} ${gc.papel} pagará ${gv.aoA} ${gv.papel} da seguinte forma: entrada de R$ ${brl(entrada)} e saldo de R$ ${brl(saldo)} em ${qtd} parcela(s) de R$ ${brl(valorParcela)}, com vencimento no dia ${escapeHtml(venda?.dataVencimento || "___")} de cada mês, vencendo a primeira em ${escapeHtml(primeiraParcelaPdf(venda?.dataVenda))}.</p>
+    <p class="clausula">Cláusula Terceira - Da Posse e Quitação</p>
+    <p>A posse definitiva será transferida ${gc.aoA} ${gc.papel} após a quitação integral. Após o pagamento total, ${gv.artigo} ${gv.papel} dará ${gc.aoA} ${gc.papel} plena, geral e irrevogável quitação.</p>
+    <p>${gc.artigo.toUpperCase()} ${gc.papel} declara conhecer o imóvel e aceitá-lo nas condições em que se encontra.</p>
+    <p style="text-align:center;margin-top:10mm;">${escapeHtml(cidadeForum)}-${escapeHtml(estadoForum)}, ${escapeHtml(dataExtensoPdf(venda?.dataVenda))}.</p>
+    <div class="assinaturas"><div class="assinatura">${gv.papel} - ${escapeHtml(String(vendedor?.nome || "").toUpperCase())}</div><div class="assinatura">${gc.papel} - ${escapeHtml(String(cliente?.nome || "").toUpperCase())}</div></div>
+  `;
+  return wrapContratoHtmlPdf("Contrato Parcelado", body);
+}
+
+function renderReciboAvistaHtmlPdf(params: any): string {
+  const { vendedor, cliente, empreendimento, venda } = params;
+  const gv = generoPessoaPdf(vendedor, "VENDEDOR");
+  const gc = generoPessoaPdf(cliente, "COMPRADOR");
+  const valorTotal = Number(venda?.valorLote) || 0;
+  const cidadeForum = empreendimento?.cidade || vendedor?.cidade || "Santarém";
+  const estadoForum = empreendimento?.estado || vendedor?.estado || "PA";
+  const body = `
+    <h1>Contrato Particular de Compra e Venda de Imóvel à Vista</h1>
+    <p class="valor">R$ ${brl(valorTotal)}</p>
+    <p>Pelo presente instrumento particular de compra e venda de imóvel, de um lado ${gv.artigo} ${gv.tratamento} <strong>${escapeHtml(String(vendedor?.nome || "").toUpperCase())}</strong>, ${gv.nacionalidade}, ${gv.estadoCivil}, ${gv.portador} da carteira de identidade nº ${escapeHtml(vendedor?.rg || "___")} e do CPF nº ${escapeHtml(vendedor?.cpf || "___")}, residente e ${gv.domiciliado} em ${escapeHtml(enderecoPessoaPdf(vendedor))}, ora em diante ${gv.chamado} simplesmente ${gv.papel}; e de outro lado ${gc.artigo} ${gc.tratamento} <strong>${escapeHtml(String(cliente?.nome || "").toUpperCase())}</strong>, ${gc.nacionalidade}, ${gc.estadoCivil}, ${gc.portador} da carteira de identidade nº ${escapeHtml(cliente?.rg || "___")} e do CPF nº ${escapeHtml(cliente?.cpf || "___")}, residente e ${gc.domiciliado} em ${escapeHtml(enderecoPessoaPdf(cliente))}, ora em diante ${gc.chamado} simplesmente ${gc.papel}, têm entre si justo e contratado o seguinte:</p>
+    <p class="clausula">Do Imóvel</p>
+    <p>${gv.artigo.toUpperCase()} ${gv.papel} vende ${gc.aoA} ${gc.papel} o Lote ${escapeHtml(venda?.numeroLote || "___")} da Quadra ${escapeHtml(venda?.quadra || "___")}, situado no empreendimento ${escapeHtml(empreendimento?.nome || "___")}, ${escapeHtml(empreendimento?.cidade || "")}/${escapeHtml(empreendimento?.estado || "")}, com as seguintes dimensões: ${escapeHtml(dimensoesLotePdf(venda))}.</p>
+    <p class="clausula">Do Pagamento e Quitação</p>
+    <p>${gv.artigo.toUpperCase()} ${gv.papel} declara que ${gc.artigo} ${gc.papel} pagou a importância de R$ ${brl(valorTotal)}, referente à compra do imóvel descrito acima, e ${gv.artigo} ${gv.papel} recebeu o referido valor, dando ${gc.aoA} ${gc.papel} plena, geral e irrevogável quitação.</p>
+    <p>${gc.artigo.toUpperCase()} ${gc.papel} declara conhecer o imóvel e aceitá-lo nas condições em que se encontra.</p>
+    <p style="text-align:center;margin-top:10mm;">${escapeHtml(cidadeForum)}-${escapeHtml(estadoForum)}, ${escapeHtml(dataExtensoPdf(venda?.dataVenda))}.</p>
+    <div class="assinaturas"><div class="assinatura">${gv.papel} - ${escapeHtml(String(vendedor?.nome || "").toUpperCase())}</div><div class="assinatura">${gc.papel} - ${escapeHtml(String(cliente?.nome || "").toUpperCase())}</div></div>
+  `;
+  return wrapContratoHtmlPdf("Contrato à Vista", body);
+}
+
+async function criarPdfPorNavegador(html: string): Promise<Buffer> {
+  const puppeteer = await import("puppeteer-core");
+  let executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || process.env.CHROME_EXECUTABLE_PATH || "";
+  let args: string[] = ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"];
+  let headless: any = true;
+  try {
+    const chromium = await import("@sparticuz/chromium");
+    const c: any = chromium.default || chromium;
+    executablePath = executablePath || await c.executablePath();
+    args = c.args || args;
+    headless = c.headless ?? true;
+  } catch {
+    const candidates = ["/usr/bin/google-chrome-stable", "/usr/bin/google-chrome", "/usr/bin/chromium-browser", "/usr/bin/chromium"];
+    executablePath = executablePath || candidates.find((x) => existsSync(x)) || "";
+  }
+  if (!executablePath) throw new Error("Chromium não encontrado. No Vercel, instale @sparticuz/chromium e puppeteer-core.");
+  const browser = await puppeteer.launch({ executablePath, args, headless });
+  try {
+    const page = await browser.newPage();
+    await page.setViewport({ width: 794, height: 1123, deviceScaleFactor: 1 });
+    await page.setContent(html, { waitUntil: ["load", "domcontentloaded", "networkidle0"] });
+    await page.evaluateHandle("document.fonts.ready");
+    const pdf = await page.pdf({ format: "A4", printBackground: true, margin: { top: "0", right: "0", bottom: "0", left: "0" }, preferCSSPageSize: true });
+    return Buffer.from(pdf);
+  } finally {
+    await browser.close();
+  }
+}
+
+
 function safeParseJson(text: string | undefined | null): any {
   if (!text) return {};
   try {
@@ -129,143 +292,6 @@ function safeParseJson(text: string | undefined | null): any {
       } catch {}
     }
     return {};
-  }
-}
-
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-type PdfTemplateKind = "parcelado" | "avista";
-
-function escapeHtml(value: any): string {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
-}
-
-function brl(value: any): string {
-  return Number(value || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function dataExtenso(value?: string): string {
-  const base = value ? new Date(String(value).split("T")[0] + "T12:00:00") : new Date();
-  const meses = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
-  return `${base.getDate()} de ${meses[base.getMonth()]} de ${base.getFullYear()}`;
-}
-
-function fillHtmlTemplate(html: string, data: any, kind: PdfTemplateKind): string {
-  const { vendedor = {}, cliente = {}, empreendimento = {}, venda = {} } = data;
-  const dataContrato = dataExtenso(venda.dataVenda);
-  const [dia, , mesExtenso, , ano] = dataContrato.split(" ");
-  const mapa: Record<string, any> = {
-    "[VENDEDOR]": vendedor.nome || "",
-    "[VENDEDOR_TERMO]": vendedor.nome || "",
-    "[COMPRADOR]": cliente.nome || "",
-    "[COMPRADOR_TERMO]": cliente.nome || "",
-    "[NACIONALIDADE]": vendedor.nacionalidade || "brasileiro",
-    "[NACIONALIDADE1]": cliente.nacionalidade || "brasileiro",
-    "[ESTADO_CIVIL]": vendedor.estadoCivil || "",
-    "[ESTADO_CIVIL1]": cliente.estadoCivil || "",
-    "[RG]": vendedor.rg || "",
-    "[RG1]": cliente.rg || "",
-    "[CPF]": vendedor.cpf || "",
-    "[CPF1]": cliente.cpf || "",
-    "[RUA]": vendedor.endereco || "",
-    "[RUA1]": cliente.endereco || "",
-    "[NUMERO]": vendedor.numero || "",
-    "[NUMERO1]": cliente.numero || "",
-    "[BAIRRO]": vendedor.bairro || "",
-    "[BAIRRO1]": cliente.bairro || "",
-    "[CIDADE]": vendedor.cidade || empreendimento.cidade || "",
-    "[CIDADE1]": cliente.cidade || "",
-    "[ESTADO]": vendedor.estado || empreendimento.estado || "",
-    "[ESTADO1]": cliente.estado || "",
-    "[CEP]": cliente.cep || "",
-    "[TELEFONE]": [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / "),
-    "[EMPREENDIMENTO]": empreendimento.nome || venda.empreendimentoNome || "",
-    "[LOTE]": venda.numeroLote || "",
-    "[QUADRA]": venda.quadra || "",
-    "[RUA_DO_LOTE]": venda.rua || "",
-    "[FRENTE]": venda.medidaFrente || "___",
-    "[LATERAL_DIREITA]": venda.medidaLateralDir || "___",
-    "[LATERAL_ESQUERDA]": venda.medidaLateralEsq || "___",
-    "[FUNDOS]": venda.medidaFundos || "___",
-    "[AREA_TOTAL]": venda.areaTotal || "___",
-    "[VALOR_TOTAL]": brl(venda.valorLote),
-    "[VALOR_ENTRADA]": brl(venda.valorEntrada),
-    "[VALOR_PARCELA]": brl(venda.valorParcela),
-    "[QUANTIDADE_PARCELAS]": venda.quantidadeParcelas || "",
-    "[FORMA_PAGAMENTO]": venda.formaPagamento || (kind === "avista" ? "À vista" : "Parcelado"),
-    "[DIA]": dia || "",
-    "[MES_EXTENSO]": mesExtenso || "",
-    "[ANO]": ano || "",
-    "[DATA]": dataContrato,
-    "[EMISSAO]": dataContrato,
-    "[EMISSAO1]": dataContrato,
-    "[QUANTTERRENO]": "01",
-    "[PORT]": "",
-    "[TRATVENDEDOR]": "",
-    "[GENEROC]": "",
-    "[GENEROC2]": "",
-    "[GENEROC4]": "",
-    "[GENEROV]": "",
-    "[GENEROV2]": "",
-  };
-
-  let out = html;
-  for (const [key, value] of Object.entries(mapa)) {
-    out = out.split(key).join(escapeHtml(value));
-  }
-
-  if (data.comCarimbo && kind === "avista") {
-    out = out.replace("</body>", `<div class="carimbo-pago">PAGO</div></body>`);
-  }
-
-  const printCss = `
-<style id="print-real-browser-pdf">
-  @page { size: A4; margin: 0; }
-  html, body { margin: 0 !important; padding: 0 !important; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  body { background: #fff !important; }
-  #page-container { position: static !important; left: 0 !important; top: 0 !important; margin: 0 !important; padding: 0 !important; background: #fff !important; overflow: visible !important; }
-  .pf, .page, .a4-page { width: 210mm !important; min-height: 297mm !important; margin: 0 !important; box-shadow: none !important; page-break-after: always; page-break-inside: avoid; overflow: hidden; }
-  img, svg, canvas { max-width: 100%; }
-  .logo, img.logo { width: 38mm; height: auto; object-fit: contain; }
-  .no-break, table, tr, .assin, .assin-item { break-inside: avoid; page-break-inside: avoid; }
-  .carimbo-pago { position: fixed; right: 22mm; bottom: 72mm; transform: rotate(-12deg); border: 3px solid #15803d; color: #15803d; font: 900 34pt Arial, sans-serif; padding: 4mm 8mm; opacity: .82; z-index: 20; pointer-events: none; }
-</style>`;
-  return out.includes("</head>") ? out.replace("</head>", `${printCss}</head>`) : `${printCss}${out}`;
-}
-
-async function renderHtmlTemplateToPdf(kind: PdfTemplateKind, payload: any): Promise<Buffer> {
-  const templateName = kind === "avista" ? "recibo_avista_template.html" : "contrato_template.html";
-  const templatePath = join(__dirname, "..", "attached_assets", templateName);
-  const rawHtml = await fs.readFile(templatePath, "utf8");
-  const html = fillHtmlTemplate(rawHtml, payload, kind);
-
-  const executablePath = process.env.PUPPETEER_EXECUTABLE_PATH || await chromium.executablePath();
-  const browser = await puppeteer.launch({
-    args: chromium.args,
-    defaultViewport: { width: 1240, height: 1754, deviceScaleFactor: 1 },
-    executablePath,
-    headless: chromium.headless,
-  });
-  try {
-    const page = await browser.newPage();
-    await page.setContent(html, { waitUntil: ["load", "networkidle0"] });
-    await page.evaluateHandle("document.fonts && document.fonts.ready");
-    const pdf = await page.pdf({
-      format: "A4",
-      printBackground: true,
-      margin: { top: "0mm", right: "0mm", bottom: "0mm", left: "0mm" },
-      preferCSSPageSize: true,
-    });
-    return Buffer.from(pdf);
-  } finally {
-    await browser.close();
   }
 }
 
@@ -786,18 +812,125 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: a
   }
 });
 
-// --- PDF do Contrato Parcelado (HTML → Puppeteer/Chromium → PDF) ---
+// --- Helper antigo mantido sem uso: DOCX Buffer → PDF via CloudConvert ---
+async function convertDocxToPdfViaCloudConvert(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  const apiKey = process.env.CLOUDCONVERT_API_KEY;
+  if (!apiKey) throw new Error("CLOUDCONVERT_API_KEY não configurada.");
+
+  // 1. Criar job de conversão
+  const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      tasks: {
+        "upload-docx": {
+          operation: "import/upload",
+        },
+        "convert-to-pdf": {
+          operation: "convert",
+          input: "upload-docx",
+          input_format: "docx",
+          output_format: "pdf",
+          engine: "libreoffice",
+        },
+        "export-pdf": {
+          operation: "export/url",
+          input: "convert-to-pdf",
+        },
+      },
+      tag: "contrato-pdf",
+    }),
+  });
+
+  if (!jobRes.ok) {
+    const errText = await jobRes.text();
+    throw new Error(`CloudConvert criar job falhou: ${errText}`);
+  }
+
+  const job = (await jobRes.json()) as any;
+
+  // 2. Encontrar a task de upload
+  const uploadTask = job.data.tasks.find((t: any) => t.name === "upload-docx");
+  if (!uploadTask?.result?.form) {
+    throw new Error("CloudConvert: task de upload não retornou formulário.");
+  }
+
+  const { url: uploadUrl, parameters: formParams } = uploadTask.result.form;
+
+  // 3. Fazer upload do DOCX via multipart/form-data
+  const formData = new FormData();
+  for (const [key, value] of Object.entries(formParams as Record<string, string>)) {
+    formData.append(key, value);
+  }
+  formData.append("file", new Blob([docxBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), filename);
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    body: formData,
+  });
+
+  if (!uploadRes.ok) {
+    const errText = await uploadRes.text();
+    throw new Error(`CloudConvert upload falhou: ${errText}`);
+  }
+
+  // 4. Aguardar conclusão do job (polling)
+  const jobId = job.data.id;
+  let pdfUrl: string | null = null;
+  const maxAttempts = 30;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await new Promise((r) => setTimeout(r, 2000));
+
+    const statusRes = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
+      headers: { "Authorization": `Bearer ${apiKey}` },
+    });
+
+    if (!statusRes.ok) continue;
+
+    const statusData = (await statusRes.json()) as any;
+    const tasks: any[] = statusData.data.tasks || [];
+
+    const exportTask = tasks.find((t: any) => t.name === "export-pdf");
+    if (exportTask?.status === "finished" && exportTask?.result?.files?.[0]?.url) {
+      pdfUrl = exportTask.result.files[0].url;
+      break;
+    }
+
+    const anyFailed = tasks.some((t: any) => t.status === "error");
+    if (anyFailed) {
+      const failedTask = tasks.find((t: any) => t.status === "error");
+      throw new Error(`CloudConvert erro na conversão: ${failedTask?.message || "Falha desconhecida"}`);
+    }
+  }
+
+  if (!pdfUrl) throw new Error("CloudConvert: timeout aguardando conversão.");
+
+  // 5. Baixar o PDF resultante
+  const pdfRes = await fetch(pdfUrl);
+  if (!pdfRes.ok) throw new Error("Falha ao baixar PDF do CloudConvert.");
+
+  const arrayBuffer = await pdfRes.arrayBuffer();
+  return Buffer.from(arrayBuffer);
+}
+
+// --- PDF do Contrato Parcelado (HTML A4 → Puppeteer/Chromium → PDF) ---
 app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda)
       return res.status(400).json({ error: "Dados incompletos para gerar o PDF." });
 
+    const html = renderContratoParceladoHtmlPdf({ vendedor, cliente, empreendimento, venda });
+    const pdfBuffer = await criarPdfPorNavegador(html);
+
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
     const pdfFilename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.pdf`;
 
-    const pdfBuffer = await renderHtmlTemplateToPdf("parcelado", { vendedor, cliente, empreendimento, venda });
     res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
     res.setHeader("Content-Type", "application/pdf");
     res.send(pdfBuffer);
@@ -806,18 +939,20 @@ app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any,
   }
 });
 
-// --- PDF do Contrato À Vista (HTML → Puppeteer/Chromium → PDF) ---
+// --- PDF do Contrato À Vista (HTML A4 → Puppeteer/Chromium → PDF) ---
 app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda)
       return res.status(400).json({ error: "Dados incompletos para gerar o PDF à vista." });
 
+    const html = renderReciboAvistaHtmlPdf({ vendedor, cliente, empreendimento, venda });
+    const pdfBuffer = await criarPdfPorNavegador(html);
+
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
     const pdfFilename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.pdf`;
 
-    const pdfBuffer = await renderHtmlTemplateToPdf("avista", { vendedor, cliente, empreendimento, venda, comCarimbo: req.body.comCarimbo });
     res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
     res.setHeader("Content-Type", "application/pdf");
     res.send(pdfBuffer);
@@ -825,6 +960,7 @@ app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, re
     res.status(500).json({ error: String(err?.message || err) });
   }
 });
+
 
 export default app;
 

@@ -993,10 +993,10 @@ const BottomNav = ({
   setSection: (s: Section) => void;
 }) => {
   const items = [
-    { id: "dashboard", label: "Início", icon: LayoutDashboard },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "contratos", label: "Contratos", icon: FileText },
     { id: "clientes", label: "Clientes", icon: Users },
-    { id: "aniversarios", label: "Niver", icon: Cake },
-    { id: "calculadora", label: "Simulador", icon: Calculator },
+    { id: "empreendimentos", label: "Mapa", icon: MapPin },
   ];
 
   return (
@@ -7694,7 +7694,7 @@ VENDEDOR: ${venda.vendedor}`;
                     Com carimbo PAGO
                   </button>
                 </div>
-                {/* Botões da visualização final: DOCX + Editar + OK */}
+                {/* Botões da visualização final: Voltar + PDF + DOCX + Imprimir + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -7702,15 +7702,6 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     <ChevronLeft size={17} />
                     Voltar
-                  </button>
-                  {/* DOCX */}
-                  <button
-                    onClick={handleDownloadDocx}
-                    disabled={downloadingDocx}
-                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar DOCX do contrato"
-                  >
-                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
                   <button
                     onClick={handleDownloadPdfContrato}
@@ -7720,7 +7711,22 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     {downloadingPdf ? "Gerando..." : <><FileDown size={17} /> PDF</>}
                   </button>
-                  {/* Editar venda */}
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx}
+                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar DOCX do contrato"
+                  >
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                    title="Imprimir contrato"
+                  >
+                    <Printer size={17} />
+                    Imprimir
+                  </button>
                   <button
                     onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
@@ -8851,19 +8857,37 @@ const ClientesSection = ({
                   />
                 </div>
                 <div>
-                  <label className="label">Estado Civil</label>
-                  <select className="input-field" value={editForm.estadoCivil || "solteiro"} onChange={(e) => setEditForm({ ...editForm, estadoCivil: e.target.value })}>
-                    {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => (
-                      <option key={o} value={o.toLowerCase()}>{o}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
                   <label className="label">Gênero</label>
-                  <select className="input-field" value={editForm.genero || "M"} onChange={(e) => setEditForm({ ...editForm, genero: e.target.value as "M" | "F" | "O" })}>
+                  <select
+                    className="input-field"
+                    value={editForm.genero || "M"}
+                    onChange={(e) => {
+                      const genero = e.target.value as "M" | "F" | "O";
+                      setEditForm({
+                        ...editForm,
+                        genero,
+                        estadoCivil: genderizeEstadoCivil(editForm.estadoCivil || "Solteiro", genero),
+                      });
+                    }}
+                  >
                     <option value="M">Masculino</option>
                     <option value="F">Feminino</option>
                     <option value="O">Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Estado Civil</label>
+                  <select
+                    className="input-field"
+                    value={genderizeEstadoCivil(editForm.estadoCivil || "Solteiro", editForm.genero || "M")}
+                    onChange={(e) => setEditForm({ ...editForm, estadoCivil: genderizeEstadoCivil(e.target.value, editForm.genero || "M") })}
+                  >
+                    {((editForm.genero || "M") === "F"
+                      ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"]
+                      : (editForm.genero || "M") === "O"
+                        ? ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"]
+                        : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]
+                    ).map((o) => <option key={o}>{o}</option>)}
                   </select>
                 </div>
               </div>
@@ -10146,7 +10170,7 @@ const ProprietariosSection = ({
 }) => {
   const proprietarios = config.proprietarios || [];
   const emptyProp: Omit<Proprietario, "id"> = {
-    nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
+    nome: "", genero: "M", nacionalidade: "brasileiro", estadoCivil: "Solteiro",
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "Santarém", estado: "PA", cep: "",
   };
   const [showForm, setShowForm] = useState(false);
@@ -10230,7 +10254,7 @@ const ProprietariosSection = ({
 
   const handleEdit = (p: Proprietario) => {
     setEditingId(p.id);
-    setForm({ nome: p.nome, nacionalidade: p.nacionalidade, estadoCivil: p.estadoCivil, rg: p.rg, cpf: p.cpf, endereco: p.endereco, numero: p.numero, bairro: p.bairro, cidade: p.cidade, estado: p.estado, cep: p.cep });
+    setForm({ nome: p.nome, genero: (p as any).genero || "M", nacionalidade: p.nacionalidade, estadoCivil: genderizeEstadoCivil(p.estadoCivil || "Solteiro", (p as any).genero || "M"), rg: p.rg, cpf: p.cpf, endereco: p.endereco, numero: p.numero, bairro: p.bairro, cidade: p.cidade, estado: p.estado, cep: p.cep } as any);
     setShowForm(true);
   };
 
@@ -10276,17 +10300,32 @@ const ProprietariosSection = ({
                   <input className="input-field" placeholder="Nome Completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
                 </div>
                 <div>
+                  <label className="label">Gênero / Tratamento *</label>
+                  <select
+                    className="input-field"
+                    value={(form as any).genero || "M"}
+                    onChange={(e) => {
+                      const genero = e.target.value as "M" | "F";
+                      setForm({
+                        ...form,
+                        genero,
+                        nacionalidade: genero === "F" ? "brasileira" : "brasileiro",
+                        estadoCivil: genderizeEstadoCivil(form.estadoCivil || "Solteiro", genero),
+                      } as any);
+                    }}
+                  >
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                  </select>
+                </div>
+                <div>
                   <label className="label">Nacionalidade</label>
                   <input className="input-field" value={form.nacionalidade} onChange={(e) => setForm({ ...form, nacionalidade: e.target.value })} />
                 </div>
                 <div>
                   <label className="label">Estado Civil</label>
-                  <select className="input-field" value={form.estadoCivil} onChange={(e) => setForm({ ...form, estadoCivil: e.target.value })}>
-                    <option value="solteiro">Solteiro(a)</option>
-                    <option value="casado">Casado(a)</option>
-                    <option value="divorciado">Divorciado(a)</option>
-                    <option value="viuvo">Viúvo(a)</option>
-                    <option value="uniao_estavel">União Estável</option>
+                  <select className="input-field" value={genderizeEstadoCivil(form.estadoCivil || "Solteiro", (form as any).genero || "M")} onChange={(e) => setForm({ ...form, estadoCivil: genderizeEstadoCivil(e.target.value, (form as any).genero || "M") })}>
+                    {(((form as any).genero || "M") === "F" ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"] : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]).map((o) => <option key={o}>{o}</option>)}
                   </select>
                 </div>
                 <div>
