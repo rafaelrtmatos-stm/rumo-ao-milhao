@@ -5116,6 +5116,7 @@ const ContratosSection = ({
     initialVenda || null,
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
+  const [comCarimbo, setComCarimbo] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -5289,6 +5290,7 @@ const ContratosSection = ({
           vendedor: vendedorAtivo,
           cliente,
           empreendimento: { nome: empAtivo.nome || desenvolvimento.nome, comunidade: empAtivo.comunidade || extraAtivo.comunidade, cidade: empAtivo.cidade || desenvolvimento.cidade, estado: empAtivo.estado || desenvolvimento.estado },
+          comCarimbo,
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
@@ -5367,6 +5369,7 @@ const ContratosSection = ({
           vendedor: vAtivo,
           cliente,
           empreendimento: { nome: eAtivo.nome || desenvolvimento.nome, comunidade: eAtivo.comunidade || xAtivo.comunidade, cidade: eAtivo.cidade || desenvolvimento.cidade, estado: eAtivo.estado || desenvolvimento.estado },
+          comCarimbo,
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
@@ -5874,6 +5877,7 @@ const ContratosSection = ({
           vendedor: vendedorRecibo,
           cliente: reciboCliente,
           empreendimento: empRecibo,
+          comCarimbo,
           venda: {
             numeroLote: selectedVenda.numeroLote,
             quadra: selectedVenda.quadra,
@@ -6924,6 +6928,22 @@ const ContratosSection = ({
                     <X size={22} />
                   </button>
                 </div>
+                {/* Opção de carimbo PAGO — afeta apenas o documento gerado */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Carimbo:</span>
+                  <button
+                    onClick={() => setComCarimbo(false)}
+                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${!comCarimbo ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
+                  >
+                    Sem carimbo PAGO
+                  </button>
+                  <button
+                    onClick={() => setComCarimbo(true)}
+                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${comCarimbo ? "bg-green-600 text-white border-green-600" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
+                  >
+                    Com carimbo PAGO
+                  </button>
+                </div>
                 {/* Botões da visualização final: PDF + DOCX + Imprimir + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
@@ -6990,6 +7010,7 @@ const ContratosSection = ({
                           <div><p class="label">Data da Venda</p><p class="val">${dataVenda}</p></div>
                         </div>
                         <p style="margin-top:32px;font-size:10pt;font-style:italic;">Para impressão do contrato completo com todas as cláusulas, utilize o botão <strong>PDF</strong> ou <strong>DOCX</strong> na tela de contratos.</p>
+                        ${comCarimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.75;letter-spacing:4px;pointer-events:none;">PAGO</div>` : ''}
                         <div class="assinatura">
                           <div>${clienteImp.nome}<br><span style="font-size:9pt">Comprador</span></div>
                           <div>${vAtivo2.nome || "___"}<br><span style="font-size:9pt">Vendedor</span></div>
@@ -7178,6 +7199,22 @@ const ContratosSection = ({
                     <X size={22} />
                   </button>
                 </div>
+                {/* Opção de carimbo PAGO — afeta apenas o documento gerado */}
+                <div className="flex items-center gap-2 mb-3">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Carimbo:</span>
+                  <button
+                    onClick={() => setComCarimbo(false)}
+                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${!comCarimbo ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
+                  >
+                    Sem carimbo PAGO
+                  </button>
+                  <button
+                    onClick={() => setComCarimbo(true)}
+                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${comCarimbo ? "bg-green-600 text-white border-green-600" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
+                  >
+                    Com carimbo PAGO
+                  </button>
+                </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={handleDownloadImage}
@@ -7242,7 +7279,7 @@ const ContratosSection = ({
                 </div>
               </div>
               <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
-                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
+                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto',position:'relative'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
                   <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
                     <div>
                       <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
@@ -7334,6 +7371,26 @@ const ContratosSection = ({
                       )}
                     </div>
                   </div>
+                  {/* Carimbo PAGO — capturado junto com o recibo no canvas */}
+                  {comCarimbo && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '120px',
+                      right: '80px',
+                      transform: 'rotate(-20deg)',
+                      border: '8px solid #16a34a',
+                      borderRadius: '16px',
+                      padding: '12px 36px',
+                      color: '#16a34a',
+                      fontSize: '72px',
+                      fontWeight: 900,
+                      fontFamily: 'serif',
+                      opacity: 0.75,
+                      letterSpacing: '6px',
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    }}>PAGO</div>
+                  )}
                 </div>
               </div>
             </motion.div>
