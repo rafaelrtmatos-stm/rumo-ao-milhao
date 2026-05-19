@@ -938,12 +938,6 @@ function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
 function generoContratoValido(pessoa: any): boolean {
   return pessoa?.genero === "M" || pessoa?.genero === "F";
 }
-
-function corrigirEspacosContrato(texto: string): string {
-  return String(texto || "")
-    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
-}
 import {
   BarChart,
   Bar,
@@ -1480,7 +1474,7 @@ const DashboardSection = ({
           onClick={() => exportToCSV(sales)}
           className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
         >
-          <FileDown size={14} />
+          <Download size={14} />
           <span className="hidden sm:inline">Exportar Vendas</span>
           <span className="sm:hidden">Exportar</span>
         </button>
@@ -1896,21 +1890,16 @@ const LotDashboard = ({
   const [pendingPoint, setPendingPoint] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
-  const [selectedMapPointIds, setSelectedMapPointIds] = useState<string[]>([]);
-  const [bulkQuadra, setBulkQuadra] = useState("");
-  const [bulkLoteInicial, setBulkLoteInicial] = useState("");
-  const [bulkLoteFinal, setBulkLoteFinal] = useState("");
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
   const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "", atual: null as number | null });
   const [sequenceAdded, setSequenceAdded] = useState(0);
-  const [sequenceLineStart, setSequenceLineStart] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
   const [mapBallSize, setMapBallSize] = useState<"pequena">("pequena");
 
   useEffect(() => {
     setLocalDev(dev);
     setMapBallSize("pequena");
-    setSelectedMapPointIds([]);
+    setMapAction("visualizar");
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
 
@@ -1922,151 +1911,6 @@ const LotDashboard = ({
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
   const quadras = getQuadraList(localDev);
   const soldLots = sales.filter((s) => s.empreendimentoId === localDev.id && isVendaAtiva(s));
-
-  const getLotesSemBolinhaNoMapa = () => {
-    const pointKeys = new Set(mapaPontos.map((p) => getLotInfoKey(p.quadra, p.lote)));
-    const faltantes: { quadra: string; lotes: string[] }[] = [];
-    getQuadraList(localDev).forEach((quadra) => {
-      const lotes = getLotesDeQuadra(localDev.lotesPorQuadra?.[quadra]).filter((lote) => !pointKeys.has(getLotInfoKey(quadra, lote)));
-      if (lotes.length > 0) faltantes.push({ quadra, lotes });
-    });
-    return faltantes;
-  };
-
-  const formatarLotesResumo = (lotes: string[]) => {
-    if (lotes.length <= 8) return lotes.join(", ");
-    return `${lotes.slice(0, 8).join(", ")} e mais ${lotes.length - 8}`;
-  };
-
-  const toggleSelecionarPonto = (id: string) => {
-    setSelectedMapPointIds((prev) => prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]);
-  };
-
-  const selecionarTodosPontos = () => setSelectedMapPointIds(mapaPontos.map((p) => p.id));
-  const limparSelecaoPontos = () => setSelectedMapPointIds([]);
-
-  const selecionarPontosPorQuadra = () => {
-    const q = normalizeLotKeyPart(bulkQuadra);
-    if (!q) {
-      alert("Informe a quadra para selecionar.");
-      return;
-    }
-    const ids = mapaPontos.filter((p) => normalizeLotKeyPart(p.quadra) === q).map((p) => p.id);
-    setSelectedMapPointIds(ids);
-    if (ids.length === 0) alert("Nenhuma bolinha encontrada nesta quadra.");
-  };
-
-  const excluirPontosPorQuadra = () => {
-    const q = normalizeLotKeyPart(bulkQuadra);
-    if (!q) {
-      alert("Informe a quadra para excluir.");
-      return;
-    }
-    const pontosDaQuadra = mapaPontos.filter((p) => normalizeLotKeyPart(p.quadra) === q);
-    if (pontosDaQuadra.length === 0) {
-      alert("Nenhuma bolinha encontrada nesta quadra.");
-      return;
-    }
-    const possuiVenda = pontosDaQuadra.some((p) => !!vendaDoLote(p.quadra, p.lote, p.vendaId));
-    const ok = window.confirm(possuiVenda
-      ? `A Quadra ${bulkQuadra} possui bolinhas com venda vinculada. Excluir as bolinhas não apagará vendas/contratos. Deseja continuar?`
-      : `Excluir todas as ${pontosDaQuadra.length} bolinha(s) da Quadra ${bulkQuadra}?`);
-    if (!ok) return;
-    const ids = new Set(pontosDaQuadra.map((p) => p.id));
-    persistDev({ ...localDev, mapaPontos: mapaPontos.filter((p) => !ids.has(p.id)) } as Empreendimento);
-    setSelectedMapPointIds([]);
-  };
-
-  const selecionarPontosPorIntervalo = () => {
-    const q = normalizeLotKeyPart(bulkQuadra);
-    const inicial = Number(bulkLoteInicial);
-    const final = Number(bulkLoteFinal);
-    if (!q || !Number.isFinite(inicial) || !Number.isFinite(final)) {
-      alert("Informe quadra, lote inicial e lote final.");
-      return;
-    }
-    const min = Math.min(inicial, final);
-    const max = Math.max(inicial, final);
-    const ids = mapaPontos
-      .filter((p) => normalizeLotKeyPart(p.quadra) === q && Number.isFinite(Number(p.lote)) && Number(p.lote) >= min && Number(p.lote) <= max)
-      .map((p) => p.id);
-    setSelectedMapPointIds(ids);
-    if (ids.length === 0) alert("Nenhuma bolinha encontrada neste intervalo.");
-  };
-
-  const aplicarStatusEmMassa = (status: MapaLoteStatus) => {
-    if (selectedMapPointIds.length === 0) {
-      alert("Selecione pelo menos uma bolinha.");
-      return;
-    }
-    let nextDev: Empreendimento = localDev;
-    selectedMapPointIds.forEach((id) => {
-      const ponto = ((nextDev as any).mapaPontos || []).find((p: any) => p.id === id);
-      if (!ponto) return;
-      nextDev = updateLoteStatusInEmpreendimento(nextDev, sales, ponto.quadra, ponto.lote, status, { origem: "mapa-edicao-massa", removerVinculoAtivo: status === "disponivel" });
-      nextDev = {
-        ...nextDev,
-        mapaPontos: (((nextDev as any).mapaPontos || []) as any[]).map((p: any) => p.id === id ? { ...p, status, atualizadoEm: new Date().toISOString() } : p),
-      } as Empreendimento;
-    });
-    persistDev(nextDev);
-  };
-
-  const excluirSelecionadasEmMassa = () => {
-    if (selectedMapPointIds.length === 0) {
-      alert("Selecione pelo menos uma bolinha.");
-      return;
-    }
-    const selectedSet = new Set(selectedMapPointIds);
-    const pontosSelecionados = mapaPontos.filter((p) => selectedSet.has(p.id));
-    const possuiVenda = pontosSelecionados.some((p) => !!vendaDoLote(p.quadra, p.lote, p.vendaId));
-    const ok = window.confirm(possuiVenda
-      ? "Algumas bolinhas selecionadas possuem venda vinculada. Excluir as bolinhas não apagará vendas/contratos. Deseja continuar?"
-      : `Excluir ${pontosSelecionados.length} bolinha(s) selecionada(s)?`);
-    if (!ok) return;
-    persistDev({ ...localDev, mapaPontos: mapaPontos.filter((p) => !selectedSet.has(p.id)) } as Empreendimento);
-    setSelectedMapPointIds([]);
-  };
-
-  const alinharSelecionadas = (tipo: "reta" | "bezier") => {
-    if (selectedMapPointIds.length < 2) {
-      alert("Selecione pelo menos duas bolinhas para alinhar.");
-      return;
-    }
-    const selectedSet = new Set(selectedMapPointIds);
-    const pontosSelecionados = mapaPontos
-      .filter((p) => selectedSet.has(p.id))
-      .sort((a, b) => {
-        const qa = String(a.quadra).localeCompare(String(b.quadra), "pt-BR", { numeric: true });
-        if (qa !== 0) return qa;
-        return String(a.lote).localeCompare(String(b.lote), "pt-BR", { numeric: true });
-      });
-    const primeiro = pontosSelecionados[0];
-    const ultimo = pontosSelecionados[pontosSelecionados.length - 1];
-    const controle = tipo === "bezier"
-      ? { xPercent: (primeiro.xPercent + ultimo.xPercent) / 2, yPercent: Math.min(primeiro.yPercent, ultimo.yPercent) - 8 }
-      : null;
-    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
-    pontosSelecionados.forEach((ponto, idx) => {
-      const t = pontosSelecionados.length === 1 ? 0 : idx / (pontosSelecionados.length - 1);
-      if (!controle) {
-        posicoes.set(ponto.id, {
-          xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
-          yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t,
-        });
-      } else {
-        const inv = 1 - t;
-        posicoes.set(ponto.id, {
-          xPercent: (inv * inv * primeiro.xPercent) + (2 * inv * t * controle.xPercent) + (t * t * ultimo.xPercent),
-          yPercent: (inv * inv * primeiro.yPercent) + (2 * inv * t * controle.yPercent) + (t * t * ultimo.yPercent),
-        });
-      }
-    });
-    persistDev({
-      ...localDev,
-      mapaPontos: mapaPontos.map((p) => selectedSet.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p),
-    } as Empreendimento);
-  };
 
   const persistDev = (nextDev: Empreendimento) => {
     const recalculado = recalcularEstatisticasEmpreendimento(nextDev, sales);
@@ -2189,33 +2033,23 @@ const LotDashboard = ({
   const baixarMapaInterativoPdf = async () => {
     try {
       const canvas = await gerarCanvasMapaInterativo();
-      const imageData = canvas.toDataURL("image/png");
-      try {
-        const { jsPDF } = await import("jspdf");
-        const landscape = canvas.width >= canvas.height;
-        const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
-        const pageWidth = pdf.internal.pageSize.getWidth();
-        const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 6;
-        const maxWidth = pageWidth - margin * 2;
-        const maxHeight = pageHeight - margin * 2;
-        const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-        const imgWidth = canvas.width * ratio;
-        const imgHeight = canvas.height * ratio;
-        const x = (pageWidth - imgWidth) / 2;
-        const y = (pageHeight - imgHeight) / 2;
-        pdf.addImage(imageData, "PNG", x, y, imgWidth, imgHeight);
-        pdf.save(`mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`);
-      } catch (pdfError) {
-        const printWindow = window.open("", "_blank");
-        if (!printWindow) throw pdfError;
-        printWindow.document.write(`<!doctype html><html><head><title>Mapa ${localDev.nome || ""}</title><style>@page{size:A4 landscape;margin:8mm;}html,body{margin:0;padding:0;background:#fff;}body{display:flex;align-items:center;justify-content:center;min-height:100vh;}img{max-width:100%;max-height:96vh;object-fit:contain;}</style></head><body><img src="${imageData}" /></body></html>`);
-        printWindow.document.close();
-        printWindow.focus();
-        setTimeout(() => printWindow.print(), 500);
-      }
+      const { jsPDF } = await import("jspdf");
+      const landscape = canvas.width >= canvas.height;
+      const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 6;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = (pageHeight - imgHeight) / 2;
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
+      pdf.save(`mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`);
     } catch (error: any) {
-      alert(error?.message || "Não foi possível baixar o mapa em PDF. Tente baixar como imagem.");
+      alert(error?.message || "Não foi possível baixar o mapa em PDF.");
     }
   };
 
@@ -2340,76 +2174,25 @@ const LotDashboard = ({
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
 
     if (mapAction === "sequencia") {
-      // Sequência por 2 pontos: primeiro clique define o início, segundo clique define o fim.
-      // A edição NÃO fecha aqui; só sai quando clicar em Salvar/OK.
-      if (!sequenceLineStart) {
-        setSequenceLineStart({ xPercent, yPercent });
-        alert("Ponto inicial marcado. Agora clique no ponto final da linha.");
+      const inicial = Number(sequence.loteInicial);
+      const final = Number(sequence.loteFinal);
+      const atual = sequence.atual ?? inicial;
+      if (!sequence.quadra || !Number.isFinite(inicial) || !Number.isFinite(final)) {
+        alert("Preencha quadra, lote inicial e lote final antes de marcar a sequência.");
         return;
       }
-
-      const quadra = normalizeLotText(sequence.quadra || window.prompt("Quadra", sequence.quadra || "") || "");
-      const loteInicialTexto = normalizeLotText(sequence.loteInicial || window.prompt("Lote inicial", sequence.loteInicial || "") || "");
-      const loteFinalTexto = normalizeLotText(sequence.loteFinal || window.prompt("Lote final", sequence.loteFinal || "") || "");
-      const inicial = Number(loteInicialTexto);
-      const final = Number(loteFinalTexto);
-
-      if (!quadra || !Number.isFinite(inicial) || !Number.isFinite(final)) {
-        alert("Informe quadra, lote inicial e lote final para gerar a linha de bolinhas.");
-        setSequenceLineStart(null);
+      const ok = ensureMapLotAndPoint({ quadra: sequence.quadra, lote: String(atual), xPercent, yPercent, status: sequence.status, observacao: sequence.observacao, confirmMissing: false });
+      if (!ok) return;
+      const qtdAtual = (sequence.atual === null || atual === inicial) ? 1 : sequenceAdded + 1;
+      setSequenceAdded(qtdAtual);
+      if (atual === final) {
+        alert(`Sequência concluída. ${qtdAtual} lote(s) adicionado(s)/atualizado(s) na quadra ${normalizeLotText(sequence.quadra)}.`);
+        setSequence((prev) => ({ ...prev, atual: null }));
+        setSequenceAdded(0);
         return;
       }
-
-      const step = inicial <= final ? 1 : -1;
-      const quantidade = Math.abs(final - inicial) + 1;
-      let nextDev: Empreendimento = localDev;
-      const nextPontos = [...mapaPontos];
-      const novosIds: string[] = [];
-
-      for (let i = 0; i < quantidade; i++) {
-        const loteAtual = String(inicial + (i * step));
-        const t = quantidade === 1 ? 0 : i / (quantidade - 1);
-        const pontoX = sequenceLineStart.xPercent + (xPercent - sequenceLineStart.xPercent) * t;
-        const pontoY = sequenceLineStart.yPercent + (yPercent - sequenceLineStart.yPercent) * t;
-        const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, loteAtual);
-        nextDev = ensured.dev;
-        const key = ensured.lotInfoKey;
-        const existingIdx = nextPontos.findIndex((p) => getLotInfoKey(p.quadra, p.lote) === key);
-        const id = existingIdx >= 0 ? nextPontos[existingIdx].id : `map-${Date.now()}-${i}-${Math.random().toString(16).slice(2)}`;
-        const pontoBase = {
-          ...(existingIdx >= 0 ? nextPontos[existingIdx] : {}),
-          id,
-          empreendimentoId: localDev.id,
-          quadra: ensured.quadraName,
-          lote: loteAtual,
-          xPercent: pontoX,
-          yPercent: pontoY,
-          status: sequence.status,
-          observacao: sequence.observacao || (existingIdx >= 0 ? nextPontos[existingIdx].observacao : ""),
-          criadoEm: existingIdx >= 0 ? nextPontos[existingIdx].criadoEm : new Date().toISOString(),
-          atualizadoEm: new Date().toISOString(),
-        };
-        if (existingIdx >= 0) nextPontos[existingIdx] = pontoBase;
-        else {
-          nextPontos.push(pontoBase);
-          novosIds.push(id);
-        }
-        const existingInfo = nextDev.lotesInfo?.[key] || {};
-        nextDev = {
-          ...nextDev,
-          lotesInfo: {
-            ...(nextDev.lotesInfo || {}),
-            [key]: { ...existingInfo, status: sequence.status, observacao: sequence.observacao || existingInfo.observacao || "" },
-          },
-        } as Empreendimento;
-      }
-
-      persistDev(recalcularEstatisticasEmpreendimento({ ...nextDev, mapaPontos: nextPontos } as Empreendimento, sales));
-      if (novosIds.length) setLastSessionPointIds((prev) => [...prev, ...novosIds]);
-      setSequence({ ...sequence, quadra, loteInicial: loteInicialTexto, loteFinal: loteFinalTexto, atual: null });
-      setSequenceAdded(quantidade);
-      setSequenceLineStart(null);
-      alert(`Linha concluída. ${quantidade} lote(s) adicionado(s)/atualizado(s) na Quadra ${quadra}.`);
+      const step = inicial < final ? 1 : -1;
+      setSequence((prev) => ({ ...prev, atual: atual + step }));
       return;
     }
 
@@ -2539,8 +2322,6 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
     setSelectedPoint(null);
     setSequence((prev) => ({ ...prev, atual: null }));
     setSequenceAdded(0);
-    setSequenceLineStart(null);
-    setSelectedMapPointIds([]);
     setMapAction("visualizar");
   };
 
@@ -2584,19 +2365,6 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
     const isEditingMap = canEditMap && mapAction !== "visualizar";
     return (
     <div className="space-y-4">
-      {getLotesSemBolinhaNoMapa().length > 0 && (
-        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-black uppercase tracking-widest text-[10px] mb-2">Lotes cadastrados sem bolinha no mapa</p>
-          <p className="font-semibold">Existem lotes nos quadradinhos que ainda não foram adicionados ao mapa interativo.</p>
-          <div className="mt-2 space-y-1 text-xs">
-            {getLotesSemBolinhaNoMapa().slice(0, 6).map((item) => (
-              <p key={item.quadra}><strong>Quadra {item.quadra}:</strong> adicionar lote(s) {formatarLotesResumo(item.lotes)}.</p>
-            ))}
-            {getLotesSemBolinhaNoMapa().length > 6 && <p>Mais {getLotesSemBolinhaNoMapa().length - 6} quadra(s) com lotes pendentes.</p>}
-          </div>
-          {canEditMap && <p className="mt-2 text-xs font-bold">Clique em Editar mapa para criar as bolinhas desses lotes.</p>}
-        </div>
-      )}
       <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
         <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
           <div onClick={handleMapClick} className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] ${isEditingMap ? "cursor-crosshair" : "cursor-default"}`} style={{ maxWidth: "1000px" }}>
@@ -2608,9 +2376,9 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               return (
                 <button
                   key={ponto.id}
-                  onClick={(ev) => { ev.stopPropagation(); if (isEditingMap) { toggleSelecionarPonto(ponto.id); } else { setSelectedPoint({ ...ponto, venda }); } }}
+                  onClick={(ev) => { ev.stopPropagation(); setSelectedPoint({ ...ponto, venda }); }}
                   title={`Q${ponto.quadra} L${ponto.lote}`}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-lg font-black flex items-center justify-center ${statusClass} ${selectedMapPointIds.includes(ponto.id) ? "ring-4 ring-emerald-400 border-emerald-200 scale-110" : "border-white"}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg font-black flex items-center justify-center ${statusClass}`}
                   style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                 >
                   {ponto.lote}
@@ -2623,7 +2391,8 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
           {mapAction === "visualizar" ? <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
             <p className="text-xs text-slate-500">Neste modo o mapa serve apenas para ver as bolinhas, iniciar venda em lote disponível ou abrir venda vinculada.</p>
-            {!canEditMap && <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
+            {canEditMap ? <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button> : <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
           </div> : <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
             <div className="grid grid-cols-3 gap-2">
@@ -2636,47 +2405,17 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
               <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
             </div>}
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
             <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer"><Upload size={14} />Trocar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
             <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
           </div>}
           {isEditingMap && mapAction === "sequencia" && <div className="card-premium p-4 space-y-3">
-            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Linha de lotes por 2 pontos</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcar lotes em sequência</p>
             <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => { setSequence({ ...sequence, quadra: e.target.value, atual: null }); setSequenceAdded(0); }} />
             <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => { setSequence({ ...sequence, loteInicial: e.target.value, atual: null }); setSequenceAdded(0); }} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => { setSequence({ ...sequence, loteFinal: e.target.value, atual: null }); setSequenceAdded(0); }} /></div>
             <select className="input-field" value={sequence.status} onChange={(e) => setSequence({ ...sequence, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="indisponivel">Indisponível</option></select>
             <input className="input-field" placeholder="Observação padrão" value={sequence.observacao} onChange={(e) => setSequence({ ...sequence, observacao: e.target.value })} />
-            <p className="text-xs text-slate-500">Clique no ponto inicial e depois no ponto final. O sistema distribui os lotes automaticamente entre os dois pontos. {sequenceLineStart ? "Ponto inicial marcado: clique no ponto final." : ""}</p>
-          </div>}
-          {isEditingMap && <div className="card-premium p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edição em massa</p>
-              <span className="text-[10px] font-black text-primary-main">{selectedMapPointIds.length} selecionada(s)</span>
-            </div>
-            <p className="text-[11px] text-slate-500">Clique nas bolinhas do mapa para selecionar. Depois use as ações abaixo.</p>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={selecionarTodosPontos} className="btn-secondary text-[11px]">Selecionar todas</button>
-              <button onClick={limparSelecaoPontos} className="btn-secondary text-[11px]">Limpar seleção</button>
-            </div>
-            <input className="input-field" placeholder="Quadra para seleção" value={bulkQuadra} onChange={(e) => setBulkQuadra(e.target.value)} />
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={selecionarPontosPorQuadra} className="btn-secondary text-[11px]">Selecionar quadra</button>
-              <button onClick={excluirPontosPorQuadra} className="btn-secondary text-[11px] text-red-600">Excluir quadra</button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <input className="input-field" placeholder="Lote inicial" value={bulkLoteInicial} onChange={(e) => setBulkLoteInicial(e.target.value)} />
-              <input className="input-field" placeholder="Lote final" value={bulkLoteFinal} onChange={(e) => setBulkLoteFinal(e.target.value)} />
-            </div>
-            <button onClick={selecionarPontosPorIntervalo} className="btn-secondary w-full text-[11px]">Selecionar intervalo</button>
-            <div className="grid grid-cols-3 gap-2">
-              <button onClick={() => aplicarStatusEmMassa("disponivel")} className="py-2 rounded-xl text-[10px] font-black uppercase bg-blue-50 text-blue-700">Disponível</button>
-              <button onClick={() => aplicarStatusEmMassa("reservado")} className="py-2 rounded-xl text-[10px] font-black uppercase bg-yellow-50 text-yellow-700">Reserva</button>
-              <button onClick={() => aplicarStatusEmMassa("indisponivel")} className="py-2 rounded-xl text-[10px] font-black uppercase bg-red-50 text-red-700">Indisp.</button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => alinharSelecionadas("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
-              <button onClick={() => alinharSelecionadas("bezier")} className="btn-secondary text-[11px]">Curva</button>
-            </div>
-            <button onClick={excluirSelecionadasEmMassa} className="btn-secondary w-full text-red-600 text-[11px]">Excluir selecionadas</button>
+            <p className="text-xs text-slate-500">Próximo clique: lote {sequence.atual ?? (sequence.loteInicial || "—")}</p>
           </div>}
           <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
@@ -2703,22 +2442,16 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
             {mapaImagem && <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
             <button onClick={() => setMode("quadradinhos")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Quadradinhos/lotes atuais</button>
           </div>
-          <div className="flex gap-2 flex-wrap justify-end">
-            {mode === "mapa" && mapaImagem && (
-              <>
-                <button onClick={baixarMapaInterativoImagem} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase flex items-center gap-2"><FileDown size={14} />Imagem</button>
-                <button onClick={baixarMapaInterativoPdf} className="px-4 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-black uppercase flex items-center gap-2"><FileText size={14} />PDF</button>
-              </>
-            )}
-            {canEditMap && (mapAction === "visualizar" ? (
+          {canEditMap && <div className="flex gap-2 flex-wrap justify-end">
+            {mapAction === "visualizar" ? (
               <button onClick={() => { setMapAction("manual"); if (mapaImagem) setMode("mapa"); }} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase">Editar mapa</button>
             ) : (
               <>
                 <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
                 <button onClick={salvarEdicaoMapa} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase">Salvar</button>
               </>
-            ))}
-          </div>
+            )}
+          </div>}
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
@@ -6872,7 +6605,7 @@ const ContratosSection = ({
 
     const titulo = isAvista ? "Recibo de Compra e Venda à Vista" : "Contrato de Compra e Venda a Prazo";
 
-    return corrigirEspacosContrato(`<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${titulo}</title><style>
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${titulo}</title><style>
       *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
       body{margin:0;padding:40px 54px;font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;background:#fff;line-height:1.6;}
       h1{text-align:center;text-transform:uppercase;font-size:14pt;margin:0 0 4px;letter-spacing:1px;}
@@ -6945,7 +6678,7 @@ const ContratosSection = ({
       <div class="footer-info">
         <p>Nº do Contrato: ${venda.numeroContrato||"—"} &nbsp;|&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")}</p>
       </div>
-    </body></html>`);
+    </body></html>`;
   };
 
   // Gera PDF do contrato via DOCX → CloudConvert → PDF (fiel ao DOCX)
@@ -10513,7 +10246,7 @@ const ConfigSection = ({
       {/* Migração de dados */}
       <div className="card-premium space-y-4">
         <h4 className="font-bold text-slate-800 flex items-center gap-2">
-          <FileDown size={18} className="text-primary-main" />
+          <Download size={18} className="text-primary-main" />
           Migração de Dados
         </h4>
         <p className="text-sm text-slate-500">
@@ -10532,7 +10265,7 @@ const ConfigSection = ({
           {migrating ? (
             <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
           ) : (
-            <><FileDown size={16} /> Migrar dados do navegador para o banco de dados</>
+            <><Download size={16} /> Migrar dados do navegador para o banco de dados</>
           )}
         </button>
 
@@ -10585,7 +10318,7 @@ const ConfigSection = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-green-50 border border-green-100">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-green-100 rounded-xl mt-0.5">
-              <FileDown size={16} className="text-green-700" />
+              <Download size={16} className="text-green-700" />
             </div>
             <div>
               <p className="font-semibold text-green-900 text-sm">Exportar Backup</p>
@@ -10598,7 +10331,7 @@ const ConfigSection = ({
             onClick={handleExport}
             className="flex items-center gap-2 px-5 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
           >
-            <FileDown size={15} /> Baixar .json
+            <Download size={15} /> Baixar .json
           </button>
         </div>
 
@@ -10734,7 +10467,7 @@ const ConfigSection = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-primary-main/5 border border-primary-main/20">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-primary-main/10 rounded-xl mt-0.5">
-              <FileDown size={16} className="text-primary-main" />
+              <Download size={16} className="text-primary-main" />
             </div>
             <div>
               <p className="font-semibold text-slate-800 text-sm">Exportar Configurações</p>
@@ -10747,7 +10480,7 @@ const ConfigSection = ({
             onClick={handleExportConfig}
             className="flex items-center gap-2 px-5 py-2.5 bg-primary-main hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
           >
-            <FileDown size={15} /> Baixar .json
+            <Download size={15} /> Baixar .json
           </button>
         </div>
 
