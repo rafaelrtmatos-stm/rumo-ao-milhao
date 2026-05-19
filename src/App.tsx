@@ -3216,6 +3216,12 @@ const LotDashboard = ({
                 <MapPin size={13} />Editar mapa
               </button>
             )}
+            {canEditMap && !mapaImagem && (
+              <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
+                <Upload size={13} />Carregar mapa
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
+              </label>
+            )}
             <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
           </div>
         </div>
