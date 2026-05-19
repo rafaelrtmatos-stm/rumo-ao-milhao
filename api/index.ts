@@ -856,124 +856,65 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: a
   }
 });
 
-// --- Helper antigo mantido sem uso: DOCX Buffer → PDF via CloudConvert ---
-async function convertDocxToPdfViaCloudConvert(docxBuffer: Buffer, filename: string): Promise<Buffer> {
-  const apiKey = process.env.CLOUDCONVERT_API_KEY;
-  if (!apiKey) throw new Error("CLOUDCONVERT_API_KEY não configurada.");
+// --- Helper: DOCX Buffer → PDF via LibreOffice local ---
+async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  const fs = await import("fs");
+  const os = await import("os");
+  const path = await import("path");
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
 
-  // 1. Criar job de conversão
-  const jobRes = await fetch("https://api.cloudconvert.com/v2/jobs", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      tasks: {
-        "upload-docx": {
-          operation: "import/upload",
-        },
-        "convert-to-pdf": {
-          operation: "convert",
-          input: "upload-docx",
-          input_format: "docx",
-          output_format: "pdf",
-          engine: "libreoffice",
-        },
-        "export-pdf": {
-          operation: "export/url",
-          input: "convert-to-pdf",
-        },
-      },
-      tag: "contrato-pdf",
-    }),
-  });
+  const execFileAsync = promisify(execFile);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx-pdf-"));
+  const safeFilename = String(filename || "contrato.docx")
+    .replace(/[^\w.\-]+/g, "_")
+    .replace(/\.pdf$/i, ".docx");
+  const docxPath = path.join(
+    tempDir,
+    safeFilename.toLowerCase().endsWith(".docx") ? safeFilename : `${safeFilename}.docx`
+  );
 
-  if (!jobRes.ok) {
-    const errText = await jobRes.text();
-    throw new Error(`CloudConvert criar job falhou: ${errText}`);
-  }
+  try {
+    fs.writeFileSync(docxPath, docxBuffer);
 
-  const job = (await jobRes.json()) as any;
+    await execFileAsync("libreoffice", [
+      "--headless",
+      "--convert-to",
+      "pdf",
+      "--outdir",
+      tempDir,
+      docxPath,
+    ]);
 
-  // 2. Encontrar a task de upload
-  const uploadTask = job.data.tasks.find((t: any) => t.name === "upload-docx");
-  if (!uploadTask?.result?.form) {
-    throw new Error("CloudConvert: task de upload não retornou formulário.");
-  }
+    const pdfPath = docxPath.replace(/\.docx$/i, ".pdf");
 
-  const { url: uploadUrl, parameters: formParams } = uploadTask.result.form;
-
-  // 3. Fazer upload do DOCX via multipart/form-data
-  const formData = new FormData();
-  for (const [key, value] of Object.entries(formParams as Record<string, string>)) {
-    formData.append(key, value);
-  }
-  formData.append("file", new Blob([docxBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), filename);
-
-  const uploadRes = await fetch(uploadUrl, {
-    method: "POST",
-    body: formData,
-  });
-
-  if (!uploadRes.ok) {
-    const errText = await uploadRes.text();
-    throw new Error(`CloudConvert upload falhou: ${errText}`);
-  }
-
-  // 4. Aguardar conclusão do job (polling)
-  const jobId = job.data.id;
-  let pdfUrl: string | null = null;
-  const maxAttempts = 30;
-
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    await new Promise((r) => setTimeout(r, 2000));
-
-    const statusRes = await fetch(`https://api.cloudconvert.com/v2/jobs/${jobId}`, {
-      headers: { "Authorization": `Bearer ${apiKey}` },
-    });
-
-    if (!statusRes.ok) continue;
-
-    const statusData = (await statusRes.json()) as any;
-    const tasks: any[] = statusData.data.tasks || [];
-
-    const exportTask = tasks.find((t: any) => t.name === "export-pdf");
-    if (exportTask?.status === "finished" && exportTask?.result?.files?.[0]?.url) {
-      pdfUrl = exportTask.result.files[0].url;
-      break;
+    if (!fs.existsSync(pdfPath)) {
+      throw new Error("PDF não foi gerado pelo LibreOffice.");
     }
 
-    const anyFailed = tasks.some((t: any) => t.status === "error");
-    if (anyFailed) {
-      const failedTask = tasks.find((t: any) => t.status === "error");
-      throw new Error(`CloudConvert erro na conversão: ${failedTask?.message || "Falha desconhecida"}`);
-    }
+    return fs.readFileSync(pdfPath);
+  } finally {
+    try {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    } catch {}
   }
-
-  if (!pdfUrl) throw new Error("CloudConvert: timeout aguardando conversão.");
-
-  // 5. Baixar o PDF resultante
-  const pdfRes = await fetch(pdfUrl);
-  if (!pdfRes.ok) throw new Error("Falha ao baixar PDF do CloudConvert.");
-
-  const arrayBuffer = await pdfRes.arrayBuffer();
-  return Buffer.from(arrayBuffer);
 }
 
-// --- PDF do Contrato Parcelado (HTML A4 → Puppeteer/Chromium → PDF) ---
+// --- PDF do Contrato Parcelado (DOCX → LibreOffice → PDF) ---
 app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda)
       return res.status(400).json({ error: "Dados incompletos para gerar o PDF." });
 
-    const html = renderContratoParceladoHtmlPdf({ vendedor, cliente, empreendimento, venda });
-    const pdfBuffer = await criarPdfPorNavegador(html);
+    const docxBuffer = await gerarContratoParceladoPadrao({ vendedor, cliente, empreendimento, venda });
 
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    const pdfFilename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.pdf`;
+    const docxFilename = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    const pdfFilename = docxFilename.replace(/\.docx$/i, ".pdf");
+
+    const pdfBuffer = await convertDocxToPdfViaLibreOffice(Buffer.from(docxBuffer), docxFilename);
 
     res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
     res.setHeader("Content-Type", "application/pdf");
@@ -983,19 +924,23 @@ app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any,
   }
 });
 
-// --- PDF do Contrato À Vista (HTML A4 → Puppeteer/Chromium → PDF) ---
+// --- PDF do Contrato À Vista (DOCX → LibreOffice → PDF) ---
 app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, res: any) => {
   try {
     const { vendedor, cliente, empreendimento, venda } = req.body;
     if (!vendedor || !cliente || !empreendimento || !venda)
       return res.status(400).json({ error: "Dados incompletos para gerar o PDF à vista." });
 
-    const html = renderReciboAvistaHtmlPdf({ vendedor, cliente, empreendimento, venda });
-    const pdfBuffer = await criarPdfPorNavegador(html);
+    const userRow = await localUsersService.findById((req as any).userId || req.user?.id || "");
+    const corretor = { nome: userRow?.profile?.nome, creci: userRow?.profile?.creci, telefone: userRow?.profile?.telefone };
+    const docxBuffer = await gerarReciboAVistaPadrao({ corretor, vendedor, cliente, empreendimento, venda });
 
     const nomeCliente = (cliente.nome as string).replace(/\s+/g, "_");
     const nomeEmp = (empreendimento.nome as string).replace(/\s+/g, "_").toUpperCase();
-    const pdfFilename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.pdf`;
+    const docxFilename = `contrato_avista_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${(venda as any).numeroLote}_-_Quadra__${(venda as any).quadra}_.docx`;
+    const pdfFilename = docxFilename.replace(/\.docx$/i, ".pdf");
+
+    const pdfBuffer = await convertDocxToPdfViaLibreOffice(Buffer.from(docxBuffer), docxFilename);
 
     res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
     res.setHeader("Content-Type", "application/pdf");
