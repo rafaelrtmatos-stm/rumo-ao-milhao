@@ -1410,7 +1410,7 @@ const DashboardSection = ({
 }) => {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
   const totalLotesDisponiveis = developments.reduce(
-    (acc, d) => acc + Math.max(0, d.totalLotes - d.lotesVendidos),
+    (acc, d) => acc + Math.max(0, Number((d as any).lotesDisponiveis ?? 0)),
     0,
   );
 
@@ -2004,6 +2004,24 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // DOWNLOAD IMAGEM/PDF
   // ──────────────────────────────────────────────
+  const getMapaExportDate = () => {
+    const now = new Date();
+    const yyyy = now.getFullYear();
+    const mm = String(now.getMonth() + 1).padStart(2, "0");
+    const dd = String(now.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
+
+  const getMapaExportName = (ext: "png" | "pdf") => {
+    const safeName = (localDev.nome || "empreendimento")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/gi, "_")
+      .replace(/^_+|_+$/g, "")
+      .toLowerCase() || "empreendimento";
+    return `${safeName}_${getMapaExportDate()}.${ext}`;
+  };
+
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
       if (!mapaImagem) {
@@ -2013,27 +2031,53 @@ const LotDashboard = ({
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
+        const originalWidth = img.naturalWidth || img.width;
+        const originalHeight = img.naturalHeight || img.height;
+        const scale = Math.max(originalWidth / 1000, 1);
+        const headerHeight = Math.max(90 * scale, 72);
+        const footerHeight = Math.max(44 * scale, 34);
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
+        canvas.width = originalWidth;
+        canvas.height = originalHeight + headerHeight + footerHeight;
         const ctx = canvas.getContext("2d");
         if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = "#ffffff";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const exportDate = getMapaExportDate();
+        ctx.fillStyle = "#0f172a";
+        ctx.font = `bold ${Math.max(30 * scale, 24)}px Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(localDev.nome || "Empreendimento", canvas.width / 2, headerHeight * 0.38);
+
+        ctx.fillStyle = "#475569";
+        ctx.font = `${Math.max(18 * scale, 14)}px Arial, sans-serif`;
+        ctx.fillText(`Exportado em ${exportDate}`, canvas.width / 2, headerHeight * 0.72);
+
+        ctx.drawImage(img, 0, headerHeight, originalWidth, originalHeight);
         const baseSize = getBallBasePixelSize("exportacao").size;
-        const scale = Math.max(canvas.width / 1000, 1);
         const radius = Math.max((baseSize * scale) / 2, 10);
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
           const reservado = !indisponivel && ponto.status === "reservado";
-          const x = (Number(ponto.xPercent) / 100) * canvas.width;
-          const y = (Number(ponto.yPercent) / 100) * canvas.height;
+          const x = (Number(ponto.xPercent) / 100) * originalWidth;
+          const y = headerHeight + (Number(ponto.yPercent) / 100) * originalHeight;
           ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
           ctx.lineWidth = Math.max(3 * scale, 2); ctx.strokeStyle = "#ffffff"; ctx.stroke();
           // Não desenhar número do lote na exportação: o mapa baixado deve ficar limpo.
         });
+
+        ctx.fillStyle = "#64748b";
+        ctx.font = `${Math.max(14 * scale, 12)}px Arial, sans-serif`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(`${localDev.nome || "Empreendimento"} • ${exportDate}`, canvas.width / 2, headerHeight + originalHeight + footerHeight / 2);
+
         resolve(canvas);
       };
       img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
@@ -2045,7 +2089,7 @@ const LotDashboard = ({
     try {
       const canvas = await gerarCanvasMapaInterativo();
       const link = document.createElement("a");
-      link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
+      link.download = getMapaExportName("png");
       link.href = canvas.toDataURL("image/png");
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
     } catch (error: any) {
@@ -2070,7 +2114,7 @@ const LotDashboard = ({
       const x = (pageWidth - imgWidth) / 2;
       const y = (pageHeight - imgHeight) / 2;
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
-      pdf.save(`mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`);
+      pdf.save(getMapaExportName("pdf"));
     } catch (error: any) {
       alert(error?.message || "Não foi possível baixar o mapa em PDF.");
     }
@@ -3841,7 +3885,7 @@ const EmpreendimentosSection = ({
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
                   <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-0.5">Disponíveis</p>
-                  <p className="text-lg font-display font-bold text-emerald-700">{Math.max(0, dev.totalLotes - dev.lotesVendidos)}</p>
+                  <p className="text-lg font-display font-bold text-emerald-700">{Math.max(0, Number((dev as any).lotesDisponiveis ?? 0))}</p>
                 </div>
                 <div className="bg-white rounded-xl p-2.5 border border-slate-100">
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total</p>
@@ -6442,7 +6486,7 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                 <option value="">Escolha um loteamento...</option>
                 {developments.map((d) => (
                   <option key={d.id} value={d.id}>
-                    {d.nome} — {d.totalLotes - d.lotesVendidos} livres
+                    {d.nome} — {Math.max(0, Number((d as any).lotesDisponiveis ?? 0))} livres
                   </option>
                 ))}
               </select>
