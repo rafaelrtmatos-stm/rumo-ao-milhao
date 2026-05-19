@@ -23,7 +23,6 @@ import {
   Settings,
   Info,
   FileDown,
-  Download,
   UserCheck,
   Pencil,
   ArrowLeft,
