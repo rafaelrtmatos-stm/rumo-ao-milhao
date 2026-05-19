@@ -1976,9 +1976,50 @@ const LotDashboard = ({
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    const allowed = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      alert("Use apenas imagem PNG, JPG, JPEG ou WEBP.");
+    const allowedImages = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    const isPDF = file.type === "application/pdf";
+    if (!allowedImages.includes(file.type) && !isPDF) {
+      alert("Use imagem PNG, JPG, WEBP ou arquivo PDF.");
+      return;
+    }
+    if (isPDF) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          if (!(window as any).pdfjsLib) {
+            await new Promise<void>((resolve, reject) => {
+              const script = document.createElement("script");
+              script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+              script.onload = () => {
+                (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
+                  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+                resolve();
+              };
+              script.onerror = reject;
+              document.head.appendChild(script);
+            });
+          }
+          const pdfjsLib = (window as any).pdfjsLib;
+          const pdfDoc = await pdfjsLib.getDocument({ data: reader.result as ArrayBuffer }).promise;
+          const page = await pdfDoc.getPage(1);
+          const viewport = page.getViewport({ scale: 2.5 });
+          const canvas = document.createElement("canvas");
+          canvas.width = viewport.width;
+          canvas.height = viewport.height;
+          const ctx = canvas.getContext("2d")!;
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          persistDev({
+            ...localDev,
+            mapaImagemBase64: canvas.toDataURL("image/png"),
+            mapaImagemUrl: "",
+            mapaPontos: mapaPontos,
+          } as Empreendimento);
+          setMode("mapa");
+        } catch (err) {
+          alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
+        }
+      };
+      reader.readAsArrayBuffer(file);
       return;
     }
     const reader = new FileReader();
@@ -2874,7 +2915,7 @@ const LotDashboard = ({
                 {/* Carregar mapa */}
                 <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
                   <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
-                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
 
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
@@ -3219,7 +3260,7 @@ const LotDashboard = ({
             {canEditMap && !mapaImagem && (
               <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
                 <Upload size={13} />Carregar mapa
-                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
               </label>
             )}
             <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
