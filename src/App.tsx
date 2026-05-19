@@ -1886,25 +1886,25 @@ const LotDashboard = ({
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
-  // mapAction: "visualizar" = modo leitura, "manual" = edição manual, "sequencia" = criação de linha 2 pontos, "curva" = curva 3 pontos, "massa" = edição em massa
-  const [mapAction, setMapAction] = useState<"visualizar" | "manual" | "sequencia" | "curva" | "massa">("visualizar");
-  const [pendingPoint, setPendingPoint] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+  // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
+  const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
+
+  // Novo marcador unificado: fase "idle" | "formulario" | "aguardando_segundo"
+  // lote pode ser "1" (único) ou "1,2,3,4" (múltiplos → linha entre dois pontos)
+  const [marcadorFase, setMarcadorFase] = useState<"idle" | "formulario" | "aguardando_segundo">("idle");
+  const [marcadorPonto1, setMarcadorPonto1] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
 
-  // Sequencia 2 pontos: fase "aguardando_primeiro", "formulario", "aguardando_segundo", "concluida"
+  // Sequencia 2 pontos: mantida internamente para compatibilidade com criarBolinhasSequencia
   const [seqFase, setSeqFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_segundo">("aguardando_primeiro");
   const [seqPrimeiroClique, setSeqPrimeiroClique] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [seqForm, setSeqForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
   const [seqPreview, setSeqPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
-
-  // Curva 3 pontos
-  const [curvaFase, setCurvaFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_meio" | "aguardando_ultimo">("aguardando_primeiro");
-  const [curvaForm, setCurvaForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
-  const [curvaPts, setCurvaPts] = useState<{ xPercent: number; yPercent: number }[]>([]);
-  const [curvaPreview, setCurvaPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
 
   // Arrastar bolinhas no modo edição
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -1918,9 +1918,6 @@ const LotDashboard = ({
   const [massaFiltroLoteIni, setMassaFiltroLoteIni] = useState("");
   const [massaFiltroLoteFin, setMassaFiltroLoteFin] = useState("");
 
-  // Alinhar sequência (para sequências existentes)
-  const [alignSeq, setAlignSeq] = useState({ quadra: "", loteInicial: "", loteFinal: "" });
-
   useEffect(() => {
     setLocalDev(dev);
     setMapAction("visualizar");
@@ -1931,10 +1928,20 @@ const LotDashboard = ({
     if (!canEditMap) setMapAction("visualizar");
   }, [canEditMap]);
 
+  // Resetar estado marcador ao trocar action
+  useEffect(() => {
+    if (mapAction !== "editar") {
+      setMarcadorFase("idle");
+      setMarcadorPonto1(null);
+      setMarcadorPonto2Preview(null);
+    }
+  }, [mapAction]);
+
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
   const quadras = getQuadraList(localDev);
   const isEditingMap = canEditMap && mapAction !== "visualizar";
+  const isMultiLote = (lote: string) => lote.includes(",") && lote.split(",").filter((s: string) => s.trim()).length > 1;
 
   const persistDev = (nextDev: Empreendimento) => {
     const recalculado = recalcularEstatisticasEmpreendimento(nextDev, sales);
@@ -2180,7 +2187,7 @@ const LotDashboard = ({
   };
 
   // Distribuir bolinhas em curva Bézier quadrática (3 pontos)
-  const criarBolinhasCurva = (p1: { xPercent: number; yPercent: number }, pmid: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: typeof curvaForm) => {
+  const criarBolinhasCurva = (p1: { xPercent: number; yPercent: number }, pmid: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: { quadra: string; loteInicial: string; loteFinal: string; status: MapaLoteStatus; observacao: string }) => {
     const quadra = normalizeLotText(form.quadra);
     const ini = parseInt(form.loteInicial);
     const fin = parseInt(form.loteFinal);
@@ -2225,53 +2232,39 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // CLIQUE NO MAPA
   // ──────────────────────────────────────────────
+  // ──────────────────────────────────────────────
+  // CLIQUE NO MAPA — novo fluxo unificado
+  // ──────────────────────────────────────────────
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
+    if (draggingId) return; // não abre formulário durante arrastar
     const rect = e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
 
-    if (mapAction === "manual") {
-      setPendingPoint({ xPercent, yPercent });
-      setPointForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
-      return;
-    }
-
-    if (mapAction === "sequencia") {
-      if (seqFase === "aguardando_primeiro") {
-        setSeqPrimeiroClique({ xPercent, yPercent });
-        setSeqFase("formulario");
+    // modo edição normal: clique abre formulário "Novo marcador"
+    if (mapAction === "editar") {
+      if (marcadorFase === "idle") {
+        // Abre formulário no ponto clicado
+        setMarcadorPonto1({ xPercent, yPercent });
+        setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+        setMarcadorFase("formulario");
         return;
       }
-      if (seqFase === "aguardando_segundo") {
-        // Cria bolinhas
-        criarBolinhasSequencia(seqPrimeiroClique!, { xPercent, yPercent }, seqForm);
-        setSeqFase("aguardando_primeiro");
-        setSeqPrimeiroClique(null);
-        setSeqPreview(null);
-        setSeqForm({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel", observacao: "" });
-        return;
-      }
-      return;
-    }
-
-    if (mapAction === "curva") {
-      if (curvaFase === "aguardando_primeiro") {
-        setCurvaPts([{ xPercent, yPercent }]);
-        setCurvaFase("formulario");
-        return;
-      }
-      if (curvaFase === "aguardando_meio") {
-        setCurvaPts((prev) => [...prev, { xPercent, yPercent }]);
-        setCurvaFase("aguardando_ultimo");
-        return;
-      }
-      if (curvaFase === "aguardando_ultimo") {
-        criarBolinhasCurva(curvaPts[0], curvaPts[1], { xPercent, yPercent }, curvaForm);
-        setCurvaFase("aguardando_primeiro");
-        setCurvaPts([]);
-        setCurvaPreview(null);
-        setCurvaForm({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel", observacao: "" });
+      if (marcadorFase === "aguardando_segundo") {
+        // Segundo clique: cria bolinhas em linha entre os dois pontos
+        const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+        const ini = parseInt(lotes[0]);
+        const fin = parseInt(lotes[lotes.length - 1]);
+        criarBolinhasSequencia(
+          marcadorPonto1!,
+          { xPercent, yPercent },
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status, observacao: marcadorForm.observacao }
+        );
+        // Não sai da edição — apenas reseta para próximo marcador
+        setMarcadorFase("idle");
+        setMarcadorPonto1(null);
+        setMarcadorPonto2Preview(null);
         return;
       }
       return;
@@ -2283,11 +2276,13 @@ const LotDashboard = ({
     const rect = e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
-    if (mapAction === "sequencia" && seqFase === "aguardando_segundo") {
-      setSeqPreview({ xPercent, yPercent });
+    // Preview linha multi-lote
+    if (mapAction === "editar" && marcadorFase === "aguardando_segundo") {
+      setMarcadorPonto2Preview({ xPercent, yPercent });
     }
-    if (mapAction === "curva" && (curvaFase === "aguardando_meio" || curvaFase === "aguardando_ultimo")) {
-      setCurvaPreview({ xPercent, yPercent });
+    // Manter compatibilidade interna sequencia
+    if (marcadorFase === "aguardando_segundo") {
+      setSeqPreview({ xPercent, yPercent });
     }
   };
 
@@ -2333,10 +2328,12 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // ALINHAMENTO DE SEQUÊNCIA EXISTENTE
   // ──────────────────────────────────────────────
-  const alinharSequencia = (tipo: "reta" | "bezier") => {
-    const quadra = normalizeLotText(alignSeq.quadra);
-    const ini = parseInt(alignSeq.loteInicial);
-    const fin = parseInt(alignSeq.loteFinal);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const alinharSequencia = (_tipo: "reta" | "bezier") => {
+    // função mantida para compatibilidade, não exposta na UI
+    const quadra = "";
+    const ini = 0;
+    const fin = 0;
     if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final para alinhar."); return; }
     const min = Math.min(ini, fin); const max = Math.max(ini, fin);
     const pontosSeq = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number.isFinite(Number(p.lote)) && Number(p.lote) >= min && Number(p.lote) <= max).sort((a, b) => ini <= fin ? Number(a.lote) - Number(b.lote) : Number(b.lote) - Number(a.lote));
@@ -2508,25 +2505,25 @@ const LotDashboard = ({
   // SALVAR / SAIR DO MODO EDIÇÃO
   // ──────────────────────────────────────────────
   const salvarEdicaoMapa = () => {
-    // Commita qualquer drag pendente
     if (draggingId) persistDev(localDev);
     setDraggingId(null);
     setDragStart(null);
-    setPendingPoint(null);
     setSelectedPoint(null);
+    setMarcadorFase("idle");
+    setMarcadorPonto1(null);
+    setMarcadorPonto2Preview(null);
+    setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
     setSeqFase("aguardando_primeiro");
     setSeqPrimeiroClique(null);
     setSeqPreview(null);
-    setCurvaFase("aguardando_primeiro");
-    setCurvaPts([]);
-    setCurvaPreview(null);
     setMassaSelIds(new Set());
     setLastSessionPointIds([]);
     setMapAction("visualizar");
   };
 
   const entrarEdicao = () => {
-    setMapAction("manual");
+    setMapAction("editar");
+    setMarcadorFase("idle");
     if (mapaImagem) setMode("mapa");
   };
 
@@ -2546,27 +2543,37 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // PREVIEW BOLINHAS PARA SEQUÊNCIA
   // ──────────────────────────────────────────────
+  // Preview bolinhas para o novo fluxo de marcador multi-lote
   const renderSeqPreviewBalls = () => {
-    if (mapAction !== "sequencia" || seqFase !== "aguardando_segundo" || !seqPrimeiroClique || !seqPreview) return null;
-    const ini = parseInt(seqForm.loteInicial);
-    const fin = parseInt(seqForm.loteFinal);
-    if (isNaN(ini) || isNaN(fin)) return null;
-    const step = ini <= fin ? 1 : -1;
-    const lotes: number[] = [];
-    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
-    const total = lotes.length;
-    const ballSize = getBallPixelSize();
-    return lotes.map((loteNum, idx) => {
-      const t = total === 1 ? 0 : idx / (total - 1);
-      const x = seqPrimeiroClique!.xPercent + (seqPreview!.xPercent - seqPrimeiroClique!.xPercent) * t;
-      const y = seqPrimeiroClique!.yPercent + (seqPreview!.yPercent - seqPrimeiroClique!.yPercent) * t;
+    // Novo fluxo: marcador multi-lote aguardando segundo ponto
+    if (mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && marcadorPonto2Preview) {
+      const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+      const total = lotes.length;
+      const ballSize = getBallPixelSize();
       return (
-        <div key={loteNum} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none"
-          style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
-          {loteNum}
-        </div>
+        <>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+            <line
+              x1={`${marcadorPonto1.xPercent}%`} y1={`${marcadorPonto1.yPercent}%`}
+              x2={`${marcadorPonto2Preview.xPercent}%`} y2={`${marcadorPonto2Preview.yPercent}%`}
+              stroke="#3b82f6" strokeWidth="2" strokeDasharray="6,4" opacity="0.6"
+            />
+          </svg>
+          {lotes.map((loteLabel, idx) => {
+            const t = total === 1 ? 0 : idx / (total - 1);
+            const x = marcadorPonto1.xPercent + (marcadorPonto2Preview.xPercent - marcadorPonto1.xPercent) * t;
+            const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
+            return (
+              <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none"
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
+                {loteLabel}
+              </div>
+            );
+          })}
+        </>
       );
-    });
+    }
+    return null;
   };
 
   // ──────────────────────────────────────────────
@@ -2629,23 +2636,12 @@ const LotDashboard = ({
               onMouseMove={(e) => { handleMapMouseMoveForDrag(e); handleMapMouseMove(e); }}
               onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
               onMouseLeave={() => { if (draggingId) commitDrag(); }}
-              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ maxWidth: "1000px" }}
             >
               <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
-              {/* Linha provisória de sequência */}
-              {isEditingMap && mapAction === "sequencia" && seqFase === "aguardando_segundo" && seqPrimeiroClique && seqPreview && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                  <line
-                    x1={`${seqPrimeiroClique.xPercent}%`} y1={`${seqPrimeiroClique.yPercent}%`}
-                    x2={`${seqPreview.xPercent}%`} y2={`${seqPreview.yPercent}%`}
-                    stroke="#3b82f6" strokeWidth="2" strokeDasharray="6,4" opacity="0.6"
-                  />
-                </svg>
-              )}
-
-              {/* Preview bolinhas de sequência */}
+              {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
 
               {/* BOLINHAS */}
@@ -2673,10 +2669,12 @@ const LotDashboard = ({
                 );
               })}
 
-              {/* Ponto inicial da sequência (marcador) */}
-              {isEditingMap && mapAction === "sequencia" && seqPrimeiroClique && seqFase !== "aguardando_primeiro" && (
-                <div className="absolute -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20"
-                  style={{ left: `${seqPrimeiroClique.xPercent}%`, top: `${seqPrimeiroClique.yPercent}%` }} />
+              {/* Marcador do primeiro ponto (multi-lote aguardando 2º clique) */}
+              {isEditingMap && mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && (
+                <div className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20 flex items-center justify-center"
+                  style={{ left: `${marcadorPonto1.xPercent}%`, top: `${marcadorPonto1.yPercent}%` }}>
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                </div>
               )}
             </div>
           </div>
@@ -2692,127 +2690,51 @@ const LotDashboard = ({
               </div>
             )}
 
-            {/* MODO EDIÇÃO — TOOLBAR PRINCIPAL */}
+            {/* MODO EDIÇÃO — TOOLBAR SIMPLIFICADA */}
             {isEditingMap && (
               <div className="card-premium p-4 space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
 
-                {/* Ações de criação */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setMapAction("manual"); setSeqFase("aguardando_primeiro"); setCurvaFase("aguardando_primeiro"); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "manual" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Manual</button>
-                  <button onClick={() => { setMapAction("sequencia"); setSeqFase("aguardando_primeiro"); setSeqPrimeiroClique(null); setSeqPreview(null); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Linha 2pts</button>
-                  <button onClick={() => { setMapAction("curva"); setCurvaFase("aguardando_primeiro"); setCurvaPts([]); setCurvaPreview(null); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "curva" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Curva 3pts</button>
-                  <button onClick={() => { setMapAction("massa"); setMassaSelIds(new Set()); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Em massa</button>
-                </div>
+                {/* Instrução contextual */}
+                {mapAction === "editar" && marcadorFase === "idle" && (
+                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">
+                    Clique em qualquer ponto do mapa para adicionar um marcador.
+                  </p>
+                )}
+                {mapAction === "editar" && marcadorFase === "formulario" && (
+                  <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-xl font-medium">
+                    Preencha os dados e confirme. Se o lote tiver múltiplos (ex: 1,2,3), clique no 2º ponto do mapa depois.
+                  </p>
+                )}
+                {mapAction === "editar" && marcadorFase === "aguardando_segundo" && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 p-2 rounded-xl font-medium">
+                    Clique no mapa para definir o ponto final da linha.
+                  </p>
+                )}
 
-                {/* Carregar mapa — só no modo edição */}
+                {/* Botão modo edição em massa */}
+                <button
+                  onClick={() => { setMapAction("massa"); setMassaSelIds(new Set()); setMarcadorFase("idle"); }}
+                  className={`w-full py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}
+                >
+                  Edição em massa
+                </button>
+                {mapAction === "massa" && (
+                  <button onClick={() => { setMapAction("editar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
+                    ← Voltar ao marcador
+                  </button>
+                )}
+
+                {/* Carregar mapa */}
                 <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
                   <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
                 </label>
 
-                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
+                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
 
                 {/* Salvar / sair da edição */}
                 <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
-              </div>
-            )}
-
-            {/* PAINEL SEQUÊNCIA 2 PONTOS */}
-            {isEditingMap && mapAction === "sequencia" && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Linha de lotes — 2 pontos</p>
-
-                {seqFase === "aguardando_primeiro" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto inicial da linha.</p>
-                )}
-
-                {seqFase === "formulario" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Ponto inicial marcado. Preencha os dados e depois clique no ponto final.</p>
-                    <input className="input-field" placeholder="Quadra" value={seqForm.quadra} onChange={(e) => setSeqForm({ ...seqForm, quadra: e.target.value })} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="input-field" placeholder="Lote inicial" value={seqForm.loteInicial} onChange={(e) => setSeqForm({ ...seqForm, loteInicial: e.target.value })} />
-                      <input className="input-field" placeholder="Lote final" value={seqForm.loteFinal} onChange={(e) => setSeqForm({ ...seqForm, loteFinal: e.target.value })} />
-                    </div>
-                    <select className="input-field" value={seqForm.status} onChange={(e) => setSeqForm({ ...seqForm, status: e.target.value as any })}>
-                      <option value="disponivel">Disponível</option>
-                      <option value="reservado">Reservado</option>
-                      <option value="indisponivel">Indisponível</option>
-                    </select>
-                    <input className="input-field" placeholder="Observação (opcional)" value={seqForm.observacao} onChange={(e) => setSeqForm({ ...seqForm, observacao: e.target.value })} />
-                    <button onClick={() => {
-                      if (!seqForm.quadra || !seqForm.loteInicial || !seqForm.loteFinal) { alert("Preencha todos os campos."); return; }
-                      setSeqFase("aguardando_segundo");
-                    }} className="btn-primary w-full">Confirmar e marcar ponto final</button>
-                    <button onClick={() => { setSeqFase("aguardando_primeiro"); setSeqPrimeiroClique(null); }} className="btn-secondary w-full">Cancelar</button>
-                  </>
-                )}
-
-                {seqFase === "aguardando_segundo" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-green-50 p-2 rounded-xl">
-                      Quadra {seqForm.quadra} · Lotes {seqForm.loteInicial}→{seqForm.loteFinal}<br />
-                      Clique no mapa para definir o ponto final. A prévia aparece na linha.
-                    </p>
-                    <button onClick={() => { setSeqFase("formulario"); setSeqPreview(null); }} className="btn-secondary w-full">Voltar ao formulário</button>
-                  </>
-                )}
-
-                {/* Alinhar sequências existentes */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Alinhar sequência existente</p>
-                  <input className="input-field" placeholder="Quadra" value={alignSeq.quadra} onChange={(e) => setAlignSeq({ ...alignSeq, quadra: e.target.value })} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input className="input-field" placeholder="Lote ini." value={alignSeq.loteInicial} onChange={(e) => setAlignSeq({ ...alignSeq, loteInicial: e.target.value })} />
-                    <input className="input-field" placeholder="Lote fin." value={alignSeq.loteFinal} onChange={(e) => setAlignSeq({ ...alignSeq, loteFinal: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
-                    <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* PAINEL CURVA 3 PONTOS */}
-            {isEditingMap && mapAction === "curva" && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Curva de lotes — 3 pontos</p>
-
-                {curvaFase === "aguardando_primeiro" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto inicial da curva.</p>
-                )}
-
-                {curvaFase === "formulario" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Ponto inicial marcado. Preencha os dados.</p>
-                    <input className="input-field" placeholder="Quadra" value={curvaForm.quadra} onChange={(e) => setCurvaForm({ ...curvaForm, quadra: e.target.value })} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="input-field" placeholder="Lote inicial" value={curvaForm.loteInicial} onChange={(e) => setCurvaForm({ ...curvaForm, loteInicial: e.target.value })} />
-                      <input className="input-field" placeholder="Lote final" value={curvaForm.loteFinal} onChange={(e) => setCurvaForm({ ...curvaForm, loteFinal: e.target.value })} />
-                    </div>
-                    <select className="input-field" value={curvaForm.status} onChange={(e) => setCurvaForm({ ...curvaForm, status: e.target.value as any })}>
-                      <option value="disponivel">Disponível</option>
-                      <option value="reservado">Reservado</option>
-                      <option value="indisponivel">Indisponível</option>
-                    </select>
-                    <input className="input-field" placeholder="Observação (opcional)" value={curvaForm.observacao} onChange={(e) => setCurvaForm({ ...curvaForm, observacao: e.target.value })} />
-                    <button onClick={() => {
-                      if (!curvaForm.quadra || !curvaForm.loteInicial || !curvaForm.loteFinal) { alert("Preencha todos os campos."); return; }
-                      setCurvaFase("aguardando_meio");
-                    }} className="btn-primary w-full">Confirmar — marcar ponto do meio</button>
-                    <button onClick={() => { setCurvaFase("aguardando_primeiro"); setCurvaPts([]); }} className="btn-secondary w-full">Cancelar</button>
-                  </>
-                )}
-
-                {curvaFase === "aguardando_meio" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto do meio da curva.</p>
-                )}
-
-                {curvaFase === "aguardando_ultimo" && (
-                  <p className="text-xs text-slate-500 bg-green-50 p-2 rounded-xl">Clique no mapa para definir o ponto final da curva.</p>
-                )}
               </div>
             )}
 
@@ -2870,26 +2792,54 @@ const LotDashboard = ({
           </div>
         )}
 
-        {/* FORMULÁRIO MANUAL (pendingPoint) */}
+        {/* FORMULÁRIO NOVO MARCADOR — abre após clique no mapa */}
         <AnimatePresence>
-          {pendingPoint && isEditingMap && mapAction === "manual" && (
+          {isEditingMap && mapAction === "editar" && marcadorFase === "formulario" && marcadorPonto1 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
               <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-                <h4 className="font-display font-bold text-slate-800 text-lg">Nova bolinha manual</h4>
-                <input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} autoFocus />
-                <input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} />
-                <select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}>
+                <h4 className="font-display font-bold text-slate-800 text-lg">Novo marcador</h4>
+                <p className="text-xs text-slate-400">
+                  Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
+                </p>
+                <input className="input-field" placeholder="Quadra" value={marcadorForm.quadra} onChange={(e) => setMarcadorForm({ ...marcadorForm, quadra: e.target.value })} autoFocus />
+                <input
+                  className="input-field"
+                  placeholder="Lote — ex: 5 ou 1,2,3,4"
+                  value={marcadorForm.lote}
+                  onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
+                />
+                <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus })}>
                   <option value="disponivel">Disponível</option>
                   <option value="reservado">Reservado</option>
                   <option value="indisponivel">Indisponível</option>
                 </select>
-                <input className="input-field" placeholder="Observação (opcional)" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} />
+                <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
                 <div className="grid grid-cols-2 gap-3">
                   <button onClick={() => {
-                    const ok = ensureMapLotAndPoint({ quadra: pointForm.quadra, lote: pointForm.lote, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent, status: pointForm.status, observacao: pointForm.observacao });
-                    if (ok) setPendingPoint(null);
-                  }} className="btn-primary">Adicionar</button>
-                  <button onClick={() => setPendingPoint(null)} className="btn-secondary">Cancelar</button>
+                    if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
+                    const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+                    if (lotes.length === 1) {
+                      // Lote único — cria direto
+                      const ok = ensureMapLotAndPoint({
+                        quadra: marcadorForm.quadra,
+                        lote: lotes[0],
+                        xPercent: marcadorPonto1!.xPercent,
+                        yPercent: marcadorPonto1!.yPercent,
+                        status: marcadorForm.status,
+                        observacao: marcadorForm.observacao,
+                      });
+                      if (ok) {
+                        setMarcadorFase("idle");
+                        setMarcadorPonto1(null);
+                      }
+                    } else {
+                      // Múltiplos lotes — aguarda segundo clique no mapa
+                      setMarcadorFase("aguardando_segundo");
+                    }
+                  }} className="btn-primary">
+                    {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : "Adicionar"}
+                  </button>
+                  <button onClick={() => { setMarcadorFase("idle"); setMarcadorPonto1(null); }} className="btn-secondary">Cancelar</button>
                 </div>
               </div>
             </motion.div>
@@ -2910,6 +2860,13 @@ const LotDashboard = ({
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
         <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+          {/* Cabeçalho com destaque da Quadra — especialmente útil na edição */}
+          {isEditingMap && (
+            <div className="px-3 py-1.5 bg-slate-100 rounded-xl inline-flex items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editando</span>
+              <span className="text-xs font-bold text-slate-700">Quadra {ponto.quadra}</span>
+            </div>
+          )}
           <div>
             <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {ponto.quadra} · Lote {ponto.lote}</h4>
             <p className="text-sm text-slate-500">{getMapaStatusLabel(ponto.status, temVenda)}</p>
