@@ -52,21 +52,8 @@ import {
   PieChart as PieChartIcon,
   Trophy,
   Medal,
-  Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-} from "recharts";
 import {
   Section,
   Empreendimento,
@@ -951,6 +938,19 @@ function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
 function generoContratoValido(pessoa: any): boolean {
   return pessoa?.genero === "M" || pessoa?.genero === "F";
 }
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+
 const DELETE_PASSWORD = "Geper3tp@";
 
 function useDeleteConfirm() {
@@ -1886,43 +1886,19 @@ const LotDashboard = ({
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
-  // mapAction: "visualizar" = modo leitura, "manual" = edição manual, "sequencia" = criação de linha 2 pontos, "curva" = curva 3 pontos, "massa" = edição em massa
-  const [mapAction, setMapAction] = useState<"visualizar" | "manual" | "sequencia" | "curva" | "massa">("visualizar");
+  const [mapAction, setMapAction] = useState<"manual" | "sequencia" | "visualizar">("visualizar");
   const [pendingPoint, setPendingPoint] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
-  const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
-
-  // Sequencia 2 pontos: fase "aguardando_primeiro", "formulario", "aguardando_segundo", "concluida"
-  const [seqFase, setSeqFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_segundo">("aguardando_primeiro");
-  const [seqPrimeiroClique, setSeqPrimeiroClique] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [seqForm, setSeqForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
-  const [seqPreview, setSeqPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
-
-  // Curva 3 pontos
-  const [curvaFase, setCurvaFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_meio" | "aguardando_ultimo">("aguardando_primeiro");
-  const [curvaForm, setCurvaForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
-  const [curvaPts, setCurvaPts] = useState<{ xPercent: number; yPercent: number }[]>([]);
-  const [curvaPreview, setCurvaPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
-
-  // Arrastar bolinhas no modo edição
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
-  const mapContainerRef = useRef<HTMLDivElement>(null);
-
-  // Edição em massa
-  const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
-  const [massaAcao, setMassaAcao] = useState<"disponivel" | "reservado" | "indisponivel" | "excluir" | "">("" as any);
-  const [massaFiltroQuadra, setMassaFiltroQuadra] = useState("");
-  const [massaFiltroLoteIni, setMassaFiltroLoteIni] = useState("");
-  const [massaFiltroLoteFin, setMassaFiltroLoteFin] = useState("");
-
-  // Alinhar sequência (para sequências existentes)
-  const [alignSeq, setAlignSeq] = useState({ quadra: "", loteInicial: "", loteFinal: "" });
+  const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "", atual: null as number | null });
+  const [sequenceAdded, setSequenceAdded] = useState(0);
+  const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
+  const [mapBallSize, setMapBallSize] = useState<"pequena">("pequena");
 
   useEffect(() => {
     setLocalDev(dev);
+    setMapBallSize("pequena");
     setMapAction("visualizar");
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
@@ -1934,7 +1910,7 @@ const LotDashboard = ({
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
   const quadras = getQuadraList(localDev);
-  const isEditingMap = canEditMap && mapAction !== "visualizar";
+  const soldLots = sales.filter((s) => s.empreendimentoId === localDev.id && isVendaAtiva(s));
 
   const persistDev = (nextDev: Empreendimento) => {
     const recalculado = recalcularEstatisticasEmpreendimento(nextDev, sales);
@@ -1950,9 +1926,6 @@ const LotDashboard = ({
     return findVendaAtivaDoLote(sales, localDev.id, quadra, lote);
   };
 
-  // ──────────────────────────────────────────────
-  // UPLOAD DE IMAGEM
-  // ──────────────────────────────────────────────
   const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -1970,27 +1943,32 @@ const LotDashboard = ({
         mapaPontos: mapaPontos,
       } as Empreendimento);
       setMode("mapa");
+      setMapAction("manual");
     };
     reader.readAsDataURL(file);
   };
 
-  // ──────────────────────────────────────────────
-  // TAMANHO DAS BOLINHAS
-  // ──────────────────────────────────────────────
-  const getBallBasePixelSize = () => ({ size: 18, font: 7 });
+  const getBallBasePixelSize = () => {
+    // Padrão único: bolinha pequena para todo o mapa.
+    return { size: 18, font: 7 };
+  };
 
   const getBallPixelSize = () => {
     const base = getBallBasePixelSize();
     if (typeof window !== "undefined" && window.innerWidth < 640) {
+      // No celular a bolinha precisa ser menor apenas na visualização.
+      // O download continua usando getBallBasePixelSize(), mantendo o tamanho normal.
       const mobileSize = Math.round(base.size * 0.38);
       return { size: Math.max(7, mobileSize), font: Math.max(5, Math.round(base.font * 0.6)) };
     }
     return base;
   };
 
-  // ──────────────────────────────────────────────
-  // DOWNLOAD IMAGEM/PDF
-  // ──────────────────────────────────────────────
+  const salvarTamanhoBolinhas = () => {
+    setMapBallSize("pequena");
+    persistDev({ ...localDev, mapaBolinhaTamanho: "pequena" } as Empreendimento);
+  };
+
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
       if (!mapaImagem) {
@@ -2004,7 +1982,10 @@ const LotDashboard = ({
         canvas.width = img.naturalWidth || img.width;
         canvas.height = img.naturalHeight || img.height;
         const ctx = canvas.getContext("2d");
-        if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
+        if (!ctx) {
+          reject(new Error("Não foi possível preparar o mapa."));
+          return;
+        }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const baseSize = getBallBasePixelSize().size;
         const scale = Math.max(canvas.width / 1000, 1);
@@ -2015,13 +1996,17 @@ const LotDashboard = ({
           const reservado = !indisponivel && ponto.status === "reservado";
           const x = (Number(ponto.xPercent) / 100) * canvas.width;
           const y = (Number(ponto.yPercent) / 100) * canvas.height;
-          ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
-          ctx.lineWidth = Math.max(3 * scale, 2); ctx.strokeStyle = "#ffffff"; ctx.stroke();
+          ctx.lineWidth = Math.max(3 * scale, 2);
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
           ctx.fillStyle = reservado ? "#0f172a" : "#ffffff";
           ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
           ctx.fillText(String(ponto.lote || ""), x, y);
         });
         resolve(canvas);
@@ -2037,9 +2022,11 @@ const LotDashboard = ({
       const link = document.createElement("a");
       link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
       link.href = canvas.toDataURL("image/png");
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
     } catch (error: any) {
-      alert(error?.message || "Não foi possível baixar o mapa com as bolinhas.");
+      alert(error?.message || "Não foi possível baixar o mapa com as bolinhas. Se a imagem veio de link externo, carregue o arquivo da imagem diretamente no sistema.");
     }
   };
 
@@ -2066,13 +2053,63 @@ const LotDashboard = ({
     }
   };
 
-  // ──────────────────────────────────────────────
-  // CRIAR/PERSISTIR BOLINHA
-  // ──────────────────────────────────────────────
+  const getSequenceRangeNumbers = () => {
+    const inicial = Number(sequence.loteInicial);
+    const final = Number(sequence.loteFinal);
+    if (!sequence.quadra || !Number.isFinite(inicial) || !Number.isFinite(final)) return null;
+    const min = Math.min(inicial, final);
+    const max = Math.max(inicial, final);
+    return { quadra: normalizeLotText(sequence.quadra), inicial, final, min, max };
+  };
+
+  const alinharSequencia = (tipo: "reta" | "bezier") => {
+    const range = getSequenceRangeNumbers();
+    if (!range) {
+      alert("Informe quadra, lote inicial e lote final para alinhar a sequência.");
+      return;
+    }
+    const pontosSequencia = mapaPontos
+      .filter((p) => normalizeLotText(p.quadra) === range.quadra && Number.isFinite(Number(p.lote)) && Number(p.lote) >= range.min && Number(p.lote) <= range.max)
+      .sort((a, b) => range.inicial <= range.final ? Number(a.lote) - Number(b.lote) : Number(b.lote) - Number(a.lote));
+    if (pontosSequencia.length < 2) {
+      alert("Marque pelo menos dois pontos dessa sequência para alinhar.");
+      return;
+    }
+    const primeiro = pontosSequencia[0];
+    const ultimo = pontosSequencia[pontosSequencia.length - 1];
+    const meioExistente = pontosSequencia[Math.floor(pontosSequencia.length / 2)];
+    const controle = tipo === "bezier"
+      ? { xPercent: meioExistente?.xPercent ?? ((primeiro.xPercent + ultimo.xPercent) / 2), yPercent: meioExistente?.yPercent ?? (Math.min(primeiro.yPercent, ultimo.yPercent) - 10) }
+      : null;
+    const ids = new Set(pontosSequencia.map((p) => p.id));
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    pontosSequencia.forEach((p, idx) => {
+      const t = pontosSequencia.length === 1 ? 0 : idx / (pontosSequencia.length - 1);
+      if (tipo === "reta" || !controle) {
+        posicoes.set(p.id, {
+          xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
+          yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t,
+        });
+      } else {
+        const inv = 1 - t;
+        posicoes.set(p.id, {
+          xPercent: (inv * inv * primeiro.xPercent) + (2 * inv * t * controle.xPercent) + (t * t * ultimo.xPercent),
+          yPercent: (inv * inv * primeiro.yPercent) + (2 * inv * t * controle.yPercent) + (t * t * ultimo.yPercent),
+        });
+      }
+    });
+    const nextPontos = mapaPontos.map((p) => ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p);
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+  };
+
   const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
-    if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
+    if (!quadra || !lote) {
+      alert("Informe quadra e lote.");
+      return false;
+    }
+
     const existingPoint = mapaPontos.find((p) => getLotInfoKey(p.quadra, p.lote) === getLotInfoKey(quadra, lote));
     if (existingPoint && !raw.moveExisting) {
       if (raw.confirmDuplicate === false) return false;
@@ -2080,11 +2117,13 @@ const LotDashboard = ({
       if (!reposition) return false;
       return ensureMapLotAndPoint({ ...raw, moveExisting: true });
     }
+
     const lotExists = hasConfiguredLot(localDev, quadra, lote);
     if (!lotExists && raw.confirmMissing !== false) {
       const add = window.confirm("Esta quadra/lote não existe no empreendimento. Deseja adicionar automaticamente?");
       if (!add) return false;
     }
+
     const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
     const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
     const pontoBase = {
@@ -2103,265 +2142,64 @@ const LotDashboard = ({
       dataVenda: existingPoint?.dataVenda,
       historico: existingPoint?.historico || [],
     };
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+
     const nextPontos = raw.moveExisting && existingPoint
-      ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
-      : [...currentPontos, pontoBase];
-    const nextInfo = { ...existingInfo, status: raw.status, observacao: raw.observacao || existingInfo.observacao || "" };
+      ? mapaPontos.map((p) => p.id === existingPoint.id ? pontoBase : p)
+      : [...mapaPontos, pontoBase];
+
+    const nextInfo = {
+      ...existingInfo,
+      status: raw.status,
+      observacao: raw.observacao || existingInfo.observacao || "",
+    };
+
     const nextDev = recalcularEstatisticasEmpreendimento({
       ...ensured.dev,
-      lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
+      lotesInfo: {
+        ...(ensured.dev.lotesInfo || {}),
+        [ensured.lotInfoKey]: nextInfo,
+      },
       mapaPontos: nextPontos,
     } as Empreendimento, sales);
+
     persistDev(nextDev);
     if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
     return true;
   };
 
-  // ──────────────────────────────────────────────
-  // SEQUÊNCIA 2 PONTOS: criar bolinhas distribuídas
-  // ──────────────────────────────────────────────
-  const criarBolinhasSequencia = (p1: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: typeof seqForm) => {
-    const quadra = normalizeLotText(form.quadra);
-    const ini = parseInt(form.loteInicial);
-    const fin = parseInt(form.loteFinal);
-    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
-    const step = ini <= fin ? 1 : -1;
-    const lotes: number[] = [];
-    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
-    const total = lotes.length;
-    let nextDevLocal = localDev;
-    const newIds: string[] = [];
-    lotes.forEach((loteNum, idx) => {
-      const t = total === 1 ? 0 : idx / (total - 1);
-      const xPercent = p1.xPercent + (p2.xPercent - p1.xPercent) * t;
-      const yPercent = p1.yPercent + (p2.yPercent - p1.yPercent) * t;
-      const loteStr = String(loteNum);
-      const lotInfoKey = getLotInfoKey(quadra, loteStr);
-      const existingPoint = ((nextDevLocal as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === lotInfoKey);
-      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
-      const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
-      const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
-      const pontoBase = {
-        id,
-        empreendimentoId: localDev.id,
-        quadra: ensured.quadraName,
-        lote: loteStr,
-        xPercent,
-        yPercent,
-        status: form.status,
-        observacao: form.observacao || existingPoint?.observacao || "",
-        criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
-        atualizadoEm: new Date().toISOString(),
-        vendaId: existingPoint?.vendaId,
-        clienteNome: existingPoint?.clienteNome,
-        dataVenda: existingPoint?.dataVenda,
-        historico: existingPoint?.historico || [],
-        // Linha de sequência para movimentação posterior
-        linhaSeqId: `seq-${quadra}-${ini}-${fin}-${Date.now()}`,
-        linhaSeqOrdem: idx,
-        linhaSeqTotal: total,
-      };
-      const currentPontos = ((ensured.dev as any).mapaPontos || []) as any[];
-      const nextPontos = existingPoint
-        ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
-        : [...currentPontos, pontoBase];
-      const nextInfo = { ...existingInfo, status: form.status, observacao: form.observacao || existingInfo.observacao || "" };
-      nextDevLocal = {
-        ...ensured.dev,
-        lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
-        mapaPontos: nextPontos,
-      } as Empreendimento;
-      if (!existingPoint) newIds.push(id);
-    });
-    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
-    persistDev(finalDev);
-    setLastSessionPointIds((prev) => [...prev, ...newIds]);
-  };
-
-  // Distribuir bolinhas em curva Bézier quadrática (3 pontos)
-  const criarBolinhasCurva = (p1: { xPercent: number; yPercent: number }, pmid: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: typeof curvaForm) => {
-    const quadra = normalizeLotText(form.quadra);
-    const ini = parseInt(form.loteInicial);
-    const fin = parseInt(form.loteFinal);
-    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
-    const step = ini <= fin ? 1 : -1;
-    const lotes: number[] = [];
-    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
-    const total = lotes.length;
-    let nextDevLocal = localDev;
-    const newIds: string[] = [];
-    lotes.forEach((loteNum, idx) => {
-      const t = total === 1 ? 0 : idx / (total - 1);
-      const inv = 1 - t;
-      const xPercent = (inv * inv * p1.xPercent) + (2 * inv * t * pmid.xPercent) + (t * t * p2.xPercent);
-      const yPercent = (inv * inv * p1.yPercent) + (2 * inv * t * pmid.yPercent) + (t * t * p2.yPercent);
-      const loteStr = String(loteNum);
-      const lotInfoKey = getLotInfoKey(quadra, loteStr);
-      const existingPoint = ((nextDevLocal as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === lotInfoKey);
-      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
-      const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
-      const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
-      const pontoBase = {
-        id, empreendimentoId: localDev.id, quadra: ensured.quadraName, lote: loteStr, xPercent, yPercent,
-        status: form.status, observacao: form.observacao || existingPoint?.observacao || "",
-        criadoEm: existingPoint?.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(),
-        vendaId: existingPoint?.vendaId, clienteNome: existingPoint?.clienteNome, dataVenda: existingPoint?.dataVenda,
-        historico: existingPoint?.historico || [],
-      };
-      const currentPontos = ((ensured.dev as any).mapaPontos || []) as any[];
-      const nextPontos = existingPoint
-        ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
-        : [...currentPontos, pontoBase];
-      const nextInfo = { ...existingInfo, status: form.status, observacao: form.observacao || existingInfo.observacao || "" };
-      nextDevLocal = { ...ensured.dev, lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo }, mapaPontos: nextPontos } as Empreendimento;
-      if (!existingPoint) newIds.push(id);
-    });
-    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
-    persistDev(finalDev);
-    setLastSessionPointIds((prev) => [...prev, ...newIds]);
-  };
-
-  // ──────────────────────────────────────────────
-  // CLIQUE NO MAPA
-  // ──────────────────────────────────────────────
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isEditingMap) return;
+    if (!canEditMap || mapAction === "visualizar") return;
     const rect = e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
-
-    if (mapAction === "manual") {
-      setPendingPoint({ xPercent, yPercent });
-      setPointForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
-      return;
-    }
 
     if (mapAction === "sequencia") {
-      if (seqFase === "aguardando_primeiro") {
-        setSeqPrimeiroClique({ xPercent, yPercent });
-        setSeqFase("formulario");
+      const inicial = Number(sequence.loteInicial);
+      const final = Number(sequence.loteFinal);
+      const atual = sequence.atual ?? inicial;
+      if (!sequence.quadra || !Number.isFinite(inicial) || !Number.isFinite(final)) {
+        alert("Preencha quadra, lote inicial e lote final antes de marcar a sequência.");
         return;
       }
-      if (seqFase === "aguardando_segundo") {
-        // Cria bolinhas
-        criarBolinhasSequencia(seqPrimeiroClique!, { xPercent, yPercent }, seqForm);
-        setSeqFase("aguardando_primeiro");
-        setSeqPrimeiroClique(null);
-        setSeqPreview(null);
-        setSeqForm({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel", observacao: "" });
+      const ok = ensureMapLotAndPoint({ quadra: sequence.quadra, lote: String(atual), xPercent, yPercent, status: sequence.status, observacao: sequence.observacao, confirmMissing: false });
+      if (!ok) return;
+      const qtdAtual = (sequence.atual === null || atual === inicial) ? 1 : sequenceAdded + 1;
+      setSequenceAdded(qtdAtual);
+      if (atual === final) {
+        alert(`Sequência concluída. ${qtdAtual} lote(s) adicionado(s)/atualizado(s) na quadra ${normalizeLotText(sequence.quadra)}.`);
+        setSequence((prev) => ({ ...prev, atual: null }));
+        setSequenceAdded(0);
         return;
       }
+      const step = inicial < final ? 1 : -1;
+      setSequence((prev) => ({ ...prev, atual: atual + step }));
       return;
     }
 
-    if (mapAction === "curva") {
-      if (curvaFase === "aguardando_primeiro") {
-        setCurvaPts([{ xPercent, yPercent }]);
-        setCurvaFase("formulario");
-        return;
-      }
-      if (curvaFase === "aguardando_meio") {
-        setCurvaPts((prev) => [...prev, { xPercent, yPercent }]);
-        setCurvaFase("aguardando_ultimo");
-        return;
-      }
-      if (curvaFase === "aguardando_ultimo") {
-        criarBolinhasCurva(curvaPts[0], curvaPts[1], { xPercent, yPercent }, curvaForm);
-        setCurvaFase("aguardando_primeiro");
-        setCurvaPts([]);
-        setCurvaPreview(null);
-        setCurvaForm({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel", observacao: "" });
-        return;
-      }
-      return;
-    }
+    setPendingPoint({ xPercent, yPercent });
+    setPointForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
   };
 
-  const handleMapMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isEditingMap) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
-    const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
-    if (mapAction === "sequencia" && seqFase === "aguardando_segundo") {
-      setSeqPreview({ xPercent, yPercent });
-    }
-    if (mapAction === "curva" && (curvaFase === "aguardando_meio" || curvaFase === "aguardando_ultimo")) {
-      setCurvaPreview({ xPercent, yPercent });
-    }
-  };
-
-  // ──────────────────────────────────────────────
-  // ARRASTAR BOLINHAS (modo edição)
-  // ──────────────────────────────────────────────
-  const handleBallMouseDown = (e: React.MouseEvent, ponto: any) => {
-    if (!isEditingMap) return;
-    e.stopPropagation();
-    e.preventDefault();
-    setDraggingId(ponto.id);
-    setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent });
-  };
-
-  const handleMapMouseUp = () => {
-    if (draggingId) {
-      setDraggingId(null);
-      setDragStart(null);
-    }
-  };
-
-  const handleMapMouseMoveForDrag = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!draggingId || !dragStart || !mapContainerRef.current) return;
-    const rect = mapContainerRef.current.getBoundingClientRect();
-    const dx = ((e.clientX - dragStart.mouseX) / rect.width) * 100;
-    const dy = ((e.clientY - dragStart.mouseY) / rect.height) * 100;
-    const newX = Math.max(0, Math.min(100, dragStart.xPercent + dx));
-    const newY = Math.max(0, Math.min(100, dragStart.yPercent + dy));
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    const nextPontos = currentPontos.map((p: any) =>
-      p.id === draggingId ? { ...p, xPercent: newX, yPercent: newY, atualizadoEm: new Date().toISOString() } : p
-    );
-    setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
-  };
-
-  const commitDrag = () => {
-    if (!draggingId) return;
-    persistDev(localDev);
-    setDraggingId(null);
-    setDragStart(null);
-  };
-
-  // ──────────────────────────────────────────────
-  // ALINHAMENTO DE SEQUÊNCIA EXISTENTE
-  // ──────────────────────────────────────────────
-  const alinharSequencia = (tipo: "reta" | "bezier") => {
-    const quadra = normalizeLotText(alignSeq.quadra);
-    const ini = parseInt(alignSeq.loteInicial);
-    const fin = parseInt(alignSeq.loteFinal);
-    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final para alinhar."); return; }
-    const min = Math.min(ini, fin); const max = Math.max(ini, fin);
-    const pontosSeq = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number.isFinite(Number(p.lote)) && Number(p.lote) >= min && Number(p.lote) <= max).sort((a, b) => ini <= fin ? Number(a.lote) - Number(b.lote) : Number(b.lote) - Number(a.lote));
-    if (pontosSeq.length < 2) { alert("Marque pelo menos dois pontos dessa sequência."); return; }
-    const primeiro = pontosSeq[0]; const ultimo = pontosSeq[pontosSeq.length - 1];
-    const meioEx = pontosSeq[Math.floor(pontosSeq.length / 2)];
-    const controle = tipo === "bezier" ? { xPercent: meioEx?.xPercent ?? ((primeiro.xPercent + ultimo.xPercent) / 2), yPercent: meioEx?.yPercent ?? (Math.min(primeiro.yPercent, ultimo.yPercent) - 10) } : null;
-    const ids = new Set(pontosSeq.map((p) => p.id));
-    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
-    pontosSeq.forEach((p, idx) => {
-      const t = pontosSeq.length === 1 ? 0 : idx / (pontosSeq.length - 1);
-      if (!controle) {
-        posicoes.set(p.id, { xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t, yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t });
-      } else {
-        const inv = 1 - t;
-        posicoes.set(p.id, { xPercent: (inv * inv * primeiro.xPercent) + (2 * inv * t * controle.xPercent) + (t * t * ultimo.xPercent), yPercent: (inv * inv * primeiro.yPercent) + (2 * inv * t * controle.yPercent) + (t * t * ultimo.yPercent) });
-      }
-    });
-    const nextPontos = mapaPontos.map((p) => ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p);
-    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
-  };
-
-  // ──────────────────────────────────────────────
-  // AÇÕES NAS BOLINHAS (modo visualização)
-  // ──────────────────────────────────────────────
   const marcarPonto = (ponto: any, status: MapaLoteStatus) => {
     const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
     if (status === "disponivel" && venda) {
@@ -2374,7 +2212,11 @@ const LotDashboard = ({
     const nextPontos = mapaPontos.map((p) => {
       if (p.id !== ponto.id) return p;
       const next: any = { ...p, status, atualizadoEm: new Date().toISOString(), historico: [...(p.historico || []), ...historicoExtra] };
-      if (status === "disponivel") { delete next.vendaId; delete next.clienteNome; delete next.dataVenda; }
+      if (status === "disponivel") {
+        delete next.vendaId;
+        delete next.clienteNome;
+        delete next.dataVenda;
+      }
       return next;
     });
     let nextDev = updateLoteStatusInEmpreendimento(localDev, sales, ponto.quadra, ponto.lote, status, { origem: "mapa", venda, removerVinculoAtivo: status === "disponivel" });
@@ -2391,31 +2233,57 @@ const LotDashboard = ({
     const statusInput = (window.prompt("Status: disponivel, reservado ou indisponivel", ponto.status) || ponto.status).toLowerCase();
     const status: MapaLoteStatus = statusInput === "indisponivel" ? "indisponivel" : statusInput === "reservado" ? "reservado" : "disponivel";
     const observacao = window.prompt("Observação", ponto.observacao || "") || "";
-    const oldNum = Number(loteOriginal); const newNum = Number(lote);
+    const oldNum = Number(loteOriginal);
+    const newNum = Number(lote);
     const mudouNumeroSequencial = quadra === quadraOriginal && lote !== loteOriginal && Number.isFinite(oldNum) && Number.isFinite(newNum);
     const renumerarSequencia = mudouNumeroSequencial
-      ? window.confirm(`Você alterou o lote ${loteOriginal} para ${lote}. Deseja continuar a sequência a partir do lote ${lote}?\n\nOK = renumerar este e os próximos pontos.\nCancelar = alterar somente esta bolinha.`)
+      ? window.confirm(`Você alterou o lote ${loteOriginal} para ${lote}. Deseja continuar a sequência a partir do lote ${lote}?
+
+OK = renumerar este e os próximos pontos.
+Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
       : false;
+
     const pontosAfetados = renumerarSequencia
-      ? mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadraOriginal && Number.isFinite(Number(p.lote)) && Number(p.lote) >= oldNum).sort((a, b) => Number(a.lote) - Number(b.lote))
+      ? mapaPontos
+          .filter((p) => normalizeLotText(p.quadra) === quadraOriginal && Number.isFinite(Number(p.lote)) && Number(p.lote) >= oldNum)
+          .sort((a, b) => Number(a.lote) - Number(b.lote))
       : [ponto];
     const affectedIds = new Set(pontosAfetados.map((p) => p.id));
+
     const targetKeys = renumerarSequencia
       ? new Set(pontosAfetados.map((_, idx) => getLotInfoKey(quadra, String(newNum + idx))))
       : new Set([getLotInfoKey(quadra, lote)]);
     const duplicate = mapaPontos.find((p) => !affectedIds.has(p.id) && targetKeys.has(getLotInfoKey(p.quadra, p.lote)));
-    if (duplicate) { alert("Já existe uma bolinha com esta quadra/lote."); return; }
+    if (duplicate) {
+      alert("Já existe uma bolinha com esta quadra/lote.");
+      return;
+    }
+
     let nextDev: Empreendimento = localDev;
     const atualizacaoPorId: Record<string, { quadra: string; lote: string }> = {};
+
     if (renumerarSequencia) {
       pontosAfetados.forEach((pAfetado, idx) => {
         const targetLote = String(newNum + idx);
         const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, targetLote);
         const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
-        nextDev = { ...ensured.dev, lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: { ...existingInfo, status: pAfetado.id === ponto.id ? status : (existingInfo.status || pAfetado.status || "disponivel"), observacao: pAfetado.id === ponto.id ? observacao : (existingInfo.observacao || pAfetado.observacao || "") } } } as Empreendimento;
+        nextDev = {
+          ...ensured.dev,
+          lotesInfo: {
+            ...(ensured.dev.lotesInfo || {}),
+            [ensured.lotInfoKey]: {
+              ...existingInfo,
+              status: pAfetado.id === ponto.id ? status : (existingInfo.status || pAfetado.status || "disponivel"),
+              observacao: pAfetado.id === ponto.id ? observacao : (existingInfo.observacao || pAfetado.observacao || ""),
+            },
+          },
+        } as Empreendimento;
         atualizacaoPorId[pAfetado.id] = { quadra: ensured.quadraName, lote: targetLote };
       });
-      const nextPontos = mapaPontos.map((p) => atualizacaoPorId[p.id] ? { ...p, ...atualizacaoPorId[p.id], status: p.id === ponto.id ? status : p.status, observacao: p.id === ponto.id ? observacao : p.observacao, atualizadoEm: new Date().toISOString() } : p);
+      const nextPontos = mapaPontos.map((p) => atualizacaoPorId[p.id]
+        ? { ...p, ...atualizacaoPorId[p.id], status: p.id === ponto.id ? status : p.status, observacao: p.id === ponto.id ? observacao : p.observacao, atualizadoEm: new Date().toISOString() }
+        : p
+      );
       persistDev({ ...nextDev, mapaPontos: nextPontos } as Empreendimento);
     } else {
       const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
@@ -2438,140 +2306,25 @@ const LotDashboard = ({
       const ok = window.confirm("Excluir esta bolinha do mapa?");
       if (!ok) return;
     }
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => p.id !== ponto.id) } as Empreendimento);
+    persistDev({ ...localDev, mapaPontos: mapaPontos.filter((p) => p.id !== ponto.id) } as Empreendimento);
     setSelectedPoint(null);
-    // Não sai do modo edição
   };
 
   const desfazerUltimoPonto = () => {
     const lastId = lastSessionPointIds[lastSessionPointIds.length - 1];
     if (!lastId) return;
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => p.id !== lastId) } as Empreendimento);
+    persistDev({ ...localDev, mapaPontos: mapaPontos.filter((p) => p.id !== lastId) } as Empreendimento);
     setLastSessionPointIds((prev) => prev.slice(0, -1));
   };
 
-  // ──────────────────────────────────────────────
-  // EDIÇÃO EM MASSA
-  // ──────────────────────────────────────────────
-  const toggleMassaSel = (id: string) => {
-    setMassaSelIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const selecionarQuadraCompleta = (quadra: string) => {
-    const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === normalizeLotText(quadra)).map((p) => p.id);
-    setMassaSelIds(new Set(ids));
-  };
-
-  const selecionarIntervalo = () => {
-    const quadra = normalizeLotText(massaFiltroQuadra);
-    const ini = parseInt(massaFiltroLoteIni);
-    const fin = parseInt(massaFiltroLoteFin);
-    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
-    const min = Math.min(ini, fin); const max = Math.max(ini, fin);
-    const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number(p.lote) >= min && Number(p.lote) <= max).map((p) => p.id);
-    setMassaSelIds(new Set(ids));
-  };
-
-  const aplicarAcaoMassa = () => {
-    if (massaSelIds.size === 0) { alert("Selecione ao menos uma bolinha."); return; }
-    if (!massaAcao) { alert("Selecione uma ação."); return; }
-    if (massaAcao === "excluir") {
-      const ok = window.confirm(`Excluir ${massaSelIds.size} bolinha(s)? Esta ação não pode ser desfeita.`);
-      if (!ok) return;
-      const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-      persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => !massaSelIds.has(p.id)) } as Empreendimento);
-      setMassaSelIds(new Set());
-      return;
-    }
-    const status = massaAcao as MapaLoteStatus;
-    let nextDevLocal = localDev;
-    massaSelIds.forEach((id) => {
-      const ponto = ((nextDevLocal as any).mapaPontos || []).find((p: any) => p.id === id);
-      if (!ponto) return;
-      const currentPontos = ((nextDevLocal as any).mapaPontos || []) as any[];
-      const nextPontos = currentPontos.map((p: any) => p.id === id ? { ...p, status, atualizadoEm: new Date().toISOString() } : p);
-      nextDevLocal = updateLoteStatusInEmpreendimento(nextDevLocal, sales, ponto.quadra, ponto.lote, status, { origem: "mapa" });
-      nextDevLocal = { ...nextDevLocal, mapaPontos: nextPontos } as Empreendimento;
-    });
-    persistDev(recalcularEstatisticasEmpreendimento(nextDevLocal, sales));
-    setMassaSelIds(new Set());
-    // Não sai do modo edição
-  };
-
-  // ──────────────────────────────────────────────
-  // SALVAR / SAIR DO MODO EDIÇÃO
-  // ──────────────────────────────────────────────
   const salvarEdicaoMapa = () => {
-    // Commita qualquer drag pendente
-    if (draggingId) persistDev(localDev);
-    setDraggingId(null);
-    setDragStart(null);
     setPendingPoint(null);
     setSelectedPoint(null);
-    setSeqFase("aguardando_primeiro");
-    setSeqPrimeiroClique(null);
-    setSeqPreview(null);
-    setCurvaFase("aguardando_primeiro");
-    setCurvaPts([]);
-    setCurvaPreview(null);
-    setMassaSelIds(new Set());
-    setLastSessionPointIds([]);
+    setSequence((prev) => ({ ...prev, atual: null }));
+    setSequenceAdded(0);
     setMapAction("visualizar");
   };
 
-  const entrarEdicao = () => {
-    setMapAction("manual");
-    if (mapaImagem) setMode("mapa");
-  };
-
-  // ──────────────────────────────────────────────
-  // AVISO LOTES SEM BOLINHA
-  // ──────────────────────────────────────────────
-  const lotesConfigSemBolinha = (() => {
-    const pontoKeys = new Set(mapaPontos.map((p: any) => getLotInfoKey(p.quadra, p.lote)));
-    let count = 0;
-    quadras.forEach((q) => {
-      const lotes = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
-      lotes.forEach((l) => { if (!pontoKeys.has(getLotInfoKey(q, l))) count++; });
-    });
-    return count;
-  })();
-
-  // ──────────────────────────────────────────────
-  // PREVIEW BOLINHAS PARA SEQUÊNCIA
-  // ──────────────────────────────────────────────
-  const renderSeqPreviewBalls = () => {
-    if (mapAction !== "sequencia" || seqFase !== "aguardando_segundo" || !seqPrimeiroClique || !seqPreview) return null;
-    const ini = parseInt(seqForm.loteInicial);
-    const fin = parseInt(seqForm.loteFinal);
-    if (isNaN(ini) || isNaN(fin)) return null;
-    const step = ini <= fin ? 1 : -1;
-    const lotes: number[] = [];
-    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
-    const total = lotes.length;
-    const ballSize = getBallPixelSize();
-    return lotes.map((loteNum, idx) => {
-      const t = total === 1 ? 0 : idx / (total - 1);
-      const x = seqPrimeiroClique!.xPercent + (seqPreview!.xPercent - seqPrimeiroClique!.xPercent) * t;
-      const y = seqPrimeiroClique!.yPercent + (seqPreview!.yPercent - seqPrimeiroClique!.yPercent) * t;
-      return (
-        <div key={loteNum} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none"
-          style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
-          {loteNum}
-        </div>
-      );
-    });
-  };
-
-  // ──────────────────────────────────────────────
-  // RENDERIZAR QUADRADINHOS
-  // ──────────────────────────────────────────────
   const renderQuadradinhos = () => (
     <div className="space-y-12">
       {quadras.length > 0 ? quadras.map((q) => {
@@ -2584,22 +2337,22 @@ const LotDashboard = ({
             {displayLots.length === 0 ? (
               <div className="p-4 rounded-2xl bg-slate-50 text-sm text-slate-400 font-medium">Nenhum lote cadastrado nesta quadra.</div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
-                {displayLots.map((l) => {
-                  const soldData = vendaDoLote(q, l);
-                  const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
-                  const reserved = !soldData && lotInfo?.status === "reservado";
-                  const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
-                  return (
-                    <div key={l} onClick={() => { if (soldData) setSelectedLotSale(soldData); }} className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}>
-                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
-                      <span className="text-lg font-display font-bold leading-none">{l}</span>
-                      <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>{unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}</div>
-                      {!unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
-                    </div>
-                  );
-                })}
-              </div>
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              {displayLots.map((l) => {
+                const soldData = vendaDoLote(q, l);
+                const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
+                const reserved = !soldData && lotInfo?.status === "reservado";
+                const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
+                return (
+                  <div key={l} onClick={() => { if (soldData) setSelectedLotSale(soldData); }} className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}>
+                    <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
+                    <span className="text-lg font-display font-bold leading-none">{l}</span>
+                    <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>{unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}</div>
+                    {!unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
+                  </div>
+                );
+              })}
+            </div>
             )}
           </div>
         );
@@ -2607,513 +2360,144 @@ const LotDashboard = ({
     </div>
   );
 
-  // ──────────────────────────────────────────────
-  // RENDERIZAR MAPA
-  // ──────────────────────────────────────────────
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
+    const isEditingMap = canEditMap && mapAction !== "visualizar";
     return (
-      <div className="space-y-4">
-        {/* Aviso lotes sem bolinha */}
-        {isEditingMap && lotesConfigSemBolinha > 0 && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
-            Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
-          </div>
-        )}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
-          {/* CANVAS DO MAPA */}
-          <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
-            <div
-              ref={mapContainerRef}
-              onClick={handleMapClick}
-              onMouseMove={(e) => { handleMapMouseMoveForDrag(e); handleMapMouseMove(e); }}
-              onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
-              onMouseLeave={() => { if (draggingId) commitDrag(); }}
-              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ maxWidth: "1000px" }}
-            >
-              <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
-
-              {/* Linha provisória de sequência */}
-              {isEditingMap && mapAction === "sequencia" && seqFase === "aguardando_segundo" && seqPrimeiroClique && seqPreview && (
-                <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
-                  <line
-                    x1={`${seqPrimeiroClique.xPercent}%`} y1={`${seqPrimeiroClique.yPercent}%`}
-                    x2={`${seqPreview.xPercent}%`} y2={`${seqPreview.yPercent}%`}
-                    stroke="#3b82f6" strokeWidth="2" strokeDasharray="6,4" opacity="0.6"
-                  />
-                </svg>
-              )}
-
-              {/* Preview bolinhas de sequência */}
-              {renderSeqPreviewBalls()}
-
-              {/* BOLINHAS */}
-              {mapaPontos.map((ponto) => {
-                const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
-                const isMassaSel = massaSelIds.has(ponto.id);
-                const isDragging = draggingId === ponto.id;
-                return (
-                  <button
-                    key={ponto.id}
-                    onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
-                    onClick={(ev) => {
-                      if (draggingId) return;
-                      ev.stopPropagation();
-                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
-                      setSelectedPoint({ ...ponto, venda });
-                    }}
-                    title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
-                  >
-                    {ponto.lote}
-                  </button>
-                );
-              })}
-
-              {/* Ponto inicial da sequência (marcador) */}
-              {isEditingMap && mapAction === "sequencia" && seqPrimeiroClique && seqFase !== "aguardando_primeiro" && (
-                <div className="absolute -translate-x-1/2 -translate-y-1/2 w-3 h-3 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20"
-                  style={{ left: `${seqPrimeiroClique.xPercent}%`, top: `${seqPrimeiroClique.yPercent}%` }} />
-              )}
-            </div>
-          </div>
-
-          {/* PAINEL LATERAL */}
-          <div className="space-y-3">
-            {/* MODO VISUALIZAÇÃO */}
-            {!isEditingMap && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
-                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-                  <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
-                </div>
-                {canEditMap && (
-                  <button onClick={entrarEdicao} className="btn-primary w-full">Editar mapa</button>
-                )}
-                {!canEditMap && <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
-              </div>
-            )}
-
-            {/* MODO EDIÇÃO — TOOLBAR PRINCIPAL */}
-            {isEditingMap && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
-
-                {/* Ações de criação */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={() => { setMapAction("manual"); setSeqFase("aguardando_primeiro"); setCurvaFase("aguardando_primeiro"); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "manual" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Manual</button>
-                  <button onClick={() => { setMapAction("sequencia"); setSeqFase("aguardando_primeiro"); setSeqPrimeiroClique(null); setSeqPreview(null); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Linha 2pts</button>
-                  <button onClick={() => { setMapAction("curva"); setCurvaFase("aguardando_primeiro"); setCurvaPts([]); setCurvaPreview(null); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "curva" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Curva 3pts</button>
-                  <button onClick={() => { setMapAction("massa"); setMassaSelIds(new Set()); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Em massa</button>
-                </div>
-
-                {/* Download */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-                  <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
-                </div>
-
-                {/* Carregar mapa — só no modo edição */}
-                <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
-                  <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
-                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
-                </label>
-
-                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
-
-                {/* Salvar / sair da edição */}
-                <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
-              </div>
-            )}
-
-            {/* PAINEL SEQUÊNCIA 2 PONTOS */}
-            {isEditingMap && mapAction === "sequencia" && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Linha de lotes — 2 pontos</p>
-
-                {seqFase === "aguardando_primeiro" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto inicial da linha.</p>
-                )}
-
-                {seqFase === "formulario" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Ponto inicial marcado. Preencha os dados e depois clique no ponto final.</p>
-                    <input className="input-field" placeholder="Quadra" value={seqForm.quadra} onChange={(e) => setSeqForm({ ...seqForm, quadra: e.target.value })} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="input-field" placeholder="Lote inicial" value={seqForm.loteInicial} onChange={(e) => setSeqForm({ ...seqForm, loteInicial: e.target.value })} />
-                      <input className="input-field" placeholder="Lote final" value={seqForm.loteFinal} onChange={(e) => setSeqForm({ ...seqForm, loteFinal: e.target.value })} />
-                    </div>
-                    <select className="input-field" value={seqForm.status} onChange={(e) => setSeqForm({ ...seqForm, status: e.target.value as any })}>
-                      <option value="disponivel">Disponível</option>
-                      <option value="reservado">Reservado</option>
-                      <option value="indisponivel">Indisponível</option>
-                    </select>
-                    <input className="input-field" placeholder="Observação (opcional)" value={seqForm.observacao} onChange={(e) => setSeqForm({ ...seqForm, observacao: e.target.value })} />
-                    <button onClick={() => {
-                      if (!seqForm.quadra || !seqForm.loteInicial || !seqForm.loteFinal) { alert("Preencha todos os campos."); return; }
-                      setSeqFase("aguardando_segundo");
-                    }} className="btn-primary w-full">Confirmar e marcar ponto final</button>
-                    <button onClick={() => { setSeqFase("aguardando_primeiro"); setSeqPrimeiroClique(null); }} className="btn-secondary w-full">Cancelar</button>
-                  </>
-                )}
-
-                {seqFase === "aguardando_segundo" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-green-50 p-2 rounded-xl">
-                      Quadra {seqForm.quadra} · Lotes {seqForm.loteInicial}→{seqForm.loteFinal}<br />
-                      Clique no mapa para definir o ponto final. A prévia aparece na linha.
-                    </p>
-                    <button onClick={() => { setSeqFase("formulario"); setSeqPreview(null); }} className="btn-secondary w-full">Voltar ao formulário</button>
-                  </>
-                )}
-
-                {/* Alinhar sequências existentes */}
-                <div className="pt-2 border-t border-slate-100 space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Alinhar sequência existente</p>
-                  <input className="input-field" placeholder="Quadra" value={alignSeq.quadra} onChange={(e) => setAlignSeq({ ...alignSeq, quadra: e.target.value })} />
-                  <div className="grid grid-cols-2 gap-2">
-                    <input className="input-field" placeholder="Lote ini." value={alignSeq.loteInicial} onChange={(e) => setAlignSeq({ ...alignSeq, loteInicial: e.target.value })} />
-                    <input className="input-field" placeholder="Lote fin." value={alignSeq.loteFinal} onChange={(e) => setAlignSeq({ ...alignSeq, loteFinal: e.target.value })} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
-                    <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* PAINEL CURVA 3 PONTOS */}
-            {isEditingMap && mapAction === "curva" && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Curva de lotes — 3 pontos</p>
-
-                {curvaFase === "aguardando_primeiro" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto inicial da curva.</p>
-                )}
-
-                {curvaFase === "formulario" && (
-                  <>
-                    <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Ponto inicial marcado. Preencha os dados.</p>
-                    <input className="input-field" placeholder="Quadra" value={curvaForm.quadra} onChange={(e) => setCurvaForm({ ...curvaForm, quadra: e.target.value })} />
-                    <div className="grid grid-cols-2 gap-2">
-                      <input className="input-field" placeholder="Lote inicial" value={curvaForm.loteInicial} onChange={(e) => setCurvaForm({ ...curvaForm, loteInicial: e.target.value })} />
-                      <input className="input-field" placeholder="Lote final" value={curvaForm.loteFinal} onChange={(e) => setCurvaForm({ ...curvaForm, loteFinal: e.target.value })} />
-                    </div>
-                    <select className="input-field" value={curvaForm.status} onChange={(e) => setCurvaForm({ ...curvaForm, status: e.target.value as any })}>
-                      <option value="disponivel">Disponível</option>
-                      <option value="reservado">Reservado</option>
-                      <option value="indisponivel">Indisponível</option>
-                    </select>
-                    <input className="input-field" placeholder="Observação (opcional)" value={curvaForm.observacao} onChange={(e) => setCurvaForm({ ...curvaForm, observacao: e.target.value })} />
-                    <button onClick={() => {
-                      if (!curvaForm.quadra || !curvaForm.loteInicial || !curvaForm.loteFinal) { alert("Preencha todos os campos."); return; }
-                      setCurvaFase("aguardando_meio");
-                    }} className="btn-primary w-full">Confirmar — marcar ponto do meio</button>
-                    <button onClick={() => { setCurvaFase("aguardando_primeiro"); setCurvaPts([]); }} className="btn-secondary w-full">Cancelar</button>
-                  </>
-                )}
-
-                {curvaFase === "aguardando_meio" && (
-                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">Clique no mapa para marcar o ponto do meio da curva.</p>
-                )}
-
-                {curvaFase === "aguardando_ultimo" && (
-                  <p className="text-xs text-slate-500 bg-green-50 p-2 rounded-xl">Clique no mapa para definir o ponto final da curva.</p>
-                )}
-              </div>
-            )}
-
-            {/* PAINEL EDIÇÃO EM MASSA */}
-            {isEditingMap && mapAction === "massa" && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edição em massa</p>
-                <p className="text-xs text-slate-500">Clique nas bolinhas para selecionar, ou use os filtros abaixo.</p>
-                <p className="text-xs font-bold text-slate-600">{massaSelIds.size} bolinha(s) selecionada(s)</p>
-
-                {/* Filtro por quadra */}
-                <div className="space-y-1">
-                  <input className="input-field" placeholder="Quadra para selecionar" value={massaFiltroQuadra} onChange={(e) => setMassaFiltroQuadra(e.target.value)} />
-                  <button onClick={() => { if (massaFiltroQuadra) selecionarQuadraCompleta(massaFiltroQuadra); }} className="btn-secondary w-full text-[11px]">Selecionar quadra inteira</button>
-                </div>
-
-                {/* Filtro por intervalo */}
-                <div className="space-y-1">
-                  <div className="grid grid-cols-2 gap-2">
-                    <input className="input-field" placeholder="Lote ini." value={massaFiltroLoteIni} onChange={(e) => setMassaFiltroLoteIni(e.target.value)} />
-                    <input className="input-field" placeholder="Lote fin." value={massaFiltroLoteFin} onChange={(e) => setMassaFiltroLoteFin(e.target.value)} />
-                  </div>
-                  <button onClick={selecionarIntervalo} className="btn-secondary w-full text-[11px]">Selecionar intervalo</button>
-                </div>
-
-                <button onClick={() => setMassaSelIds(new Set(mapaPontos.map((p: any) => p.id)))} className="btn-secondary w-full text-[11px]">Selecionar todas</button>
-                <button onClick={() => setMassaSelIds(new Set())} className="btn-secondary w-full text-[11px]">Limpar seleção</button>
-
-                {/* Ação */}
-                <select className="input-field" value={massaAcao} onChange={(e) => setMassaAcao(e.target.value as any)}>
-                  <option value="">Escolha uma ação</option>
-                  <option value="disponivel">Marcar como disponível</option>
-                  <option value="reservado">Marcar como reservado</option>
-                  <option value="indisponivel">Marcar como indisponível</option>
-                  <option value="excluir">Excluir selecionadas</option>
-                </select>
-                <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
-              </div>
-            )}
-
-            {/* LEGENDA */}
-            <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
-            </div>
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4">
+        <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
+          <div onClick={handleMapClick} className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] ${isEditingMap ? "cursor-crosshair" : "cursor-default"}`} style={{ maxWidth: "1000px" }}>
+            <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto select-none" draggable={false} />
+            {mapaPontos.map((ponto) => {
+              const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+              const unavailable = ponto.status === "indisponivel" || !!venda;
+              const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+              return (
+                <button
+                  key={ponto.id}
+                  onClick={(ev) => { ev.stopPropagation(); setSelectedPoint({ ...ponto, venda }); }}
+                  title={`Q${ponto.quadra} L${ponto.lote}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg font-black flex items-center justify-center ${statusClass}`}
+                  style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
+                >
+                  {ponto.lote}
+                </button>
+              );
+            })}
           </div>
         </div>
-
-        {/* FORMULÁRIO MANUAL (pendingPoint) */}
-        <AnimatePresence>
-          {pendingPoint && isEditingMap && mapAction === "manual" && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
-              <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-                <h4 className="font-display font-bold text-slate-800 text-lg">Nova bolinha manual</h4>
-                <input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} autoFocus />
-                <input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} />
-                <select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}>
-                  <option value="disponivel">Disponível</option>
-                  <option value="reservado">Reservado</option>
-                  <option value="indisponivel">Indisponível</option>
-                </select>
-                <input className="input-field" placeholder="Observação (opcional)" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => {
-                    const ok = ensureMapLotAndPoint({ quadra: pointForm.quadra, lote: pointForm.lote, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent, status: pointForm.status, observacao: pointForm.observacao });
-                    if (ok) setPendingPoint(null);
-                  }} className="btn-primary">Adicionar</button>
-                  <button onClick={() => setPendingPoint(null)} className="btn-secondary">Cancelar</button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+        <div className="space-y-3">
+          {mapAction === "visualizar" ? <div className="card-premium p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
+            <p className="text-xs text-slate-500">Neste modo o mapa serve apenas para ver as bolinhas, iniciar venda em lote disponível ou abrir venda vinculada.</p>
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
+            {canEditMap ? <button onClick={() => setMapAction("manual")} className="btn-primary w-full">Editar mapa</button> : <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
+          </div> : <div className="card-premium p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
+            <div className="grid grid-cols-3 gap-2">
+              <button onClick={() => setMapAction("manual")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "manual" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Manual</button>
+              <button onClick={() => setMapAction("sequencia")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Seq.</button>
+              <button onClick={salvarEdicaoMapa} className="py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white">Salvar</button>
+            </div>
+            <div className="p-3 rounded-2xl bg-slate-50 text-[11px] font-bold text-slate-500">Bolinhas no tamanho pequeno padrão para melhor uso no celular.</div>
+            {mapAction === "sequencia" && <div className="grid grid-cols-2 gap-2">
+              <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
+              <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
+            </div>}
+            <div className="grid grid-cols-2 gap-2"><button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button><button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button></div>
+            <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer"><Upload size={14} />Trocar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
+            <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último ponto</button>
+          </div>}
+          {isEditingMap && mapAction === "sequencia" && <div className="card-premium p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcar lotes em sequência</p>
+            <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => { setSequence({ ...sequence, quadra: e.target.value, atual: null }); setSequenceAdded(0); }} />
+            <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => { setSequence({ ...sequence, loteInicial: e.target.value, atual: null }); setSequenceAdded(0); }} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => { setSequence({ ...sequence, loteFinal: e.target.value, atual: null }); setSequenceAdded(0); }} /></div>
+            <select className="input-field" value={sequence.status} onChange={(e) => setSequence({ ...sequence, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="indisponivel">Indisponível</option></select>
+            <input className="input-field" placeholder="Observação padrão" value={sequence.observacao} onChange={(e) => setSequence({ ...sequence, observacao: e.target.value })} />
+            <p className="text-xs text-slate-500">Próximo clique: lote {sequence.atual ?? (sequence.loteInicial || "—")}</p>
+          </div>}
+          <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+            <p>Reservado fica amarelo e não conta como venda oficial. Indisponível fica vermelho.</p>
+          </div>
+        </div>
       </div>
+    </div>
     );
   };
 
-  // ──────────────────────────────────────────────
-  // MODAL DETALHES DA BOLINHA (visualização)
-  // ──────────────────────────────────────────────
-  const renderSelectedPointModal = () => {
-    if (!selectedPoint) return null;
-    const ponto = selectedPoint;
-    const venda = ponto.venda || vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-    const temVenda = !!(ponto.vendaId || venda);
-    return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
-        <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-          <div>
-            <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {ponto.quadra} · Lote {ponto.lote}</h4>
-            <p className="text-sm text-slate-500">{getMapaStatusLabel(ponto.status, temVenda)}</p>
-            {ponto.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {ponto.observacao}</p>}
-          </div>
-
-          {/* Info venda vinculada */}
-          {temVenda && (
-            <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700 space-y-1">
-              <p>Comprador: <strong>{venda?.clienteNome || ponto.clienteNome || "Cliente não informado"}</strong></p>
-              <p>{localDev.nome} · Quadra {ponto.quadra} · Lote {ponto.lote}</p>
-              <p>Data da venda: {formatDateBR(venda?.dataVenda || ponto.dataVenda)}</p>
-            </div>
-          )}
-
-          {/* Reservado sem venda */}
-          {!temVenda && ponto.status === "reservado" && (
-            <div className="p-3 bg-yellow-50 rounded-2xl text-sm text-yellow-800">Este lote está reservado, mas ainda não possui venda oficial.</div>
-          )}
-
-          {/* Indisponível sem venda */}
-          {!temVenda && ponto.status === "indisponivel" && (
-            <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div>
-          )}
-
-          {/* Histórico */}
-          {ponto.historico?.length > 0 && (
-            <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500 space-y-1">
-              <p className="font-bold text-slate-600">Histórico</p>
-              {ponto.historico.slice(-3).map((h: any, idx: number) => (
-                <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>
-              ))}
-            </div>
-          )}
-
-          {/* Ações */}
-          <div className="space-y-2">
-            {/* Bolinha azul/disponível */}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
-            )}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
-            )}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
-            )}
-
-            {/* Bolinha amarela/reservado */}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
-            )}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
-            )}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
-            )}
-
-            {/* Bolinha vermelha/indisponível — COM venda */}
-            {temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onViewContract(venda); onClose(); }}>Abrir contrato/venda</button>
-            )}
-            {temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Liberar lote e manter histórico</button>
-            )}
-
-            {/* Bolinha vermelha/indisponível — SEM venda */}
-            {ponto.status === "indisponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
-            )}
-            {ponto.status === "indisponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
-            )}
-
-            {/* Editar/excluir — apenas no modo edição */}
-            {isEditingMap && (
-              <>
-                <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
-                <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
-              </>
-            )}
-
-            <button className="btn-secondary w-full" onClick={() => setSelectedPoint(null)}>Fechar</button>
-          </div>
-        </div>
-      </motion.div>
-    );
-  };
-
-  // ──────────────────────────────────────────────
-  // RENDER PRINCIPAL
-  // ──────────────────────────────────────────────
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
       <motion.div initial={{ scale: 0.96, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl max-h-[94vh] rounded-[28px] shadow-2xl relative overflow-hidden flex flex-col">
-
-        {/* HEADER */}
         <div className="p-5 sm:p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <div className="p-3 bg-primary-main text-white rounded-2xl"><MapPin size={22} /></div>
-            <div className="min-w-0">
-              <h3 className="text-lg sm:text-xl font-display font-bold text-slate-800 truncate">{localDev.nome}</h3>
-              <p className="text-sm text-slate-400 font-medium">Mapa e lotes do empreendimento</p>
-            </div>
-          </div>
-          {/* Botão Editar mapa — somente no canto superior direito, apenas para admin */}
-          <div className="flex items-center gap-3">
-            {canEditMap && mapAction === "visualizar" && (
-              <button onClick={entrarEdicao} className="hidden sm:flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
-                <MapPin size={13} />Editar mapa
-              </button>
-            )}
-            {isEditingMap && (
-              <button onClick={salvarEdicaoMapa} className="hidden sm:flex px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
-                Salvar / OK
-              </button>
-            )}
-            <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
-          </div>
+          <div className="flex items-center gap-4 min-w-0"><div className="p-3 bg-primary-main text-white rounded-2xl"><MapPin size={22} /></div><div className="min-w-0"><h3 className="text-lg sm:text-xl font-display font-bold text-slate-800 truncate">{localDev.nome}</h3><p className="text-sm text-slate-400 font-medium">Mapa e lotes do empreendimento</p></div></div>
+          <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
         </div>
-
-        {/* ABAS */}
         <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div className="flex gap-2 flex-wrap">
-            {mapaImagem && (
-              <button onClick={() => { setMode("mapa"); if (isEditingMap) {} else setMapAction("visualizar"); }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
-                Mapa interativo
-              </button>
-            )}
-            <button onClick={() => setMode("quadradinhos")}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
-              Quadradinhos/lotes atuais
-            </button>
+            {mapaImagem && <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
+            <button onClick={() => setMode("quadradinhos")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Quadradinhos/lotes atuais</button>
           </div>
-          {/* Botão Editar mapa mobile (abaixo das abas) — apenas sem ser repetido */}
-          {canEditMap && mapAction === "visualizar" && (
-            <div className="flex sm:hidden gap-2">
-              <button onClick={entrarEdicao} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase">Editar mapa</button>
-            </div>
-          )}
-          {isEditingMap && (
-            <div className="flex sm:hidden gap-2">
-              <button onClick={salvarEdicaoMapa} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase">Salvar / OK</button>
-            </div>
-          )}
+          {canEditMap && <div className="flex gap-2 flex-wrap justify-end">
+            {mapAction === "visualizar" ? (
+              <button onClick={() => { setMapAction("manual"); if (mapaImagem) setMode("mapa"); }} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase">Editar mapa</button>
+            ) : (
+              <>
+                <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
+                <button onClick={salvarEdicaoMapa} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase">Salvar</button>
+              </>
+            )}
+          </div>}
         </div>
-
-        {/* CONTEÚDO */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
-          <AnimatePresence>
-            {selectedPoint && renderSelectedPointModal()}
-          </AnimatePresence>
         </div>
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div></div>
 
-        {/* FOOTER LEGENDA */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
-        </div>
-
-        {/* Modal venda do lote (quadradinhos) */}
         <AnimatePresence>
-          {selectedLotSale && (
-            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 32 }} className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[28px]">
-              <div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
-                <button onClick={() => setSelectedLotSale(null)} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400"><ArrowLeft size={20} /></button>
-                <div className="flex-1">
-                  <h3 className="text-xl font-display font-bold text-slate-800">Quadra {selectedLotSale.quadra} · Lote {selectedLotSale.numeroLote}</h3>
-                  <p className="text-sm text-red-400 font-medium">{localDev.nome} — Lote Indisponível</p>
-                </div>
+          {pendingPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30"><div className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3 shadow-2xl"><h4 className="font-bold text-slate-800">Criar bolinha</h4><input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} /><input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} /><select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="indisponivel">Indisponível</option></select><input className="input-field" placeholder="Observação opcional" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} /><div className="flex justify-end gap-2 pt-2"><button className="btn-secondary px-4" onClick={() => setPendingPoint(null)}>Cancelar</button><button className="btn-primary px-4" onClick={() => { if (ensureMapLotAndPoint({ ...pointForm, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent })) setPendingPoint(null); }}>Salvar</button></div></div></motion.div>}
+          {selectedPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
+            <div className="bg-white rounded-3xl p-5 w-full max-w-md space-y-4 shadow-2xl">
+              <div>
+                <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</h4>
+                <p className="text-sm text-slate-500">{getMapaStatusLabel(selectedPoint.status, !!selectedPoint.venda)}</p>
+                {selectedPoint.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {selectedPoint.observacao}</p>}
               </div>
-              <div className="flex-1 overflow-y-auto p-6 space-y-5">
-                <div className="card-premium space-y-4">
-                  <h4 className="font-bold text-slate-800">Comprador</h4>
-                  <p className="text-lg font-display font-bold text-slate-800">{selectedLotSale.clienteNome}</p>
-                </div>
-                <div className="card-premium space-y-2 text-sm">
-                  <p><span className="text-slate-400">Valor total:</span> <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorLote)}</strong></p>
-                  <p><span className="text-slate-400">Data venda:</span> {formatDateBR(selectedLotSale.dataVenda)}</p>
-                </div>
+              {selectedPoint.vendaId || selectedPoint.venda ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">
+                <p>Comprador: <strong>{selectedPoint.venda?.clienteNome || selectedPoint.clienteNome || "Cliente não informado"}</strong></p>
+                <p>{localDev.nome} · Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</p>
+                <p>Data da venda: {formatDateBR(selectedPoint.venda?.dataVenda || selectedPoint.dataVenda)}</p>
+              </div> : selectedPoint.status === "reservado" ? <div className="p-3 bg-yellow-50 rounded-2xl text-sm text-yellow-800">Este lote está reservado, mas ainda não possui venda oficial.</div> : selectedPoint.status === "indisponivel" ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div> : null}
+              {selectedPoint.historico?.length > 0 && <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500">
+                <p className="font-bold text-slate-700 mb-1">Histórico:</p>
+                {selectedPoint.historico.slice(-3).map((h: any, idx: number) => <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>)}
+              </div>}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
+                {selectedPoint.status === "reservado" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
+                {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-primary" onClick={() => { onViewContract(selectedPoint.venda); onClose(); }}>Abrir contrato/venda</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "reservado" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "reservado")}>Deixar reservado</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "indisponivel" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Deixar indisponível</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "disponivel" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}
+                {canEditMap && mapAction !== "visualizar" && <>
+                  {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Liberar lote e manter histórico</button>}
+                  <button className="btn-secondary" onClick={() => editarPonto(selectedPoint)}>Editar bolinha</button>
+                  <button className="btn-secondary text-red-600" onClick={() => excluirPonto(selectedPoint)}>Excluir bolinha</button>
+                </>}
+                <button className="btn-secondary" onClick={() => setSelectedPoint(null)}>Cancelar</button>
               </div>
-              <div className="p-6 border-t border-slate-100 flex justify-between">
-                <button onClick={() => setSelectedLotSale(null)} className="btn-secondary px-6">Voltar ao Mapa</button>
-                <button onClick={() => { onViewContract(selectedLotSale); onClose(); }} className="btn-primary px-8">Ver Contrato</button>
-              </div>
-            </motion.div>
-          )}
+            </div>
+          </motion.div>}
+          {selectedLotSale && <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 32 }} className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[28px]"><div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50"><button onClick={() => setSelectedLotSale(null)} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400"><ArrowLeft size={20} /></button><div className="flex-1"><h3 className="text-xl font-display font-bold text-slate-800">Quadra {selectedLotSale.quadra} · Lote {selectedLotSale.numeroLote}</h3><p className="text-sm text-red-400 font-medium">{localDev.nome} — Lote Indisponível</p></div></div><div className="flex-1 overflow-y-auto p-6 space-y-5"><div className="card-premium space-y-4"><h4 className="font-bold text-slate-800">Comprador</h4><p className="text-lg font-display font-bold text-slate-800">{selectedLotSale.clienteNome}</p></div><div className="card-premium space-y-2 text-sm"><p><span className="text-slate-400">Valor total:</span> <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorLote)}</strong></p><p><span className="text-slate-400">Data venda:</span> {formatDateBR(selectedLotSale.dataVenda)}</p></div></div><div className="p-6 border-t border-slate-100 flex justify-between"><button onClick={() => setSelectedLotSale(null)} className="btn-secondary px-6">Voltar ao Mapa</button><button onClick={() => { onViewContract(selectedLotSale); onClose(); }} className="btn-primary px-8">Ver Contrato</button></div></motion.div>}
         </AnimatePresence>
-
       </motion.div>
     </div>
   );
 };
-
 
 // fix-sales-scope
 const EmpreendimentosSection = ({
