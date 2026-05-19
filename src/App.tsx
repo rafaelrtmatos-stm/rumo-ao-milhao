@@ -2244,9 +2244,8 @@ const LotDashboard = ({
         return;
       }
       if (seqFase === "aguardando_segundo") {
-        // Cria bolinhas e mantém o usuário dentro da edição para ajustes finos.
+        // Cria bolinhas
         criarBolinhasSequencia(seqPrimeiroClique!, { xPercent, yPercent }, seqForm);
-        setAlignSeq({ quadra: seqForm.quadra, loteInicial: seqForm.loteInicial, loteFinal: seqForm.loteFinal });
         setSeqFase("aguardando_primeiro");
         setSeqPrimeiroClique(null);
         setSeqPreview(null);
@@ -2614,27 +2613,16 @@ const LotDashboard = ({
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
     return (
-      <div className={isEditingMap ? "fixed inset-0 z-[80] bg-white flex flex-col" : "space-y-4"}>
-        {isEditingMap && (
-          <div className="shrink-0 p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
-              <h3 className="font-display font-bold text-slate-800 truncate">{localDev.nome}</h3>
-            </div>
-            <button onClick={salvarEdicaoMapa} className="px-4 py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
+        <div className="space-y-4">
+        {/* Aviso lotes sem bolinha */}
+        {isEditingMap && lotesConfigSemBolinha > 0 && (
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
+            Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
           </div>
         )}
-        <div className={isEditingMap ? "flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50" : ""}>
-          <div className={isEditingMap ? "max-w-[1500px] mx-auto space-y-4" : "space-y-4"}>
-            {/* Aviso lotes sem bolinha */}
-            {isEditingMap && lotesConfigSemBolinha > 0 && (
-              <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
-                Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
-              </div>
-            )}
-            <div className={isEditingMap ? "grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_340px] gap-4 items-start" : "grid grid-cols-1 gap-4"}>
-              {/* CANVAS DO MAPA */}
-              <div className={isEditingMap ? "bg-slate-100 rounded-3xl p-2 sm:p-4 overflow-auto border border-slate-200 max-h-[calc(100vh-170px)]" : "bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200"}>
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+          {/* CANVAS DO MAPA */}
+          <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
@@ -2642,7 +2630,7 @@ const LotDashboard = ({
               onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
               onMouseLeave={() => { if (draggingId) commitDrag(); }}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ maxWidth: isEditingMap ? "1280px" : "1000px" }}
+              style={{ maxWidth: "1000px" }}
             >
               <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
@@ -2691,14 +2679,10 @@ const LotDashboard = ({
                   style={{ left: `${seqPrimeiroClique.xPercent}%`, top: `${seqPrimeiroClique.yPercent}%` }} />
               )}
             </div>
-              <div className="grid grid-cols-2 gap-2 mt-3 max-w-md mx-auto">
-                <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-                <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
-              </div>
-            </div>
+          </div>
 
-            {/* PAINEL LATERAL */}
-            <div className="space-y-3">
+          {/* PAINEL LATERAL */}
+          <div className="space-y-3">
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
@@ -2878,6 +2862,14 @@ const LotDashboard = ({
           </div>
         </div>
 
+        {/* BOTÕES IMAGEM / PDF — sempre embaixo do mapa */}
+        {mapaImagem && !isEditingMap && (
+          <div className="grid grid-cols-2 gap-2 max-w-xs">
+            <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
+            <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
+          </div>
+        )}
+
         {/* FORMULÁRIO MANUAL (pendingPoint) */}
         <AnimatePresence>
           {pendingPoint && isEditingMap && mapAction === "manual" && (
@@ -2903,8 +2895,6 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
-          </div>
-        </div>
       </div>
     );
   };
@@ -3013,7 +3003,40 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // RENDER PRINCIPAL
   // ──────────────────────────────────────────────
+
+  // Modal de edição em tela cheia — renderizado separado do modal principal
+  const renderMapaFullscreenEdit = () => (
+    <div className="fixed inset-0 z-[200] flex flex-col bg-white">
+      {/* HEADER EDIÇÃO TELA CHEIA */}
+      <div className="flex-none p-4 border-b border-slate-100 flex items-center justify-between bg-slate-900 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 bg-white/10 text-white rounded-xl"><MapPin size={18} /></div>
+          <div className="min-w-0">
+            <h3 className="text-base font-display font-bold text-white truncate">{localDev.nome}</h3>
+            <p className="text-xs text-slate-400 font-medium">Editando mapa — tela cheia</p>
+          </div>
+        </div>
+        <button onClick={salvarEdicaoMapa} className="flex-none px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2">
+          <Check size={14} />Salvar / OK
+        </button>
+      </div>
+
+      {/* CONTEÚDO EDIÇÃO */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 sm:p-6">
+          {renderMapa()}
+        </div>
+      </div>
+
+      {/* Modal bolinha selecionada dentro do fullscreen */}
+      <AnimatePresence>
+        {selectedPoint && renderSelectedPointModal()}
+      </AnimatePresence>
+    </div>
+  );
+
   return (
+    <>
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
       <motion.div initial={{ scale: 0.96, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl max-h-[94vh] rounded-[28px] shadow-2xl relative overflow-hidden flex flex-col">
@@ -3027,7 +3050,13 @@ const LotDashboard = ({
               <p className="text-sm text-slate-400 font-medium">Mapa e lotes do empreendimento</p>
             </div>
           </div>
+          {/* Botão Editar mapa — somente no canto superior direito, apenas para admin */}
           <div className="flex items-center gap-3">
+            {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
+              <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
+                <MapPin size={13} />Editar mapa
+              </button>
+            )}
             <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
           </div>
         </div>
@@ -3036,7 +3065,7 @@ const LotDashboard = ({
         <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div className="flex gap-2 flex-wrap">
             {mapaImagem && (
-              <button onClick={() => { setMode("mapa"); if (isEditingMap) {} else setMapAction("visualizar"); }}
+              <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
                 Mapa interativo
               </button>
@@ -3046,11 +3075,6 @@ const LotDashboard = ({
               Quadradinhos/lotes atuais
             </button>
           </div>
-          {canEditMap && mode === "mapa" && mapAction === "visualizar" && (
-            <button onClick={entrarEdicao} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2">
-              <MapPin size={13} />Editar mapa
-            </button>
-          )}
         </div>
 
         {/* CONTEÚDO */}
@@ -3099,6 +3123,23 @@ const LotDashboard = ({
 
       </motion.div>
     </div>
+
+    {/* FULLSCREEN EDIT MODAL — separado do modal principal para ocupar tela cheia */}
+    <AnimatePresence>
+      {isEditingMap && (
+        <motion.div
+          key="map-fullscreen-edit"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.18 }}
+          className="fixed inset-0 z-[200]"
+        >
+          {renderMapaFullscreenEdit()}
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
   );
 };
 
