@@ -1112,16 +1112,14 @@ const Sidebar = ({
   userEmail?: string;
 }) => {
   const allMenuItems = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
-    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
-    { id: "proprietarios", label: "Proprietários", icon: UserCheck },
     { id: "contratos", label: "Contratos", icon: FileText },
+    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
-    { id: "calculadora", label: "Calculadora", icon: Calculator },
-    { id: "historico", label: "Lixeira", icon: Trash2 },
+    { id: "proprietarios", label: "Proprietários", icon: UserCheck },
     { id: "usuarios", label: "Usuários", icon: User },
+    { id: "calculadora", label: "Calculadora", icon: Calculator },
   ];
 
   // Filtra itens de menu por permissão (admin sempre vê tudo)
@@ -1131,6 +1129,8 @@ const Sidebar = ({
 
   const configItem = { id: "config", label: "Configurações", icon: Settings };
   const showConfig = isAdmin || userPermissions?.["config"] !== false;
+  const historicoItem = { id: "historico", label: "Lixeira", icon: Trash2 };
+  const showHistorico = isAdmin || userPermissions?.["historico"] !== false;
 
   return (
     <>
@@ -1212,6 +1212,26 @@ const Sidebar = ({
               {forceDesktop ? "Versão Mobile" : "Versão PC"}
             </span>
           </button>
+
+          {/* Lixeira */}
+          {showHistorico && (() => {
+            const item = historicoItem;
+            const Icon = item.icon;
+            const isActive = currentSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { setSection(item.id as Section); setIsOpen(false); }}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group ${isActive ? "bg-primary-main text-primary-contrast shadow-lg shadow-primary-main/20 font-semibold" : "text-slate-500 hover:bg-slate-50 hover:text-primary-main"}`}
+              >
+                <div className={`p-2 rounded-lg ${isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main"} transition-colors`}>
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{item.label}</span>
+                {isActive && <motion.div layoutId="nav-active" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-contrast shadow-sm" />}
+              </button>
+            );
+          })()}
 
           {/* Config */}
           {showConfig && (() => {
