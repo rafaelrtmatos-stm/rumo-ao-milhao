@@ -1921,10 +1921,12 @@ const LotDashboard = ({
   // Seleção múltipla com CTRL (modo editar)
   const [ctrlSelectedIds, setCtrlSelectedIds] = useState<Set<string>>(new Set());
 
-  // Posição do painel "Novo marcador" arrastável
+  // Posição do painel "Novo marcador" arrastável — via ref para zero re-renders durante drag
   const [marcadorPanelPos, setMarcadorPanelPos] = useState<{ x: number; y: number } | null>(null);
   const [draggingPanel, setDraggingPanel] = useState(false);
-  const [dragPanelStart, setDragPanelStart] = useState<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
+  const marcadorPanelRef = useRef<HTMLDivElement>(null);
+  const dragPanelRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
+  const isDraggingPanelRef = useRef(false);
 
   useEffect(() => {
     setLocalDev(dev);
@@ -2696,22 +2698,31 @@ const LotDashboard = ({
               onMouseMove={(e) => {
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
-                // Arrastar painel "Novo marcador"
-                if (draggingPanel && dragPanelStart && mapContainerRef.current) {
-                  const rect = mapContainerRef.current.getBoundingClientRect();
-                  const newX = dragPanelStart.panelX + (e.clientX - dragPanelStart.mouseX);
-                  const newY = dragPanelStart.panelY + (e.clientY - dragPanelStart.mouseY);
-                  setMarcadorPanelPos({ x: newX, y: newY });
+                // Arrastar painel "Novo marcador" — usando ref para evitar re-render
+                if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
+                  const newX = dragPanelRef.current.panelX + (e.clientX - dragPanelRef.current.mouseX);
+                  const newY = dragPanelRef.current.panelY + (e.clientY - dragPanelRef.current.mouseY);
+                  marcadorPanelRef.current.style.left = `${newX}px`;
+                  marcadorPanelRef.current.style.top = `${newY}px`;
+                  marcadorPanelRef.current.style.transform = "none";
                 }
               }}
               onMouseUp={() => {
                 handleMapMouseUp();
                 commitDrag();
-                if (draggingPanel) { setDraggingPanel(false); setDragPanelStart(null); }
+                if (isDraggingPanelRef.current) {
+                  isDraggingPanelRef.current = false;
+                  dragPanelRef.current = null;
+                  setDraggingPanel(false);
+                }
               }}
               onMouseLeave={() => {
                 if (draggingId) commitDrag();
-                if (draggingPanel) { setDraggingPanel(false); setDragPanelStart(null); }
+                if (isDraggingPanelRef.current) {
+                  isDraggingPanelRef.current = false;
+                  dragPanelRef.current = null;
+                  setDraggingPanel(false);
+                }
               }}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ maxWidth: "1000px" }}
@@ -2898,12 +2909,13 @@ const LotDashboard = ({
         <AnimatePresence>
           {isEditingMap && mapAction === "editar" && marcadorFase === "formulario" && marcadorPonto1 && (
             <motion.div
+              ref={marcadorPanelRef}
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute z-40 pointer-events-auto"
+              className="absolute z-40 pointer-events-auto will-change-transform"
               style={marcadorPanelPos
-                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y }
+                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y, transform: "none" }
                 : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
             >
               <div className="bg-white rounded-3xl shadow-2xl w-72 overflow-hidden border border-slate-200">
@@ -2912,15 +2924,21 @@ const LotDashboard = ({
                   className="flex items-center justify-between px-5 pt-4 pb-2 cursor-move bg-slate-50 border-b border-slate-100 select-none"
                   onMouseDown={(e) => {
                     e.stopPropagation();
-                    const rect = (e.currentTarget.closest(".absolute") as HTMLElement)?.getBoundingClientRect();
-                    const panelX = rect ? rect.left : 0;
-                    const panelY = rect ? rect.top : 0;
+                    e.preventDefault();
+                    const panel = marcadorPanelRef.current;
+                    if (!panel) return;
+                    const rect = panel.getBoundingClientRect();
+                    dragPanelRef.current = { mouseX: e.clientX, mouseY: e.clientY, panelX: rect.left, panelY: rect.top };
+                    isDraggingPanelRef.current = true;
                     setDraggingPanel(true);
-                    setDragPanelStart({ mouseX: e.clientX, mouseY: e.clientY, panelX, panelY });
+                    // Fixar posição atual para que o transform não interfira
+                    panel.style.left = `${rect.left}px`;
+                    panel.style.top = `${rect.top}px`;
+                    panel.style.transform = "none";
                   }}
                 >
                   <h4 className="font-display font-bold text-slate-800 text-base">Novo marcador</h4>
-                  <span className="text-slate-300 text-lg select-none">⠿</span>
+                  <span className="text-slate-300 text-lg select-none" title="Arrastar">⠿</span>
                 </div>
                 <div className="p-5 space-y-3">
                   <p className="text-xs text-slate-400">
@@ -7141,8 +7159,6 @@ const ContratosSection = ({
   const handleOpenGerarContrato = () => {
     if (!selectedVenda) return;
     const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
-    setGerarProprietarioId("");
-    setGerarVendedor(emptyGerarVendedor);
     setGerarEmp({
       nome: dev?.nome || "",
       comunidade: dev?.comunidade || "",
@@ -7159,6 +7175,22 @@ const ContratosSection = ({
       medidaFundos: selectedVenda.medidaFundos || "",
       areaTotal: selectedVenda.areaTotal || "",
     });
+    // Auto-preencher proprietário: se houver snapshot anterior, usa ele;
+    // se houver apenas um proprietário cadastrado, seleciona automaticamente;
+    // caso contrário limpa para seleção manual.
+    const snap = selectedVenda.contratoSnapshot;
+    if (snap?.vendedor?.nome?.trim()) {
+      // Já tem snapshot salvo — restaurar
+      const snapPropId = proprietarios.find((p) => p.nome === snap.vendedor.nome)?.id || "";
+      setGerarProprietarioId(snapPropId);
+      setGerarVendedor(snap.vendedor);
+    } else if (proprietarios.length === 1) {
+      // Apenas um proprietário cadastrado — selecionar automaticamente
+      handleSelectProprietario(proprietarios[0].id);
+    } else {
+      setGerarProprietarioId("");
+      setGerarVendedor(emptyGerarVendedor);
+    }
     setGerarStep(0);
     setShowGerarModal(true);
   };
@@ -7368,8 +7400,8 @@ const ContratosSection = ({
       <div class="sec">
         <div class="sec-title">I — Partes</div>
         <table>
-          <tr><td class="lbl">${generoVendedor.papel} (Outorgante)</td><td>${generoVendedor.artigo} ${generoVendedor.tratamento} <strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil || "___"}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg||"___"} e do CPF nº ${vendedor.cpf||"___"}, residente e ${generoVendedor.domiciliado} no endereço ${vendAddr}, ora em diante ${generoVendedor.chamado} simplesmente ${generoVendedor.papel}</td></tr>
-          <tr><td class="lbl">${generoComprador.papel} (Outorgado)</td><td>${generoComprador.artigo} ${generoComprador.tratamento} <strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil || "___"}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg||"___"} e do CPF nº ${cliente.cpf||"___"}${phones?`, telefone ${phones}`:""}, residente e ${generoComprador.domiciliado} no endereço ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}</td></tr>
+          <tr><td class="lbl">${generoVendedor.papel} (Outorgante)</td><td>${generoVendedor.artigo} ${generoVendedor.tratamento} <strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil || "___"}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg||"___"} e do CPF nº ${vendedor.cpf||"___"}, residente e ${generoVendedor.domiciliado} no endereço ${vendAddr}, ora em diante ${generoVendedor.chamado} simplesmente <strong>${generoVendedor.papel}</strong></td></tr>
+          <tr><td class="lbl">${generoComprador.papel} (Outorgado)</td><td>${generoComprador.artigo} ${generoComprador.tratamento} <strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil || "___"}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg||"___"} e do CPF nº ${cliente.cpf||"___"}${phones?`, telefone ${phones}`:""}, residente e ${generoComprador.domiciliado} no endereço ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente <strong>${generoComprador.papel}</strong></td></tr>
         </table>
       </div>
 
@@ -7399,11 +7431,11 @@ const ContratosSection = ({
 
       <div class="sec">
         ${isAvista
-          ? `<p>Pelo presente instrumento particular, ${generoVendedor.artigo} ${generoVendedor.papel} declara ter recebido ${generoComprador.artigo === "a" ? "da" : "do"} ${generoComprador.papel} a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando ${generoComprador.aoA} ${generoComprador.papel} plena, geral e irrevogável quitação.</p>
-           <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
-          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual ${generoVendedor.artigo} ${generoVendedor.papel} vende ${generoComprador.aoA} ${generoComprador.papel} o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
-             <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
-             <p>${generoComprador.artigo.toUpperCase()} ${generoComprador.papel} declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
+          ? `<p>Pelo presente instrumento particular, ${generoVendedor.artigo} <strong>${generoVendedor.papel}</strong> declara ter recebido ${generoComprador.artigo === "a" ? "da" : "do"} <strong>${generoComprador.papel}</strong> a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando ${generoComprador.aoA} <strong>${generoComprador.papel}</strong> plena, geral e irrevogável quitação.</p>
+           <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
+          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual ${generoVendedor.artigo} <strong>${generoVendedor.papel}</strong> vende ${generoComprador.aoA} <strong>${generoComprador.papel}</strong> o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
+             <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
+             <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
         }
         <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
         <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataStr}.</p>
@@ -9555,12 +9587,19 @@ VENDEDOR: ${venda.vendedor}`;
                     <div>
                       <label className="label">Proprietário do Lote (Vendedor no Contrato)</label>
                       {proprietarios.length > 0 ? (
-                        <select className="input-field font-semibold" value={gerarProprietarioId} onChange={(e) => handleSelectProprietario(e.target.value)}>
-                          <option value="">Selecionar proprietário...</option>
-                          {proprietarios.map((p) => (
-                            <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
-                          ))}
-                        </select>
+                        <>
+                          <select className="input-field font-semibold" value={gerarProprietarioId} onChange={(e) => handleSelectProprietario(e.target.value)}>
+                            <option value="">Selecionar proprietário...</option>
+                            {proprietarios.map((p) => (
+                              <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
+                            ))}
+                          </select>
+                          {gerarProprietarioId && (
+                            <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl mt-1.5 flex items-center gap-1.5">
+                              <Check size={11} /> Dados preenchidos automaticamente do cadastro
+                            </p>
+                          )}
+                        </>
                       ) : (
                         <p className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-2 rounded-xl">Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.</p>
                       )}
