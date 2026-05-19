@@ -856,8 +856,8 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res: a
   }
 });
 
-// --- Helper: DOCX Buffer → PDF via LibreOffice local ---
-async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+// --- Helper: DOCX Buffer → PDF via LibreOffice local ou API externa ---
+async function convertDocxToPdfLocal(docxBuffer: Buffer, filename: string): Promise<Buffer> {
   const fs = await import("fs");
   const os = await import("os");
   const path = await import("path");
@@ -874,17 +874,39 @@ async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: stri
     safeFilename.toLowerCase().endsWith(".docx") ? safeFilename : `${safeFilename}.docx`
   );
 
+  const commands = [
+    process.env.LIBREOFFICE_PATH,
+    "soffice",
+    "libreoffice",
+  ].filter(Boolean) as string[];
+
   try {
     fs.writeFileSync(docxPath, docxBuffer);
 
-    await execFileAsync("libreoffice", [
-      "--headless",
-      "--convert-to",
-      "pdf",
-      "--outdir",
-      tempDir,
-      docxPath,
-    ]);
+    let lastError: any = null;
+    for (const command of commands) {
+      try {
+        await execFileAsync(command, [
+          "--headless",
+          "--nologo",
+          "--nofirststartwizard",
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          tempDir,
+          docxPath,
+        ], { timeout: 60000 });
+        lastError = null;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        if (err?.code !== "ENOENT") break;
+      }
+    }
+
+    if (lastError) {
+      throw lastError;
+    }
 
     const pdfPath = docxPath.replace(/\.docx$/i, ".pdf");
 
@@ -899,6 +921,78 @@ async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: stri
     } catch {}
   }
 }
+
+async function convertDocxToPdfExternal(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  const converterUrl = process.env.PDF_CONVERTER_API_URL;
+  if (!converterUrl) throw new Error("PDF_CONVERTER_API_URL não configurada.");
+
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (process.env.PDF_CONVERTER_API_KEY) {
+    headers["X-API-Key"] = process.env.PDF_CONVERTER_API_KEY;
+  }
+
+  const response = await fetch(converterUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      filename,
+      docxBase64: docxBuffer.toString("base64"),
+    }),
+  });
+
+  if (!response.ok) {
+    let detail = "Falha na API externa de conversão.";
+    try {
+      const data: any = await response.json();
+      detail = data?.error || detail;
+    } catch {
+      try { detail = await response.text(); } catch {}
+    }
+    throw new Error(detail);
+  }
+
+  const contentType = response.headers.get("content-type") || "";
+  if (contentType.includes("application/json")) {
+    const data: any = await response.json();
+    if (!data?.pdfBase64) throw new Error("API externa não retornou pdfBase64.");
+    return Buffer.from(data.pdfBase64, "base64");
+  }
+
+  return Buffer.from(await response.arrayBuffer());
+}
+
+async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  if (process.env.PDF_CONVERTER_API_URL) {
+    return convertDocxToPdfExternal(docxBuffer, filename);
+  }
+  return convertDocxToPdfLocal(docxBuffer, filename);
+}
+
+// API externa de conversão. Use esta rota no Replit/Railway/Render, onde há LibreOffice.
+app.post("/api/convert-docx-to-pdf", async (req: any, res: any) => {
+  try {
+    const expectedKey = process.env.PDF_CONVERTER_API_KEY;
+    if (expectedKey && req.headers["x-api-key"] !== expectedKey) {
+      return res.status(401).json({ error: "Chave da API de conversão inválida." });
+    }
+
+    const { filename, docxBase64 } = req.body || {};
+    if (!docxBase64) {
+      return res.status(400).json({ error: "Envie docxBase64 para converter." });
+    }
+
+    const docxBuffer = Buffer.from(String(docxBase64), "base64");
+    const pdfBuffer = await convertDocxToPdfLocal(docxBuffer, filename || "contrato.docx");
+    const pdfFilename = String(filename || "contrato.docx").replace(/\.docx$/i, ".pdf");
+
+    res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    console.error("Erro na API convert-docx-to-pdf:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
 
 // --- PDF do Contrato Parcelado (DOCX → LibreOffice → PDF) ---
 app.post("/api/contrato/parcelado-padrao-pdf", isAuthenticated, async (req: any, res: any) => {

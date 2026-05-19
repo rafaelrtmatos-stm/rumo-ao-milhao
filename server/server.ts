@@ -715,6 +715,84 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res) =
   }
 });
 
+
+// --- API externa de conversão DOCX → PDF via LibreOffice local ---
+async function convertDocxToPdfLocal(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  const fs = await import("fs");
+  const os = await import("os");
+  const path = await import("path");
+  const { execFile } = await import("child_process");
+  const { promisify } = await import("util");
+
+  const execFileAsync = promisify(execFile);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "docx-pdf-"));
+  const safeFilename = String(filename || "contrato.docx")
+    .replace(/[^\w.\-]+/g, "_")
+    .replace(/\.pdf$/i, ".docx");
+  const docxPath = path.join(
+    tempDir,
+    safeFilename.toLowerCase().endsWith(".docx") ? safeFilename : `${safeFilename}.docx`
+  );
+
+  const commands = [process.env.LIBREOFFICE_PATH, "soffice", "libreoffice"].filter(Boolean) as string[];
+
+  try {
+    fs.writeFileSync(docxPath, docxBuffer);
+
+    let lastError: any = null;
+    for (const command of commands) {
+      try {
+        await execFileAsync(command, [
+          "--headless",
+          "--nologo",
+          "--nofirststartwizard",
+          "--convert-to",
+          "pdf",
+          "--outdir",
+          tempDir,
+          docxPath,
+        ], { timeout: 60000 });
+        lastError = null;
+        break;
+      } catch (err: any) {
+        lastError = err;
+        if (err?.code !== "ENOENT") break;
+      }
+    }
+
+    if (lastError) throw lastError;
+
+    const pdfPath = docxPath.replace(/\.docx$/i, ".pdf");
+    if (!fs.existsSync(pdfPath)) throw new Error("PDF não foi gerado pelo LibreOffice.");
+    return fs.readFileSync(pdfPath);
+  } finally {
+    try { fs.rmSync(tempDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
+app.post("/api/convert-docx-to-pdf", async (req: any, res: any) => {
+  try {
+    const expectedKey = process.env.PDF_CONVERTER_API_KEY;
+    if (expectedKey && req.headers["x-api-key"] !== expectedKey) {
+      return res.status(401).json({ error: "Chave da API de conversão inválida." });
+    }
+
+    const { filename, docxBase64 } = req.body || {};
+    if (!docxBase64) return res.status(400).json({ error: "Envie docxBase64 para converter." });
+
+    const docxBuffer = Buffer.from(String(docxBase64), "base64");
+    const pdfBuffer = await convertDocxToPdfLocal(docxBuffer, filename || "contrato.docx");
+    const pdfFilename = String(filename || "contrato.docx").replace(/\.docx$/i, ".pdf");
+
+    res.setHeader("Content-Disposition", `attachment; filename="${pdfFilename}"`);
+    res.setHeader("Content-Type", "application/pdf");
+    res.send(pdfBuffer);
+  } catch (err: any) {
+    console.error("Erro na API convert-docx-to-pdf:", err?.message || err);
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 // --- Dev: Vite middleware (HMR on same HTTP server); Prod: static ---
 if (process.env.NODE_ENV === "production") {
   const distPath = path.resolve(__dirname, "../dist/public");
