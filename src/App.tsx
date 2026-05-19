@@ -1871,6 +1871,7 @@ const LotDashboard = ({
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
   const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as "disponivel" | "indisponivel", observacao: "", atual: null as number | null });
+  const [sequenceAdded, setSequenceAdded] = useState(0);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
   const [mapBallSize, setMapBallSize] = useState<"pequena" | "media" | "grande">(((dev as any).mapaBolinhaTamanho as any) || "media");
 
@@ -1921,7 +1922,7 @@ const LotDashboard = ({
         mapaPontos: mapaPontos,
       } as Empreendimento);
       setMode("mapa");
-      setMapAction("visualizar");
+      setMapAction("manual");
     };
     reader.readAsDataURL(file);
   };
@@ -2080,7 +2081,7 @@ const LotDashboard = ({
     persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
   };
 
-  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: "disponivel" | "indisponivel"; observacao?: string; moveExisting?: boolean }) => {
+  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: "disponivel" | "indisponivel"; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) {
@@ -2090,13 +2091,14 @@ const LotDashboard = ({
 
     const existingPoint = mapaPontos.find((p) => getLotInfoKey(p.quadra, p.lote) === getLotInfoKey(quadra, lote));
     if (existingPoint && !raw.moveExisting) {
+      if (raw.confirmDuplicate === false) return false;
       const reposition = window.confirm("Este lote já existe no mapa. Deseja reposicionar a bolinha existente?");
       if (!reposition) return false;
       return ensureMapLotAndPoint({ ...raw, moveExisting: true });
     }
 
     const lotExists = hasConfiguredLot(localDev, quadra, lote);
-    if (!lotExists) {
+    if (!lotExists && raw.confirmMissing !== false) {
       const add = window.confirm("Esta quadra/lote não existe no empreendimento. Deseja adicionar automaticamente?");
       if (!add) return false;
     }
@@ -2158,12 +2160,14 @@ const LotDashboard = ({
         alert("Preencha quadra, lote inicial e lote final antes de marcar a sequência.");
         return;
       }
-      const ok = ensureMapLotAndPoint({ quadra: sequence.quadra, lote: String(atual), xPercent, yPercent, status: sequence.status, observacao: sequence.observacao });
+      const ok = ensureMapLotAndPoint({ quadra: sequence.quadra, lote: String(atual), xPercent, yPercent, status: sequence.status, observacao: sequence.observacao, confirmMissing: false });
       if (!ok) return;
+      const qtdAtual = (sequence.atual === null || atual === inicial) ? 1 : sequenceAdded + 1;
+      setSequenceAdded(qtdAtual);
       if (atual === final) {
-        alert("Sequência concluída.");
+        alert(`Sequência concluída. ${qtdAtual} lote(s) adicionado(s)/atualizado(s) na quadra ${normalizeLotText(sequence.quadra)}.`);
         setSequence((prev) => ({ ...prev, atual: null }));
-        setMapAction("manual");
+        setSequenceAdded(0);
         return;
       }
       const step = inicial < final ? 1 : -1;
@@ -2292,6 +2296,14 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
     setLastSessionPointIds((prev) => prev.slice(0, -1));
   };
 
+  const salvarEdicaoMapa = () => {
+    setPendingPoint(null);
+    setSelectedPoint(null);
+    setSequence((prev) => ({ ...prev, atual: null }));
+    setSequenceAdded(0);
+    setMapAction("visualizar");
+  };
+
   const renderQuadradinhos = () => (
     <div className="space-y-12">
       {quadras.length > 0 ? quadras.map((q) => {
@@ -2363,7 +2375,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
             <div className="grid grid-cols-3 gap-2">
               <button onClick={() => setMapAction("manual")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "manual" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Manual</button>
               <button onClick={() => setMapAction("sequencia")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Seq.</button>
-              <button onClick={() => setMapAction("visualizar")} className="py-2 rounded-xl text-[10px] font-black uppercase bg-slate-100 text-slate-600">Ver</button>
+              <button onClick={salvarEdicaoMapa} className="py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white">Salvar</button>
             </div>
             <div className="space-y-2">
               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tamanho das bolinhas</p>
@@ -2381,8 +2393,8 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
           </div>}
           {isEditingMap && mapAction === "sequencia" && <div className="card-premium p-4 space-y-3">
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcar lotes em sequência</p>
-            <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => setSequence({ ...sequence, quadra: e.target.value, atual: null })} />
-            <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => setSequence({ ...sequence, loteInicial: e.target.value, atual: null })} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => setSequence({ ...sequence, loteFinal: e.target.value, atual: null })} /></div>
+            <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => { setSequence({ ...sequence, quadra: e.target.value, atual: null }); setSequenceAdded(0); }} />
+            <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => { setSequence({ ...sequence, loteInicial: e.target.value, atual: null }); setSequenceAdded(0); }} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => { setSequence({ ...sequence, loteFinal: e.target.value, atual: null }); setSequenceAdded(0); }} /></div>
             <select className="input-field" value={sequence.status} onChange={(e) => setSequence({ ...sequence, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="indisponivel">Indisponível</option></select>
             <input className="input-field" placeholder="Observação padrão" value={sequence.observacao} onChange={(e) => setSequence({ ...sequence, observacao: e.target.value })} />
             <p className="text-xs text-slate-500">Próximo clique: lote {sequence.atual ?? (sequence.loteInicial || "—")}</p>
@@ -2411,7 +2423,16 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
             {mapaImagem && <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Mapa interativo</button>}
             <button onClick={() => setMode("quadradinhos")} className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Quadradinhos/lotes atuais</button>
           </div>
-          {canEditMap && (!mapaImagem || mode !== "mapa" || mapAction !== "visualizar") && <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />Carregar mapa<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>}
+          {canEditMap && <div className="flex gap-2 flex-wrap justify-end">
+            {mapAction === "visualizar" ? (
+              <button onClick={() => { setMapAction("manual"); if (mapaImagem) setMode("mapa"); }} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase">Editar mapa</button>
+            ) : (
+              <>
+                <label className="px-4 py-2 bg-primary-main text-white rounded-xl text-xs font-black uppercase cursor-pointer flex items-center gap-2 justify-center"><Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}<input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" /></label>
+                <button onClick={salvarEdicaoMapa} className="px-4 py-2 bg-emerald-600 text-white rounded-xl text-xs font-black uppercase">Salvar</button>
+              </>
+            )}
+          </div>}
         </div>
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
@@ -8267,22 +8288,6 @@ VENDEDOR: ${venda.vendedor}`;
                     <X size={22} />
                   </button>
                 </div>
-                {/* Opção de carimbo PAGO — afeta apenas o documento gerado */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Carimbo:</span>
-                  <button
-                    onClick={() => setComCarimbo(false)}
-                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${!comCarimbo ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
-                  >
-                    Sem carimbo PAGO
-                  </button>
-                  <button
-                    onClick={() => setComCarimbo(true)}
-                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${comCarimbo ? "bg-green-600 text-white border-green-600" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
-                  >
-                    Com carimbo PAGO
-                  </button>
-                </div>
                 {/* Botões da visualização final: Voltar + PDF + DOCX + Imprimir + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
@@ -8475,22 +8480,6 @@ VENDEDOR: ${venda.vendedor}`;
                   </div>
                   <button onClick={() => setShowReciboModal(false)} className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
                     <X size={22} />
-                  </button>
-                </div>
-                {/* Opção de carimbo PAGO — afeta apenas o documento gerado */}
-                <div className="flex items-center gap-2 mb-3">
-                  <span className="text-[10px] font-bold uppercase text-slate-400 tracking-widest">Carimbo:</span>
-                  <button
-                    onClick={() => setComCarimbo(false)}
-                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${!comCarimbo ? "bg-slate-800 text-white border-slate-800" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
-                  >
-                    Sem carimbo PAGO
-                  </button>
-                  <button
-                    onClick={() => setComCarimbo(true)}
-                    className={`h-7 px-3 rounded-lg text-[11px] font-bold border transition-all ${comCarimbo ? "bg-green-600 text-white border-green-600" : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"}`}
-                  >
-                    Com carimbo PAGO
                   </button>
                 </div>
                 <div className="flex gap-2 flex-wrap">
