@@ -1,3 +1,10 @@
+
+function corrigirEspacosSimplesmente(texto: string): string {
+  return String(texto || "")
+    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+}
+
 import AdmZip from "adm-zip";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -105,7 +112,7 @@ function xmlEscape(s: string): string {
 }
 
 function rep(xml: string, search: string, replacement: string): string {
-  if (!search) return xml;
+  if (!search) return corrigirEspacosSimplesmente(xml);
   const safe = xmlEscape(replacement);
   const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const pattern = chars.join("(?:<[^>]*>\\s*)*");
@@ -131,7 +138,7 @@ function buildCorretorXml(corretor: { nome?: string; creci?: string; telefone?: 
   xml += p(rPrB, corretor.nome.toUpperCase());
   if (corretor.creci?.trim()) xml += p(rPr, `CRECI: ${corretor.creci.trim()}`);
   if (corretor.telefone?.trim()) xml += p(rPr, `Tel: ${corretor.telefone.trim()}`);
-  return xml;
+  return corrigirEspacosSimplesmente(xml);
 }
 
 export interface ReciboAVistaParams {

@@ -116,6 +116,13 @@ const isAdminUser: RequestHandler = async (req: any, res, next) => {
 
 
 // --- HTML/PDF helpers: renderizacao real via Puppeteer/Chromium ---
+
+function corrigirEspacosSimplesmente(texto: string): string {
+  return String(texto || "")
+    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+}
+
 function escapeHtml(value: any): string {
   return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
@@ -196,7 +203,7 @@ function contratoBaseCssPdf(): string {
 }
 
 function wrapContratoHtmlPdf(titulo: string, body: string): string {
-  return `<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(titulo)}</title><style>${contratoBaseCssPdf()}</style></head><body><main class="page">${body}</main></body></html>`;
+  return corrigirEspacosSimplesmente(`<!doctype html><html><head><meta charset="utf-8"/><title>${escapeHtml(titulo)}</title><style>${contratoBaseCssPdf()}</style></head><body><main class="page">${body}</main></body></html>`);
 }
 
 function renderContratoParceladoHtmlPdf(params: any): string {
