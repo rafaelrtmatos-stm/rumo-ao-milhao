@@ -107,7 +107,7 @@ export interface MapaPonto {
   lote: string;
   xPercent: number;
   yPercent: number;
-  status: "disponivel" | "indisponivel";
+  status: "disponivel" | "reservado" | "indisponivel";
   observacao?: string;
   vendaId?: string;
   clienteNome?: string;

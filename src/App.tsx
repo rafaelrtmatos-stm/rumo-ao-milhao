@@ -39,6 +39,17 @@ import {
   Banknote,
   CreditCard,
   Layers,
+  Sparkles,
+  Copy,
+  Save,
+  FileCheck,
+  MessageCircle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  RefreshCw,
+  PieChart as PieChartIcon,
   Trophy,
   Medal,
 } from "lucide-react";
@@ -171,6 +182,26 @@ function getLotInfoKey(quadra: string, lote: string): string {
   return `${normalizeLotKeyPart(quadra)}-${normalizeLotKeyPart(lote)}`;
 }
 
+type MapaLoteStatus = "disponivel" | "reservado" | "indisponivel";
+
+function normalizeMapaStatus(status: any): MapaLoteStatus {
+  if (status === "reservado") return "reservado";
+  if (status === "indisponivel" || status === "vendido") return "indisponivel";
+  return "disponivel";
+}
+
+function getMapaStatusColorClass(status: any, hasVenda = false): string {
+  if (hasVenda || status === "indisponivel" || status === "vendido") return "bg-red-500";
+  if (status === "reservado") return "bg-yellow-400 text-slate-900";
+  return "bg-blue-500";
+}
+
+function getMapaStatusLabel(status: any, hasVenda = false): string {
+  if (hasVenda || status === "indisponivel" || status === "vendido") return "Indisponível";
+  if (status === "reservado") return "Reservado";
+  return "Disponível";
+}
+
 function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
   const quadraName = findQuadraName(dev, quadra);
   const key = getLotInfoKey(quadra, lote);
@@ -187,7 +218,7 @@ function getLotStatusForSale(
   lote: string | undefined,
   vendas: Venda[],
   ignoreVendaId?: string
-): { exists: boolean; status: "disponivel" | "indisponivel" | "vendido" } {
+): { exists: boolean; status: "disponivel" | "reservado" | "indisponivel" | "vendido" } {
   if (!dev || !quadra || !lote) return { exists: true, status: "disponivel" };
   const q = normalizeLotText(quadra);
   const l = normalizeLotText(lote);
@@ -204,6 +235,7 @@ function getLotStatusForSale(
   );
 
   if (hasActiveSale || info?.status === "vendido") return { exists: hasConfiguredLot(dev, q, l), status: "vendido" };
+  if (info?.status === "reservado") return { exists: hasConfiguredLot(dev, q, l), status: "reservado" };
   if (info?.status === "indisponivel") return { exists: hasConfiguredLot(dev, q, l), status: "indisponivel" };
   return { exists: hasConfiguredLot(dev, q, l), status: "disponivel" };
 }
@@ -328,7 +360,7 @@ function applyLotesInfoPatchToEmpreendimento(dev: Empreendimento, info: Record<s
     const venda = findVendaAtivaDoLote(vendas, nextDev.id, ponto.quadra, ponto.lote);
     return {
       ...ponto,
-      status: changed.status === "disponivel" && !venda ? "disponivel" : "indisponivel",
+      status: venda ? "indisponivel" : normalizeMapaStatus(changed.status),
       observacao: changed.observacao ?? ponto.observacao,
       vendaId: venda?.id || ponto.vendaId,
       clienteNome: venda?.clienteNome || ponto.clienteNome,
@@ -387,6 +419,7 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
   const totalLotes = configuredKeys.size > 0 ? configuredKeys.size : Number(dev.totalLotes || 0);
   const soldKeys = new Set<string>();
   const indisponiveis = new Set<string>();
+  const reservados = new Set<string>();
 
   vendas.forEach((v) => {
     if (
@@ -403,20 +436,24 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
   Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
     const normalizedKey = key.toUpperCase();
     if ((info as any)?.status === "vendido") soldKeys.add(normalizedKey);
+    if ((info as any)?.status === "reservado") reservados.add(normalizedKey);
     if ((info as any)?.status === "indisponivel") indisponiveis.add(normalizedKey);
   });
 
-  soldKeys.forEach((key) => indisponiveis.delete(key));
+  soldKeys.forEach((key) => { indisponiveis.delete(key); reservados.delete(key); });
+  reservados.forEach((key) => indisponiveis.delete(key));
 
   const lotesVendidos = soldKeys.size;
+  const lotesReservados = reservados.size;
   const lotesIndisponiveis = indisponiveis.size;
-  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesIndisponiveis);
+  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesReservados - lotesIndisponiveis);
 
   return {
     ...dev,
     totalLotes,
     lotesVendidos,
     lotesIndisponiveis,
+    lotesReservados,
     lotesDisponiveis,
   } as Empreendimento;
 }
@@ -468,7 +505,7 @@ function updateLoteStatusInEmpreendimento(
   vendas: Venda[],
   quadra: string,
   lote: string,
-  novoStatus: "disponivel" | "indisponivel" | "vendido",
+  novoStatus: "disponivel" | "reservado" | "indisponivel" | "vendido",
   options: Record<string, any> = {},
 ): Empreendimento {
   const loteText = normalizeLotText(lote);
@@ -538,7 +575,7 @@ function updateLoteStatusInEmpreendimento(
     if (!sameLot) return ponto;
     const pontoAtualizado: any = {
       ...ponto,
-      status: novoStatus === "disponivel" ? "disponivel" : "indisponivel",
+      status: novoStatus === "vendido" ? "indisponivel" : normalizeMapaStatus(novoStatus),
       atualizadoEm: new Date().toISOString(),
     };
     if (novoStatus === "vendido") {
@@ -901,22 +938,6 @@ function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
 function generoContratoValido(pessoa: any): boolean {
   return pessoa?.genero === "M" || pessoa?.genero === "F";
 }
-import {
-  Sparkles,
-  Copy,
-  Save,
-  FileCheck,
-  MessageCircle,
-  BarChart3,
-  Download,
-  CheckCircle2,
-  Clock,
-  AlertCircle,
-  RefreshCw,
-  PieChart as PieChartIcon,
-  Trophy,
-  Medal,
-} from "lucide-react";
 import {
   BarChart,
   Bar,
@@ -1867,17 +1888,17 @@ const LotDashboard = ({
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
   const [mapAction, setMapAction] = useState<"manual" | "sequencia" | "visualizar">("visualizar");
   const [pendingPoint, setPendingPoint] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as "disponivel" | "indisponivel", observacao: "" });
+  const [pointForm, setPointForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
-  const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as "disponivel" | "indisponivel", observacao: "", atual: null as number | null });
+  const [sequence, setSequence] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "", atual: null as number | null });
   const [sequenceAdded, setSequenceAdded] = useState(0);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
-  const [mapBallSize, setMapBallSize] = useState<"pequena" | "media" | "grande">(((dev as any).mapaBolinhaTamanho as any) || "media");
+  const [mapBallSize, setMapBallSize] = useState<"pequena">("pequena");
 
   useEffect(() => {
     setLocalDev(dev);
-    setMapBallSize(((dev as any).mapaBolinhaTamanho as any) || "media");
+    setMapBallSize("pequena");
     setMapAction("visualizar");
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
@@ -1928,9 +1949,8 @@ const LotDashboard = ({
   };
 
   const getBallBasePixelSize = () => {
-    if (mapBallSize === "pequena") return { size: 22, font: 8 };
-    if (mapBallSize === "grande") return { size: 36, font: 11 };
-    return { size: 28, font: 9 };
+    // Padrão único: bolinha pequena para todo o mapa.
+    return { size: 18, font: 7 };
   };
 
   const getBallPixelSize = () => {
@@ -1938,15 +1958,15 @@ const LotDashboard = ({
     if (typeof window !== "undefined" && window.innerWidth < 640) {
       // No celular a bolinha precisa ser menor apenas na visualização.
       // O download continua usando getBallBasePixelSize(), mantendo o tamanho normal.
-      const mobileSize = Math.round(base.size * 0.45);
-      return { size: Math.max(10, mobileSize), font: Math.max(6, Math.round(base.font * 0.65)) };
+      const mobileSize = Math.round(base.size * 0.38);
+      return { size: Math.max(7, mobileSize), font: Math.max(5, Math.round(base.font * 0.6)) };
     }
     return base;
   };
 
-  const salvarTamanhoBolinhas = (size: "pequena" | "media" | "grande") => {
-    setMapBallSize(size);
-    persistDev({ ...localDev, mapaBolinhaTamanho: size } as Empreendimento);
+  const salvarTamanhoBolinhas = () => {
+    setMapBallSize("pequena");
+    persistDev({ ...localDev, mapaBolinhaTamanho: "pequena" } as Empreendimento);
   };
 
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
@@ -1973,16 +1993,17 @@ const LotDashboard = ({
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
+          const reservado = !indisponivel && ponto.status === "reservado";
           const x = (Number(ponto.xPercent) / 100) * canvas.width;
           const y = (Number(ponto.yPercent) / 100) * canvas.height;
           ctx.beginPath();
           ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = indisponivel ? "#ef4444" : "#3b82f6";
+          ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
           ctx.lineWidth = Math.max(3 * scale, 2);
           ctx.strokeStyle = "#ffffff";
           ctx.stroke();
-          ctx.fillStyle = "#ffffff";
+          ctx.fillStyle = reservado ? "#0f172a" : "#ffffff";
           ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
@@ -2081,7 +2102,7 @@ const LotDashboard = ({
     persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
   };
 
-  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: "disponivel" | "indisponivel"; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
+  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) {
@@ -2179,7 +2200,7 @@ const LotDashboard = ({
     setPointForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
   };
 
-  const marcarPonto = (ponto: any, status: "disponivel" | "indisponivel") => {
+  const marcarPonto = (ponto: any, status: MapaLoteStatus) => {
     const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
     if (status === "disponivel" && venda) {
       const ok = window.confirm(`Este lote está vinculado à venda de ${venda.clienteNome || ponto.clienteNome || "cliente não informado"}. Ao marcar como disponível, o lote será liberado para nova venda, mas o histórico será mantido. Deseja continuar?`);
@@ -2209,8 +2230,8 @@ const LotDashboard = ({
     const loteOriginal = normalizeLotText(ponto.lote);
     const quadra = normalizeLotText(window.prompt("Quadra", ponto.quadra) || ponto.quadra);
     const lote = normalizeLotText(window.prompt("Lote", ponto.lote) || ponto.lote);
-    const statusInput = (window.prompt("Status: disponivel ou indisponivel", ponto.status) || ponto.status).toLowerCase();
-    const status = statusInput === "indisponivel" ? "indisponivel" : "disponivel";
+    const statusInput = (window.prompt("Status: disponivel, reservado ou indisponivel", ponto.status) || ponto.status).toLowerCase();
+    const status: MapaLoteStatus = statusInput === "indisponivel" ? "indisponivel" : statusInput === "reservado" ? "reservado" : "disponivel";
     const observacao = window.prompt("Observação", ponto.observacao || "") || "";
     const oldNum = Number(loteOriginal);
     const newNum = Number(lote);
@@ -2320,13 +2341,14 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               {displayLots.map((l) => {
                 const soldData = vendaDoLote(q, l);
                 const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
+                const reserved = !soldData && lotInfo?.status === "reservado";
                 const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
                 return (
-                  <div key={l} onClick={() => { if (soldData) setSelectedLotSale(soldData); }} className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}>
+                  <div key={l} onClick={() => { if (soldData) setSelectedLotSale(soldData); }} className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}>
                     <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
                     <span className="text-lg font-display font-bold leading-none">{l}</span>
-                    <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${unavailable ? "bg-red-100" : "bg-blue-100"}`}>{unavailable ? "Indisp." : "Disp."}</div>
-                    {!unavailable && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
+                    <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>{unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}</div>
+                    {!unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
                   </div>
                 );
               })}
@@ -2350,12 +2372,13 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
             {mapaPontos.map((ponto) => {
               const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
               const unavailable = ponto.status === "indisponivel" || !!venda;
+              const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
               return (
                 <button
                   key={ponto.id}
                   onClick={(ev) => { ev.stopPropagation(); setSelectedPoint({ ...ponto, venda }); }}
                   title={`Q${ponto.quadra} L${ponto.lote}`}
-                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg font-black text-white flex items-center justify-center ${unavailable ? "bg-red-500" : "bg-blue-500"}`}
+                  className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-lg font-black flex items-center justify-center ${statusClass}`}
                   style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                 >
                   {ponto.lote}
@@ -2377,12 +2400,7 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
               <button onClick={() => setMapAction("sequencia")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "sequencia" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>Seq.</button>
               <button onClick={salvarEdicaoMapa} className="py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white">Salvar</button>
             </div>
-            <div className="space-y-2">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tamanho das bolinhas</p>
-              <div className="grid grid-cols-3 gap-2">
-                {(["pequena", "media", "grande"] as const).map((size) => <button key={size} onClick={() => salvarTamanhoBolinhas(size)} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapBallSize === size ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>{size === "media" ? "Média" : size}</button>)}
-              </div>
-            </div>
+            <div className="p-3 rounded-2xl bg-slate-50 text-[11px] font-bold text-slate-500">Bolinhas no tamanho pequeno padrão para melhor uso no celular.</div>
             {mapAction === "sequencia" && <div className="grid grid-cols-2 gap-2">
               <button onClick={() => alinharSequencia("reta")} className="btn-secondary text-[11px]">Alinhar reta</button>
               <button onClick={() => alinharSequencia("bezier")} className="btn-secondary text-[11px]">Curva Bézier</button>
@@ -2395,14 +2413,15 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Marcar lotes em sequência</p>
             <input className="input-field" placeholder="Quadra" value={sequence.quadra} onChange={(e) => { setSequence({ ...sequence, quadra: e.target.value, atual: null }); setSequenceAdded(0); }} />
             <div className="grid grid-cols-2 gap-2"><input className="input-field" placeholder="Lote inicial" value={sequence.loteInicial} onChange={(e) => { setSequence({ ...sequence, loteInicial: e.target.value, atual: null }); setSequenceAdded(0); }} /><input className="input-field" placeholder="Lote final" value={sequence.loteFinal} onChange={(e) => { setSequence({ ...sequence, loteFinal: e.target.value, atual: null }); setSequenceAdded(0); }} /></div>
-            <select className="input-field" value={sequence.status} onChange={(e) => setSequence({ ...sequence, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="indisponivel">Indisponível</option></select>
+            <select className="input-field" value={sequence.status} onChange={(e) => setSequence({ ...sequence, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="indisponivel">Indisponível</option></select>
             <input className="input-field" placeholder="Observação padrão" value={sequence.observacao} onChange={(e) => setSequence({ ...sequence, observacao: e.target.value })} />
             <p className="text-xs text-slate-500">Próximo clique: lote {sequence.atual ?? (sequence.loteInicial || "—")}</p>
           </div>}
           <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
+            <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
-            <p>Indisponível pode ser venda do sistema, venda por terceiro, bloqueio ou reserva manual.</p>
+            <p>Reservado fica amarelo e não conta como venda oficial. Indisponível fica vermelho.</p>
           </div>
         </div>
       </div>
@@ -2437,33 +2456,35 @@ Cancelar = alterar somente esta bolinha e manter os próximos como estão.`)
         <div className="flex-1 overflow-y-auto p-4 sm:p-6">
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
         </div>
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div></div>
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400"><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div><div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div></div>
 
         <AnimatePresence>
-          {pendingPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30"><div className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3 shadow-2xl"><h4 className="font-bold text-slate-800">Criar bolinha</h4><input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} /><input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} /><select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="indisponivel">Indisponível</option></select><input className="input-field" placeholder="Observação opcional" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} /><div className="flex justify-end gap-2 pt-2"><button className="btn-secondary px-4" onClick={() => setPendingPoint(null)}>Cancelar</button><button className="btn-primary px-4" onClick={() => { if (ensureMapLotAndPoint({ ...pointForm, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent })) setPendingPoint(null); }}>Salvar</button></div></div></motion.div>}
+          {pendingPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30"><div className="bg-white rounded-3xl p-5 w-full max-w-sm space-y-3 shadow-2xl"><h4 className="font-bold text-slate-800">Criar bolinha</h4><input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} /><input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} /><select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}><option value="disponivel">Disponível</option><option value="reservado">Reservado</option><option value="indisponivel">Indisponível</option></select><input className="input-field" placeholder="Observação opcional" value={pointForm.observacao} onChange={(e) => setPointForm({ ...pointForm, observacao: e.target.value })} /><div className="flex justify-end gap-2 pt-2"><button className="btn-secondary px-4" onClick={() => setPendingPoint(null)}>Cancelar</button><button className="btn-primary px-4" onClick={() => { if (ensureMapLotAndPoint({ ...pointForm, xPercent: pendingPoint.xPercent, yPercent: pendingPoint.yPercent })) setPendingPoint(null); }}>Salvar</button></div></div></motion.div>}
           {selectedPoint && <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
             <div className="bg-white rounded-3xl p-5 w-full max-w-md space-y-4 shadow-2xl">
               <div>
                 <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</h4>
-                <p className="text-sm text-slate-500">{selectedPoint.status === "disponivel" && !selectedPoint.venda ? "Disponível" : "Indisponível"}</p>
+                <p className="text-sm text-slate-500">{getMapaStatusLabel(selectedPoint.status, !!selectedPoint.venda)}</p>
                 {selectedPoint.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {selectedPoint.observacao}</p>}
               </div>
               {selectedPoint.vendaId || selectedPoint.venda ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">
                 <p>Comprador: <strong>{selectedPoint.venda?.clienteNome || selectedPoint.clienteNome || "Cliente não informado"}</strong></p>
                 <p>{localDev.nome} · Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}</p>
                 <p>Data da venda: {formatDateBR(selectedPoint.venda?.dataVenda || selectedPoint.dataVenda)}</p>
-              </div> : selectedPoint.status === "indisponivel" ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div> : null}
+              </div> : selectedPoint.status === "reservado" ? <div className="p-3 bg-yellow-50 rounded-2xl text-sm text-yellow-800">Este lote está reservado, mas ainda não possui venda oficial.</div> : selectedPoint.status === "indisponivel" ? <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div> : null}
               {selectedPoint.historico?.length > 0 && <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500">
                 <p className="font-bold text-slate-700 mb-1">Histórico:</p>
                 {selectedPoint.historico.slice(-3).map((h: any, idx: number) => <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>)}
               </div>}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
+                {selectedPoint.status === "reservado" && !selectedPoint.venda && <button className="btn-primary" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: selectedPoint.quadra, numeroLote: selectedPoint.lote }); }}>Iniciar venda deste lote</button>}
                 {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-primary" onClick={() => { onViewContract(selectedPoint.venda); onClose(); }}>Abrir contrato/venda</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "reservado" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "reservado")}>Deixar reservado</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "indisponivel" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Deixar indisponível</button>}
+                {!selectedPoint.vendaId && !selectedPoint.venda && selectedPoint.status !== "disponivel" && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}
                 {canEditMap && mapAction !== "visualizar" && <>
-                  {selectedPoint.status === "disponivel" && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "indisponivel")}>Marcar como indisponível</button>}
                   {(selectedPoint.vendaId || selectedPoint.venda) && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Liberar lote e manter histórico</button>}
-                  {selectedPoint.status === "indisponivel" && !selectedPoint.vendaId && !selectedPoint.venda && <button className="btn-secondary" onClick={() => marcarPonto(selectedPoint, "disponivel")}>Marcar como disponível</button>}
                   <button className="btn-secondary" onClick={() => editarPonto(selectedPoint)}>Editar bolinha</button>
                   <button className="btn-secondary text-red-600" onClick={() => excluirPonto(selectedPoint)}>Excluir bolinha</button>
                 </>}
@@ -2520,7 +2541,7 @@ const EmpreendimentosSection = ({
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
-  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as "disponivel" | "indisponivel" });
+  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
@@ -11881,7 +11902,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     empreendimentoId: string,
     quadra: string,
     lote: string,
-    novoStatus: "disponivel" | "indisponivel" | "vendido",
+    novoStatus: "disponivel" | "reservado" | "indisponivel" | "vendido",
     options: Record<string, any> = {},
   ): Empreendimento | null => {
     let devAtualizado: Empreendimento | null = null;
