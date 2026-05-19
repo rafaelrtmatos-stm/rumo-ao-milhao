@@ -52,21 +52,8 @@ import {
   PieChart as PieChartIcon,
   Trophy,
   Medal,
-  Download,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  Cell,
-  PieChart,
-  Pie,
-} from "recharts";
 import {
   Section,
   Empreendimento,
@@ -951,6 +938,19 @@ function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
 function generoContratoValido(pessoa: any): boolean {
   return pessoa?.genero === "M" || pessoa?.genero === "F";
 }
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+
 const DELETE_PASSWORD = "Geper3tp@";
 
 function useDeleteConfirm() {
