@@ -33,6 +33,7 @@ import {
   Smartphone,
   ClipboardPaste,
   Upload,
+  Download,
   AlertTriangle,
   Database,
   ShieldCheck,
