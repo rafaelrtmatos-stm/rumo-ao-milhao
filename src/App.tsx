@@ -1951,6 +1951,13 @@ const LotDashboard = ({
   const isDraggingPanelRef = useRef(false);
   const rafPanelRef = useRef<number | null>(null);
 
+  // Zoom / Pan do mapa no modo visualizar
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapOffset, setMapOffset] = useState({ x: 0, y: 0 });
+  const mapViewportRef = useRef<HTMLDivElement>(null);
+  const mapPanRef = useRef<{ startX: number; startY: number; ox: number; oy: number } | null>(null);
+  const isPanningRef = useRef(false);
+
   useEffect(() => {
     setLocalDev(dev);
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
@@ -2764,106 +2771,201 @@ const LotDashboard = ({
   );
 
   // ──────────────────────────────────────────────
+  // ZOOM / PAN — somente no modo visualizar
+  // ──────────────────────────────────────────────
+  const handleMapViewportWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!e.ctrlKey) return; // só zoom com CTRL
+    e.preventDefault();
+    e.stopPropagation();
+    const delta = e.deltaY > 0 ? -0.1 : 0.1;
+    setMapZoom((z) => Math.min(5, Math.max(0.3, z + delta)));
+  };
+
+  const handleMapViewportMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (isEditingMap) return; // no editing mode, leave default
+    if (e.button !== 0) return;
+    isPanningRef.current = true;
+    mapPanRef.current = { startX: e.clientX, startY: e.clientY, ox: mapOffset.x, oy: mapOffset.y };
+    e.currentTarget.style.cursor = "grabbing";
+  };
+
+  const handleMapViewportMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isPanningRef.current || !mapPanRef.current || isEditingMap) return;
+    const dx = e.clientX - mapPanRef.current.startX;
+    const dy = e.clientY - mapPanRef.current.startY;
+    setMapOffset({ x: mapPanRef.current.ox + dx, y: mapPanRef.current.oy + dy });
+  };
+
+  const handleMapViewportMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+    isPanningRef.current = false;
+    mapPanRef.current = null;
+    if (!isEditingMap) e.currentTarget.style.cursor = "grab";
+  };
+
+  const handleMapViewportTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isEditingMap || e.touches.length !== 1) return;
+    const t = e.touches[0];
+    isPanningRef.current = true;
+    mapPanRef.current = { startX: t.clientX, startY: t.clientY, ox: mapOffset.x, oy: mapOffset.y };
+  };
+
+  const handleMapViewportTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!isPanningRef.current || !mapPanRef.current || isEditingMap || e.touches.length !== 1) return;
+    e.preventDefault();
+    const t = e.touches[0];
+    const dx = t.clientX - mapPanRef.current.startX;
+    const dy = t.clientY - mapPanRef.current.startY;
+    setMapOffset({ x: mapPanRef.current.ox + dx, y: mapPanRef.current.oy + dy });
+  };
+
+  const handleMapViewportTouchEnd = () => {
+    isPanningRef.current = false;
+    mapPanRef.current = null;
+  };
+
+  // ──────────────────────────────────────────────
   // RENDERIZAR MAPA
   // ──────────────────────────────────────────────
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
     return (
-        <div className="space-y-4">
+        <div className={isEditingMap ? "space-y-4" : "flex flex-col h-full gap-4"}>
         {/* Aviso lotes sem bolinha */}
         {isEditingMap && lotesConfigSemBolinha > 0 && (
           <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
             Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
           </div>
         )}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+        <div className={isEditingMap ? "grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4" : "grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 flex-1 min-h-0"}>
           {/* CANVAS DO MAPA */}
-          <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
-            <div
-              ref={mapContainerRef}
-              onClick={handleMapClick}
-              onMouseMove={(e) => {
-                handleMapMouseMoveForDrag(e);
-                handleMapMouseMove(e);
-                // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
-                if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
-                  const mouseX = e.clientX;
-                  const mouseY = e.clientY;
-                  if (rafPanelRef.current) cancelAnimationFrame(rafPanelRef.current);
-                  rafPanelRef.current = requestAnimationFrame(() => {
-                    if (!dragPanelRef.current || !marcadorPanelRef.current) return;
-                    const newX = dragPanelRef.current.panelX + (mouseX - dragPanelRef.current.mouseX);
-                    const newY = dragPanelRef.current.panelY + (mouseY - dragPanelRef.current.mouseY);
-                    marcadorPanelRef.current.style.left = `${newX}px`;
-                    marcadorPanelRef.current.style.top = `${newY}px`;
-                  });
-                }
-              }}
-              onMouseUp={() => {
-                handleMapMouseUp();
-                commitDrag();
-                if (isDraggingPanelRef.current) {
-                  isDraggingPanelRef.current = false;
-                  dragPanelRef.current = null;
-                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
-                  setDraggingPanel(false);
-                }
-              }}
-              onMouseLeave={() => {
-                if (draggingId) commitDrag();
-                if (isDraggingPanelRef.current) {
-                  isDraggingPanelRef.current = false;
-                  dragPanelRef.current = null;
-                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
-                  setDraggingPanel(false);
-                }
-              }}
-              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ maxWidth: "1000px" }}
-            >
-              <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
-
-              {/* Preview bolinhas + linha para multi-lote */}
-              {renderSeqPreviewBalls()}
-
-              {/* BOLINHAS */}
-              {mapaPontos.map((ponto) => {
-                const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
-                const isMassaSel = massaSelIds.has(ponto.id);
-                const isCtrlSel = ctrlSelectedIds.has(ponto.id);
-                const isDragging = draggingId === ponto.id;
-                return (
+          {/* Viewport: overflow hidden, captura zoom/pan sem mover a página */}
+          <div
+            ref={mapViewportRef}
+            className="bg-slate-100 rounded-3xl border border-slate-200 overflow-hidden relative"
+            style={{ minHeight: 320, height: isEditingMap ? undefined : "100%", cursor: isEditingMap ? undefined : "grab" }}
+            onWheel={handleMapViewportWheel}
+            onMouseDown={!isEditingMap ? handleMapViewportMouseDown : undefined}
+            onMouseMove={!isEditingMap ? handleMapViewportMouseMove : undefined}
+            onMouseUp={!isEditingMap ? handleMapViewportMouseUp : undefined}
+            onMouseLeave={!isEditingMap ? (e) => { handleMapViewportMouseUp(e as any); } : undefined}
+            onTouchStart={!isEditingMap ? handleMapViewportTouchStart : undefined}
+            onTouchMove={!isEditingMap ? handleMapViewportTouchMove : undefined}
+            onTouchEnd={!isEditingMap ? handleMapViewportTouchEnd : undefined}
+          >
+            {/* Hint zoom — apenas no modo visualizar */}
+            {!isEditingMap && (
+              <div className="absolute top-2 left-2 z-10 flex gap-1.5 pointer-events-none">
+                <span className="bg-black/40 text-white text-[9px] font-bold rounded-lg px-2 py-1 backdrop-blur-sm">CTRL+scroll = zoom</span>
+                <span className="bg-black/40 text-white text-[9px] font-bold rounded-lg px-2 py-1 backdrop-blur-sm">arraste = mover</span>
+                {mapZoom !== 1 && (
                   <button
-                    key={ponto.id}
-                    onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
-                    onClick={(ev) => {
-                      if (draggingId) return;
-                      ev.stopPropagation();
-                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
-                      // CTRL seleção múltipla no modo edição
-                      if (isEditingMap && mapAction === "editar" && ev.ctrlKey) {
-                        toggleCtrlSel(ponto.id);
-                        return;
-                      }
-                      setSelectedPoint({ ...ponto, venda });
-                    }}
-                    title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
+                    className="pointer-events-auto bg-black/40 text-white text-[9px] font-bold rounded-lg px-2 py-1 backdrop-blur-sm cursor-pointer hover:bg-black/60"
+                    onClick={() => { setMapZoom(1); setMapOffset({ x: 0, y: 0 }); }}
+                    style={{ pointerEvents: "auto" }}
                   >
-                    {ponto.lote}
+                    Resetar
                   </button>
-                );
-              })}
+                )}
+              </div>
+            )}
+            {/* Camada transformável — zoom + pan aplicados aqui */}
+            <div
+              style={{
+                transform: isEditingMap ? undefined : `translate(${mapOffset.x}px, ${mapOffset.y}px) scale(${mapZoom})`,
+                transformOrigin: "center center",
+                transition: isPanningRef.current ? "none" : "transform 0.05s",
+                willChange: "transform",
+              }}
+            >
+              <div
+                ref={mapContainerRef}
+                onClick={handleMapClick}
+                onMouseMove={(e) => {
+                  if (!isEditingMap) return;
+                  handleMapMouseMoveForDrag(e);
+                  handleMapMouseMove(e);
+                  // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
+                  if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
+                    const mouseX = e.clientX;
+                    const mouseY = e.clientY;
+                    if (rafPanelRef.current) cancelAnimationFrame(rafPanelRef.current);
+                    rafPanelRef.current = requestAnimationFrame(() => {
+                      if (!dragPanelRef.current || !marcadorPanelRef.current) return;
+                      const newX = dragPanelRef.current.panelX + (mouseX - dragPanelRef.current.mouseX);
+                      const newY = dragPanelRef.current.panelY + (mouseY - dragPanelRef.current.mouseY);
+                      marcadorPanelRef.current.style.left = `${newX}px`;
+                      marcadorPanelRef.current.style.top = `${newY}px`;
+                    });
+                  }
+                }}
+                onMouseUp={() => {
+                  if (!isEditingMap) return;
+                  handleMapMouseUp();
+                  commitDrag();
+                  if (isDraggingPanelRef.current) {
+                    isDraggingPanelRef.current = false;
+                    dragPanelRef.current = null;
+                    if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
+                    setDraggingPanel(false);
+                  }
+                }}
+                onMouseLeave={() => {
+                  if (!isEditingMap) return;
+                  if (draggingId) commitDrag();
+                  if (isDraggingPanelRef.current) {
+                    isDraggingPanelRef.current = false;
+                    dragPanelRef.current = null;
+                    if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
+                    setDraggingPanel(false);
+                  }
+                }}
+                className={`relative mx-auto bg-white overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+                style={{ maxWidth: "1000px" }}
+              >
+                <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
-              {/* Marcador do primeiro ponto (multi-lote aguardando 2º clique) */}
-              {isEditingMap && mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && (
-                <div className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20 flex items-center justify-center"
-                  style={{ left: `${marcadorPonto1.xPercent}%`, top: `${marcadorPonto1.yPercent}%` }}>
-                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
-                </div>
-              )}
+                {/* Preview bolinhas + linha para multi-lote */}
+                {renderSeqPreviewBalls()}
+
+                {/* BOLINHAS */}
+                {mapaPontos.map((ponto) => {
+                  const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+                  const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                  const isMassaSel = massaSelIds.has(ponto.id);
+                  const isCtrlSel = ctrlSelectedIds.has(ponto.id);
+                  const isDragging = draggingId === ponto.id;
+                  return (
+                    <button
+                      key={ponto.id}
+                      onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
+                      onClick={(ev) => {
+                        if (draggingId) return;
+                        ev.stopPropagation();
+                        if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
+                        // CTRL seleção múltipla no modo edição
+                        if (isEditingMap && mapAction === "editar" && ev.ctrlKey) {
+                          toggleCtrlSel(ponto.id);
+                          return;
+                        }
+                        setSelectedPoint({ ...ponto, venda });
+                      }}
+                      title={`Q${ponto.quadra} L${ponto.lote}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                      style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
+                    >
+                      {ponto.lote}
+                    </button>
+                  );
+                })}
+
+                {/* Marcador do primeiro ponto (multi-lote aguardando 2º clique) */}
+                {isEditingMap && mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && (
+                  <div className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20 flex items-center justify-center"
+                    style={{ left: `${marcadorPonto1.xPercent}%`, top: `${marcadorPonto1.yPercent}%` }}>
+                    <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
@@ -2990,14 +3092,6 @@ const LotDashboard = ({
             </div>
           </div>
         </div>
-
-        {/* BOTÕES IMAGEM / PDF — sempre embaixo do mapa */}
-        {mapaImagem && !isEditingMap && (
-          <div className="grid grid-cols-2 gap-2 max-w-xs">
-            <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-            <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
-          </div>
-        )}
 
         {/* FORMULÁRIO NOVO MARCADOR — flutuante e arrastável sobre o mapa */}
         <AnimatePresence>
@@ -3304,18 +3398,26 @@ const LotDashboard = ({
         </div>
 
         {/* CONTEÚDO */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+        <div className={`flex-1 p-4 sm:p-6 relative ${mode === "mapa" && mapaImagem && !isEditingMap ? "overflow-hidden flex flex-col" : "overflow-y-auto"}`}>
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
           <AnimatePresence>
             {selectedPoint && renderSelectedPointModal()}
           </AnimatePresence>
         </div>
 
-        {/* FOOTER LEGENDA */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+        {/* FOOTER FIXO: legenda + botões download */}
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
+            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
+            <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+          </div>
+          {mode === "mapa" && mapaImagem && !isEditingMap && (
+            <div className="flex gap-2">
+              <button onClick={baixarMapaInterativoImagem} className="btn-secondary flex items-center gap-1.5 text-xs py-1.5 px-3"><FileDown size={13} />Imagem</button>
+              <button onClick={baixarMapaInterativoPdf} className="btn-secondary flex items-center gap-1.5 text-xs py-1.5 px-3"><FileText size={13} />PDF</button>
+            </div>
+          )}
         </div>
 
         {/* Modal venda do lote (quadradinhos) */}
