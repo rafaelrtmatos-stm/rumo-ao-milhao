@@ -1148,7 +1148,7 @@ const Sidebar = ({
       </AnimatePresence>
 
       <div
-        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform overflow-y-auto ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="p-5 sm:p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
           <div>
@@ -1298,7 +1298,7 @@ const Header = ({
   toggleSidebar: () => void;
   forceDesktop: boolean;
 }) => (
-  <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 z-40 ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
+  <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-4 lg:px-10 fixed top-0 right-0 z-40 overflow-hidden ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
     <button
       onClick={toggleSidebar}
       className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 bg-surface-bg hover:bg-slate-100 rounded-2xl text-slate-600 transition-colors`}
@@ -1326,7 +1326,7 @@ const BottomNav = ({
   ];
 
   return (
-    <nav className="lg:hidden fixed bottom-6 left-6 right-6 h-18 bg-surface-card/90 backdrop-blur-xl border border-border-subtle rounded-3xl shadow-2xl flex items-center justify-around px-2 z-50 no-print">
+    <nav className="lg:hidden fixed bottom-4 left-3 right-3 bg-surface-card/90 backdrop-blur-xl border border-border-subtle rounded-3xl shadow-2xl flex items-center justify-around px-1 py-2 z-50 no-print" style={{ paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}>
       {items.map((item) => {
         const Icon = item.icon;
         const isActive = currentSection === item.id;
@@ -1361,9 +1361,9 @@ const BottomNav = ({
 const FAB = ({ setSection }: { setSection: (s: Section) => void }) => (
   <button
     onClick={() => setSection("vendas")}
-    className="lg:hidden fixed right-6 bottom-28 w-16 h-16 bg-primary-main text-primary-contrast rounded-2xl shadow-2xl shadow-primary-main/30 flex items-center justify-center z-50 active:scale-90 transition-transform no-print"
+    className="lg:hidden fixed right-4 bottom-24 w-14 h-14 bg-primary-main text-primary-contrast rounded-2xl shadow-2xl shadow-primary-main/30 flex items-center justify-center z-50 active:scale-90 transition-transform no-print"
   >
-    <Plus size={28} />
+    <Plus size={26} />
   </button>
 );
 
@@ -13235,7 +13235,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
 
   return (
-    <div className="min-h-screen bg-surface-bg flex">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-surface-bg flex">
       <Sidebar
         currentSection={section}
         setSection={(s) => {
@@ -13253,7 +13253,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         userEmail={userEmail}
       />
 
-      <main className={`flex-1 ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
+      <main className={`flex-1 min-w-0 w-full max-w-full overflow-x-hidden ${forceDesktop ? "ml-72" : "lg:ml-72"} p-3 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
         <Header
           title={getTitle()}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -13267,7 +13267,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="max-w-7xl mx-auto"
+            className="w-full max-w-7xl mx-auto overflow-x-hidden"
           >
             {!isLoaded ? (
               <div className="flex flex-col items-center justify-center py-32 gap-4">
