@@ -1918,9 +1918,17 @@ const LotDashboard = ({
   const [massaFiltroLoteIni, setMassaFiltroLoteIni] = useState("");
   const [massaFiltroLoteFin, setMassaFiltroLoteFin] = useState("");
 
+  // Seleção múltipla com CTRL (modo editar)
+  const [ctrlSelectedIds, setCtrlSelectedIds] = useState<Set<string>>(new Set());
+
+  // Posição do painel "Novo marcador" arrastável
+  const [marcadorPanelPos, setMarcadorPanelPos] = useState<{ x: number; y: number } | null>(null);
+  const [draggingPanel, setDraggingPanel] = useState(false);
+  const [dragPanelStart, setDragPanelStart] = useState<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
+
   useEffect(() => {
     setLocalDev(dev);
-    setMapAction("visualizar");
+    // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
 
@@ -2383,11 +2391,16 @@ const LotDashboard = ({
   const editarPonto = (ponto: any) => {
     const quadraOriginal = normalizeLotText(ponto.quadra);
     const loteOriginal = normalizeLotText(ponto.lote);
-    const quadra = normalizeLotText(window.prompt("Quadra", ponto.quadra) || ponto.quadra);
-    const lote = normalizeLotText(window.prompt("Lote", ponto.lote) || ponto.lote);
-    const statusInput = (window.prompt("Status: disponivel, reservado ou indisponivel", ponto.status) || ponto.status).toLowerCase();
+    const quadra = normalizeLotText(window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nQuadra`, ponto.quadra) || ponto.quadra);
+    // Alertar se a quadra foi alterada
+    if (normalizeLotKeyPart(quadra) !== normalizeLotKeyPart(quadraOriginal)) {
+      const confirmar = window.confirm(`⚠️ ATENÇÃO: Você está alterando a Quadra de "${quadraOriginal}" para "${quadra}".\n\nIsso moverá o marcador para outra quadra. Deseja continuar?`);
+      if (!confirmar) return;
+    }
+    const lote = normalizeLotText(window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nLote`, ponto.lote) || ponto.lote);
+    const statusInput = (window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nStatus: disponivel, reservado ou indisponivel`, ponto.status) || ponto.status).toLowerCase();
     const status: MapaLoteStatus = statusInput === "indisponivel" ? "indisponivel" : statusInput === "reservado" ? "reservado" : "disponivel";
-    const observacao = window.prompt("Observação", ponto.observacao || "") || "";
+    const observacao = window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nObservação`, ponto.observacao || "") || "";
     const oldNum = Number(loteOriginal); const newNum = Number(lote);
     const mudouNumeroSequencial = quadra === quadraOriginal && lote !== loteOriginal && Number.isFinite(oldNum) && Number.isFinite(newNum);
     const renumerarSequencia = mudouNumeroSequencial
@@ -2502,6 +2515,51 @@ const LotDashboard = ({
   };
 
   // ──────────────────────────────────────────────
+  // SELEÇÃO COM CTRL
+  // ──────────────────────────────────────────────
+  const toggleCtrlSel = (id: string) => {
+    setCtrlSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  // ──────────────────────────────────────────────
+  // ALINHAR LOTES SELECIONADOS COM CTRL
+  // ──────────────────────────────────────────────
+  const alinharLotesSelecionados = () => {
+    if (ctrlSelectedIds.size < 3) return;
+    // Pegar os pontos selecionados, ordenar por número de lote quando possível
+    const selecionados = mapaPontos
+      .filter((p) => ctrlSelectedIds.has(p.id))
+      .slice()
+      .sort((a, b) => {
+        const na = Number(a.lote); const nb = Number(b.lote);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        return String(a.lote).localeCompare(String(b.lote));
+      });
+    if (selecionados.length < 3) return;
+    const primeiro = selecionados[0];
+    const ultimo = selecionados[selecionados.length - 1];
+    const total = selecionados.length;
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    selecionados.forEach((p, idx) => {
+      const t = idx / (total - 1);
+      posicoes.set(p.id, {
+        xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
+        yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t,
+      });
+    });
+    const ids = new Set(selecionados.map((p) => p.id));
+    const nextPontos = mapaPontos.map((p) =>
+      ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p
+    );
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+    // NÃO sai do modo edição
+  };
+
+  // ──────────────────────────────────────────────
   // SALVAR / SAIR DO MODO EDIÇÃO
   // ──────────────────────────────────────────────
   const salvarEdicaoMapa = () => {
@@ -2517,6 +2575,8 @@ const LotDashboard = ({
     setSeqPrimeiroClique(null);
     setSeqPreview(null);
     setMassaSelIds(new Set());
+    setCtrlSelectedIds(new Set());
+    setMarcadorPanelPos(null);
     setLastSessionPointIds([]);
     setMapAction("visualizar");
   };
@@ -2633,9 +2693,26 @@ const LotDashboard = ({
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
-              onMouseMove={(e) => { handleMapMouseMoveForDrag(e); handleMapMouseMove(e); }}
-              onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
-              onMouseLeave={() => { if (draggingId) commitDrag(); }}
+              onMouseMove={(e) => {
+                handleMapMouseMoveForDrag(e);
+                handleMapMouseMove(e);
+                // Arrastar painel "Novo marcador"
+                if (draggingPanel && dragPanelStart && mapContainerRef.current) {
+                  const rect = mapContainerRef.current.getBoundingClientRect();
+                  const newX = dragPanelStart.panelX + (e.clientX - dragPanelStart.mouseX);
+                  const newY = dragPanelStart.panelY + (e.clientY - dragPanelStart.mouseY);
+                  setMarcadorPanelPos({ x: newX, y: newY });
+                }
+              }}
+              onMouseUp={() => {
+                handleMapMouseUp();
+                commitDrag();
+                if (draggingPanel) { setDraggingPanel(false); setDragPanelStart(null); }
+              }}
+              onMouseLeave={() => {
+                if (draggingId) commitDrag();
+                if (draggingPanel) { setDraggingPanel(false); setDragPanelStart(null); }
+              }}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ maxWidth: "1000px" }}
             >
@@ -2649,6 +2726,7 @@ const LotDashboard = ({
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
                 const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
                 const isMassaSel = massaSelIds.has(ponto.id);
+                const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isDragging = draggingId === ponto.id;
                 return (
                   <button
@@ -2658,10 +2736,15 @@ const LotDashboard = ({
                       if (draggingId) return;
                       ev.stopPropagation();
                       if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
+                      // CTRL seleção múltipla no modo edição
+                      if (isEditingMap && mapAction === "editar" && ev.ctrlKey) {
+                        toggleCtrlSel(ponto.id);
+                        return;
+                      }
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                   >
                     {ponto.lote}
@@ -2723,6 +2806,25 @@ const LotDashboard = ({
                   <button onClick={() => { setMapAction("editar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
                     ← Voltar ao marcador
                   </button>
+                )}
+
+                {/* Seleção CTRL */}
+                {mapAction === "editar" && (
+                  <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleção múltipla</p>
+                    <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar.</p>
+                    {ctrlSelectedIds.size > 0 && (
+                      <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
+                    )}
+                    {ctrlSelectedIds.size >= 3 && (
+                      <button onClick={alinharLotesSelecionados} className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 hover:bg-emerald-200">
+                        ↔ Alinhar lotes
+                      </button>
+                    )}
+                    {ctrlSelectedIds.size > 0 && (
+                      <button onClick={() => setCtrlSelectedIds(new Set())} className="btn-secondary w-full text-[10px]">Limpar seleção</button>
+                    )}
+                  </div>
                 )}
 
                 {/* Carregar mapa */}
@@ -2792,54 +2894,87 @@ const LotDashboard = ({
           </div>
         )}
 
-        {/* FORMULÁRIO NOVO MARCADOR — abre após clique no mapa */}
+        {/* FORMULÁRIO NOVO MARCADOR — flutuante e arrastável sobre o mapa */}
         <AnimatePresence>
           {isEditingMap && mapAction === "editar" && marcadorFase === "formulario" && marcadorPonto1 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
-              <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-                <h4 className="font-display font-bold text-slate-800 text-lg">Novo marcador</h4>
-                <p className="text-xs text-slate-400">
-                  Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
-                </p>
-                <input className="input-field" placeholder="Quadra" value={marcadorForm.quadra} onChange={(e) => setMarcadorForm({ ...marcadorForm, quadra: e.target.value })} autoFocus />
-                <input
-                  className="input-field"
-                  placeholder="Lote — ex: 5 ou 1,2,3,4"
-                  value={marcadorForm.lote}
-                  onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
-                />
-                <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus })}>
-                  <option value="disponivel">Disponível</option>
-                  <option value="reservado">Reservado</option>
-                  <option value="indisponivel">Indisponível</option>
-                </select>
-                <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
-                <div className="grid grid-cols-2 gap-3">
-                  <button onClick={() => {
-                    if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
-                    const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
-                    if (lotes.length === 1) {
-                      // Lote único — cria direto
-                      const ok = ensureMapLotAndPoint({
-                        quadra: marcadorForm.quadra,
-                        lote: lotes[0],
-                        xPercent: marcadorPonto1!.xPercent,
-                        yPercent: marcadorPonto1!.yPercent,
-                        status: marcadorForm.status,
-                        observacao: marcadorForm.observacao,
-                      });
-                      if (ok) {
-                        setMarcadorFase("idle");
-                        setMarcadorPonto1(null);
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="absolute z-40 pointer-events-auto"
+              style={marcadorPanelPos
+                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y }
+                : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+            >
+              <div className="bg-white rounded-3xl shadow-2xl w-72 overflow-hidden border border-slate-200">
+                {/* Handle de arrastar */}
+                <div
+                  className="flex items-center justify-between px-5 pt-4 pb-2 cursor-move bg-slate-50 border-b border-slate-100 select-none"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    const rect = (e.currentTarget.closest(".absolute") as HTMLElement)?.getBoundingClientRect();
+                    const panelX = rect ? rect.left : 0;
+                    const panelY = rect ? rect.top : 0;
+                    setDraggingPanel(true);
+                    setDragPanelStart({ mouseX: e.clientX, mouseY: e.clientY, panelX, panelY });
+                  }}
+                >
+                  <h4 className="font-display font-bold text-slate-800 text-base">Novo marcador</h4>
+                  <span className="text-slate-300 text-lg select-none">⠿</span>
+                </div>
+                <div className="p-5 space-y-3">
+                  <p className="text-xs text-slate-400">
+                    Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
+                  </p>
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Quadra</label>
+                    <input
+                      className="input-field"
+                      placeholder="Quadra"
+                      value={marcadorForm.quadra}
+                      onChange={(e) => setMarcadorForm({ ...marcadorForm, quadra: e.target.value })}
+                      autoFocus
+                    />
+                  </div>
+                  <input
+                    className="input-field"
+                    placeholder="Lote — ex: 5 ou 1,2,3,4"
+                    value={marcadorForm.lote}
+                    onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
+                  />
+                  <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus })}>
+                    <option value="disponivel">Disponível</option>
+                    <option value="reservado">Reservado</option>
+                    <option value="indisponivel">Indisponível</option>
+                  </select>
+                  <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={() => {
+                      if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
+                      const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+                      if (lotes.length === 1) {
+                        const ok = ensureMapLotAndPoint({
+                          quadra: marcadorForm.quadra,
+                          lote: lotes[0],
+                          xPercent: marcadorPonto1!.xPercent,
+                          yPercent: marcadorPonto1!.yPercent,
+                          status: marcadorForm.status,
+                          observacao: marcadorForm.observacao,
+                        });
+                        if (ok) {
+                          setMarcadorFase("idle");
+                          setMarcadorPonto1(null);
+                          setMarcadorPanelPos(null);
+                        }
+                      } else {
+                        setMarcadorFase("aguardando_segundo");
+                        setMarcadorPanelPos(null);
                       }
-                    } else {
-                      // Múltiplos lotes — aguarda segundo clique no mapa
-                      setMarcadorFase("aguardando_segundo");
-                    }
-                  }} className="btn-primary">
-                    {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : "Adicionar"}
-                  </button>
-                  <button onClick={() => { setMarcadorFase("idle"); setMarcadorPonto1(null); }} className="btn-secondary">Cancelar</button>
+                    }} className="btn-primary">
+                      {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : "Adicionar"}
+                    </button>
+                    <button onClick={() => { setMarcadorFase("idle"); setMarcadorPonto1(null); setMarcadorPanelPos(null); }} className="btn-secondary">Cancelar</button>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -2862,9 +2997,12 @@ const LotDashboard = ({
         <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
           {/* Cabeçalho com destaque da Quadra — especialmente útil na edição */}
           {isEditingMap && (
-            <div className="px-3 py-1.5 bg-slate-100 rounded-xl inline-flex items-center gap-2">
-              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editando</span>
-              <span className="text-xs font-bold text-slate-700">Quadra {ponto.quadra}</span>
+            <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2">
+              <MapPin size={14} className="text-blue-500 flex-none" />
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block">Editando marcador da</span>
+                <span className="text-sm font-bold text-blue-700">Quadra {ponto.quadra} · Lote {ponto.lote}</span>
+              </div>
             </div>
           )}
           <div>
@@ -3022,7 +3160,7 @@ const LotDashboard = ({
         <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
           <div className="flex gap-2 flex-wrap">
             {mapaImagem && (
-              <button onClick={() => { setMode("mapa"); setMapAction("visualizar"); }}
+              <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
                 className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
                 Mapa interativo
               </button>
