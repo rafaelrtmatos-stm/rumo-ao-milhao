@@ -2647,20 +2647,22 @@ const LotDashboard = ({
                 className={isEditingMap ? "relative bg-slate-100 rounded-3xl p-2 sm:p-4 overflow-auto border border-slate-200 max-h-[calc(100vh-170px)]" : "relative bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200"}
                 onWheel={bloquearCtrlScrollNoMapa}
               >
-                <div className="sticky top-3 right-3 z-40 ml-auto mb-2 flex w-fit flex-col gap-2">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
                   <button
                     type="button"
-                    onClick={(ev) => { ev.stopPropagation(); ajustarZoomMapa(0.15); }}
-                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-lg hover:bg-slate-50"
+                    onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); ajustarZoomMapa(0.15); }}
+                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-xl hover:bg-slate-50 active:scale-95"
                     title="Aumentar zoom do mapa"
+                    aria-label="Aumentar zoom do mapa"
                   >
                     +
                   </button>
                   <button
                     type="button"
-                    onClick={(ev) => { ev.stopPropagation(); ajustarZoomMapa(-0.15); }}
-                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-lg hover:bg-slate-50"
+                    onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); ajustarZoomMapa(-0.15); }}
+                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-xl hover:bg-slate-50 active:scale-95"
                     title="Diminuir zoom do mapa"
+                    aria-label="Diminuir zoom do mapa"
                   >
                     −
                   </button>
@@ -2672,7 +2674,7 @@ const LotDashboard = ({
               onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
               onMouseLeave={() => { if (draggingId) commitDrag(); }}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ maxWidth: `${(isEditingMap ? 1280 : 1000) * mapZoom}px` }}
+              style={{ width: `${(isEditingMap ? 1280 : 1000) * mapZoom}px`, maxWidth: "none" }}
             >
               <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
