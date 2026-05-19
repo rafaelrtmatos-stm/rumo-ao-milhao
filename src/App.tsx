@@ -1474,7 +1474,7 @@ const DashboardSection = ({
           onClick={() => exportToCSV(sales)}
           className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
         >
-          <Download size={14} />
+          <FileDown size={14} />
           <span className="hidden sm:inline">Exportar Vendas</span>
           <span className="sm:hidden">Exportar</span>
         </button>
@@ -10246,7 +10246,7 @@ const ConfigSection = ({
       {/* Migração de dados */}
       <div className="card-premium space-y-4">
         <h4 className="font-bold text-slate-800 flex items-center gap-2">
-          <Download size={18} className="text-primary-main" />
+          <FileDown size={18} className="text-primary-main" />
           Migração de Dados
         </h4>
         <p className="text-sm text-slate-500">
@@ -10265,7 +10265,7 @@ const ConfigSection = ({
           {migrating ? (
             <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
           ) : (
-            <><Download size={16} /> Migrar dados do navegador para o banco de dados</>
+            <><FileDown size={16} /> Migrar dados do navegador para o banco de dados</>
           )}
         </button>
 
@@ -10318,7 +10318,7 @@ const ConfigSection = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-green-50 border border-green-100">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-green-100 rounded-xl mt-0.5">
-              <Download size={16} className="text-green-700" />
+              <FileDown size={16} className="text-green-700" />
             </div>
             <div>
               <p className="font-semibold text-green-900 text-sm">Exportar Backup</p>
@@ -10331,7 +10331,7 @@ const ConfigSection = ({
             onClick={handleExport}
             className="flex items-center gap-2 px-5 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
           >
-            <Download size={15} /> Baixar .json
+            <FileDown size={15} /> Baixar .json
           </button>
         </div>
 
@@ -10467,7 +10467,7 @@ const ConfigSection = ({
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-primary-main/5 border border-primary-main/20">
           <div className="flex items-start gap-3">
             <div className="p-2 bg-primary-main/10 rounded-xl mt-0.5">
-              <Download size={16} className="text-primary-main" />
+              <FileDown size={16} className="text-primary-main" />
             </div>
             <div>
               <p className="font-semibold text-slate-800 text-sm">Exportar Configurações</p>
@@ -10480,7 +10480,7 @@ const ConfigSection = ({
             onClick={handleExportConfig}
             className="flex items-center gap-2 px-5 py-2.5 bg-primary-main hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
           >
-            <Download size={15} /> Baixar .json
+            <FileDown size={15} /> Baixar .json
           </button>
         </div>
 
