@@ -1874,6 +1874,7 @@ const LotDashboard = ({
   onViewContract,
   onSaveDev,
   canEditMap = false,
+  onMarkerSaved,
 }: {
   dev: Empreendimento;
   sales: Venda[];
@@ -1883,6 +1884,7 @@ const LotDashboard = ({
   onViewContract: (v: Venda) => void;
   onSaveDev: (d: Empreendimento) => void;
   canEditMap?: boolean;
+  onMarkerSaved?: (quadra: string, lote: string, status: MapaLoteStatus, observacao: string) => void;
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
@@ -1927,6 +1929,7 @@ const LotDashboard = ({
   const marcadorPanelRef = useRef<HTMLDivElement>(null);
   const dragPanelRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
   const isDraggingPanelRef = useRef(false);
+  const rafPanelRef = useRef<number | null>(null);
 
   useEffect(() => {
     setLocalDev(dev);
@@ -2132,6 +2135,8 @@ const LotDashboard = ({
     } as Empreendimento, sales);
     persistDev(nextDev);
     if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(ensured.quadraName, lote, raw.status, raw.observacao || "");
     return true;
   };
 
@@ -2258,6 +2263,23 @@ const LotDashboard = ({
         // Abre formulário no ponto clicado
         setMarcadorPonto1({ xPercent, yPercent });
         setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+        // Posicionar card à direita do clique, centralizado verticalmente na viewport
+        const CARD_WIDTH = 288; // w-72 = 288px
+        const CARD_HEIGHT = 340; // altura estimada do card
+        const OFFSET = 16; // espaço entre bolinha e card
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        let cardX = e.clientX + OFFSET;
+        let cardY = (viewportH - CARD_HEIGHT) / 2;
+        // Se sair pela direita, posicionar à esquerda do clique
+        if (cardX + CARD_WIDTH > viewportW - 8) {
+          cardX = e.clientX - CARD_WIDTH - OFFSET;
+        }
+        // Garantir que não saia pela esquerda
+        if (cardX < 8) cardX = 8;
+        // Garantir que não saia pelo topo/base
+        cardY = Math.max(8, Math.min(viewportH - CARD_HEIGHT - 8, cardY));
+        setMarcadorPanelPos({ x: cardX, y: cardY });
         setMarcadorFase("formulario");
         return;
       }
@@ -2387,6 +2409,8 @@ const LotDashboard = ({
     let nextDev = updateLoteStatusInEmpreendimento(localDev, sales, ponto.quadra, ponto.lote, status, { origem: "mapa", venda, removerVinculoAtivo: status === "disponivel" });
     nextDev = { ...nextDev, mapaPontos: nextPontos } as Empreendimento;
     persistDev(nextDev);
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(ponto.quadra, ponto.lote, status, ponto.observacao || "");
     setSelectedPoint(null);
   };
 
@@ -2438,6 +2462,8 @@ const LotDashboard = ({
       if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) delete (lotesInfo as any)[oldKey];
       persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
     }
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(quadra, lote, status, observacao);
     setSelectedPoint(null);
   };
 
@@ -2698,13 +2724,18 @@ const LotDashboard = ({
               onMouseMove={(e) => {
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
-                // Arrastar painel "Novo marcador" — usando ref para evitar re-render
+                // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
                 if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
-                  const newX = dragPanelRef.current.panelX + (e.clientX - dragPanelRef.current.mouseX);
-                  const newY = dragPanelRef.current.panelY + (e.clientY - dragPanelRef.current.mouseY);
-                  marcadorPanelRef.current.style.left = `${newX}px`;
-                  marcadorPanelRef.current.style.top = `${newY}px`;
-                  marcadorPanelRef.current.style.transform = "none";
+                  const mouseX = e.clientX;
+                  const mouseY = e.clientY;
+                  if (rafPanelRef.current) cancelAnimationFrame(rafPanelRef.current);
+                  rafPanelRef.current = requestAnimationFrame(() => {
+                    if (!dragPanelRef.current || !marcadorPanelRef.current) return;
+                    const newX = dragPanelRef.current.panelX + (mouseX - dragPanelRef.current.mouseX);
+                    const newY = dragPanelRef.current.panelY + (mouseY - dragPanelRef.current.mouseY);
+                    marcadorPanelRef.current.style.left = `${newX}px`;
+                    marcadorPanelRef.current.style.top = `${newY}px`;
+                  });
                 }
               }}
               onMouseUp={() => {
@@ -2713,6 +2744,7 @@ const LotDashboard = ({
                 if (isDraggingPanelRef.current) {
                   isDraggingPanelRef.current = false;
                   dragPanelRef.current = null;
+                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
                   setDraggingPanel(false);
                 }
               }}
@@ -2721,6 +2753,7 @@ const LotDashboard = ({
                 if (isDraggingPanelRef.current) {
                   isDraggingPanelRef.current = false;
                   dragPanelRef.current = null;
+                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
                   setDraggingPanel(false);
                 }
               }}
@@ -2913,9 +2946,10 @@ const LotDashboard = ({
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="absolute z-40 pointer-events-auto will-change-transform"
+              transition={{ duration: 0.12 }}
+              className="fixed z-50 pointer-events-auto will-change-transform"
               style={marcadorPanelPos
-                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y, transform: "none" }
+                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y }
                 : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
             >
               <div className="bg-white rounded-3xl shadow-2xl w-72 overflow-hidden border border-slate-200">
@@ -2931,7 +2965,7 @@ const LotDashboard = ({
                     dragPanelRef.current = { mouseX: e.clientX, mouseY: e.clientY, panelX: rect.left, panelY: rect.top };
                     isDraggingPanelRef.current = true;
                     setDraggingPanel(true);
-                    // Fixar posição atual para que o transform não interfira
+                    // Fixar posição atual via style para que o transform motion não interfira
                     panel.style.left = `${rect.left}px`;
                     panel.style.top = `${rect.top}px`;
                     panel.style.transform = "none";
@@ -2941,6 +2975,18 @@ const LotDashboard = ({
                   <span className="text-slate-300 text-lg select-none" title="Arrastar">⠿</span>
                 </div>
                 <div className="p-5 space-y-3">
+                  {/* Identificação da quadra — exibida assim que o usuário preenche o campo */}
+                  {marcadorForm.quadra ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
+                      <MapPin size={13} className="text-blue-500 flex-none" />
+                      <span className="text-xs font-bold text-blue-700">Adicionando na <span className="font-black">Quadra {marcadorForm.quadra}</span>{marcadorForm.lote ? ` · Lote ${marcadorForm.lote}` : ""}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                      <MapPin size={13} className="text-slate-300 flex-none" />
+                      <span className="text-xs text-slate-400">Preencha a quadra para identificar o marcador</span>
+                    </div>
+                  )}
                   <p className="text-xs text-slate-400">
                     Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
                   </p>
@@ -3350,6 +3396,13 @@ const EmpreendimentosSection = ({
       if (!prev) return null;
       return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
     });
+    // Sincronizar mapa interativo se estiver aberto para o mesmo empreendimento
+    if (selectedDevForMap && selectedDevForMap.id === lotRegDev.id) {
+      setSelectedDevForMap((prev) => {
+        if (!prev) return null;
+        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
+      });
+    }
 
     onReleaseSoldLot(venda.id);
     setReleaseLotPending(null);
@@ -3379,6 +3432,14 @@ const EmpreendimentosSection = ({
       const existingInfo = prev.lotesInfo?.[key] || {};
       return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
     });
+    // Sincronizar mapa interativo se estiver aberto para o mesmo empreendimento
+    if (selectedDevForMap && selectedDevForMap.id === lotRegDev.id) {
+      setSelectedDevForMap((prev) => {
+        if (!prev) return null;
+        const existingInfo = prev.lotesInfo?.[key] || {};
+        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
+      });
+    }
     setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
     setLotRegTab("lotes");
   };
@@ -4049,6 +4110,12 @@ const EmpreendimentosSection = ({
               setSelectedDevForMap(updatedDev);
             }}
             canEditMap={canEditMap}
+            onMarkerSaved={(quadra, lote, status, observacao) => {
+              // Sincronizar Gerenciador de Lotes com o marcador criado/editado no mapa
+              setLotRegDev(selectedDevForMap);
+              setLotRegForm({ quadra, numeroLote: lote, rua: "", status });
+              setLotRegTab("lotes");
+            }}
           />
         )}
       </AnimatePresence>
