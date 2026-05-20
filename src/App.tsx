@@ -264,12 +264,6 @@ function normalizeLotKeyPart(value?: string | number | null): string {
   return normalizeLotText(value).toUpperCase();
 }
 
-function normalizeQuadraKeyPart(value?: string | number | null): string {
-  return normalizeLotKeyPart(value)
-    .replace(/^QUADRA\s*/i, "")
-    .replace(/^Q(?=\d)/i, "");
-}
-
 /**
  * Quebra uma string de lotes em array de lotes individuais.
  * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
@@ -305,8 +299,8 @@ function getQuadraList(dev?: Empreendimento | null): string[] {
 }
 
 function findQuadraName(dev: Empreendimento, quadra: string): string | null {
-  const wanted = normalizeQuadraKeyPart(quadra);
-  return getQuadraList(dev).find((q) => normalizeQuadraKeyPart(q) === wanted) || null;
+  const wanted = normalizeLotKeyPart(quadra);
+  return getQuadraList(dev).find((q) => normalizeLotKeyPart(q) === wanted) || null;
 }
 
 function getLotInfoKey(quadra: string, lote: string): string {
@@ -478,26 +472,11 @@ function getQuadraCadastroSummary(dev: Empreendimento, quadra: string): { exists
 
 function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
   const quadraName = findQuadraName(dev, quadra);
-  const qWanted = normalizeQuadraKeyPart(quadraName || quadra);
-  const lWanted = normalizeLotKeyPart(lote);
-
-  const possibleKeys = Array.from(new Set([
-    getLotInfoKey(quadra, lote),
-    quadraName ? getLotInfoKey(quadraName, lote) : "",
-    getLotInfoKey(`Q${normalizeLotText(quadra).replace(/^Q/i, "")}`, lote),
-  ].filter(Boolean)));
-
-  if (possibleKeys.some((key) => !!dev.lotesInfo?.[key])) return true;
-
-  const hasInfoKey = Object.keys(dev.lotesInfo || {}).some((key) => {
-    const split = splitLotKeyLabel(key);
-    return normalizeQuadraKeyPart(split.quadra) === qWanted && normalizeLotKeyPart(split.lote) === lWanted;
-  });
-  if (hasInfoKey) return true;
-
+  const key = getLotInfoKey(quadra, lote);
+  if (dev.lotesInfo?.[key]) return true;
   if (!quadraName) return false;
   return getLotesDeQuadra(dev.lotesPorQuadra?.[quadraName]).some(
-    (l) => normalizeLotKeyPart(l) === lWanted
+    (l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote)
   );
 }
 
@@ -2269,9 +2248,10 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  // Qualidade do mapa: a prévia leve pode existir, mas visualização/edição/tela cheia usam a versão alta fixa quando disponível.
+  // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
-  const HIGH_RES_ZOOM_THRESHOLD = 1.08;
+  const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
+  const HIGH_RES_ZOOM_THRESHOLD = 2.5;  // zoom > 2.5 → imagem alta resolução
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -2296,8 +2276,6 @@ const LotDashboard = ({
     startY: number;
   }>({ mode: "none", startDistance: 0, startZoom: 1, startPanX: 0, startPanY: 0, startX: 0, startY: 0 });
 
-<<<<<<< HEAD
-=======
   const getSystemStatusForMarkerLot = (quadra: string, lote: string): MapaLoteStatus => {
     const status = getLotStatusForSale(localDev, quadra, lote, sales).status;
     return normalizeMapaStatus(status);
@@ -2323,7 +2301,6 @@ const LotDashboard = ({
     rawStatus: string;
   } | null>(null);
 
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
   const [massaAcao, setMassaAcao] = useState<"selecionar" | "disponivel" | "reservado" | "indisponivel" | "excluir" | "alinharHorizontal" | "alinharVertical" | "distribuirHorizontal" | "">("" as any);
@@ -2387,7 +2364,8 @@ const LotDashboard = ({
 
   const setMapZoomSafely = (nextZoom: number) => {
     const clamped = Math.max(1, Math.min(5, nextZoom));
-    if (clamped > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+    // Dispara geração de média+alta a partir do zoom médio (1.4x) para carregar antes de precisar
+    if (clamped > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
     setMapZoom(clamped);
     setMapPan((prev) => clampMapPan(prev, clamped));
   };
@@ -2412,22 +2390,23 @@ const LotDashboard = ({
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  // Imagem média: gerada sob demanda na faixa de zoom intermediário
+  const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemLeve;
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
-  // REGRA NOVA: quando houver alta resolução, usar sempre no mapa aberto/edição/tela cheia.
-  // A prévia leve fica apenas como fallback e para cards/listas fora deste visualizador.
-  const deveUsarMapaAlta = Boolean(mapaImagemAlta);
-  const mapaImagem = mapaImagemAlta || mapaImagemLeve;
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
+  const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : deveUsarMapaMedia ? mapaImagemMedia : mapaImagemLeve;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
-    // quando o mouse está sobre o mapa, o scroll controla somente o mapa,
-    // sem rolar nem aplicar zoom na página/navegador.
-    if (!isEditingMap && !mapFullscreen) return;
+    // o scroll sobre o mapa controla SOMENTE o zoom do mapa (não rola a página).
+    // Funciona em modo visualização, edição e tela cheia — sem precisar de Ctrl.
+    if (!mapaImagem) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
-    void requestHighResolutionMap();
     const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
     setMapZoomSafely(mapZoom + delta);
   };
 
@@ -2435,13 +2414,13 @@ const LotDashboard = ({
     const el = mapViewportRef.current;
     if (!el) return;
     const onNativeWheel = (ev: WheelEvent) => {
-      if (!isEditingMap && !mapFullscreen) return;
-      // Impede zoom/scroll da página inteira quando o mouse está sobre o mapa.
+      if (!mapaImagem) return;
+      // { passive: false } obrigatório para poder chamar preventDefault() sem erro.
       ev.preventDefault();
       ev.stopPropagation();
       setMapActive(true);
       const delta = ev.deltaY < 0 ? 0.25 : -0.25;
-      if (mapZoom + delta > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
       setMapZoomSafely(mapZoom + delta);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
@@ -2583,6 +2562,8 @@ const LotDashboard = ({
   };
 
   const requestHighResolutionMap = async () => {
+    // Gera a imagem em alta resolução sob demanda (estágio 3).
+    // Se o PDF original não estiver disponível, apenas atualiza a escala.
     if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
     if (!originalPdf) {
@@ -2592,10 +2573,18 @@ const LotDashboard = ({
     try {
       setMapHighResLoading(true);
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+      // Estágio 2 — Média: 2x (carrega primeiro, melhora nitidez rapidamente)
+      const medScale = Math.max(2, Math.min(3, 2 * deviceRatio));
+      const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), medScale);
+
+      // Estágio 3 — Alta: 4–5x (para zoom avançado, edição e tela cheia)
       const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
       const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
+
       persistDev({
         ...localDev,
+        mapaImagemMedResBase64: medImage,
         mapaImagemHighResBase64: highImage,
         mapaAltaResolucao: true,
         mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
@@ -2651,9 +2640,9 @@ const LotDashboard = ({
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
 
-    // REGRA NOVA: ao abrir o mapa para visualizar/editar/tela cheia, garantir a versão alta fixa.
-    // Não depender de scroll, pinch ou botão de zoom para renderizar qualidade.
-    if ((mode === "mapa" || mapFullscreen || isEditingMap) && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
+    // Alta resolução sob demanda: só renderiza quando houver aproximação/zoom.
+    // Em zoom normal usa a prévia leve para não pesar o app.
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
       void requestHighResolutionMap();
     }
 
@@ -2830,22 +2819,19 @@ const LotDashboard = ({
         try {
           const originalBuffer = reader.result as ArrayBuffer;
           const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
-          // Prévia leve para cards/listas + versão alta fixa para visualização/edição/tela cheia.
-          // A versão alta é gerada no upload para não depender do zoom/renderização posterior.
+          // Prévia leve para o mapa abrir rápido no card.
+          // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
-          const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-          const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
-          const highImage = await renderPdfPageToPng(originalBuffer, highScale);
           persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
-            mapaImagemHighResBase64: highImage,
+            mapaImagemHighResBase64: "",
             mapaPdfOriginalBase64: pdfOriginalBase64,
             mapaPdfOriginalName: file.name,
             mapaImagemUrl: "",
             mapaPontos: mapaPontos,
-            mapaAltaResolucao: true,
+            mapaAltaResolucao: false,
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
@@ -2861,7 +2847,7 @@ const LotDashboard = ({
       persistDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
-        mapaImagemHighResBase64: String(reader.result || ""),
+        mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
         mapaImagemUrl: "",
@@ -2999,9 +2985,6 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // CRIAR/PERSISTIR BOLINHA
   // ──────────────────────────────────────────────
-<<<<<<< HEAD
-  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus | "sistema"; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
-=======
   // Versão assíncrona do modal de conflito de lote (substitui window.prompt)
   const showLoteConflictModal = (infoTexto: string, lote: string, existingStatus: string, rawStatus: string): Promise<"1" | "2" | "3" | "4"> => {
     return new Promise((resolve) => {
@@ -3010,7 +2993,6 @@ const LotDashboard = ({
   };
 
   const ensureMapLotAndPoint = async (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean; useSystemStatus?: boolean }): Promise<boolean> => {
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
@@ -3023,41 +3005,19 @@ const LotDashboard = ({
         "Este lote já possui uma bolinha no mapa.\n\nOK = reposicionar/vincular a bolinha existente.\nCancelar = não criar duplicata."
       );
       if (!reposition) return false;
-      return ensureMapLotAndPoint({ ...raw, moveExisting: true });
+      return await ensureMapLotAndPoint({ ...raw, moveExisting: true });
     }
 
     const quadraSummary = getQuadraCadastroSummary(localDev, quadra);
     const lotExists = hasConfiguredLot(localDev, quadra, lote);
-    const existingInfoForChoice = localDev.lotesInfo?.[key];
-    const existingStatusForChoice = normalizeMapaStatus(existingInfoForChoice?.status || "disponivel");
-    let finalStatus: MapaLoteStatus = raw.status === "sistema" ? existingStatusForChoice : raw.status;
-    let finalObs = raw.status === "sistema" ? (existingInfoForChoice?.observacao || raw.observacao || "") : (raw.observacao || "");
+    let finalStatus: MapaLoteStatus = raw.status;
+    let finalObs = raw.observacao || "";
 
     if (quadraSummary.exists && !raw.moveExisting) {
       const infoTexto = quadraSummary.count > 0
         ? `Quadra ${quadra} já possui ${quadraSummary.count} lote(s) cadastrado(s), de ${quadraSummary.first} até ${quadraSummary.last}.`
         : `Quadra ${quadra} já existe no sistema.`;
       if (lotExists) {
-<<<<<<< HEAD
-        // REGRA: se o lote já existir no Gerenciador de Lotes, nunca duplicar.
-        // A bolinha deve ser vinculada ao lote existente. O usuário pode escolher no formulário:
-        // Disponível, Indisponível, Reservado ou Manter status do sistema.
-        if (raw.status === "sistema") {
-          finalStatus = existingStatusForChoice;
-          finalObs = existingInfoForChoice?.observacao || finalObs;
-        } else {
-          const confirmarAtualizacao = window.confirm(
-            `${infoTexto}
-
-O lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatusForChoice)}.
-
-Você escolheu marcar como ${lotScriptStatusToLabel(raw.status)}.
-
-OK = vincular a bolinha e atualizar o status.
-Cancelar = não salvar.`
-          );
-          if (!confirmarAtualizacao) return false;
-=======
         const existingInfo = localDev.lotesInfo?.[key];
         const existingStatus = getSystemStatusForMarkerLot(quadra, lote);
         if (raw.useSystemStatus) {
@@ -3076,14 +3036,10 @@ Cancelar = não salvar.`
             finalStatus = existingStatus;
             finalObs = existingInfo?.observacao || finalObs;
           }
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
         }
       } else {
         const add = window.confirm(
-          `${infoTexto}
-
-O lote ${lote} ainda não existe nesta quadra.
-Deseja criar/complementar esse lote e vincular a bolinha?`
+          `${infoTexto}\n\nO lote ${lote} ainda não existe nesta quadra.\nDeseja criar/complementar esse lote e vincular a bolinha?`
         );
         if (!add) return false;
       }
@@ -3281,11 +3237,7 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
         criarBolinhasSequencia(
           marcadorPonto1!,
           { xPercent, yPercent },
-<<<<<<< HEAD
-          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: (marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status) as MapaLoteStatus, observacao: marcadorForm.observacao }
-=======
           { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status, observacao: marcadorForm.observacao }
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
         );
         // Não sai da edição — apenas reseta para próximo marcador
         setMarcadorFase("idle");
@@ -3772,7 +3724,17 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
             )}
             {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
               <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
-                <span>{mapHighResLoading ? "Preparando mapa em alta resolução..." : "Mapa em prévia leve. A versão em alta resolução será preparada automaticamente para visualização e edição."}</span>
+                <span>
+                  {mapHighResLoading
+                    ? "Gerando mapa em média e alta resolução..."
+                    : mapZoom <= 1
+                    ? "Prévia leve ativa. Use + ou scroll para aproximar e carregar mais nitidez."
+                    : mapZoom <= MED_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução leve. Aproxime mais para nitidez média.`
+                    : mapZoom <= HIGH_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução média. Aproxime mais para alta resolução.`
+                    : `Zoom ${Math.round(mapZoom * 100)}% — alta resolução ativa.`}
+                </span>
               </div>
             )}
             <div
@@ -3782,8 +3744,10 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
-              style={{ maxWidth: "1000px", touchAction: (isEditingMap || mapFullscreen || mapActive) ? "none" : "auto", overscrollBehavior: "contain" }}
+              style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
             <div
               ref={mapContainerRef}
@@ -3875,9 +3839,11 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                 </div>
               )}
             </div>
-            {(isEditingMap || mapFullscreen) && (
+            {/* Botões de zoom visíveis em todos os modos: visualização, edição e tela cheia */}
+            {mapaImagem && (
               <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
+                {mapZoom > 1 && <button type="button" onClick={(ev) => { ev.stopPropagation(); resetMapZoom(); }} className="w-8 h-8 mx-auto rounded-xl bg-slate-100 text-slate-600 shadow border border-slate-200 font-black text-[10px]">1:1</button>}
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
               </div>
             )}
@@ -4177,7 +4143,7 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                     return (
                       <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold leading-relaxed">
                         Quadra {marcadorForm.quadra} já cadastrada{summary.count ? ` · lotes ${summary.first} até ${summary.last} (${summary.count})` : ""}.
-                        <br />Use <span className="uppercase">Manter status do sistema</span> para criar a bolinha usando o status já cadastrado e evitar duplicidade.
+                        <br />Use <span className="uppercase">Vincular lote existente</span> para aproveitar os dados do sistema e evitar duplicidade.
                       </div>
                     );
                   })()}
@@ -4197,16 +4163,6 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                     value={marcadorForm.lote}
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
-<<<<<<< HEAD
-                  <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}>
-                    {hasConfiguredLot(localDev, marcadorForm.quadra, marcadorForm.lote) && (
-                      <option value="sistema">Manter status do sistema</option>
-                    )}
-                    <option value="disponivel">Disponível</option>
-                    <option value="indisponivel">Indisponível</option>
-                    <option value="reservado">Reservado</option>
-                  </select>
-=======
                   {(() => {
                     const lotes = parseLotesInput(marcadorForm.lote);
                     const hasSystemLot = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
@@ -4234,20 +4190,15 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                       </div>
                     );
                   })()}
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
                   <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
                   <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
                       const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
                       if (lotes.length === 1) {
-<<<<<<< HEAD
-                        const ok = ensureMapLotAndPoint({
-=======
                         const useSystemStatus = marcadorForm.status === "sistema";
                         const finalStatus = useSystemStatus ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : marcadorForm.status as MapaLoteStatus;
                         const ok = await ensureMapLotAndPoint({
->>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
                           quadra: marcadorForm.quadra,
                           lote: lotes[0],
                           xPercent: marcadorPonto1!.xPercent,
@@ -4304,6 +4255,8 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
@@ -4608,6 +4561,56 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
 
       </motion.div>
     </div>
+
+    {/* MODAL: Lote já cadastrado — substitui window.prompt por UI React */}
+    <AnimatePresence>
+      {loteConflictModal && (
+        <motion.div
+          key="lote-conflict-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => { loteConflictModal.resolve("4"); setLoteConflictModal(null); }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Lote já cadastrado</p>
+              <p className="text-sm font-semibold text-slate-700">{loteConflictModal.infoTexto}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                O lote <strong>{loteConflictModal.lote}</strong> já está no sistema como{" "}
+                <strong>{loteConflictModal.existingStatus}</strong>.
+                Você está marcando como <strong>{loteConflictModal.rawStatus}</strong>.
+              </p>
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">O que deseja fazer?</p>
+            <div className="space-y-2">
+              {[
+                { key: "1" as const, label: "Vincular e obedecer dados do sistema", desc: `Usar status: ${loteConflictModal.existingStatus}`, color: "bg-blue-600 text-white hover:bg-blue-700" },
+                { key: "2" as const, label: "Vincular e atualizar com o status atual", desc: `Usar status: ${loteConflictModal.rawStatus}`, color: "bg-emerald-600 text-white hover:bg-emerald-700" },
+                { key: "3" as const, label: "Manter como está no sistema", desc: "Não altera nada, apenas posiciona a bolinha", color: "bg-slate-100 text-slate-700 hover:bg-slate-200" },
+                { key: "4" as const, label: "Cancelar", desc: "A bolinha não será salva", color: "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { loteConflictModal.resolve(opt.key); setLoteConflictModal(null); }}
+                  className={`w-full text-left rounded-2xl px-4 py-3 transition-colors ${opt.color}`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-widest">{opt.label}</p>
+                  <p className="text-[10px] opacity-70 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
 
     {/* FULLSCREEN EDIT MODAL — separado do modal principal para ocupar tela cheia */}
     <AnimatePresence>
