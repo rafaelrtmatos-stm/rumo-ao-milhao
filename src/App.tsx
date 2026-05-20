@@ -2296,6 +2296,34 @@ const LotDashboard = ({
     startY: number;
   }>({ mode: "none", startDistance: 0, startZoom: 1, startPanX: 0, startPanY: 0, startX: 0, startY: 0 });
 
+<<<<<<< HEAD
+=======
+  const getSystemStatusForMarkerLot = (quadra: string, lote: string): MapaLoteStatus => {
+    const status = getLotStatusForSale(localDev, quadra, lote, sales).status;
+    return normalizeMapaStatus(status);
+  };
+
+  useEffect(() => {
+    const lotes = parseLotesInput(marcadorForm.lote);
+    const shouldUseSystemStatus = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
+    if (shouldUseSystemStatus && marcadorForm.status !== "sistema") {
+      setMarcadorForm((prev) => ({ ...prev, status: "sistema" }));
+    }
+    if (!shouldUseSystemStatus && marcadorForm.status === "sistema") {
+      setMarcadorForm((prev) => ({ ...prev, status: "disponivel" }));
+    }
+  }, [marcadorForm.quadra, marcadorForm.lote, marcadorForm.status, localDev]);
+
+  // Modal "Lote já cadastrado" — substitui window.prompt por UI React adequada
+  const [loteConflictModal, setLoteConflictModal] = useState<{
+    resolve: (escolha: "1" | "2" | "3" | "4") => void;
+    infoTexto: string;
+    lote: string;
+    existingStatus: string;
+    rawStatus: string;
+  } | null>(null);
+
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
   const [massaAcao, setMassaAcao] = useState<"selecionar" | "disponivel" | "reservado" | "indisponivel" | "excluir" | "alinharHorizontal" | "alinharVertical" | "distribuirHorizontal" | "">("" as any);
@@ -2971,7 +2999,18 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // CRIAR/PERSISTIR BOLINHA
   // ──────────────────────────────────────────────
+<<<<<<< HEAD
   const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus | "sistema"; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
+=======
+  // Versão assíncrona do modal de conflito de lote (substitui window.prompt)
+  const showLoteConflictModal = (infoTexto: string, lote: string, existingStatus: string, rawStatus: string): Promise<"1" | "2" | "3" | "4"> => {
+    return new Promise((resolve) => {
+      setLoteConflictModal({ resolve, infoTexto, lote, existingStatus, rawStatus });
+    });
+  };
+
+  const ensureMapLotAndPoint = async (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean; useSystemStatus?: boolean }): Promise<boolean> => {
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
@@ -2999,6 +3038,7 @@ const LotDashboard = ({
         ? `Quadra ${quadra} já possui ${quadraSummary.count} lote(s) cadastrado(s), de ${quadraSummary.first} até ${quadraSummary.last}.`
         : `Quadra ${quadra} já existe no sistema.`;
       if (lotExists) {
+<<<<<<< HEAD
         // REGRA: se o lote já existir no Gerenciador de Lotes, nunca duplicar.
         // A bolinha deve ser vinculada ao lote existente. O usuário pode escolher no formulário:
         // Disponível, Indisponível, Reservado ou Manter status do sistema.
@@ -3017,6 +3057,26 @@ OK = vincular a bolinha e atualizar o status.
 Cancelar = não salvar.`
           );
           if (!confirmarAtualizacao) return false;
+=======
+        const existingInfo = localDev.lotesInfo?.[key];
+        const existingStatus = getSystemStatusForMarkerLot(quadra, lote);
+        if (raw.useSystemStatus) {
+          finalStatus = existingStatus;
+          finalObs = existingInfo?.observacao || finalObs;
+        } else if (existingStatus !== raw.status) {
+          // Modal React em vez de window.prompt para melhor UX
+          const escolha = await showLoteConflictModal(
+            infoTexto,
+            lote,
+            lotScriptStatusToLabel(existingStatus),
+            lotScriptStatusToLabel(raw.status)
+          );
+          if (escolha === "4") return false;
+          if (escolha === "1" || escolha === "3") {
+            finalStatus = existingStatus;
+            finalObs = existingInfo?.observacao || finalObs;
+          }
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
         }
       } else {
         const add = window.confirm(
@@ -3221,7 +3281,11 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
         criarBolinhasSequencia(
           marcadorPonto1!,
           { xPercent, yPercent },
+<<<<<<< HEAD
           { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: (marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status) as MapaLoteStatus, observacao: marcadorForm.observacao }
+=======
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status, observacao: marcadorForm.observacao }
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
         );
         // Não sai da edição — apenas reseta para próximo marcador
         setMarcadorFase("idle");
@@ -4133,6 +4197,7 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                     value={marcadorForm.lote}
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
+<<<<<<< HEAD
                   <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}>
                     {hasConfiguredLot(localDev, marcadorForm.quadra, marcadorForm.lote) && (
                       <option value="sistema">Manter status do sistema</option>
@@ -4141,18 +4206,54 @@ Deseja criar/complementar esse lote e vincular a bolinha?`
                     <option value="indisponivel">Indisponível</option>
                     <option value="reservado">Reservado</option>
                   </select>
+=======
+                  {(() => {
+                    const lotes = parseLotesInput(marcadorForm.lote);
+                    const hasSystemLot = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
+                    const systemStatus = hasSystemLot ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : null;
+                    return (
+                      <div>
+                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
+                        <select
+                          className="input-field"
+                          value={marcadorForm.status}
+                          onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
+                        >
+                          {hasSystemLot && systemStatus && (
+                            <option value="sistema">Status do sistema: {lotScriptStatusToLabel(systemStatus)}</option>
+                          )}
+                          <option value="disponivel">Disponível</option>
+                          <option value="reservado">Reservado</option>
+                          <option value="indisponivel">Indisponível</option>
+                        </select>
+                        {hasSystemLot && systemStatus && (
+                          <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
+                            Lote já cadastrado. Mantendo por padrão: {lotScriptStatusToLabel(systemStatus)}.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  })()}
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
                   <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
                   <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => {
                       if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
                       const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
                       if (lotes.length === 1) {
+<<<<<<< HEAD
                         const ok = ensureMapLotAndPoint({
+=======
+                        const useSystemStatus = marcadorForm.status === "sistema";
+                        const finalStatus = useSystemStatus ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : marcadorForm.status as MapaLoteStatus;
+                        const ok = await ensureMapLotAndPoint({
+>>>>>>> 6589874 (Ajusta status do sistema ao adicionar marcador no mapa)
                           quadra: marcadorForm.quadra,
                           lote: lotes[0],
                           xPercent: marcadorPonto1!.xPercent,
                           yPercent: marcadorPonto1!.yPercent,
-                          status: marcadorForm.status,
+                          status: finalStatus,
+                          useSystemStatus,
                           observacao: marcadorForm.observacao,
                         });
                         if (ok) {
