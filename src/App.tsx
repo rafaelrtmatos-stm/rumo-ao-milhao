@@ -1,3 +1,9 @@
+
+// NOVAS FUNÇÕES ADICIONADAS
+// - Clique em vendidos do card abre contratos filtrados por empreendimento
+// - Cliente mostra compras e detalhes completos
+// - Botão "Ver mapa" em tela cheia no celular
+
 // ATUALIZAÇÃO MAPA
 // - Bolinhas sem número no modo visualização/exportação
 // - Números e quadra aparecem no modo edição
