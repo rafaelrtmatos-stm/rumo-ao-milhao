@@ -2179,8 +2179,13 @@ const LotDashboard = ({
       if (layoutWidth > 0 && naturalWidth > 0) {
         // offsetWidth/clientWidth não inclui transform: scale(...).
         // Isso evita escala dupla quando o usuário dá zoom ou rotaciona o celular.
-        const scaleX = layoutWidth / naturalWidth;
-        const scaleY = layoutHeight > 0 && naturalHeight > 0 ? layoutHeight / naturalHeight : scaleX;
+        // IMPORTANTE: a resolução da imagem pode ser alta (ex.: PDF em 4x). O tamanho das bolinhas
+        // não deve diminuir só porque a imagem tem mais pixels. Por isso usamos uma largura de
+        // referência visual para os marcadores, mantendo xPercent/yPercent intactos.
+        const markerReferenceWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 1000));
+        const markerReferenceHeight = markerReferenceWidth / Math.max(0.5, naturalWidth / naturalHeight);
+        const scaleX = layoutWidth / markerReferenceWidth;
+        const scaleY = layoutHeight > 0 ? layoutHeight / markerReferenceHeight : scaleX;
         const safeScale = Math.max(0.1, Math.min(scaleX || 1, scaleY || scaleX || 1));
         setDisplayedMapScale(safeScale);
       }
@@ -2276,17 +2281,24 @@ const LotDashboard = ({
           const pdfjsLib = (window as any).pdfjsLib;
           const pdfDoc = await pdfjsLib.getDocument({ data: reader.result as ArrayBuffer }).promise;
           const page = await pdfDoc.getPage(1);
-          const viewport = page.getViewport({ scale: 2.5 });
+          // Converter PDF em alta resolução para permitir zoom legível na pré-visualização/edição.
+          // As bolinhas continuam salvas em xPercent/yPercent, então a troca de resolução não move os pontos.
+          const pdfScale = 4;
+          const viewport = page.getViewport({ scale: pdfScale });
           const canvas = document.createElement("canvas");
           canvas.width = viewport.width;
           canvas.height = viewport.height;
           const ctx = canvas.getContext("2d")!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
           await page.render({ canvasContext: ctx, viewport }).promise;
           persistDev({
             ...localDev,
-            mapaImagemBase64: canvas.toDataURL("image/png"),
+            mapaImagemBase64: canvas.toDataURL("image/png", 1),
             mapaImagemUrl: "",
             mapaPontos: mapaPontos,
+            mapaAltaResolucao: true,
+            mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
         } catch (err) {
@@ -2303,6 +2315,8 @@ const LotDashboard = ({
         mapaImagemBase64: String(reader.result || ""),
         mapaImagemUrl: "",
         mapaPontos: mapaPontos,
+        mapaAltaResolucao: true,
+        mapaMarkerReferenceWidth: 1000,
       } as Empreendimento);
       setMode("mapa");
     };
@@ -3003,7 +3017,7 @@ const LotDashboard = ({
             const x = marcadorPonto1.xPercent + (marcadorPonto2Preview.xPercent - marcadorPonto1.xPercent) * t;
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
-              <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none"
+              <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
                 style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
                 {loteLabel}
               </div>
@@ -3171,7 +3185,7 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
@@ -3526,7 +3540,7 @@ const LotDashboard = ({
                         setSelectedPoint({ ...ponto, venda });
                       }}
                       title={`Q${ponto.quadra} L${ponto.lote}`}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow ${statusClass} border-white shadow-lg cursor-pointer z-10`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} border-white shadow-lg cursor-pointer z-10`}
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
@@ -3847,6 +3861,8 @@ const EmpreendimentosSection = ({
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [devSearch, setDevSearch] = useState("");
+  const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
@@ -4030,6 +4046,60 @@ const EmpreendimentosSection = ({
     }
   };
 
+  const normalizeDevSearch = (value: string) =>
+    (value || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const getDevTimestamp = (dev: Empreendimento) => {
+    const anyDev = dev as any;
+    const rawDate = anyDev.createdAt || anyDev.dataCadastro || anyDev.updatedAt || anyDev.id;
+    const parsed = typeof rawDate === "number" ? rawDate : Date.parse(String(rawDate));
+    if (Number.isFinite(parsed)) return parsed;
+    const numericId = Number(String(anyDev.id || "").replace(/\D/g, ""));
+    return Number.isFinite(numericId) ? numericId : 0;
+  };
+
+  const getDevDisponiveis = (dev: Empreendimento) => {
+    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+    return Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, (dev.totalLotes || 0) - (dev.lotesVendidos || 0)));
+  };
+
+  const getDevVendidos = (dev: Empreendimento) => {
+    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+    return Math.max(0, recalc.lotesVendidos || dev.lotesVendidos || 0);
+  };
+
+  const filteredDevelopments = developments
+    .filter((dev) => {
+      const q = normalizeDevSearch(devSearch);
+      if (!q) return true;
+      return [dev.nome, dev.cidade, dev.estado, dev.comunidade, dev.endereco]
+        .some((field) => normalizeDevSearch(String(field || "")).includes(q));
+    })
+    .filter((dev) => {
+      const hasMap = Boolean((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl);
+      if (devSort === "comMapa") return hasMap;
+      if (devSort === "semMapa") return !hasMap;
+      if (devSort === "ativos") return getDevDisponiveis(dev) > 0;
+      if (devSort === "inativos") return getDevDisponiveis(dev) <= 0;
+      return true;
+    })
+    .sort((a, b) => {
+      switch (devSort) {
+        case "nomeAZ": return (a.nome || "").localeCompare(b.nome || "", "pt-BR");
+        case "nomeZA": return (b.nome || "").localeCompare(a.nome || "", "pt-BR");
+        case "antigos": return getDevTimestamp(a) - getDevTimestamp(b);
+        case "maisDisponiveis": return getDevDisponiveis(b) - getDevDisponiveis(a);
+        case "maisVendidos": return getDevVendidos(b) - getDevVendidos(a);
+        case "recentes":
+        default: return getDevTimestamp(b) - getDevTimestamp(a);
+      }
+    });
+
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -4057,6 +4127,38 @@ const EmpreendimentosSection = ({
             {isAdding ? <X size={20} /> : <Plus size={20} />}
             <span>{isAdding ? "Cancelar" : "Novo Loteamento"}</span>
           </button>
+        </div>
+      </div>
+
+      <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            className="input-field pl-10"
+            value={devSearch}
+            onChange={(e) => setDevSearch(e.target.value)}
+            placeholder="Buscar empreendimento pelo nome, cidade ou região"
+          />
+        </div>
+        <select
+          className="input-field font-bold"
+          value={devSort}
+          onChange={(e) => setDevSort(e.target.value as any)}
+          title="Classificar empreendimentos"
+        >
+          <option value="recentes">Mais recentes</option>
+          <option value="antigos">Mais antigos</option>
+          <option value="nomeAZ">Nome A-Z</option>
+          <option value="nomeZA">Nome Z-A</option>
+          <option value="maisDisponiveis">Mais lotes disponíveis</option>
+          <option value="maisVendidos">Mais lotes vendidos</option>
+          <option value="comMapa">Com mapa cadastrado</option>
+          <option value="semMapa">Sem mapa cadastrado</option>
+          <option value="ativos">Ativos</option>
+          <option value="inativos">Inativos</option>
+        </select>
+        <div className="md:col-span-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+          Exibindo {filteredDevelopments.length} de {developments.length} empreendimento(s)
         </div>
       </div>
 
@@ -4403,7 +4505,7 @@ const EmpreendimentosSection = ({
       </AnimatePresence>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {developments.map((dev) => (
+        {filteredDevelopments.map((dev) => (
           <motion.div
             layout
             key={dev.id}
@@ -13268,7 +13370,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         .table-wrapper, .overflow-x-auto { max-width: 100%; -webkit-overflow-scrolling: touch; }
         input, select, textarea { font-size: 16px; }
         .grid { min-width: 0; }
-        .break-mobile, p, span, div { overflow-wrap: anywhere; }
+        .break-mobile, p, span { overflow-wrap: anywhere; }
+        .map-marker-label, .map-marker-label * { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
       }
     `;
   }, []);
