@@ -2635,26 +2635,39 @@ const LotDashboard = ({
       const pdfDoc = pdfDocCacheRef.current;
       const page = await pdfDoc.getPage(1);
       const dpr = Math.max(1, window.devicePixelRatio || 1);
-      const renderScale = zoom * dpr;
-      const viewport = page.getViewport({ scale: renderScale });
+
+      // ── Escala correta para qualquer tela (mobile Retina, desktop, etc) ──
+      // 1. Mede a largura CSS real do container (pixels lógicos na tela)
+      const containerCssWidth = canvasEl.parentElement?.offsetWidth || canvasEl.offsetWidth || 360;
+      // 2. Largura física em pixels do dispositivo = CSS × DPR
+      const physicalWidth = containerCssWidth * dpr;
+      // 3. Viewport natural do PDF (scale=1) para calcular a proporção
+      const baseViewport = page.getViewport({ scale: 1 });
+      // 4. Scale para que o PDF ocupe exatamente a largura física, × zoom do usuário
+      const fitScale = (physicalWidth / baseViewport.width) * zoom;
+      const viewport = page.getViewport({ scale: fitScale });
+
       if (pdfRenderTaskRef.current) {
         pdfRenderTaskRef.current.cancel();
         pdfRenderTaskRef.current = null;
       }
-      // Dimensões físicas do canvas = resolução máxima de renderização
-      // CSS: w-full h-auto (via className) — o canvas estica para preencher o container igual ao <img>
+
+      // Canvas físico = tamanho real em pixels do dispositivo
       canvasEl.width = Math.floor(viewport.width);
       canvasEl.height = Math.floor(viewport.height);
-      // Não forçamos style.width/height em pixels — deixamos o CSS controlar o tamanho visual
-      // para as bolinhas (posicionadas em %) continuarem no lugar certo.
+      // CSS: deixa o canvas ocupar 100% da largura do container,
+      // a altura se ajusta proporcionalmente (igual ao <img w-full h-auto>)
+      canvasEl.style.width = "100%";
+      canvasEl.style.height = "auto";
+      canvasEl.style.display = "block";
+
       const ctx = canvasEl.getContext("2d")!;
       const task = page.render({ canvasContext: ctx, viewport });
       pdfRenderTaskRef.current = task;
       await task.promise;
       pdfRenderTaskRef.current = null;
-      if (viewport.width > 0 && viewport.height > 0) {
-        // Aspect ratio natural da página PDF (independente do DPR)
-        const baseViewport = page.getViewport({ scale: 1 });
+
+      if (baseViewport.width > 0 && baseViewport.height > 0) {
         setMapAspectRatio(baseViewport.width / baseViewport.height);
       }
       updateDisplayedMapScale();
@@ -2667,12 +2680,12 @@ const LotDashboard = ({
 
   const schedulePdfRender = (zoom: number) => {
     if (pdfRenderScheduledRef.current) clearTimeout(pdfRenderScheduledRef.current);
+    // Delay de 80ms garante que o layout já calculou offsetWidth do container
+    // (importante no primeiro render mobile onde o container pode ter largura 0)
     pdfRenderScheduledRef.current = setTimeout(() => {
-      // Renderiza nos dois canvas — o que estiver visível exibe, o outro fica pronto.
-      // Evita problema de closure stale com mapFullscreen.
       void renderPdfDirect(pdfCanvasRef.current, zoom);
       void renderPdfDirect(pdfCanvasFullscreenRef.current, zoom);
-    }, 60);
+    }, 80);
   };
   // ─────────────────────────────────────────────────────────────────────────────
 
@@ -2785,12 +2798,20 @@ const LotDashboard = ({
     const observed = [mapViewportRef.current, mapContainerRef.current, mapImageRef.current].filter(Boolean) as Element[];
     const observer = new ResizeObserver(() => {
       scheduleMapScaleUpdate(false);
+      // Re-renderiza o PDF com a nova largura do container (rotação, resize)
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
     });
 
     observed.forEach((el) => observer.observe(el));
 
-    const handleResize = () => scheduleMapScaleUpdate(false);
-    const handleOrientationChange = () => scheduleMapScaleUpdate(true);
+    const handleResize = () => {
+      scheduleMapScaleUpdate(false);
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+    };
+    const handleOrientationChange = () => {
+      scheduleMapScaleUpdate(true);
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+    };
 
     window.addEventListener("resize", handleResize);
     window.addEventListener("orientationchange", handleOrientationChange);
