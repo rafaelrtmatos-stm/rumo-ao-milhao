@@ -99,6 +99,45 @@ import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 
+const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
+
+type OfflineVendaDraft = {
+  id: string;
+  createdAt: string;
+  clientData: Partial<Cliente>;
+  saleData: Partial<Venda>;
+  secondBuyerData?: Venda["comprador2"];
+  hasSecondBuyer?: boolean;
+  observacao?: string;
+};
+
+function readOfflineVendaDrafts(): OfflineVendaDraft[] {
+  try {
+    const raw = localStorage.getItem(OFFLINE_DRAFTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeOfflineVendaDrafts(items: OfflineVendaDraft[]) {
+  try {
+    localStorage.setItem(OFFLINE_DRAFTS_KEY, JSON.stringify(items));
+  } catch {}
+}
+
+function addOfflineVendaDraft(item: Omit<OfflineVendaDraft, "id" | "createdAt">): OfflineVendaDraft {
+  const draft: OfflineVendaDraft = {
+    id: `draft-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    ...item,
+  };
+  const drafts = readOfflineVendaDrafts();
+  writeOfflineVendaDrafts([draft, ...drafts].slice(0, 50));
+  try { window.dispatchEvent(new Event("offline-drafts-updated")); } catch {}
+  return draft;
+}
+
 function parseFicha(text: string): Record<string, any> {
   const result: Record<string, any> = {};
   const lines = text.split(/\r?\n/);
@@ -5960,6 +5999,7 @@ const VendasSection = ({
   editingEntry,
   onUpdateVendaFull,
   onMergeClients,
+  isOnline = true,
 }: {
   developments: Empreendimento[];
   sales?: Venda[];
@@ -5973,6 +6013,7 @@ const VendasSection = ({
   editingEntry?: { venda: Venda; cliente: Cliente | null } | null;
   onUpdateVendaFull?: (v: Venda, c: Cliente) => void;
   onMergeClients?: (masterId: string, duplicateIds: string[]) => void;
+  isOnline?: boolean;
 }) => {
   const [clientData, setClientData] = useState<Partial<Cliente>>({
     nome: "",
@@ -6562,6 +6603,31 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
       return;
     }
     const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+
+    if (!isOnline) {
+      addOfflineVendaDraft({
+        clientData: { ...clientData },
+        saleData: {
+          ...saleData,
+          empreendimentoNome: dev?.nome || saleData.empreendimentoNome || "",
+          status: "rascunho" as Venda["status"],
+        },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+        observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
+      });
+      localStorage.setItem('venda_rascunho', JSON.stringify({
+        clientData,
+        saleData: { ...saleData, status: "rascunho" },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+      }));
+      setHasDraft(true);
+      alert(
+        "Você está offline.\n\nA venda foi salva apenas como RASCUNHO LOCAL.\nQuando a internet voltar, abra o rascunho e conclua somente após o sistema validar se o lote ainda está disponível."
+      );
+      return;
+    }
 
     if (editingEntry && onUpdateVendaFull) {
       const updatedCliente: Cliente = normalizarNomeObrigatorio({
@@ -7196,6 +7262,17 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
       </AnimatePresence>
 
       <form ref={vendasFormRef} onSubmit={handleSubmit} noValidate className="space-y-8">
+        {!isOnline && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 flex items-start gap-3">
+            <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest">Modo offline</p>
+              <p className="text-sm font-semibold">
+                Você pode preencher o cadastro, mas a venda será salva somente como rascunho local. A conclusão será liberada quando a internet voltar e o lote for validado novamente.
+              </p>
+            </div>
+          </div>
+        )}
         {Object.keys(invalidSaleFields).length > 0 && (
           <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
             Preencha o campo obrigatório destacado: {Object.values(invalidSaleFields)[0]}.
@@ -8304,7 +8381,7 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                   className={`btn-primary w-full shadow-lg shadow-primary-main/20 ${hasDraft ? '' : 'sm:col-span-2'}`}
                 >
                   <ShoppingCart size={18} />
-                  <span>{editingEntry ? 'Salvar Alterações' : 'Finalizar Venda'}</span>
+                  <span>{!isOnline ? 'Salvar rascunho offline' : (editingEntry ? 'Salvar Alterações' : 'Finalizar Venda')}</span>
                 </button>
               </div>
             </div>
@@ -13775,6 +13852,26 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
   const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
+
+  useEffect(() => {
+    const refreshOnlineState = () => {
+      setIsOnline(navigator.onLine);
+      setOfflineDraftCount(readOfflineVendaDrafts().length);
+    };
+    window.addEventListener("online", refreshOnlineState);
+    window.addEventListener("offline", refreshOnlineState);
+    window.addEventListener("storage", refreshOnlineState);
+    window.addEventListener("offline-drafts-updated", refreshOnlineState);
+    refreshOnlineState();
+    return () => {
+      window.removeEventListener("online", refreshOnlineState);
+      window.removeEventListener("offline", refreshOnlineState);
+      window.removeEventListener("storage", refreshOnlineState);
+      window.removeEventListener("offline-drafts-updated", refreshOnlineState);
+    };
+  }, []);
 
   useEffect(() => {
     let viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
@@ -13928,6 +14025,19 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   const saveSale = (newSale: Venda, newClient: Cliente) => {
     if (!isLoaded) return newSale;
+    if (!isOnline) {
+      addOfflineVendaDraft({
+        clientData: { ...newClient },
+        saleData: { ...newSale, status: "rascunho" },
+        observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
+      });
+      localStorage.setItem('venda_rascunho', JSON.stringify({
+        clientData: newClient,
+        saleData: { ...newSale, status: "rascunho" },
+      }));
+      alert("Você está offline. A venda foi salva somente como rascunho local. Conclua quando a internet voltar e o lote for validado.");
+      return { ...newSale, status: "rascunho" };
+    }
     let updatedClients = [...clients];
     const existingClientIndex = clients.findIndex(
       (c) => c.cpf === newClient.cpf,
@@ -14315,6 +14425,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             editingEntry={editingVendaEntry}
             onUpdateVendaFull={handleUpdateVendaFull}
             onMergeClients={handleMergeClients}
+            isOnline={isOnline}
           />
         );
       case "contratos":
@@ -14437,6 +14548,31 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           forceDesktop={forceDesktop}
           onGoDashboard={() => setSection("dashboard")}
         />
+
+        <div className="w-full max-w-7xl mx-auto mb-4 space-y-2">
+          {!isOnline && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 flex items-start gap-3 shadow-sm">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest">Você está offline</p>
+                <p className="text-sm font-semibold">
+                  Os dados exibidos são da última sincronização. Você pode navegar, consultar empreendimentos, mapas e lotes. Vendas só podem ser concluídas quando a internet voltar.
+                </p>
+              </div>
+            </div>
+          )}
+          {isOnline && offlineDraftCount > 0 && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 flex items-start gap-3 shadow-sm">
+              <Clock size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest">Rascunhos offline pendentes</p>
+                <p className="text-sm font-semibold">
+                  Existem {offlineDraftCount} rascunho(s) local(is). Abra o rascunho, valide o lote com internet e conclua a venda somente se ainda estiver disponível.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
 
         <AnimatePresence mode="wait">
           <motion.div

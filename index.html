@@ -15,10 +15,20 @@
     <meta name="apple-mobile-web-app-title" content="RA1M" />
 
     <meta name="theme-color" content="#000000" />
+    <link rel="manifest" href="/manifest.json" />
     <meta name="vercel-toolbar" content="false" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+      <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js').catch((error) => {
+            console.warn('Service Worker não registrado:', error);
+          });
+        });
+      }
+    </script>
   </body>
 </html>
