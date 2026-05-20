@@ -1,8 +1,3 @@
-
-// AUTO UPPERCASE NORMALIZATION
-const normalizeUppercase = (value?: string) =>
-  typeof value === "string" ? value.toUpperCase() : value;
-
 import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -673,176 +668,6 @@ function getRuasSugeridas(dev: Empreendimento, quadra: string, lote: string): st
   return [];
 }
 
-
-
-function parseCurrencyValue(value: any): number {
-  if (typeof value === "number") return value;
-  const raw = String(value || "").replace(/[^\d,.-]/g, "").trim();
-  if (!raw) return 0;
-  const normalized = raw.includes(",")
-    ? raw.replace(/\./g, "").replace(",", ".")
-    : raw;
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function normalizeFichaLabel(label: string): string {
-  return label
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toUpperCase()
-    .replace(/[^A-Z0-9]/g, "");
-}
-
-function parseFichaCompradorTexto(raw: string): Record<string, any> {
-  const data: Record<string, any> = {};
-  const lines = raw.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
-  const readValue = (...labels: string[]) => {
-    const wanted = labels.map(normalizeFichaLabel);
-    for (const line of lines) {
-      const idx = line.indexOf(":");
-      if (idx === -1) continue;
-      const label = normalizeFichaLabel(line.slice(0, idx));
-      if (wanted.includes(label)) return line.slice(idx + 1).trim();
-    }
-    return "";
-  };
-
-  const splitPeople = (value: string) =>
-    String(value || "")
-      .split(/\s+\/\s+|\/+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-  const normalizeLotText = (value: string) =>
-    String(value || "")
-      .replace(/\s+E\s+/gi, ",")
-      .replace(/\s*\/\s*/g, ",")
-      .replace(/\s*,\s*/g, ",")
-      .trim();
-
-  const nome = readValue("NOME", "NOME DO COMPRADOR", "COMPRADOR");
-  const rg = readValue("RG");
-  const cpf = readValue("CPF");
-  const estadoCivil = readValue("ESTADO CIVIL", "ESTADOCIVIL");
-  const nascimento = readValue("DATA DE ANIVERSÁRIO", "DATA DE ANIVERSARIO", "NASCIMENTO", "DATA NASCIMENTO");
-  const endereco = readValue("ENDEREÇO", "ENDERECO");
-  const numero = readValue("Nº", "N°", "NUMERO", "N");
-  const bairro = readValue("BAIRRO");
-  const cidade = readValue("CIDADE");
-  const estado = readValue("ESTADO", "UF");
-  const cep = readValue("CEP");
-  const contato = readValue("CONTATO", "CONTATO(3)", "TELEFONE", "TELEFONES");
-  const lote = readValue("LOTE");
-  const quadra = readValue("QUADRA");
-  const empreendimento = readValue("EMPREENDIMENTO");
-  const valorTotal = readValue("VALOR TOTAL", "VALORTOTAL");
-  const entrada = readValue("ENTRADA");
-  const parcelas = readValue("QUANTIDADE DE PARCELAS", "PARCELAS", "QUANTIDADEPARCELAS");
-  const vencimento = readValue("DATA DE VENCIMENTO", "VENCIMENTO", "DIA VENCIMENTO");
-  const vendedor = readValue("VENDEDOR");
-
-  const nomes = splitPeople(nome);
-  const rgs = splitPeople(rg);
-  const cpfs = splitPeople(cpf);
-  const nascimentos = splitPeople(nascimento);
-  const contatos = splitPeople(contato);
-
-  if (nomes[0]) data.nome = nomes[0];
-  if (nomes[1]) data.comprador2 = { ...(data.comprador2 || {}), nome: nomes.slice(1).join(" / ") };
-
-  if (rgs[0]) data.rg = rgs[0];
-  if (rgs[1]) data.comprador2 = { ...(data.comprador2 || {}), rg: rgs[1] };
-
-  if (cpfs[0]) data.cpf = cpfs[0];
-  if (cpfs[1]) data.comprador2 = { ...(data.comprador2 || {}), cpf: cpfs[1] };
-
-  if (nascimentos[0]) data.nascimento = nascimentos[0];
-  if (nascimentos[1]) data.comprador2 = { ...(data.comprador2 || {}), nascimento: nascimentos[1] };
-
-  if (estadoCivil) {
-    data.estadoCivil = estadoCivil;
-    if (data.comprador2) data.comprador2.estadoCivil = estadoCivil;
-  }
-
-  if (contatos[0]) data.telefone1 = contatos[0];
-  if (contatos[1]) data.telefone2 = contatos[1];
-
-  if (endereco) data.endereco = endereco;
-  if (numero) data.numero = numero;
-  if (bairro) data.bairro = bairro;
-  if (cidade) data.cidade = cidade;
-  if (estado) data.estado = estado;
-  if (cep) data.cep = cep;
-  if (lote) data.lote = normalizeLotText(lote);
-  if (quadra) data.quadra = quadra;
-  if (empreendimento) data.empreendimento = empreendimento;
-  if (valorTotal) data.valorTotal = valorTotal;
-  if (entrada) data.entrada = entrada;
-  if (parcelas) {
-    const matchParcelas = parcelas.match(/(\d+)\s*x?\s*(?:de)?\s*R?\$?\s*([\d.,]+)/i);
-    if (matchParcelas) {
-      data.numeroParcelas = matchParcelas[1];
-      data.valorParcela = matchParcelas[2];
-    } else {
-      data.numeroParcelas = parcelas;
-    }
-  }
-  if (vencimento) {
-    const dia = vencimento.match(/\d{1,2}/)?.[0];
-    if (dia) data.diaVencimento = dia;
-    data.dataVencimentoTexto = vencimento;
-  }
-  if (vendedor) data.vendedor = vendedor;
-
-  return data;
-}
-
-function mergeFichaData(aiData: Record<string, any>, raw: string): Record<string, any> {
-  const fichaData = parseFichaCompradorTexto(raw);
-  const merged: Record<string, any> = { ...fichaData, ...aiData };
-
-  if (!merged.comprador2 && fichaData.comprador2) merged.comprador2 = fichaData.comprador2;
-
-  // Se a IA devolver nomes/CPFs/RGs juntos com "/", separar para o campo "Segundo Comprador".
-  const splitPeople = (value: any) =>
-    String(value || "")
-      .split(/\s+\/\s+|\/+/)
-      .map((part) => part.trim())
-      .filter(Boolean);
-
-  const nomes = splitPeople(merged.nome || merged.nomeComprador);
-  if (nomes.length > 1) {
-    merged.nome = nomes[0];
-    merged.comprador2 = { ...(merged.comprador2 || {}), nome: nomes.slice(1).join(" / ") };
-  }
-
-  const rgs = splitPeople(merged.rg);
-  if (rgs.length > 1) {
-    merged.rg = rgs[0];
-    merged.comprador2 = { ...(merged.comprador2 || {}), rg: rgs[1] };
-  }
-
-  const cpfs = splitPeople(merged.cpf);
-  if (cpfs.length > 1) {
-    merged.cpf = cpfs[0];
-    merged.comprador2 = { ...(merged.comprador2 || {}), cpf: cpfs[1] };
-  }
-
-  const nascimentos = splitPeople(merged.nascimento);
-  if (nascimentos.length > 1) {
-    merged.nascimento = nascimentos[0];
-    merged.comprador2 = { ...(merged.comprador2 || {}), nascimento: nascimentos[1] };
-  }
-
-  if (merged.comprador2 && merged.estadoCivil && !merged.comprador2.estadoCivil) {
-    merged.comprador2.estadoCivil = merged.estadoCivil;
-  }
-
-  return merged;
-}
-
 function getFilledFieldNames(data: Record<string, any>): string[] {
   const map: Record<string, string> = {
     nome: "Nome", nomeComprador: "Nome",
@@ -859,7 +684,6 @@ function getFilledFieldNames(data: Record<string, any>): string[] {
     numeroParcelas: "Parcelas", quantidadeParcelas: "Parcelas",
     valorParcela: "Valor Parcela",
     diaVencimento: "Vencimento", vendedor: "Vendedor",
-    comprador2: "Segundo Comprador",
   };
   const seen = new Set<string>();
   const result: string[] = [];
@@ -2163,38 +1987,19 @@ const LotDashboard = ({
   // TAMANHO DAS BOLINHAS
   // ──────────────────────────────────────────────
   const getBallBasePixelSize = (contexto: "visualizacao" | "edicao" | "exportacao" = "visualizacao") => {
-    // Tamanho visual fixo das bolinhas: igual no celular, PC e exportação.
-    // O zoom do mapa muda apenas a imagem/área navegável, não o tamanho do marcador.
     if (contexto === "edicao") return { size: 18, font: 7 };
     if (contexto === "exportacao") return { size: 18, font: 0 };
-    return { size: 18, font: 0 };
+    return { size: 12, font: 0 };
   };
 
   const getBallPixelSize = (contexto: "visualizacao" | "edicao" = isEditingMap ? "edicao" : "visualizacao") => {
-    // Não reduzir/aumentar por mobile nem por zoom.
-    // A posição continua em %, acompanhando o mapa, mas o diâmetro fica fixo em px.
-    return getBallBasePixelSize(contexto);
+    const base = getBallBasePixelSize(contexto);
+    if (typeof window !== "undefined" && window.innerWidth < 640) {
+      const mobileSize = Math.round(base.size * (contexto === "edicao" ? 0.65 : 0.85));
+      return { size: Math.max(contexto === "edicao" ? 10 : 8, mobileSize), font: contexto === "edicao" ? Math.max(6, Math.round(base.font * 0.8)) : 0 };
+    }
+    return base;
   };
-
-  const getFixedMarkerStyle = (
-    xPercent: number,
-    yPercent: number,
-    size: number,
-    font: number
-  ): React.CSSProperties => ({
-    left: `${xPercent}%`,
-    top: `${yPercent}%`,
-    width: `${size}px`,
-    height: `${size}px`,
-    minWidth: `${size}px`,
-    minHeight: `${size}px`,
-    maxWidth: `${size}px`,
-    maxHeight: `${size}px`,
-    fontSize: `${font}px`,
-    transform: "translate(-50%, -50%)",
-    transformOrigin: "center",
-    flex: "0 0 auto",
-  });
 
   // ──────────────────────────────────────────────
   // DOWNLOAD IMAGEM/PDF
@@ -2781,7 +2586,7 @@ const LotDashboard = ({
 
   const entrarEdicao = () => {
     setMapAction("manual");
-    setMode("mapa");
+    if (mapaImagem) setMode("mapa");
   };
 
   // ──────────────────────────────────────────────
@@ -2816,7 +2621,7 @@ const LotDashboard = ({
       const y = seqPrimeiroClique!.yPercent + (seqPreview!.yPercent - seqPrimeiroClique!.yPercent) * t;
       return (
         <div key={loteNum} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none"
-          style={getFixedMarkerStyle(x, y, ballSize.size, ballSize.font)}>
+          style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
           {loteNum}
         </div>
       );
@@ -2865,63 +2670,6 @@ const LotDashboard = ({
   // RENDERIZAR MAPA
   // ──────────────────────────────────────────────
   const renderMapa = () => {
-    if (!mapaImagem) {
-      return (
-        <div className={isEditingMap ? "fixed inset-0 z-[80] bg-white flex flex-col" : "space-y-4"}>
-          {isEditingMap ? (
-            <div className="shrink-0 p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
-                <h3 className="font-display font-bold text-slate-800 truncate">{localDev.nome}</h3>
-              </div>
-              <button onClick={salvarEdicaoMapa} className="px-4 py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
-            </div>
-          ) : (
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Ver mapa</p>
-                <h3 className="font-display font-bold text-slate-800">Mapa / Quadradinhos / Lotes atuais</h3>
-              </div>
-              {canEditMap && (
-                <button
-                  type="button"
-                  onClick={() => setMapAction("manual")}
-                  className="px-4 py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white shadow-sm hover:bg-emerald-700"
-                >
-                  Editar mapa
-                </button>
-              )}
-            </div>
-          )}
-          <div className={isEditingMap ? "flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50" : ""}>
-            <div className={isEditingMap ? "max-w-[900px] mx-auto h-full flex items-center justify-center" : "space-y-4"}>
-              <div className="w-full min-h-[360px] rounded-3xl border-2 border-dashed border-slate-200 bg-white flex flex-col items-center justify-center gap-4 p-6 text-center">
-                <div className="p-4 rounded-2xl bg-slate-50 text-slate-400"><MapPin size={34} /></div>
-                <div>
-                  <h4 className="font-display font-bold text-slate-800">Nenhum mapa carregado</h4>
-                  <p className="text-sm text-slate-500 mt-1">Carregue um novo mapa para visualizar e marcar os lotes.</p>
-                </div>
-                {canEditMap && (
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                    <label className="px-5 py-3 rounded-xl bg-slate-900 text-white text-xs font-black uppercase flex items-center justify-center gap-2 cursor-pointer hover:bg-slate-800">
-                      <Upload size={14} />Carregar novo mapa
-                      <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp" onChange={handleImageUpload} className="hidden" />
-                    </label>
-                    <button
-                      type="button"
-                      onClick={() => setMapAction("manual")}
-                      className="px-5 py-3 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase flex items-center justify-center gap-2 hover:bg-emerald-700"
-                    >
-                      <Edit3 size={14} />Editar mapa
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
     const ballSize = getBallPixelSize(isEditingMap ? "edicao" : "visualizacao");
     return (
       <div className={isEditingMap ? "fixed inset-0 z-[80] bg-white flex flex-col" : "space-y-4"}>
@@ -3011,7 +2759,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={getFixedMarkerStyle(ponto.xPercent, ponto.yPercent, ballSize.size, ballSize.font)}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -3026,7 +2774,7 @@ const LotDashboard = ({
             </div>
               <div className="grid grid-cols-2 gap-2 mt-3 max-w-md mx-auto">
                 <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-                <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />{/* PDF removido */}</button>
+                <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
               </div>
             </div>
 
@@ -3385,7 +3133,7 @@ const LotDashboard = ({
               Quadradinhos/lotes atuais
             </button>
           </div>
-          {canEditMap && mapAction === "visualizar" && (
+          {canEditMap && mode === "mapa" && mapAction === "visualizar" && (
             <button onClick={entrarEdicao} className="px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2">
               <MapPin size={13} />Editar mapa
             </button>
@@ -3394,7 +3142,7 @@ const LotDashboard = ({
 
         {/* CONTEÚDO */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
-          {isEditingMap || (mode === "mapa" && mapaImagem) ? renderMapa() : renderQuadradinhos()}
+          {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
           <AnimatePresence>
             {selectedPoint && renderSelectedPointModal()}
           </AnimatePresence>
@@ -5239,38 +4987,16 @@ const VendasSection = ({
       ...(data.cep ? { cep: maskCEP(String(data.cep)) } : {}),
     }));
 
-
-    if (data.comprador2 && (data.comprador2.nome || data.comprador2.cpf || data.comprador2.rg)) {
-      const estadoCivil2 = data.comprador2.estadoCivil || estadoCivil || "Solteiro(a)";
-      const genero2: "F" | "M" | undefined =
-        ["Solteira", "Casada", "Divorciada", "Viúva"].includes(estadoCivil2) ? "F" :
-        ["Solteiro", "Casado", "Divorciado", "Viúvo"].includes(estadoCivil2) ? "M" : undefined;
-
-      setHasSecondBuyer(true);
-      setSecondBuyerData((prev) => ({
-        ...prev,
-        nome: data.comprador2.nome ? textoMaiusculo(data.comprador2.nome) : prev?.nome || "",
-        nacionalidade: data.comprador2.nacionalidade || prev?.nacionalidade || "Brasileira",
-        genero: genero2 || data.comprador2.genero || prev?.genero || "M",
-        rg: data.comprador2.rg || prev?.rg || "",
-        cpf: data.comprador2.cpf ? maskCPF(String(data.comprador2.cpf)) : prev?.cpf || "",
-        estadoCivil: estadoCivil2,
-        profissao: data.comprador2.profissao || prev?.profissao || "",
-        nascimento: data.comprador2.nascimento || prev?.nascimento || "",
-      }));
-    }
-
     setSaleData((prev) => ({
       ...prev,
       ...(empreendimentoId ? { empreendimentoId } : {}),
       ...(data.lote || data.numeroLote ? { numeroLote: String(data.lote || data.numeroLote) } : {}),
       ...(data.quadra ? { quadra: String(data.quadra) } : {}),
-      ...(data.valorTotal || data.valorLote ? { valorLote: parseCurrencyValue(data.valorTotal || data.valorLote) } : {}),
-      ...(data.entrada || data.valorEntrada ? { valorEntrada: parseCurrencyValue(data.entrada || data.valorEntrada) } : {}),
-      ...(data.valorParcela ? { valorParcela: parseCurrencyValue(data.valorParcela) } : {}),
+      ...(data.valorTotal || data.valorLote ? { valorLote: Number(data.valorTotal || data.valorLote) } : {}),
+      ...(data.entrada || data.valorEntrada ? { valorEntrada: Number(data.entrada || data.valorEntrada) } : {}),
+      ...(data.valorParcela ? { valorParcela: Number(data.valorParcela) } : {}),
       ...(data.numeroParcelas || data.quantidadeParcelas ? { quantidadeParcelas: Number(data.numeroParcelas || data.quantidadeParcelas) } : {}),
       ...(dataVencimento ? { dataVencimento } : {}),
-      ...(data.vendedor ? { vendedor: textoMaiusculo(String(data.vendedor)) } : {}),
     }));
   };
 
@@ -5280,9 +5006,8 @@ const VendasSection = ({
     setPasteError(null);
     setPasteFilledFields([]);
     try {
-      const aiData = await geminiService.smartPaste(text);
-      const data = mergeFichaData(aiData || {}, text);
-      console.log("Gemini/ficha retornou:", data);
+      const data = await geminiService.smartPaste(text);
+      console.log("Gemini retornou:", data);
       const fields = getFilledFieldNames(data);
       if (fields.length > 0) {
         applyDataToState(data, developments);
@@ -5401,7 +5126,7 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
     }
     setClientData((prev) => ({
       ...prev,
-      nome: data.nome || data.nomeComprador ? textoMaiusculo(data.nome || data.nomeComprador) : prev.nome,
+      nome: data.nome || data.nomeComprador || prev.nome,
       nacionalidade: data.nacionalidade || prev.nacionalidade,
       rg: data.rg || prev.rg,
       cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
@@ -5416,27 +5141,11 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
       estado: data.estado || prev.estado,
       cep: data.cep ? maskCEP(data.cep) : prev.cep,
     }));
-
-    if (data.comprador2 && (data.comprador2.nome || data.comprador2.cpf || data.comprador2.rg)) {
-      setHasSecondBuyer(true);
-      setSecondBuyerData((prev) => ({
-        ...prev,
-        nome: data.comprador2.nome ? textoMaiusculo(data.comprador2.nome) : prev?.nome || "",
-        nacionalidade: data.comprador2.nacionalidade || prev?.nacionalidade || "Brasileira",
-        genero: data.comprador2.genero || prev?.genero || "M",
-        rg: data.comprador2.rg || prev?.rg || "",
-        cpf: data.comprador2.cpf ? maskCPF(String(data.comprador2.cpf)) : prev?.cpf || "",
-        estadoCivil: data.comprador2.estadoCivil || data.estadoCivil || prev?.estadoCivil || "Solteiro(a)",
-        profissao: data.comprador2.profissao || prev?.profissao || "",
-        nascimento: data.comprador2.nascimento || prev?.nascimento || "",
-      }));
-    }
-
     setSaleData((prev) => ({
       ...prev,
       ...(empreendimentoId ? { empreendimentoId } : {}),
-      numeroLote: data.numeroLote || data.lote || prev.numeroLote,
-      quadra: data.quadra ? textoMaiusculo(String(data.quadra)) : prev.quadra,
+      numeroLote: data.numeroLote || prev.numeroLote,
+      quadra: data.quadra || prev.quadra,
       valorLote: data.valorLote || prev.valorLote,
       valorEntrada: data.valorEntrada || prev.valorEntrada,
       valorParcela: data.valorParcela || prev.valorParcela,
@@ -5453,9 +5162,8 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
     setFileExtractError(null);
     setFileFilledFields([]);
     try {
-      const aiData = await geminiService.extractFromFiles(attachedFiles);
-      const data = mergeFichaData(aiData || {}, "");
-      console.log("Gemini/ficha retornou:", data);
+      const data = await geminiService.extractFromFiles(attachedFiles);
+      console.log("Gemini retornou:", data);
       const fields = getFilledFieldNames(data);
       if (fields.length > 0) {
         applyExtractedData(data, developments);
@@ -7284,8 +6992,6 @@ const ContratosSection = ({
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [comCarimbo, setComCarimbo] = useState(false);
-  const [reciboFormaPagamento, setReciboFormaPagamento] = useState<"Pix" | "Dinheiro" | "Cartão" | "Permuta" | "Outro">("Pix");
-  const [reciboFormaPagamentoOutro, setReciboFormaPagamentoOutro] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -7490,7 +7196,6 @@ const ContratosSection = ({
             medidaLateralEsq: extraAtivo.medidaLateralEsq,
             medidaFundos: extraAtivo.medidaFundos,
             areaTotal: extraAtivo.areaTotal,
-            comprador2: selectedVenda.comprador2,
           },
         }),
       });
@@ -7581,14 +7286,6 @@ const ContratosSection = ({
     const parcelasExt = cap(inteiroExtenso(nParcelas));
     const generoVendedor = getGeneroPessoa(vendedor, "VENDEDOR");
     const generoComprador = getGeneroPessoa(cliente, "COMPRADOR");
-    const comprador2 = venda.comprador2 || null;
-    const generoComprador2 = comprador2?.nome ? getGeneroPessoa(comprador2, "COMPRADOR") : null;
-    const comprador2Row = comprador2?.nome && generoComprador2
-      ? `<tr><td class="lbl">2º ${generoComprador2.papel} (Outorgado)</td><td>${generoComprador2.artigo} ${generoComprador2.tratamento} <strong>${(comprador2.nome||"___").toUpperCase()}</strong>, ${generoComprador2.nacionalidade}, ${generoComprador2.estadoCivil || "___"}, ${generoComprador2.portador} da carteira de identidade nº ${comprador2.rg||"___"} e do CPF nº ${comprador2.cpf||"___"}, ora em diante também ${generoComprador2.chamado} simplesmente ${generoComprador2.papel}</td></tr>`
-      : "";
-    const comprador2Assinatura = comprador2?.nome && generoComprador2
-      ? `<div class="assin-item"><div class="assin-linha">${generoComprador2.papel} - ${(comprador2.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Outorgado</span>${comprador2.cpf?`<br><span style="font-size:9pt">CPF: ${comprador2.cpf}</span>`:""}</div></div>`
-      : "";
     const dimStr = xAtivo?.medidaFrente
       ? `${xAtivo.medidaFrente}m de frente, lateral direita ${xAtivo.medidaLateralDir||"___"}m, lateral esquerda ${xAtivo.medidaLateralEsq||"___"}m, fundos ${xAtivo.medidaFundos||"___"}m, área total ${xAtivo.areaTotal||"___"}m²`
       : "Dimensões não informadas";
@@ -7624,7 +7321,6 @@ const ContratosSection = ({
         <table>
           <tr><td class="lbl">${generoVendedor.papel} (Outorgante)</td><td>${generoVendedor.artigo} ${generoVendedor.tratamento} <strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil || "___"}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg||"___"} e do CPF nº ${vendedor.cpf||"___"}, residente e ${generoVendedor.domiciliado} no endereço ${vendAddr}, ora em diante ${generoVendedor.chamado} simplesmente ${generoVendedor.papel}</td></tr>
           <tr><td class="lbl">${generoComprador.papel} (Outorgado)</td><td>${generoComprador.artigo} ${generoComprador.tratamento} <strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil || "___"}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg||"___"} e do CPF nº ${cliente.cpf||"___"}${phones?`, telefone ${phones}`:""}, residente e ${generoComprador.domiciliado} no endereço ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}</td></tr>
-          ${comprador2Row}
         </table>
       </div>
 
@@ -7669,7 +7365,6 @@ const ContratosSection = ({
       <div class="assin">
         <div class="assin-item"><div class="assin-linha">${generoVendedor.papel} - ${(vendedor.nome||"VENDEDOR").toUpperCase()}<br><span style="font-size:9pt">Outorgante</span>${vendedor.cpf?`<br><span style="font-size:9pt">CPF: ${vendedor.cpf}</span>`:""}</div></div>
         <div class="assin-item"><div class="assin-linha">${generoComprador.papel} - ${(cliente.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Outorgado</span>${cliente.cpf?`<br><span style="font-size:9pt">CPF: ${cliente.cpf}</span>`:""}</div></div>
-        ${comprador2Assinatura}
       </div>
       <div class="footer-info">
         <p>Nº do Contrato: ${venda.numeroContrato||"—"} &nbsp;|&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")}</p>
@@ -7729,7 +7424,6 @@ const ContratosSection = ({
             medidaLateralEsq: extraAtivo.medidaLateralEsq,
             medidaFundos: extraAtivo.medidaFundos,
             areaTotal: extraAtivo.areaTotal,
-            comprador2: selectedVenda.comprador2,
           },
         }),
       });
@@ -7996,10 +7690,6 @@ const ContratosSection = ({
     const valorNumerico = isAvista ? (selectedVenda.valorLote || 0) : (selectedVenda.valorEntrada || 0);
     const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNumerico);
     const pagamentoLabel = isAvista ? 'PAGAMENTO INTEGRAL À VISTA' : 'SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)';
-    const formaEntradaLabel = reciboFormaPagamento === 'Outro'
-      ? (reciboFormaPagamentoOutro.trim() || 'OUTRO')
-      : reciboFormaPagamento;
-    const carimboPagoHTML = comCarimbo ? `<div class="carimbo-pago">PAGO</div>` : '';
     const corretorNome = userProfile?.nome || '___________________________';
     const corretorCargo = userProfile?.creci ? 'Corretor de Imóveis' : 'Angariador/Captador';
     const corretorCreci = userProfile?.creci || '';
@@ -8013,7 +7703,7 @@ const ContratosSection = ({
     * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, Helvetica, sans-serif; }
     #recibo-root { padding: 32px; background: #ffffff; max-width: 21cm; margin: 0 auto; }
-    .recibo-card { background: #ffffff; padding: 64px; border: 1px solid #e2e8f0; position: relative; }
+    .recibo-card { background: #ffffff; padding: 64px; border: 1px solid #e2e8f0; }
     .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0f172a; padding-bottom: 32px; margin-bottom: 48px; }
     .titulo { font-size: 36px; font-weight: 900; font-style: italic; letter-spacing: -1px; color: #0f172a; margin: 0; }
     .subtitulo { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin: 4px 0 0 0; }
@@ -8034,8 +7724,6 @@ const ContratosSection = ({
     .linha-assinatura { height: 1px; background: #0f172a; margin-bottom: 8px; }
     .assinatura-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
     .assinatura-nome { font-weight: 700; color: #0f172a; font-size: 14px; }
-    .forma-pagamento { background:#ecfdf5; border:1px solid #bbf7d0; color:#14532d; font-weight:700; border-radius:12px; padding:10px 14px; margin:18px 0 32px 0; }
-    .carimbo-pago { position:absolute; bottom:120px; right:80px; transform:rotate(-20deg); border:8px solid #16a34a; border-radius:16px; padding:12px 36px; color:#16a34a; font-size:72px; font-weight:900; font-family:serif; opacity:.75; letter-spacing:6px; pointer-events:none; user-select:none; }
   </style>
 </head>
 <body>
@@ -8054,7 +7742,6 @@ const ContratosSection = ({
       <p class="corpo">
         Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">${pagamentoLabel}</span> para aquisição do imóvel:
       </p>
-      <div class="forma-pagamento">Forma de pagamento da entrada: ${formaEntradaLabel}</div>
       <div class="imovel-box">
         <div>
           <p class="label-sm">Empreendimento</p>
@@ -8078,7 +7765,6 @@ const ContratosSection = ({
           ${corretorCreci ? `<p class="assinatura-label">CRECI: ${corretorCreci}</p>` : ''}
         </div>
       </div>
-      ${carimboPagoHTML}
     </div>
   </div>
 </body>
@@ -8233,9 +7919,7 @@ const ContratosSection = ({
             valorParcela: selectedVenda.valorParcela,
             dataVencimento: selectedVenda.dataVencimento,
             dataVenda: selectedVenda.dataVenda,
-            formaPagamento: reciboFormaPagamento === 'Outro'
-              ? (reciboFormaPagamentoOutro.trim() || 'Outro')
-              : reciboFormaPagamento,
+            formaPagamento: selectedVenda.formaPagamento || snap?.extra?.formaPagamento || 'Dinheiro',
           },
         }),
       });
@@ -9316,7 +9000,7 @@ VENDEDOR: ${venda.vendedor}`;
                     <X size={22} />
                   </button>
                 </div>
-                {/* Botões da visualização final: Voltar + DOCX + Editar + OK (PDF/Imprimir removidos) */}
+                {/* Botões da visualização final: Voltar + PDF + DOCX + Imprimir + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -9326,12 +9010,28 @@ VENDEDOR: ${venda.vendedor}`;
                     Voltar
                   </button>
                   <button
+                    onClick={handleDownloadPdfContrato}
+                    disabled={downloadingPdf}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar PDF do contrato"
+                  >
+                    {downloadingPdf ? "Gerando..." : <><FileDown size={17} /> PDF</>}
+                  </button>
+                  <button
                     onClick={handleDownloadDocx}
                     disabled={downloadingDocx}
                     className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
                     title="Baixar DOCX do contrato"
                   >
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
+                  </button>
+                  <button
+                    onClick={() => window.print()}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                    title="Imprimir contrato"
+                  >
+                    <Printer size={17} />
+                    Imprimir
                   </button>
                   <button
                     onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
@@ -9514,7 +9214,7 @@ VENDEDOR: ${venda.vendedor}`;
                     {reciboDownloading === 'pdf' ? (
                       <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
                     ) : (
-                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>{/* PDF removido */}</>
+                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>PDF</>
                     )}
                   </button>
                   <button
@@ -9545,7 +9245,7 @@ VENDEDOR: ${venda.vendedor}`;
                     className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
                   >
                     <Printer size={17} />
-                    Recibo
+                    Imprimir
                   </button>
                   <button
                     onClick={() => { setShowReciboModal(false); if (selectedVenda) handleEditarContrato(selectedVenda); }}
@@ -9555,44 +9255,6 @@ VENDEDOR: ${venda.vendedor}`;
                     <Pencil size={17} />
                     Editar
                   </button>
-                </div>
-                <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-3 rounded-2xl bg-slate-50 border border-slate-200 p-3">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1">
-                      Forma de pagamento da entrada
-                    </label>
-                    <select
-                      value={reciboFormaPagamento}
-                      onChange={(e) => setReciboFormaPagamento(e.target.value as "Pix" | "Dinheiro" | "Cartão" | "Permuta" | "Outro")}
-                      className="w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary-main/30"
-                    >
-                      <option value="Pix">Pix</option>
-                      <option value="Dinheiro">Dinheiro</option>
-                      <option value="Cartão">Cartão</option>
-                      <option value="Permuta">Permuta</option>
-                      <option value="Outro">Outro</option>
-                    </select>
-                    {reciboFormaPagamento === "Outro" && (
-                      <input
-                        value={reciboFormaPagamentoOutro}
-                        onChange={(e) => setReciboFormaPagamentoOutro(e.target.value)}
-                        placeholder="Descreva a forma de pagamento"
-                        className="mt-2 w-full h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-700 outline-none focus:ring-2 focus:ring-primary-main/30"
-                      />
-                    )}
-                  </div>
-                  <label className="flex items-center gap-3 rounded-xl bg-white border border-slate-200 px-4 py-3 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={comCarimbo}
-                      onChange={(e) => setComCarimbo(e.target.checked)}
-                      className="h-5 w-5 accent-green-600"
-                    />
-                    <div>
-                      <p className="text-sm font-black text-slate-800">Marcar como pago</p>
-                      <p className="text-[11px] font-semibold text-slate-500">Quando marcado, aparece carimbo PAGO no recibo.</p>
-                    </div>
-                  </label>
                 </div>
               </div>
               <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
@@ -9631,9 +9293,6 @@ VENDEDOR: ${venda.vendedor}`;
                       </span>{" "}
                       para aquisição do imóvel:
                     </p>
-                    <div className="bg-green-50 border border-green-200 rounded-2xl px-5 py-3 text-base font-bold text-green-900">
-                      Forma de pagamento da entrada: {reciboFormaPagamento === "Outro" ? (reciboFormaPagamentoOutro.trim() || "Outro") : reciboFormaPagamento}
-                    </div>
                     <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-dashed border-slate-200 grid grid-cols-2 gap-6">
                       <div>
                         <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Empreendimento</p>
@@ -12752,107 +12411,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
   const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
-
-
-  useEffect(() => {
-    if (typeof document === "undefined") return;
-
-    let viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
-    if (!viewport) {
-      viewport = document.createElement("meta");
-      viewport.name = "viewport";
-      document.head.appendChild(viewport);
-    }
-    viewport.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
-
-    const styleId = "app-mobile-fit-and-no-page-zoom";
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement("style");
-      style.id = styleId;
-      style.textContent = `
-        html,
-        body,
-        #root {
-          width: 100%;
-          max-width: 100vw;
-          min-height: 100dvh;
-          margin: 0;
-          padding: 0;
-          overflow-x: hidden;
-          overscroll-behavior-x: none;
-          -webkit-text-size-adjust: 100%;
-          text-size-adjust: 100%;
-        }
-
-        *,
-        *::before,
-        *::after {
-          box-sizing: border-box;
-          max-width: 100%;
-        }
-
-        body {
-          touch-action: manipulation;
-        }
-
-        img,
-        canvas,
-        svg,
-        video {
-          max-width: 100%;
-        }
-
-        input,
-        select,
-        textarea,
-        button {
-          font-size: 16px;
-        }
-
-        table {
-          max-width: 100%;
-        }
-
-        [data-app-page],
-        .app-page,
-        .app-section,
-        .dashboard,
-        .main-content {
-          width: 100%;
-          max-width: 100vw;
-          overflow-x: hidden;
-        }
-
-        @media (max-width: 768px) {
-          .grid {
-            min-width: 0;
-          }
-
-          .grid > *,
-          .flex > * {
-            min-width: 0;
-          }
-
-          .overflow-x-auto,
-          [class*="overflow-x-auto"] {
-            max-width: 100vw;
-          }
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    const preventGestureZoom = (event: Event) => event.preventDefault();
-    document.addEventListener("gesturestart", preventGestureZoom, { passive: false });
-    document.addEventListener("gesturechange", preventGestureZoom, { passive: false });
-    document.addEventListener("gestureend", preventGestureZoom, { passive: false });
-
-    return () => {
-      document.removeEventListener("gesturestart", preventGestureZoom);
-      document.removeEventListener("gesturechange", preventGestureZoom);
-      document.removeEventListener("gestureend", preventGestureZoom);
-    };
-  }, []);
 
   useEffect(() => {
     authFetch("/api/auth/profile")
