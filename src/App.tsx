@@ -3029,16 +3029,20 @@ const LotDashboard = ({
 
           {/* Limpar filtros */}
           {activeFilterCount > 0 && (
-                  <button
-                    onClick={() => { setShowReciboModal(false); if (selectedVenda) handleEditarContrato(selectedVenda); }}
-                    disabled={reciboDownloading !== null}
-                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
-                  >
-                    <Pencil size={17} />
-                    Editar
-                  </button>
-                </div>
-              </div>
+            <button
+              onClick={() => {
+                setStatusFilter("");
+                setEmpFilter("");
+                setDateFilter("");
+                setCorretorFilter("");
+              }}
+              className="h-9 px-4 rounded-xl text-xs font-bold bg-slate-200 text-slate-700 hover:bg-slate-300 transition-all flex items-center gap-2"
+            >
+              <X size={14} />
+              Limpar ({activeFilterCount})
+            </button>
+          )}
+        </div>
               <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
                 <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto',position:'relative'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
                   <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
