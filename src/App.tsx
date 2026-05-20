@@ -334,6 +334,39 @@ function getActiveSaleLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<st
   return keys;
 }
 
+function splitLotKeyLabel(key: string): { quadra: string; lote: string; label: string } {
+  const [quadra = "", ...loteParts] = String(key || "").split("-");
+  const lote = loteParts.join("-");
+  return { quadra, lote, label: `Quadra ${quadra} / Lote ${lote}` };
+}
+
+function getActualLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<string> {
+  const keys = new Set<string>();
+  Object.keys(dev.lotesInfo || {}).forEach((key) => {
+    if (key) keys.add(key.toUpperCase());
+  });
+  getActiveSaleLotKeys(dev, vendas).forEach((key) => keys.add(key));
+  return keys;
+}
+
+function getLotDivergenceDetails(dev: Empreendimento, vendas: Venda[] = []) {
+  const configured = getConfiguredLotKeysFromRanges(dev);
+  const actual = getActualLotKeys(dev, vendas);
+  const extras = Array.from(actual)
+    .filter((key) => configured.size > 0 && !configured.has(key))
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  const missing = Array.from(configured)
+    .filter((key) => !actual.has(key))
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+
+  return {
+    extras,
+    missing,
+    extraLabels: extras.map((key) => splitLotKeyLabel(key).label),
+    missingLabels: missing.map((key) => splitLotKeyLabel(key).label),
+  };
+}
+
 function removeLotFromLotesPorQuadra(dev: Empreendimento, quadra: string, lote: string): { quadras: string; lotesPorQuadra: Record<string, any> } {
   const wantedQuadra = normalizeLotKeyPart(quadra);
   const wantedLote = normalizeLotKeyPart(lote);
@@ -1996,6 +2029,14 @@ const LotDashboard = ({
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
   const quadras = getQuadraList(localDev);
   const isEditingMap = canEditMap && mapAction !== "visualizar";
+  const lotDivergences = getLotDivergenceDetails(localDev, sales);
+  const extraLotKeySet = new Set(lotDivergences.extras);
+  const hasExtraLot = (quadra: string, lote: string) => extraLotKeySet.has(getLotInfoKey(quadra, lote));
+  const extraLotsByQuadra = (quadra: string) =>
+    lotDivergences.extras
+      .map(splitLotKeyLabel)
+      .filter((item) => normalizeLotKeyPart(item.quadra) === normalizeLotKeyPart(quadra))
+      .map((item) => item.lote);
   const isMultiLote = (lote: string) => lote.includes(",") && lote.split(",").filter((s: string) => s.trim()).length > 1;
 
   const persistDev = (nextDev: Empreendimento) => {
@@ -2776,7 +2817,12 @@ const LotDashboard = ({
       {quadras.length > 0 ? quadras.map((q) => {
         const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
         const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter((key) => key.startsWith(q.toUpperCase() + "-")).map((key) => key.split("-")[1]);
-        const displayLots = configuredLots.length > 0 ? configuredLots : lotesInfoKeys.length > 0 ? lotesInfoKeys.sort((a, b) => Number(a) - Number(b)) : [];
+        const extraLots = extraLotsByQuadra(q);
+        const displayLots = Array.from(new Set([
+          ...(configuredLots.length > 0 ? configuredLots : []),
+          ...lotesInfoKeys,
+          ...extraLots,
+        ])).sort((a, b) => Number(a) - Number(b));
         return (
           <div key={q} className="space-y-4">
             <div className="flex items-center gap-3"><h4 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-display font-bold text-sm">Quadra {q}</h4><div className="h-px flex-1 bg-slate-100" /></div>
@@ -2789,12 +2835,21 @@ const LotDashboard = ({
                   const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
                   const reserved = !soldData && lotInfo?.status === "reservado";
                   const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
+                  const extraLot = hasExtraLot(q, l);
                   return (
-                    <div key={l} onClick={() => { if (soldData) setSelectedLotSale(soldData); }} className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}>
+                    <div
+                      key={l}
+                      title={extraLot ? `Lote a mais: Quadra ${q} / Lote ${l}${soldData ? " - possui contrato/venda vinculada" : " - verificar cadastro"}` : undefined}
+                      onClick={() => { if (soldData) setSelectedLotSale(soldData); }}
+                      className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${extraLot ? "bg-black border-black text-white cursor-pointer hover:bg-slate-900" : unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}
+                    >
                       <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
                       <span className="text-lg font-display font-bold leading-none">{l}</span>
-                      <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>{unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}</div>
-                      {!unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
+                      <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${extraLot ? "bg-white/20 text-white" : unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>
+                        {extraLot ? "A mais" : unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}
+                      </div>
+                      {extraLot && <div className="mt-1 text-[7px] font-black uppercase tracking-widest text-white/80">Verificar</div>}
+                      {!extraLot && !unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
                     </div>
                   );
                 })}
@@ -4128,7 +4183,25 @@ const EmpreendimentosSection = ({
                         <p>⚠️ Quadra{semFaixa.length > 1 ? 's' : ''} sem lotes configurados: <span className="font-black">{semFaixa.map(q => `Q.${q}`).join(', ')}</span></p>
                       )}
                       {diffTotal && (
-                        <p>⚠️ Total configurado ({somaQuadras}) difere do total cadastrado ({dev.totalLotes}). Confira as faixas.</p>
+                        <div className="space-y-1">
+                          <p>⚠️ Total configurado ({somaQuadras}) difere do total cadastrado ({dev.totalLotes}).</p>
+                          {(() => {
+                            const divergencias = getLotDivergenceDetails(dev, sales);
+                            return (
+                              <div className="space-y-0.5">
+                                {divergencias.extraLabels.length > 0 && (
+                                  <p>🛑 Lote a mais: <span className="font-black">{divergencias.extraLabels.join(", ")}</span>. Veja nos quadradinhos em preto e confira se há contrato vinculado.</p>
+                                )}
+                                {divergencias.missingLabels.length > 0 && (
+                                  <p>⚠️ Lote configurado sem cadastro: <span className="font-black">{divergencias.missingLabels.join(", ")}</span>.</p>
+                                )}
+                                {divergencias.extraLabels.length === 0 && divergencias.missingLabels.length === 0 && (
+                                  <p>Confira as faixas por quadra para encontrar a diferença.</p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
                       )}
                     </div>
                   </div>
