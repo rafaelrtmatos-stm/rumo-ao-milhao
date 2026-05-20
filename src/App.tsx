@@ -2012,6 +2012,22 @@ const LotDashboard = ({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapViewportRef = useRef<HTMLDivElement>(null);
+  const mapImageRef = useRef<HTMLImageElement>(null);
+
+  // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
+  const [mapActive, setMapActive] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const mapTouchRef = useRef<{
+    mode: "none" | "pan" | "pinch";
+    startDistance: number;
+    startZoom: number;
+    startPanX: number;
+    startPanY: number;
+    startX: number;
+    startY: number;
+  }>({ mode: "none", startDistance: 0, startZoom: 1, startPanX: 0, startPanY: 0, startX: 0, startY: 0 });
 
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
@@ -2042,6 +2058,93 @@ const LotDashboard = ({
   useEffect(() => {
     if (!canEditMap) setMapAction("visualizar");
   }, [canEditMap]);
+
+  useEffect(() => {
+    function handlePointerOutside(event: PointerEvent) {
+      if (mapViewportRef.current && !mapViewportRef.current.contains(event.target as Node)) {
+        setMapActive(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerOutside);
+  }, []);
+
+  const getTouchDistance = (touches: TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
+    const viewport = mapViewportRef.current?.getBoundingClientRect();
+    const content = mapContainerRef.current?.getBoundingClientRect();
+    if (!viewport || !content || zoom <= 1) return { x: 0, y: 0 };
+    const baseWidth = content.width / zoom;
+    const baseHeight = content.height / zoom;
+    const maxX = Math.max(0, (baseWidth * zoom - viewport.width) / 2);
+    const maxY = Math.max(0, (baseHeight * zoom - viewport.height) / 2);
+    return {
+      x: Math.max(-maxX, Math.min(maxX, pan.x)),
+      y: Math.max(-maxY, Math.min(maxY, pan.y)),
+    };
+  };
+
+  const handleMapTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    setMapActive(true);
+    if (!mapActive && e.touches.length < 2) return;
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      mapTouchRef.current = {
+        mode: "pinch",
+        startDistance: getTouchDistance(e.touches),
+        startZoom: mapZoom,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+        startX: 0,
+        startY: 0,
+      };
+      return;
+    }
+    if (mapZoom > 1 && e.touches.length === 1) {
+      e.preventDefault();
+      mapTouchRef.current = {
+        mode: "pan",
+        startDistance: 0,
+        startZoom: mapZoom,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+      };
+    }
+  };
+
+  const handleMapTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!mapActive) return;
+    const gesture = mapTouchRef.current;
+    if (gesture.mode === "pinch" && e.touches.length >= 2) {
+      e.preventDefault();
+      const distance = getTouchDistance(e.touches);
+      const nextZoom = Math.max(1, Math.min(4, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      setMapZoom(nextZoom);
+      setMapPan((prev) => clampMapPan(prev, nextZoom));
+      return;
+    }
+    if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
+      e.preventDefault();
+      const nextPan = {
+        x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
+        y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+    }
+  };
+
+  const handleMapTouchEnd = () => {
+    mapTouchRef.current = { mode: "none", startDistance: 0, startZoom: mapZoom, startPanX: mapPan.x, startPanY: mapPan.y, startX: 0, startY: 0 };
+    if (mapZoom <= 1) setMapPan({ x: 0, y: 0 });
+  };
 
   // Resetar estado marcador ao trocar action
   useEffect(() => {
@@ -2156,9 +2259,22 @@ const LotDashboard = ({
     };
   };
 
+  const getDisplayedMapScale = () => {
+    const img = mapImageRef.current;
+    const container = mapContainerRef.current;
+    const naturalWidth = img?.naturalWidth || 1000;
+    const displayedWidth = container?.getBoundingClientRect().width || img?.getBoundingClientRect().width || naturalWidth;
+    return Math.max(0.1, displayedWidth / naturalWidth);
+  };
+
   const getBallPixelSize = () => {
-    // Tamanho fixo em px: não depende do zoom/tela e não altera a posição.
-    return getBallBasePixelSize();
+    // O slider define o tamanho base. A visualização recalcula pela escala real do mapa.
+    const base = getBallBasePixelSize();
+    const scale = getDisplayedMapScale();
+    return {
+      size: Math.max(5, Math.min(base.size, Math.round(base.size * scale))),
+      font: Math.max(5, Math.min(base.font, Math.round(base.font * scale))),
+    };
   };
 
   // ──────────────────────────────────────────────
@@ -2198,8 +2314,8 @@ const LotDashboard = ({
         if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const baseSize = getBallBasePixelSize().size;
-        const scale = Math.max(canvas.width / 1000, 1);
-        const radius = Math.max((baseSize * scale) / 2, 10);
+        const exportScale = Math.max(canvas.width / 1000, 0.1);
+        const radius = Math.max((baseSize * exportScale) / 2, 3);
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
@@ -2209,7 +2325,7 @@ const LotDashboard = ({
           ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
-          ctx.lineWidth = Math.max(3 * scale, 2); ctx.strokeStyle = "#ffffff"; ctx.stroke();
+          ctx.lineWidth = Math.max(3 * exportScale, 1.5); ctx.strokeStyle = "#ffffff"; ctx.stroke();
           // Exportação/visualização impressa: bolinha limpa, sem número.
           // Os números aparecem somente no modo Editar mapa.
         });
@@ -2422,7 +2538,7 @@ const LotDashboard = ({
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
     if (draggingId) return; // não abre formulário durante arrastar
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
 
@@ -2474,7 +2590,7 @@ const LotDashboard = ({
 
   const handleMapMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
-    const rect = e.currentTarget.getBoundingClientRect();
+    const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
     const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
     // Preview linha multi-lote
@@ -2779,6 +2895,9 @@ const LotDashboard = ({
     setMarcadorPanelPos(null);
     setLastSessionPointIds([]);
     setMapAction("visualizar");
+    setMapActive(false);
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
   };
 
   const entrarEdicao = () => {
@@ -2903,7 +3022,17 @@ const LotDashboard = ({
         )}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           {/* CANVAS DO MAPA */}
-          <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
+          <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200">
+            <div
+              ref={mapViewportRef}
+              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onTouchStart={handleMapTouchStart}
+              onTouchMove={handleMapTouchMove}
+              onTouchEnd={handleMapTouchEnd}
+              onTouchCancel={handleMapTouchEnd}
+              className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
+              style={{ maxWidth: "1000px", touchAction: mapActive ? "none" : "auto", overscrollBehavior: "contain" }}
+            >
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
@@ -2943,10 +3072,10 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ maxWidth: "1000px" }}
+              className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
-              <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
+              <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} />
 
               {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
@@ -2962,6 +3091,8 @@ const LotDashboard = ({
                   <button
                     key={ponto.id}
                     onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
+                    onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
+                    onTouchStart={(ev) => { ev.stopPropagation(); }}
                     onClick={(ev) => {
                       if (draggingId) return;
                       ev.stopPropagation();
@@ -2975,7 +3106,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -2989,6 +3120,7 @@ const LotDashboard = ({
                   <div className="w-1.5 h-1.5 bg-white rounded-full" />
                 </div>
               )}
+            </div>
             </div>
           </div>
 
