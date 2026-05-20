@@ -2360,6 +2360,13 @@ const LotDashboard = ({
     scheduleMapScaleUpdate(true);
   };
 
+  const isEditingMap = canEditMap && mapAction !== "visualizar";
+  const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
+  const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
+
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
     // quando o mouse está sobre o mapa, o scroll controla somente o mapa,
@@ -2470,13 +2477,6 @@ const LotDashboard = ({
       setMarcadorPonto2Preview(null);
     }
   }, [mapAction]);
-
-  const isEditingMap = canEditMap && mapAction !== "visualizar";
-  const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
-  const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
-  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
-  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
-  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
 
   const loadPdfJsIfNeeded = async () => {
     if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
