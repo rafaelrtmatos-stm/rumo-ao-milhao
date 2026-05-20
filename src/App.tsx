@@ -2015,6 +2015,7 @@ const LotDashboard = ({
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const mapImageRef = useRef<HTMLImageElement>(null);
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
+  const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
 
   // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
@@ -2166,36 +2167,54 @@ const LotDashboard = ({
       const container = mapContainerRef.current;
       if (!img || !container || !img.naturalWidth) return;
 
-      const displayedWidth = container.getBoundingClientRect().width || img.getBoundingClientRect().width;
       const naturalWidth = img.naturalWidth;
+      const naturalHeight = img.naturalHeight || Math.round(naturalWidth / 1.414);
+      const layoutWidth = img.offsetWidth || container.clientWidth || img.getBoundingClientRect().width;
+      const layoutHeight = img.offsetHeight || container.clientHeight || img.getBoundingClientRect().height;
 
-      if (displayedWidth > 0 && naturalWidth > 0) {
-        setDisplayedMapScale(Math.max(0.1, displayedWidth / naturalWidth));
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        setMapAspectRatio(naturalWidth / naturalHeight);
+      }
+
+      if (layoutWidth > 0 && naturalWidth > 0) {
+        // offsetWidth/clientWidth não inclui transform: scale(...).
+        // Isso evita escala dupla quando o usuário dá zoom ou rotaciona o celular.
+        const scaleX = layoutWidth / naturalWidth;
+        const scaleY = layoutHeight > 0 && naturalHeight > 0 ? layoutHeight / naturalHeight : scaleX;
+        const safeScale = Math.max(0.1, Math.min(scaleX || 1, scaleY || scaleX || 1));
+        setDisplayedMapScale(safeScale);
       }
     });
   };
 
-  useEffect(() => {
+  const scheduleMapScaleUpdate = (resetPan = false) => {
+    if (resetPan) setMapPan({ x: 0, y: 0 });
     updateDisplayedMapScale();
+    window.setTimeout(updateDisplayedMapScale, 80);
+    window.setTimeout(updateDisplayedMapScale, 250);
+    window.setTimeout(updateDisplayedMapScale, 500);
+  };
 
-    const container = mapViewportRef.current || mapContainerRef.current;
-    if (!container) return;
+  useEffect(() => {
+    scheduleMapScaleUpdate(mapFullscreen);
 
+    const observed = [mapViewportRef.current, mapContainerRef.current, mapImageRef.current].filter(Boolean) as Element[];
     const observer = new ResizeObserver(() => {
-      updateDisplayedMapScale();
+      scheduleMapScaleUpdate(false);
     });
 
-    observer.observe(container);
-    window.addEventListener("resize", updateDisplayedMapScale);
+    observed.forEach((el) => observer.observe(el));
 
-    const t1 = window.setTimeout(updateDisplayedMapScale, 60);
-    const t2 = window.setTimeout(updateDisplayedMapScale, 250);
+    const handleResize = () => scheduleMapScaleUpdate(false);
+    const handleOrientationChange = () => scheduleMapScaleUpdate(true);
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
 
     return () => {
       observer.disconnect();
-      window.removeEventListener("resize", updateDisplayedMapScale);
-      window.clearTimeout(t1);
-      window.clearTimeout(t2);
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
     };
   }, [mapaImagem, mode, mapFullscreen]);
 
@@ -2314,6 +2333,9 @@ const LotDashboard = ({
       font: Math.max(5, Math.min(base.font, Math.round(base.font * scale))),
     };
   };
+
+  const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
+  const fullscreenMapWidth = `min(100vw, calc(100dvh * ${Math.max(0.5, Math.min(3, mapAspectRatio))}))`;
 
   // ──────────────────────────────────────────────
   // DOWNLOAD IMAGEM/PDF
@@ -3150,7 +3172,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${Math.max(1, Math.round(ballSize.size * 0.14))}px`, pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -3178,7 +3200,7 @@ const LotDashboard = ({
                     const lockPromise = (screen as any).orientation?.lock?.("landscape");
                     lockPromise?.catch?.(() => undefined);
                   } catch {}
-                  setTimeout(updateDisplayedMapScale, 80);
+                  scheduleMapScaleUpdate(true);
                 }}
                 className="mt-3 w-full rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
               >
@@ -3459,7 +3481,7 @@ const LotDashboard = ({
                   setMapZoom(1);
                   setMapPan({ x: 0, y: 0 });
                   try { (screen as any).orientation?.unlock?.(); } catch {}
-                  setTimeout(updateDisplayedMapScale, 80);
+                  scheduleMapScaleUpdate(true);
                 }}
                 className="rounded-2xl bg-white text-slate-900 px-4 py-3 text-[11px] font-black uppercase shadow-xl"
               >
@@ -3481,8 +3503,9 @@ const LotDashboard = ({
                 ref={mapContainerRef}
                 className="absolute left-1/2 top-1/2 bg-white select-none"
                 style={{
-                  width: "100vw",
+                  width: fullscreenMapWidth,
                   maxWidth: "100vw",
+                  maxHeight: "100dvh",
                   transform: `translate(calc(-50% + ${mapPan.x}px), calc(-50% + ${mapPan.y}px)) scale(${mapZoom})`,
                   transformOrigin: "center center",
                   willChange: "transform",
@@ -3510,7 +3533,7 @@ const LotDashboard = ({
                         width: `${ballSize.size}px`,
                         height: `${ballSize.size}px`,
                         fontSize: `${ballSize.font}px`,
-                        borderWidth: `${Math.max(1, Math.round(ballSize.size * 0.14))}px`,
+                        borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
                         pointerEvents: "auto",
                       }}
                     />
@@ -3533,7 +3556,7 @@ const LotDashboard = ({
     const venda = ponto.venda || vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
     const temVenda = !!(ponto.vendaId || venda);
     return (
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-[10050]">
         <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
           {/* Cabeçalho com destaque da Quadra — especialmente útil na edição */}
           {isEditingMap && (
@@ -3584,7 +3607,7 @@ const LotDashboard = ({
           <div className="space-y-2">
             {/* Bolinha azul/disponível */}
             {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
+              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
             )}
             {ponto.status === "disponivel" && !temVenda && (
               <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
@@ -3595,7 +3618,7 @@ const LotDashboard = ({
 
             {/* Bolinha amarela/reservado */}
             {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
+              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
             )}
             {ponto.status === "reservado" && !temVenda && (
               <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
@@ -13217,6 +13240,40 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
 
   useEffect(() => {
+    let viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    if (!viewport) {
+      viewport = document.createElement("meta");
+      viewport.name = "viewport";
+      document.head.appendChild(viewport);
+    }
+    viewport.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+    const styleId = "mobile-responsive-fit-fix";
+    let style = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = styleId;
+      document.head.appendChild(style);
+    }
+    style.textContent = `
+      html, body, #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+      * { box-sizing: border-box; min-width: 0; }
+      img, video, canvas, svg { max-width: 100%; }
+      input, select, textarea, button { max-width: 100%; }
+      .card-premium, .input-field { max-width: 100%; }
+      @media (max-width: 768px) {
+        body { overflow-x: hidden; }
+        main, section, article, form, .page, .container, .tab-content { width: 100%; max-width: 100%; overflow-x: hidden; }
+        table { max-width: 100%; }
+        .table-wrapper, .overflow-x-auto { max-width: 100%; -webkit-overflow-scrolling: touch; }
+        input, select, textarea { font-size: 16px; }
+        .grid { min-width: 0; }
+        .break-mobile, p, span, div { overflow-wrap: anywhere; }
+      }
+    `;
+  }, []);
+
+  useEffect(() => {
     authFetch("/api/auth/profile")
       .then(r => r.ok ? r.json() : null)
       .then(d => { if (d) setUserProfile({ nome: d.nome || "", creci: d.creci || "", telefone: d.telefone || "" }); })
@@ -13817,7 +13874,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
 
   return (
-    <div className="min-h-screen bg-surface-bg flex">
+    <div className="min-h-screen bg-surface-bg flex w-full max-w-full overflow-x-hidden">
       <Sidebar
         currentSection={section}
         setSection={(s) => {
@@ -13835,7 +13892,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         userEmail={userEmail}
       />
 
-      <main className={`flex-1 ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
+      <main className={`flex-1 min-w-0 w-full max-w-full overflow-x-hidden ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
         <Header
           title={getTitle()}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
@@ -13849,7 +13906,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
             transition={{ duration: 0.3, ease: "easeOut" }}
-            className="max-w-7xl mx-auto"
+            className="w-full max-w-7xl mx-auto min-w-0"
           >
             {!isLoaded ? (
               <div className="flex flex-col items-center justify-center py-32 gap-4">
