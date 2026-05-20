@@ -276,6 +276,30 @@ function parseLotesInput(input: string): string[] {
 }
 
 /**
+ * Expande o campo Lote em lista de lotes individuais, suportando intervalos.
+ * Regra: dois tokens em ordem ESTRITAMENTE CRESCENTE com diferença > 1 → intervalo.
+ * Ex: "1,6" → ["1","2","3","4","5","6"]
+ * Ex: "9,8" → ["9","8"]  (não crescente → lista)
+ * Ex: "1,2,3" → ["1","2","3"] (mais de 2 tokens → lista)
+ */
+function expandLotesInput(input: string): string[] {
+  const tokens = parseLotesInput(input);
+  if (tokens.length !== 2) return tokens; // lista literal quando ≠ 2 tokens
+  const [a, b] = tokens;
+  const na = Number(a), nb = Number(b);
+  // Só expande se ambos forem inteiros e for intervalo crescente com diff > 1
+  if (
+    Number.isInteger(na) && Number.isInteger(nb) &&
+    nb > na + 1
+  ) {
+    const result: string[] = [];
+    for (let i = na; i <= nb; i++) result.push(String(i));
+    return result;
+  }
+  return tokens; // lista literal (9,8 ou 1,2 etc)
+}
+
+/**
  * A partir dos campos quadra e lote (que podem ser múltiplos),
  * retorna pares [{quadra, lote}] associando pela ordem quando ambos são múltiplos.
  * Se quadra for única, aplica a mesma quadra para todos os lotes.
@@ -2288,7 +2312,8 @@ const LotDashboard = ({
   };
 
   useEffect(() => {
-    const lotes = parseLotesInput(marcadorForm.lote);
+    const lotes = expandLotesInput(marcadorForm.lote);
+    // Mostra "Status do sistema" quando há exatamente 1 lote e ele já existe no cadastro
     const shouldUseSystemStatus = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
     if (shouldUseSystemStatus && marcadorForm.status !== "sistema") {
       setMarcadorForm((prev) => ({ ...prev, status: "sistema" }));
@@ -4139,6 +4164,14 @@ const LotDashboard = ({
 
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
 
+                {/* Alt 5: Aplicar — salva sem sair da edição */}
+                <button onClick={() => {
+                  persistDev({
+                    ...localDev,
+                    mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+                  } as Empreendimento);
+                }} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-blue-500 text-white">Aplicar</button>
+
                 {/* Salvar / sair da edição */}
                 <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
               </div>
@@ -4279,37 +4312,66 @@ const LotDashboard = ({
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
                   {(() => {
-                    const lotes = parseLotesInput(marcadorForm.lote);
-                    const hasSystemLot = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
-                    const systemStatus = hasSystemLot ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : null;
+                    // Alt 1&2: usa expandLotesInput para suportar intervalos
+                    const lotesExpanded = expandLotesInput(marcadorForm.lote);
+                    const isMulti = lotesExpanded.length > 1;
+                    // Alt 3: "Status do sistema" só aparece quando há exatamente 1 lote cadastrado
+                    const hasSystemLot = !isMulti && !!marcadorForm.quadra && lotesExpanded.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotesExpanded[0]);
+                    const systemStatus = hasSystemLot ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Preview de lotes expandidos
+                    const previewLotes = isMulti ? lotesExpanded.slice(0, 8) : [];
+                    const previewExtra = isMulti && lotesExpanded.length > 8 ? lotesExpanded.length - 8 : 0;
                     return (
-                      <div>
-                        <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
-                        <select
-                          className="input-field"
-                          value={marcadorForm.status}
-                          onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
-                        >
-                          {hasSystemLot && systemStatus && (
-                            <option value="sistema">Status do sistema: {lotScriptStatusToLabel(systemStatus)}</option>
-                          )}
-                          <option value="disponivel">Disponível</option>
-                          <option value="reservado">Reservado</option>
-                          <option value="indisponivel">Indisponível</option>
-                        </select>
-                        {hasSystemLot && systemStatus && (
-                          <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
-                            Lote já cadastrado. Mantendo por padrão: {lotScriptStatusToLabel(systemStatus)}.
-                          </p>
+                      <>
+                        {/* Preview dos lotes expandidos */}
+                        {isMulti && marcadorForm.quadra && (
+                          <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-800 font-bold">
+                            <span className="font-black">Lotes gerados ({lotesExpanded.length}):</span>{" "}
+                            {previewLotes.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}
+                            {previewExtra > 0 && ` ... +${previewExtra} mais`}
+                          </div>
                         )}
-                      </div>
+                        {/* Verificação individual por lote (Alt 2) */}
+                        {isMulti && marcadorForm.quadra && (() => {
+                          const existentes = lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l));
+                          if (!existentes.length) return null;
+                          return (
+                            <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
+                              Já existem no sistema: {existentes.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}. Serão vinculados com seu status atual.
+                            </div>
+                          );
+                        })()}
+                        <div>
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
+                          <select
+                            className="input-field"
+                            value={marcadorForm.status}
+                            onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
+                          >
+                            {/* Alt 3: opção "Status do sistema" automática quando lote já existe */}
+                            {hasSystemLot && systemStatus && (
+                              <option value="sistema">Status do sistema: {lotScriptStatusToLabel(systemStatus)}</option>
+                            )}
+                            <option value="disponivel">Disponível</option>
+                            <option value="reservado">Reservado</option>
+                            <option value="indisponivel">Indisponível</option>
+                          </select>
+                          {hasSystemLot && systemStatus && (
+                            <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
+                              Lote já cadastrado. Mantendo por padrão: {lotScriptStatusToLabel(systemStatus)}.
+                            </p>
+                          )}
+                        </div>
+                      </>
                     );
                   })()}
                   <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
+                  {/* Alt 4: Botão Cancelar sempre visível */}
                   <div className="grid grid-cols-2 gap-3">
                     <button onClick={async () => {
                       if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
-                      const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+                      // Alt 1&2: expande intervalos e verifica cada lote individualmente
+                      const lotes = expandLotesInput(marcadorForm.lote);
                       if (lotes.length === 1) {
                         const useSystemStatus = marcadorForm.status === "sistema";
                         const finalStatus = useSystemStatus ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : marcadorForm.status as MapaLoteStatus;
@@ -4326,15 +4388,28 @@ const LotDashboard = ({
                           setMarcadorFase("idle");
                           setMarcadorPonto1(null);
                           setMarcadorPanelPos(null);
+                          setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
                         }
                       } else {
+                        // Múltiplos lotes → vai para 2º ponto para definir posição final da linha
                         setMarcadorFase("aguardando_segundo");
                         setMarcadorPanelPos(null);
                       }
                     }} className="btn-primary">
-                      {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : hasConfiguredLot(localDev, marcadorForm.quadra, marcadorForm.lote) ? "Vincular lote existente" : "Adicionar"}
+                      {expandLotesInput(marcadorForm.lote).length > 1
+                        ? "Próximo: 2º ponto"
+                        : hasConfiguredLot(localDev, marcadorForm.quadra, expandLotesInput(marcadorForm.lote)[0] ?? marcadorForm.lote)
+                          ? "Vincular lote existente"
+                          : "Adicionar"}
                     </button>
-                    <button onClick={() => { setMarcadorFase("idle"); setMarcadorPonto1(null); setMarcadorPanelPos(null); }} className="btn-secondary">Cancelar</button>
+                    {/* Alt 4: Cancelar limpa tudo sem salvar */}
+                    <button onClick={() => {
+                      setMarcadorFase("idle");
+                      setMarcadorPonto1(null);
+                      setMarcadorPonto2Preview(null);
+                      setMarcadorPanelPos(null);
+                      setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+                    }} className="btn-secondary">Cancelar</button>
                   </div>
                 </div>
               </div>
