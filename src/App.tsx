@@ -2250,6 +2250,8 @@ const LotDashboard = ({
   const [mapFullscreen, setMapFullscreen] = useState(false);
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
+  // Imagem alta gerada em tempo real. Isso troca a renderização imediatamente no zoom/tela cheia, sem esperar persistência.
+  const [mapHighResDynamicSrc, setMapHighResDynamicSrc] = useState("");
   const HIGH_RES_ZOOM_THRESHOLD = 1.08;
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
@@ -2263,8 +2265,6 @@ const LotDashboard = ({
 
   // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
   const [mapActive, setMapActive] = useState(false);
-  // No PC, quando o mouse estiver sobre o mapa, a roda deve controlar somente o mapa (estilo Google Maps).
-  const mapPointerInsideRef = useRef(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const mapTouchRef = useRef<{
@@ -2299,6 +2299,7 @@ const LotDashboard = ({
     setLocalDev(dev);
     const incomingMarkerSize = Number((dev as any).mapaMarkerSizePercent ?? 100);
     if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
+    setMapHighResDynamicSrc((dev as any).mapaImagemHighResBase64 || "");
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
@@ -2340,9 +2341,15 @@ const LotDashboard = ({
 
   const setMapZoomSafely = (nextZoom: number) => {
     const clamped = Math.max(1, Math.min(5, nextZoom));
-    if (clamped > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+    if (clamped > HIGH_RES_ZOOM_THRESHOLD) {
+      void requestHighResolutionMap();
+    } else {
+      // Ao afastar, volta para a prévia leve e recalcula a escala sem pesar o app.
+      scheduleMapScaleUpdate(false);
+    }
     setMapZoom(clamped);
     setMapPan((prev) => clampMapPan(prev, clamped));
+    window.setTimeout(() => scheduleMapScaleUpdate(false), 120);
   };
 
   const zoomMapBy = (delta: number) => {
@@ -2365,7 +2372,7 @@ const LotDashboard = ({
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
-  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
+  const mapaImagemAlta = mapHighResDynamicSrc || (localDev as any).mapaImagemHighResBase64 || "";
   const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
   const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
 
@@ -2383,29 +2390,39 @@ const LotDashboard = ({
   };
 
   useEffect(() => {
-    const onGlobalMapWheel = (ev: WheelEvent) => {
-      // Captura em nível global para impedir Ctrl+scroll/scroll do navegador quando o mouse está sobre o mapa.
-      if (!mapPointerInsideRef.current) return;
+    const el = mapViewportRef.current;
+    if (!el) return;
+    const onNativeWheel = (ev: WheelEvent) => {
       if (!isEditingMap && !mapFullscreen) return;
-
+      // Impede zoom/scroll da página inteira quando o mouse está sobre o mapa.
       ev.preventDefault();
       ev.stopPropagation();
       setMapActive(true);
-      void requestHighResolutionMap();
-
       const delta = ev.deltaY < 0 ? 0.25 : -0.25;
-      setMapZoom((prevZoom) => {
-        const nextZoom = Math.max(1, Math.min(5, prevZoom + delta));
-        if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
-        setMapPan((prevPan) => clampMapPan(prevPan, nextZoom));
-        return nextZoom;
-      });
+      if (mapZoom + delta > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      setMapZoomSafely(mapZoom + delta);
     };
+    el.addEventListener("wheel", onNativeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onNativeWheel as any);
+  }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem, mapHighResDynamicSrc]);
 
-    window.addEventListener("wheel", onGlobalMapWheel, { capture: true, passive: false });
-    return () => window.removeEventListener("wheel", onGlobalMapWheel as any, { capture: true } as any);
-  }, [isEditingMap, mapFullscreen]);
 
+  useEffect(() => {
+    const el = mapViewportRef.current;
+    if (!el) return;
+    const preventMapTouchScroll = (ev: TouchEvent) => {
+      if (!isEditingMap && !mapFullscreen && !mapActive) return;
+      if ((ev.touches.length >= 2 || mapZoom > 1) && ev.cancelable) {
+        ev.preventDefault();
+      }
+    };
+    el.addEventListener("touchstart", preventMapTouchScroll, { passive: false });
+    el.addEventListener("touchmove", preventMapTouchScroll, { passive: false });
+    return () => {
+      el.removeEventListener("touchstart", preventMapTouchScroll as any);
+      el.removeEventListener("touchmove", preventMapTouchScroll as any);
+    };
+  }, [isEditingMap, mapFullscreen, mapActive, mapZoom]);
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap || mapEditTool !== "mover") return;
     e.preventDefault();
@@ -2424,7 +2441,6 @@ const LotDashboard = ({
     setMapActive(true);
     if (!mapActive && e.touches.length < 2) return;
     if (e.touches.length >= 2) {
-      e.preventDefault();
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
@@ -2437,7 +2453,6 @@ const LotDashboard = ({
       return;
     }
     if (mapZoom > 1 && e.touches.length === 1) {
-      e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
@@ -2454,7 +2469,6 @@ const LotDashboard = ({
     if (!mapActive) return;
     const gesture = mapTouchRef.current;
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
-      e.preventDefault();
       const distance = getTouchDistance(e.touches);
       const nextZoom = Math.max(1, Math.min(5, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
       if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
@@ -2463,7 +2477,6 @@ const LotDashboard = ({
       return;
     }
     if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
-      e.preventDefault();
       const nextPan = {
         x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
         y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
@@ -2541,7 +2554,10 @@ const LotDashboard = ({
   };
 
   const requestHighResolutionMap = async () => {
-    if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
+    if (mapHighResDynamicSrc || (localDev as any).mapaImagemHighResBase64 || mapHighResLoading) {
+      scheduleMapScaleUpdate(false);
+      return;
+    }
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
     if (!originalPdf) {
       scheduleMapScaleUpdate(false);
@@ -2552,6 +2568,8 @@ const LotDashboard = ({
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
       const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
+      // Troca a imagem imediatamente na tela cheia/edição/zoom; depois persiste no empreendimento.
+      setMapHighResDynamicSrc(highImage);
       persistDev({
         ...localDev,
         mapaImagemHighResBase64: highImage,
@@ -2559,6 +2577,7 @@ const LotDashboard = ({
         mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
       } as Empreendimento);
       window.setTimeout(() => scheduleMapScaleUpdate(false), 80);
+      window.setTimeout(() => scheduleMapScaleUpdate(false), 250);
     } catch (err) {
       console.error("Não foi possível gerar o mapa em alta resolução", err);
       setLotScriptMsg("Não foi possível gerar o mapa em alta resolução. O app continuará usando a prévia atual.");
@@ -2633,7 +2652,7 @@ const LotDashboard = ({
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleOrientationChange);
     };
-  }, [mapaImagem, mode, mapFullscreen, mapZoom]);
+  }, [mapaImagem, mode, mapFullscreen, mapZoom, mapHighResDynamicSrc]);
 
   const quadras = getQuadraList(localDev);
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
@@ -2792,6 +2811,7 @@ const LotDashboard = ({
           // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
+          setMapHighResDynamicSrc("");
           persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
@@ -2813,6 +2833,7 @@ const LotDashboard = ({
     }
     const reader = new FileReader();
     reader.onload = () => {
+      setMapHighResDynamicSrc("");
       persistDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
@@ -3574,13 +3595,6 @@ const LotDashboard = ({
   // PREVIEW BOLINHAS PARA SEQUÊNCIA
   // ──────────────────────────────────────────────
   // Preview bolinhas para o novo fluxo de marcador multi-lote
-
-  useEffect(() => {
-    if ((isEditingMap || mapFullscreen) && mapZoom > HIGH_RES_ZOOM_THRESHOLD) {
-      void requestHighResolutionMap();
-    }
-  }, [isEditingMap, mapFullscreen, mapZoom]);
-
   const renderSeqPreviewBalls = () => {
     // Novo fluxo: marcador multi-lote aguardando segundo ponto
     if (mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && marcadorPonto2Preview) {
@@ -3694,8 +3708,6 @@ const LotDashboard = ({
             )}
             <div
               ref={mapViewportRef}
-              onPointerEnter={() => { mapPointerInsideRef.current = true; }}
-              onPointerLeave={() => { mapPointerInsideRef.current = false; }}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
@@ -3750,7 +3762,7 @@ const LotDashboard = ({
               className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
-              <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+              <img key={deveUsarMapaAlta ? "mapa-alta" : "mapa-leve"} ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
 
               {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
@@ -4180,8 +4192,6 @@ const LotDashboard = ({
 
             <div
               ref={mapViewportRef}
-              onPointerEnter={() => { mapPointerInsideRef.current = true; }}
-              onPointerLeave={() => { mapPointerInsideRef.current = false; }}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
@@ -4204,7 +4214,7 @@ const LotDashboard = ({
                   willChange: "transform",
                 }}
               >
-                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                <img key={deveUsarMapaAlta ? "mapa-full-alta" : "mapa-full-leve"} ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
