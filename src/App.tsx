@@ -192,6 +192,33 @@ function normalizeLotKeyPart(value?: string | number | null): string {
   return normalizeLotText(value).toUpperCase();
 }
 
+/**
+ * Quebra uma string de lotes em array de lotes individuais.
+ * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
+ */
+function parseLotesInput(input: string): string[] {
+  return input
+    .split(/[,;]|\se\s/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * A partir dos campos quadra e lote (que podem ser múltiplos),
+ * retorna pares [{quadra, lote}] associando pela ordem quando ambos são múltiplos.
+ * Se quadra for única, aplica a mesma quadra para todos os lotes.
+ */
+function parseQuadrasLotesInput(quadraInput: string, loteInput: string): { quadra: string; lote: string }[] {
+  const quadras = parseLotesInput(quadraInput);
+  const lotes = parseLotesInput(loteInput);
+  if (quadras.length === 0 || lotes.length === 0) return [];
+  if (quadras.length === 1) {
+    return lotes.map((lote) => ({ quadra: quadras[0], lote }));
+  }
+  // Associação por ordem (A,B com 9,8 → A/9, B/8)
+  return lotes.map((lote, i) => ({ quadra: quadras[i] ?? quadras[quadras.length - 1], lote }));
+}
+
 function getQuadraList(dev?: Empreendimento | null): string[] {
   return (dev?.quadras || "")
     .split(",")
@@ -207,48 +234,6 @@ function findQuadraName(dev: Empreendimento, quadra: string): string | null {
 function getLotInfoKey(quadra: string, lote: string): string {
   return `${normalizeLotKeyPart(quadra)}-${normalizeLotKeyPart(lote)}`;
 }
-
-
-function splitMultiLotValue(value?: string | number | null): string[] {
-  return String(value ?? "")
-    .split(/\s*(?:,|;|\be\b)\s*/i)
-    .map((item) => item.trim())
-    .filter(Boolean);
-}
-
-function parseQuadraLotePairs(quadraRaw?: string | number | null, loteRaw?: string | number | null): { quadra: string; lote: string }[] {
-  const quadraText = String(quadraRaw ?? "").trim();
-  const loteText = String(loteRaw ?? "").trim();
-
-  // Formato avançado opcional: "A: 1,2,3; B: 1,3"
-  const groupedSource = loteText.includes(":") ? loteText : "";
-  if (groupedSource) {
-    const pairs: { quadra: string; lote: string }[] = [];
-    groupedSource.split(";").forEach((group) => {
-      const [q, lots] = group.split(":");
-      const quadra = (q || "").trim().toUpperCase();
-      splitMultiLotValue(lots || "").forEach((lote) => {
-        if (quadra && lote) pairs.push({ quadra, lote });
-      });
-    });
-    if (pairs.length > 0) return pairs;
-  }
-
-  const quadras = splitMultiLotValue(quadraText).map((q) => q.toUpperCase());
-  const lotes = splitMultiLotValue(loteText);
-
-  if (lotes.length === 0) return [];
-  return lotes.map((lote, index) => ({
-    quadra: quadras[index] || quadras[0] || "",
-    lote,
-  })).filter((item) => item.quadra && item.lote);
-}
-
-function getSaleLotKeys(venda: Partial<Venda>): string[] {
-  return parseQuadraLotePairs(venda.quadra, venda.numeroLote)
-    .map(({ quadra, lote }) => getLotInfoKey(quadra, lote));
-}
-
 
 type MapaLoteStatus = "disponivel" | "reservado" | "indisponivel";
 
@@ -296,9 +281,10 @@ function getLotStatusForSale(
     (v) =>
       v.id !== ignoreVendaId &&
       v.empreendimentoId === dev.id &&
+      normalizeLotKeyPart(v.quadra) === normalizeLotKeyPart(q) &&
+      normalizeLotKeyPart(v.numeroLote) === normalizeLotKeyPart(l) &&
       v.status !== "cancelado" &&
-      v.status !== "rascunho" &&
-      getSaleLotKeys(v).includes(getLotInfoKey(q, l))
+      v.status !== "rascunho"
   );
 
   if (hasActiveSale || info?.status === "vendido") return { exists: hasConfiguredLot(dev, q, l), status: "vendido" };
@@ -321,7 +307,8 @@ function findVendaAtivaDoLote(
     (s) =>
       s.empreendimentoId === empreendimentoId &&
       isVendaAtiva(s) &&
-      getSaleLotKeys(s).includes(getLotInfoKey(quadra, lote)),
+      normalizeLotKeyPart(s.quadra) === normalizeLotKeyPart(quadra) &&
+      normalizeLotKeyPart(s.numeroLote) === normalizeLotKeyPart(lote),
   );
 }
 
@@ -368,7 +355,7 @@ function getActiveSaleLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<st
   const keys = new Set<string>();
   vendas.forEach((v) => {
     if (v.empreendimentoId === dev.id && isVendaAtiva(v) && v.quadra && v.numeroLote) {
-      getSaleLotKeys(v).forEach((key) => keys.add(key));
+      keys.add(getLotInfoKey(v.quadra, v.numeroLote));
     }
   });
   return keys;
@@ -504,7 +491,7 @@ function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
       v.quadra &&
       v.numeroLote
     ) {
-      getSaleLotKeys(v).forEach((key) => soldKeys.add(key));
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
     }
   });
   Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
@@ -528,7 +515,7 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
       v.quadra &&
       v.numeroLote
     ) {
-      getSaleLotKeys(v).forEach((key) => soldKeys.add(key));
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
     }
   });
 
@@ -545,12 +532,7 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
   const lotesVendidos = soldKeys.size;
   const lotesReservados = reservados.size;
   const lotesIndisponiveis = indisponiveis.size;
-  const baseDisponiveis = configuredKeys.size > 0
-    ? Array.from(configuredKeys).filter(
-        (key) => !soldKeys.has(key) && !reservados.has(key) && !indisponiveis.has(key)
-      ).length
-    : Math.max(0, totalLotes - lotesVendidos - lotesReservados - lotesIndisponiveis);
-  const lotesDisponiveis = Math.max(0, baseDisponiveis);
+  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesReservados - lotesIndisponiveis);
 
   return {
     ...dev,
@@ -720,24 +702,13 @@ function updateLoteStatusInEmpreendimento(
 }
 
 function addOrUpdateSoldLotFromSale(dev: Empreendimento, venda: Venda, vendas: Venda[]): Empreendimento {
-  const pares = parseQuadraLotePairs(venda.quadra, venda.numeroLote);
-  if (pares.length === 0) return recalcularEstatisticasEmpreendimento(dev, vendas);
-
-  const ruas = splitMultiLotValue((venda as any).rua || "");
-  const tamanhos = splitMultiLotValue((venda as any).tamanho || (venda as any).metragem || "");
-  let nextDev = dev;
-
-  pares.forEach(({ quadra, lote }, index) => {
-    nextDev = updateLoteStatusInEmpreendimento(nextDev, vendas, quadra, lote, "vendido", {
-      venda,
-      origem: "venda",
-      rua: ruas[index] || ruas[0] || venda.rua || "",
-      tamanho: tamanhos[index] || tamanhos[0] || (venda as any).tamanho || "",
-      removerVinculoAtivo: false,
-    });
+  if (!venda.quadra || !venda.numeroLote) return recalcularEstatisticasEmpreendimento(dev, vendas);
+  return updateLoteStatusInEmpreendimento(dev, vendas, venda.quadra, venda.numeroLote, "vendido", {
+    venda,
+    origem: "venda",
+    rua: venda.rua || "",
+    removerVinculoAtivo: false,
   });
-
-  return recalcularEstatisticasEmpreendimento(nextDev, vendas);
 }
 
 function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
@@ -4272,7 +4243,10 @@ const EmpreendimentosSection = ({
                 </div>
                 <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
                   <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-0.5">Disponíveis</p>
-                  <p className="text-lg font-display font-bold text-emerald-700">{Math.max(0, dev.totalLotes - dev.lotesVendidos)}</p>
+                  <p className="text-lg font-display font-bold text-emerald-700">{(() => {
+                    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+                    return Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos));
+                  })()}</p>
                 </div>
                 <div className="bg-white rounded-xl p-2.5 border border-slate-100">
                   <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total</p>
@@ -5779,54 +5753,106 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
       return;
     }
 
-    const cliente: Cliente = normalizarNomeObrigatorio({
+    // ── Multi-lote: quebrar lote e quadra por separadores ──────────────────
+    const pares = parseQuadrasLotesInput(
+      String(saleData.quadra || ""),
+      String(saleData.numeroLote || "")
+    );
+
+    if (pares.length === 0) {
+      alert("Informe ao menos uma quadra e um lote.");
+      return;
+    }
+
+    // Se for apenas 1 par, comportamento original (incluindo verificações de status)
+    if (pares.length === 1) {
+      const { quadra, lote } = pares[0];
+      const cliente: Cliente = normalizarNomeObrigatorio({
+        ...(clientData as Cliente),
+        estado: (clientData.estado || "").toUpperCase(),
+        id: Date.now().toString(),
+        dataCadastro: new Date().toISOString(),
+      } as Cliente);
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (Date.now() + 1).toString(),
+        numeroContrato: `CONT-${Date.now()}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const lotSituation = getLotStatusForSale(dev, quadra, lote, sales, editingEntry?.venda?.id);
+      if (lotSituation.status === "vendido") {
+        alert("Este lote já está vendido/vinculado a uma venda. Verifique a quadra e o lote antes de continuar.");
+        return;
+      }
+      if (lotSituation.status === "indisponivel") {
+        alert("Este lote está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.");
+        return;
+      }
+      if (!lotSituation.exists) {
+        setPendingMissingLotSale({ venda, cliente });
+        return;
+      }
+      finalizeVenda(venda, cliente);
+      return;
+    }
+
+    // Múltiplos lotes: validar cada um individualmente antes de salvar
+    const erros: string[] = [];
+    for (const { quadra, lote } of pares) {
+      const sit = getLotStatusForSale(dev, quadra, lote, sales);
+      if (sit.status === "vendido") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} já está vendido.`);
+      } else if (sit.status === "indisponivel") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} está indisponível.`);
+      } else if (!sit.exists) {
+        erros.push(`Quadra ${quadra} / Lote ${lote} não cadastrado no empreendimento.`);
+      }
+    }
+    if (erros.length > 0) {
+      alert("Problemas encontrados:\n\n" + erros.join("\n"));
+      return;
+    }
+
+    // Salvar uma venda por lote
+    const clienteBase: Cliente = normalizarNomeObrigatorio({
       ...(clientData as Cliente),
       estado: (clientData.estado || "").toUpperCase(),
       id: Date.now().toString(),
       dataCadastro: new Date().toISOString(),
     } as Cliente);
-    const venda: Venda = {
-      ...(saleData as Venda),
-      id: (Date.now() + 1).toString(),
-      numeroContrato: `CONT-${Date.now()}`,
-      clienteId: cliente.id,
-      clienteNome: cliente.nome,
-      empreendimentoNome: dev?.nome || "",
-      valorParcela: saleData.valorParcela || 0,
-      dataVenda: new Date().toISOString(),
-      status: "pendente",
-      comprador2: hasSecondBuyer ? secondBuyerData : undefined,
-    };
-    const paresVenda = parseQuadraLotePairs(venda.quadra, venda.numeroLote);
-    for (const par of paresVenda) {
-      const lotSituation = getLotStatusForSale(
-        dev,
-        par.quadra,
-        par.lote,
-        sales,
-        editingEntry?.venda?.id
-      );
 
-      if (lotSituation.status === "vendido") {
-        alert(`Quadra ${par.quadra} / Lote ${par.lote} já está vendido/vinculado a uma venda. Verifique antes de continuar.`);
-        return;
-      }
-
-      if (lotSituation.status === "indisponivel") {
-        alert(`Quadra ${par.quadra} / Lote ${par.lote} está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.`);
-        return;
-      }
-
-      if (!lotSituation.exists) {
-        setPendingMissingLotSale({
-          venda: { ...venda, quadra: par.quadra, numeroLote: par.lote },
-          cliente,
-        });
-        return;
-      }
+    let lastVenda: Venda | null = null;
+    pares.forEach(({ quadra, lote }, idx) => {
+      const ts = Date.now() + idx * 2;
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (ts + 1).toString(),
+        numeroContrato: `CONT-${ts}`,
+        clienteId: clienteBase.id,
+        clienteNome: clienteBase.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const saved = onSaveVenda(venda, clienteBase);
+      lastVenda = saved;
+    });
+    if (lastVenda) {
+      setPendingMissingLotSale(null);
+      setLastSavedVenda(lastVenda);
     }
-
-    finalizeVenda(venda, cliente);
   };
 
   if (lastSavedVenda) {
