@@ -1,3 +1,10 @@
+// ATUALIZAÇÃO MAPA
+// - Bolinhas sem número no modo visualização/exportação
+// - Números e quadra aparecem no modo edição
+// - Tamanho das bolinhas configurável por porcentagem no menu Editar mapa
+// - Sair da edição somente ao clicar em Salvar / OK
+// - Nome exportado: empreendimento + dia da semana + data + hora
+
 import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
@@ -1918,6 +1925,13 @@ const LotDashboard = ({
   const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
 
+  // Tamanho visual das bolinhas configurável em porcentagem.
+  // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
+  const [markerSizePercent, setMarkerSizePercent] = useState<number>(() => {
+    const initial = Number((dev as any).mapaMarkerSizePercent ?? 100);
+    return Number.isFinite(initial) ? Math.max(40, Math.min(220, initial)) : 100;
+  });
+
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
   const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
@@ -1953,6 +1967,8 @@ const LotDashboard = ({
 
   useEffect(() => {
     setLocalDev(dev);
+    const incomingMarkerSize = Number((dev as any).mapaMarkerSizePercent ?? 100);
+    if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
   }, [dev]);
@@ -2058,20 +2074,40 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // TAMANHO DAS BOLINHAS
   // ──────────────────────────────────────────────
-  const getBallBasePixelSize = () => ({ size: 18, font: 7 });
+  const getBallBasePixelSize = () => {
+    const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+    return {
+      size: Math.round(18 * pct),
+      font: Math.max(6, Math.round(7 * pct)),
+    };
+  };
 
   const getBallPixelSize = () => {
-    const base = getBallBasePixelSize();
-    if (typeof window !== "undefined" && window.innerWidth < 640) {
-      const mobileSize = Math.round(base.size * 0.38);
-      return { size: Math.max(7, mobileSize), font: Math.max(5, Math.round(base.font * 0.6)) };
-    }
-    return base;
+    // Tamanho fixo em px: não depende do zoom/tela e não altera a posição.
+    return getBallBasePixelSize();
   };
 
   // ──────────────────────────────────────────────
   // DOWNLOAD IMAGEM/PDF
   // ──────────────────────────────────────────────
+  const limparNomeArquivoMapa = (value: string) =>
+    (value || "EMPREENDIMENTO")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .toUpperCase();
+
+  const getNomeArquivoMapaExportado = (ext: "png" | "pdf") => {
+    const now = new Date();
+    const diaSemana = limparNomeArquivoMapa(now.toLocaleDateString("pt-BR", { weekday: "long" }));
+    const data = now.toLocaleDateString("pt-BR").replace(/\//g, "-");
+    const hora = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "-");
+    const empreendimento = limparNomeArquivoMapa(localDev.nome || "EMPREENDIMENTO");
+    return `${empreendimento}_${diaSemana}_${data}_${hora}.${ext}`;
+  };
+
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
       if (!mapaImagem) {
@@ -2100,10 +2136,8 @@ const LotDashboard = ({
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
           ctx.lineWidth = Math.max(3 * scale, 2); ctx.strokeStyle = "#ffffff"; ctx.stroke();
-          ctx.fillStyle = reservado ? "#0f172a" : "#ffffff";
-          ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
-          ctx.textAlign = "center"; ctx.textBaseline = "middle";
-          ctx.fillText(String(ponto.lote || ""), x, y);
+          // Exportação/visualização impressa: bolinha limpa, sem número.
+          // Os números aparecem somente no modo Editar mapa.
         });
         resolve(canvas);
       };
@@ -2116,7 +2150,7 @@ const LotDashboard = ({
     try {
       const canvas = await gerarCanvasMapaInterativo();
       const link = document.createElement("a");
-      link.download = `mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.png`;
+      link.download = getNomeArquivoMapaExportado("png");
       link.href = canvas.toDataURL("image/png");
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
     } catch (error: any) {
@@ -2141,7 +2175,7 @@ const LotDashboard = ({
       const x = (pageWidth - imgWidth) / 2;
       const y = (pageHeight - imgHeight) / 2;
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
-      pdf.save(`mapa-${(localDev.nome || "empreendimento").toLowerCase().replace(/[^a-z0-9]+/gi, "-")}.pdf`);
+      pdf.save(getNomeArquivoMapaExportado("pdf"));
     } catch (error: any) {
       alert(error?.message || "Não foi possível baixar o mapa em PDF.");
     }
@@ -2652,7 +2686,10 @@ const LotDashboard = ({
   // SALVAR / SAIR DO MODO EDIÇÃO
   // ──────────────────────────────────────────────
   const salvarEdicaoMapa = () => {
-    if (draggingId) persistDev(localDev);
+    persistDev({
+      ...localDev,
+      mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+    } as Empreendimento);
     setDraggingId(null);
     setDragStart(null);
     setSelectedPoint(null);
@@ -2852,7 +2889,7 @@ const LotDashboard = ({
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                   >
-                    {ponto.lote}
+                    {isEditingMap ? ponto.lote : null}
                   </button>
                 );
               })}
@@ -2931,6 +2968,26 @@ const LotDashboard = ({
                     )}
                   </div>
                 )}
+
+                {/* Tamanho das bolinhas */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tamanho das bolinhas</span>
+                    <span className="text-xs font-black text-slate-700">{markerSizePercent}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={40}
+                    max={220}
+                    step={5}
+                    value={markerSizePercent}
+                    onChange={(e) => setMarkerSizePercent(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Ajusta apenas o tamanho visual. A posição atual das bolinhas não é alterada.
+                  </p>
+                </div>
 
                 {/* Carregar mapa */}
                 <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
