@@ -145,6 +145,33 @@ function rep(xml: string, search: string, replacement: string): string {
   }
 }
 
+
+function escapeRegExpLocal(texto: string): string {
+  return String(texto || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function aplicarNegritoDocx(xml: string, texto: string): string {
+  const alvo = xmlEscape(String(texto || "").trim());
+  if (!alvo) return xml;
+  const pattern = new RegExp(`(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)`, "g");
+  return xml.replace(
+    pattern,
+    `</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>$2</w:t></w:r><w:r><w:t>`
+  );
+}
+
+function aplicarNegritosContratoParcelado(xml: string, vendedorNome: string, compradorNome: string, vendedorPapel: string, compradorPapel: string): string {
+  const nomesCompradores = String(compradorNome || "").split(/\s*\/\s*/).map((v) => v.trim()).filter(Boolean);
+  const nomesVendedores = String(vendedorNome || "").split(/\s*\/\s*/).map((v) => v.trim()).filter(Boolean);
+  [...nomesVendedores, ...nomesCompradores, vendedorPapel, compradorPapel, "VENDEDOR", "VENDEDORA", "COMPRADOR", "COMPRADORA", "COMPRADOR(A)"]
+    .filter(Boolean)
+    .forEach((texto) => {
+      xml = aplicarNegritoDocx(xml, texto.toUpperCase());
+      xml = aplicarNegritoDocx(xml, texto);
+    });
+  return xml;
+}
+
 // ─── Valores do template original ────────────────────────────────────────────
 // (contrato_template.docx = contrato da Monique / DEUS DA PAZ)
 
@@ -429,6 +456,19 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   if (corretorXml) {
     xml = xml.replace("<w:sectPr", corretorXml + "<w:sectPr");
   }
+
+
+  // ── Negrito obrigatório em nomes e papéis ───────────────────────────────────
+  xml = aplicarNegritosContratoParcelado(
+    xml,
+    vendedor.nome,
+    cliente.nome,
+    generoVendedor.papel,
+    generoComprador.papel
+  );
+
+  // ── Correção final de espaços grudados ──────────────────────────────────────
+  xml = corrigirEspacosSimplesmente(xml);
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
