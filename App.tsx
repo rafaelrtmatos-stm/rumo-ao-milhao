@@ -2218,7 +2218,7 @@ const LotDashboard = ({
   const [marcadorFase, setMarcadorFase] = useState<"idle" | "formulario" | "aguardando_segundo">("idle");
   const [marcadorPonto1, setMarcadorPonto1] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus | "sistema", observacao: "" });
   const [lotScriptText, setLotScriptText] = useState("");
   const [lotScriptMsg, setLotScriptMsg] = useState("");
 
@@ -2248,9 +2248,8 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
+  // Qualidade do mapa: a prévia leve pode existir, mas visualização/edição/tela cheia usam a versão alta fixa quando disponível.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
-  const [mapHighResPreview, setMapHighResPreview] = useState<string>("");
   const HIGH_RES_ZOOM_THRESHOLD = 1.08;
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
@@ -2300,7 +2299,6 @@ const LotDashboard = ({
     if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
-    setMapHighResPreview((dev as any).mapaImagemHighResBase64 || "");
   }, [dev]);
 
   useEffect(() => {
@@ -2365,9 +2363,11 @@ const LotDashboard = ({
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
-  const mapaImagemAlta = mapHighResPreview || (localDev as any).mapaImagemHighResBase64 || "";
-  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
-  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
+  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
+  // REGRA NOVA: quando houver alta resolução, usar sempre no mapa aberto/edição/tela cheia.
+  // A prévia leve fica apenas como fallback e para cards/listas fora deste visualizador.
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta);
+  const mapaImagem = mapaImagemAlta || mapaImagemLeve;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -2399,34 +2399,6 @@ const LotDashboard = ({
     return () => el.removeEventListener("wheel", onNativeWheel as any);
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
-  useEffect(() => {
-    const el = mapViewportRef.current;
-    if (!el) return;
-
-    const shouldLockTouch = (ev: TouchEvent) => {
-      if (!isEditingMap && !mapFullscreen && !mapActive) return false;
-      if (ev.touches.length >= 2) return true;
-      if (mapZoom > 1) return true;
-      return false;
-    };
-
-    const onNativeTouchStart = (ev: TouchEvent) => {
-      if (shouldLockTouch(ev)) ev.preventDefault();
-    };
-
-    const onNativeTouchMove = (ev: TouchEvent) => {
-      if (shouldLockTouch(ev)) ev.preventDefault();
-    };
-
-    el.addEventListener("touchstart", onNativeTouchStart, { passive: false });
-    el.addEventListener("touchmove", onNativeTouchMove, { passive: false });
-
-    return () => {
-      el.removeEventListener("touchstart", onNativeTouchStart as any);
-      el.removeEventListener("touchmove", onNativeTouchMove as any);
-    };
-  }, [isEditingMap, mapFullscreen, mapActive, mapZoom, mapaImagem]);
-
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap || mapEditTool !== "mover") return;
     e.preventDefault();
@@ -2445,7 +2417,7 @@ const LotDashboard = ({
     setMapActive(true);
     if (!mapActive && e.touches.length < 2) return;
     if (e.touches.length >= 2) {
-      // preventDefault é tratado por listener nativo passive:false no viewport do mapa.
+      e.preventDefault();
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
@@ -2458,7 +2430,7 @@ const LotDashboard = ({
       return;
     }
     if (mapZoom > 1 && e.touches.length === 1) {
-      // preventDefault é tratado por listener nativo passive:false no viewport do mapa.
+      e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
@@ -2475,6 +2447,7 @@ const LotDashboard = ({
     if (!mapActive) return;
     const gesture = mapTouchRef.current;
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
+      e.preventDefault();
       const distance = getTouchDistance(e.touches);
       const nextZoom = Math.max(1, Math.min(5, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
       if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
@@ -2483,6 +2456,7 @@ const LotDashboard = ({
       return;
     }
     if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
+      e.preventDefault();
       const nextPan = {
         x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
         y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
@@ -2560,13 +2534,7 @@ const LotDashboard = ({
   };
 
   const requestHighResolutionMap = async () => {
-    const cachedHigh = mapHighResPreview || (localDev as any).mapaImagemHighResBase64;
-    if (cachedHigh) {
-      if (!mapHighResPreview) setMapHighResPreview(cachedHigh);
-      scheduleMapScaleUpdate(false);
-      return;
-    }
-    if (mapHighResLoading) return;
+    if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
     if (!originalPdf) {
       scheduleMapScaleUpdate(false);
@@ -2577,7 +2545,6 @@ const LotDashboard = ({
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
       const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
       const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
-      setMapHighResPreview(highImage);
       persistDev({
         ...localDev,
         mapaImagemHighResBase64: highImage,
@@ -2635,9 +2602,9 @@ const LotDashboard = ({
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
 
-    // Alta resolução sob demanda: só renderiza quando houver aproximação/zoom.
-    // Em zoom normal usa a prévia leve para não pesar o app.
-    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
+    // REGRA NOVA: ao abrir o mapa para visualizar/editar/tela cheia, garantir a versão alta fixa.
+    // Não depender de scroll, pinch ou botão de zoom para renderizar qualidade.
+    if ((mode === "mapa" || mapFullscreen || isEditingMap) && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
       void requestHighResolutionMap();
     }
 
@@ -2814,19 +2781,22 @@ const LotDashboard = ({
         try {
           const originalBuffer = reader.result as ArrayBuffer;
           const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
-          // Prévia leve para o mapa abrir rápido no card.
-          // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
+          // Prévia leve para cards/listas + versão alta fixa para visualização/edição/tela cheia.
+          // A versão alta é gerada no upload para não depender do zoom/renderização posterior.
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
+          const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+          const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
+          const highImage = await renderPdfPageToPng(originalBuffer, highScale);
           persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
-            mapaImagemHighResBase64: "",
+            mapaImagemHighResBase64: highImage,
             mapaPdfOriginalBase64: pdfOriginalBase64,
             mapaPdfOriginalName: file.name,
             mapaImagemUrl: "",
             mapaPontos: mapaPontos,
-            mapaAltaResolucao: false,
+            mapaAltaResolucao: true,
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
@@ -2842,7 +2812,7 @@ const LotDashboard = ({
       persistDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
-        mapaImagemHighResBase64: "",
+        mapaImagemHighResBase64: String(reader.result || ""),
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
         mapaImagemUrl: "",
@@ -2980,7 +2950,7 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // CRIAR/PERSISTIR BOLINHA
   // ──────────────────────────────────────────────
-  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
+  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus | "sistema"; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
@@ -2998,32 +2968,41 @@ const LotDashboard = ({
 
     const quadraSummary = getQuadraCadastroSummary(localDev, quadra);
     const lotExists = hasConfiguredLot(localDev, quadra, lote);
-    let finalStatus: MapaLoteStatus = raw.status;
-    let finalObs = raw.observacao || "";
+    const existingInfoForChoice = localDev.lotesInfo?.[key];
+    const existingStatusForChoice = normalizeMapaStatus(existingInfoForChoice?.status || "disponivel");
+    let finalStatus: MapaLoteStatus = raw.status === "sistema" ? existingStatusForChoice : raw.status;
+    let finalObs = raw.status === "sistema" ? (existingInfoForChoice?.observacao || raw.observacao || "") : (raw.observacao || "");
 
     if (quadraSummary.exists && !raw.moveExisting) {
       const infoTexto = quadraSummary.count > 0
         ? `Quadra ${quadra} já possui ${quadraSummary.count} lote(s) cadastrado(s), de ${quadraSummary.first} até ${quadraSummary.last}.`
         : `Quadra ${quadra} já existe no sistema.`;
       if (lotExists) {
-        const existingInfo = localDev.lotesInfo?.[key];
-        const existingStatus = normalizeMapaStatus(existingInfo?.status || "disponivel");
-        const escolha = window.prompt(
-          `${infoTexto}\n\nO lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatus)}.\n\nEscolha antes de salvar a bolinha:\n1 = Vincular e obedecer dados do sistema\n2 = Vincular e atualizar com o status que estou marcando agora (${lotScriptStatusToLabel(raw.status)})\n3 = Manter como está no sistema\n4 = Cancelar`,
-          "1"
-        );
-        if (escolha === null || escolha.trim() === "4") return false;
-        if (escolha.trim() === "1" || escolha.trim() === "3") {
-          finalStatus = existingStatus;
-          finalObs = existingInfo?.observacao || finalObs;
-        }
-        if (escolha.trim() !== "1" && escolha.trim() !== "2" && escolha.trim() !== "3") {
-          alert("Opção inválida. A bolinha não foi salva.");
-          return false;
+        // REGRA: se o lote já existir no Gerenciador de Lotes, nunca duplicar.
+        // A bolinha deve ser vinculada ao lote existente. O usuário pode escolher no formulário:
+        // Disponível, Indisponível, Reservado ou Manter status do sistema.
+        if (raw.status === "sistema") {
+          finalStatus = existingStatusForChoice;
+          finalObs = existingInfoForChoice?.observacao || finalObs;
+        } else {
+          const confirmarAtualizacao = window.confirm(
+            `${infoTexto}
+
+O lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatusForChoice)}.
+
+Você escolheu marcar como ${lotScriptStatusToLabel(raw.status)}.
+
+OK = vincular a bolinha e atualizar o status.
+Cancelar = não salvar.`
+          );
+          if (!confirmarAtualizacao) return false;
         }
       } else {
         const add = window.confirm(
-          `${infoTexto}\n\nO lote ${lote} ainda não existe nesta quadra.\nDeseja criar/complementar esse lote e vincular a bolinha?`
+          `${infoTexto}
+
+O lote ${lote} ainda não existe nesta quadra.
+Deseja criar/complementar esse lote e vincular a bolinha?`
         );
         if (!add) return false;
       }
@@ -3221,7 +3200,7 @@ const LotDashboard = ({
         criarBolinhasSequencia(
           marcadorPonto1!,
           { xPercent, yPercent },
-          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status, observacao: marcadorForm.observacao }
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: (marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status) as MapaLoteStatus, observacao: marcadorForm.observacao }
         );
         // Não sai da edição — apenas reseta para próximo marcador
         setMarcadorFase("idle");
@@ -3708,7 +3687,7 @@ const LotDashboard = ({
             )}
             {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
               <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
-                <span>{mapHighResLoading ? "Gerando mapa em alta resolução..." : "Prévia leve ativa. A alta resolução carrega ao aproximar; ao afastar, volta para a versão leve."}</span>
+                <span>{mapHighResLoading ? "Preparando mapa em alta resolução..." : "Mapa em prévia leve. A versão em alta resolução será preparada automaticamente para visualização e edição."}</span>
               </div>
             )}
             <div
@@ -3813,8 +3792,8 @@ const LotDashboard = ({
             </div>
             {(isEditingMap || mapFullscreen) && (
               <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); setMapActive(true); void requestHighResolutionMap(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); setMapActive(true); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
               </div>
             )}
             </div>
@@ -4113,7 +4092,7 @@ const LotDashboard = ({
                     return (
                       <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold leading-relaxed">
                         Quadra {marcadorForm.quadra} já cadastrada{summary.count ? ` · lotes ${summary.first} até ${summary.last} (${summary.count})` : ""}.
-                        <br />Use <span className="uppercase">Vincular lote existente</span> para aproveitar os dados do sistema e evitar duplicidade.
+                        <br />Use <span className="uppercase">Manter status do sistema</span> para criar a bolinha usando o status já cadastrado e evitar duplicidade.
                       </div>
                     );
                   })()}
@@ -4133,10 +4112,13 @@ const LotDashboard = ({
                     value={marcadorForm.lote}
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
-                  <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus })}>
+                  <select className="input-field" value={marcadorForm.status} onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}>
+                    {hasConfiguredLot(localDev, marcadorForm.quadra, marcadorForm.lote) && (
+                      <option value="sistema">Manter status do sistema</option>
+                    )}
                     <option value="disponivel">Disponível</option>
-                    <option value="reservado">Reservado</option>
                     <option value="indisponivel">Indisponível</option>
+                    <option value="reservado">Reservado</option>
                   </select>
                   <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
                   <div className="grid grid-cols-2 gap-3">
@@ -4245,8 +4227,8 @@ const LotDashboard = ({
                 })}
               </div>
               <div className="absolute bottom-4 right-4 z-[10001] flex flex-col gap-2">
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); setMapActive(true); void requestHighResolutionMap(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); setMapActive(true); zoomMapBy(-0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">−</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">−</button>
               </div>
             </div>
           </div>
