@@ -2947,6 +2947,7 @@ const LotDashboard = ({
             <span className="sm:hidden">Novo</span>
           </button>
         </div>
+      )}
       </div>
 
       {/* Filter & Sort bar */}
