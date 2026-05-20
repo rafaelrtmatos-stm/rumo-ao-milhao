@@ -9066,7 +9066,7 @@ VENDEDOR: ${venda.vendedor}`;
               <p className="font-display font-bold text-primary-main text-lg">
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </p>
-              <div className="grid grid-cols-4 gap-2">
+              <div className="grid grid-cols-5 gap-2">
                 <button
                   onClick={() => handleOpenGerarContratoForVenda(venda)}
                   title="Ver contrato"
@@ -9074,6 +9074,14 @@ VENDEDOR: ${venda.vendedor}`;
                 >
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                   <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
+                </button>
+                <button
+                  onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                  title="Gerar recibo"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all"
+                >
+                  <FileCheck size={20} />
+                  <span className="text-[9px] font-bold uppercase">Recibo</span>
                 </button>
                 <button
                   onClick={() => copyResumoVenda(venda)}
@@ -9149,6 +9157,14 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                     {venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}
+                  </button>
+                  <button
+                    onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                    className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
+                    title="Gerar recibo"
+                  >
+                    <FileCheck size={15} />
+                    Recibo
                   </button>
                   <button
                     onClick={() => copyResumoVenda(venda)}
@@ -9232,7 +9248,7 @@ VENDEDOR: ${venda.vendedor}`;
       })()}
 
       <AnimatePresence>
-        {selectedVenda && (
+        {selectedVenda && !showReciboModal && (
           <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 lg:p-8 bg-slate-900/40 backdrop-blur-md no-print">
             <motion.div
               initial={{ opacity: 0, y: 50 }}
@@ -9272,7 +9288,7 @@ VENDEDOR: ${venda.vendedor}`;
                     <X size={22} />
                   </button>
                 </div>
-                {/* Botões da visualização final: Voltar + PDF + DOCX + Imprimir + Editar + OK */}
+                {/* Botões da visualização final: Voltar + DOCX + Recibo + Editar + OK */}
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={() => setSelectedVenda(null)}
@@ -9280,14 +9296,6 @@ VENDEDOR: ${venda.vendedor}`;
                   >
                     <ChevronLeft size={17} />
                     Voltar
-                  </button>
-                  <button
-                    onClick={handleDownloadPdfContrato}
-                    disabled={downloadingPdf}
-                    className="btn-secondary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
-                    title="Baixar PDF do contrato"
-                  >
-                    {downloadingPdf ? "Gerando..." : <><FileDown size={17} /> PDF</>}
                   </button>
                   <button
                     onClick={handleDownloadDocx}
@@ -9298,12 +9306,12 @@ VENDEDOR: ${venda.vendedor}`;
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
                   <button
-                    onClick={() => window.print()}
+                    onClick={() => setShowReciboModal(true)}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
-                    title="Imprimir contrato"
+                    title="Gerar recibo"
                   >
-                    <Printer size={17} />
-                    Imprimir
+                    <FileCheck size={17} />
+                    Recibo
                   </button>
                   <button
                     onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
