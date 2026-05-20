@@ -2248,9 +2248,9 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  // Qualidade progressiva do mapa: prévia leve no card e alta resolução somente ao editar/zoom/tela cheia.
+  // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
-  const [mapHighResRequested, setMapHighResRequested] = useState(false);
+  const HIGH_RES_ZOOM_THRESHOLD = 1.08;
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -2277,7 +2277,7 @@ const LotDashboard = ({
 
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
-  const [massaAcao, setMassaAcao] = useState<"disponivel" | "reservado" | "indisponivel" | "excluir" | "">("" as any);
+  const [massaAcao, setMassaAcao] = useState<"selecionar" | "disponivel" | "reservado" | "indisponivel" | "excluir" | "alinharHorizontal" | "alinharVertical" | "distribuirHorizontal" | "">("" as any);
   const [massaFiltroQuadra, setMassaFiltroQuadra] = useState("");
   const [massaFiltroLoteIni, setMassaFiltroLoteIni] = useState("");
   const [massaFiltroLoteFin, setMassaFiltroLoteFin] = useState("");
@@ -2338,7 +2338,7 @@ const LotDashboard = ({
 
   const setMapZoomSafely = (nextZoom: number) => {
     const clamped = Math.max(1, Math.min(5, nextZoom));
-    if (clamped > 1.02) void requestHighResolutionMap();
+    if (clamped > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
     setMapZoom(clamped);
     setMapPan((prev) => clampMapPan(prev, clamped));
   };
@@ -2361,14 +2361,34 @@ const LotDashboard = ({
   };
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    if (!isEditingMap) return;
-    if (!e.ctrlKey) return;
+    // Comportamento tipo Google Maps:
+    // quando o mouse está sobre o mapa, o scroll controla somente o mapa,
+    // sem rolar nem aplicar zoom na página/navegador.
+    if (!isEditingMap && !mapFullscreen) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
+    void requestHighResolutionMap();
     const delta = e.deltaY < 0 ? 0.25 : -0.25;
     setMapZoomSafely(mapZoom + delta);
   };
+
+  useEffect(() => {
+    const el = mapViewportRef.current;
+    if (!el) return;
+    const onNativeWheel = (ev: WheelEvent) => {
+      if (!isEditingMap && !mapFullscreen) return;
+      // Impede zoom/scroll da página inteira quando o mouse está sobre o mapa.
+      ev.preventDefault();
+      ev.stopPropagation();
+      setMapActive(true);
+      const delta = ev.deltaY < 0 ? 0.25 : -0.25;
+      if (mapZoom + delta > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      setMapZoomSafely(mapZoom + delta);
+    };
+    el.addEventListener("wheel", onNativeWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onNativeWheel as any);
+  }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap || mapEditTool !== "mover") return;
@@ -2421,7 +2441,7 @@ const LotDashboard = ({
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
       const nextZoom = Math.max(1, Math.min(5, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
-      if (nextZoom > 1.02) void requestHighResolutionMap();
+      if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
       setMapZoom(nextZoom);
       setMapPan((prev) => clampMapPan(prev, nextZoom));
       return;
@@ -2455,7 +2475,7 @@ const LotDashboard = ({
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
-  const deveUsarMapaAlta = Boolean(mapaImagemAlta && (isEditingMap || mapFullscreen || mapHighResRequested || mapZoom > 1.02));
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
   const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
 
   const loadPdfJsIfNeeded = async () => {
@@ -2512,7 +2532,6 @@ const LotDashboard = ({
   };
 
   const requestHighResolutionMap = async () => {
-    setMapHighResRequested(true);
     if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
     if (!originalPdf) {
@@ -2581,7 +2600,9 @@ const LotDashboard = ({
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
 
-    if ((isEditingMap || mapFullscreen) && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
+    // Alta resolução sob demanda: só renderiza quando houver aproximação/zoom.
+    // Em zoom normal usa a prévia leve para não pesar o app.
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
       void requestHighResolutionMap();
     }
 
@@ -2603,7 +2624,7 @@ const LotDashboard = ({
       window.removeEventListener("resize", handleResize);
       window.removeEventListener("orientationchange", handleOrientationChange);
     };
-  }, [mapaImagem, mode, mapFullscreen]);
+  }, [mapaImagem, mode, mapFullscreen, mapZoom]);
 
   const quadras = getQuadraList(localDev);
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
@@ -2952,12 +2973,18 @@ const LotDashboard = ({
       if (lotExists) {
         const existingInfo = localDev.lotesInfo?.[key];
         const existingStatus = normalizeMapaStatus(existingInfo?.status || "disponivel");
-        const usarExistente = window.confirm(
-          `${infoTexto}\n\nO lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatus)}.\n\nOK = Vincular lote existente e usar as informações do sistema.\nCancelar = Vincular, mas atualizar com o status escolhido agora (${lotScriptStatusToLabel(raw.status)}).`
+        const escolha = window.prompt(
+          `${infoTexto}\n\nO lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatus)}.\n\nEscolha antes de salvar a bolinha:\n1 = Vincular e obedecer dados do sistema\n2 = Vincular e atualizar com o status que estou marcando agora (${lotScriptStatusToLabel(raw.status)})\n3 = Manter como está no sistema\n4 = Cancelar`,
+          "1"
         );
-        if (usarExistente) {
+        if (escolha === null || escolha.trim() === "4") return false;
+        if (escolha.trim() === "1" || escolha.trim() === "3") {
           finalStatus = existingStatus;
           finalObs = existingInfo?.observacao || finalObs;
+        }
+        if (escolha.trim() !== "1" && escolha.trim() !== "2" && escolha.trim() !== "3") {
+          alert("Opção inválida. A bolinha não foi salva.");
+          return false;
         }
       } else {
         const add = window.confirm(
@@ -3191,6 +3218,7 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   const handleBallMouseDown = (e: React.MouseEvent, ponto: any) => {
     if (!isEditingMap) return;
+    if (e.ctrlKey) return;
     e.stopPropagation();
     e.preventDefault();
     setDraggingId(ponto.id);
@@ -3395,9 +3423,53 @@ const LotDashboard = ({
     setMassaSelIds(new Set(ids));
   };
 
+  const alinharMarcadoresSelecionados = (ids: Set<string>, tipo: "horizontal" | "vertical" | "distribuirHorizontal") => {
+    const selecionados = mapaPontos
+      .filter((p) => ids.has(p.id))
+      .slice()
+      .sort((a, b) => {
+        const na = Number(a.lote); const nb = Number(b.lote);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        return String(a.lote).localeCompare(String(b.lote));
+      });
+    if (selecionados.length < 2) { alert("Selecione pelo menos duas bolinhas para alinhar."); return; }
+
+    const first = selecionados[0];
+    const last = selecionados[selecionados.length - 1];
+    const minX = Math.min(...selecionados.map((p) => Number(p.xPercent) || 0));
+    const maxX = Math.max(...selecionados.map((p) => Number(p.xPercent) || 0));
+    const avgY = selecionados.reduce((acc, p) => acc + (Number(p.yPercent) || 0), 0) / selecionados.length;
+    const avgX = selecionados.reduce((acc, p) => acc + (Number(p.xPercent) || 0), 0) / selecionados.length;
+
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    selecionados.forEach((p, idx) => {
+      if (tipo === "horizontal") posicoes.set(p.id, { xPercent: p.xPercent, yPercent: avgY });
+      if (tipo === "vertical") posicoes.set(p.id, { xPercent: avgX, yPercent: p.yPercent });
+      if (tipo === "distribuirHorizontal") {
+        const t = selecionados.length === 1 ? 0 : idx / (selecionados.length - 1);
+        posicoes.set(p.id, {
+          xPercent: first.xPercent + ((last.xPercent ?? maxX) - (first.xPercent ?? minX)) * t,
+          yPercent: first.yPercent + ((last.yPercent ?? avgY) - (first.yPercent ?? avgY)) * t,
+        });
+      }
+    });
+
+    const nextPontos = mapaPontos.map((p) =>
+      ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p
+    );
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+  };
+
   const aplicarAcaoMassa = () => {
     if (massaSelIds.size === 0) { alert("Selecione ao menos uma bolinha."); return; }
     if (!massaAcao) { alert("Selecione uma ação."); return; }
+    if (massaAcao === "selecionar") {
+      alert(`${massaSelIds.size} bolinha(s) selecionada(s). Escolha outra ação quando quiser alterar, excluir ou alinhar.`);
+      return;
+    }
+    if (massaAcao === "alinharHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "horizontal"); return; }
+    if (massaAcao === "alinharVertical") { alinharMarcadoresSelecionados(massaSelIds, "vertical"); return; }
+    if (massaAcao === "distribuirHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "distribuirHorizontal"); return; }
     if (massaAcao === "excluir") {
       const ok = window.confirm(`Excluir ${massaSelIds.size} bolinha(s)? Esta ação não pode ser desfeita.`);
       if (!ok) return;
@@ -3428,6 +3500,7 @@ const LotDashboard = ({
     setCtrlSelectedIds((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id); else next.add(id);
+      setMassaSelIds(new Set(next));
       return next;
     });
   };
@@ -3436,33 +3509,8 @@ const LotDashboard = ({
   // ALINHAR LOTES SELECIONADOS COM CTRL
   // ──────────────────────────────────────────────
   const alinharLotesSelecionados = () => {
-    if (ctrlSelectedIds.size < 3) return;
-    // Pegar os pontos selecionados, ordenar por número de lote quando possível
-    const selecionados = mapaPontos
-      .filter((p) => ctrlSelectedIds.has(p.id))
-      .slice()
-      .sort((a, b) => {
-        const na = Number(a.lote); const nb = Number(b.lote);
-        if (!isNaN(na) && !isNaN(nb)) return na - nb;
-        return String(a.lote).localeCompare(String(b.lote));
-      });
-    if (selecionados.length < 3) return;
-    const primeiro = selecionados[0];
-    const ultimo = selecionados[selecionados.length - 1];
-    const total = selecionados.length;
-    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
-    selecionados.forEach((p, idx) => {
-      const t = idx / (total - 1);
-      posicoes.set(p.id, {
-        xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
-        yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t,
-      });
-    });
-    const ids = new Set(selecionados.map((p) => p.id));
-    const nextPontos = mapaPontos.map((p) =>
-      ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p
-    );
-    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+    if (ctrlSelectedIds.size < 2) return;
+    alinharMarcadoresSelecionados(ctrlSelectedIds, "distribuirHorizontal");
     // NÃO sai do modo edição
   };
 
@@ -3625,7 +3673,7 @@ const LotDashboard = ({
             )}
             {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
               <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
-                <span>{mapHighResLoading ? "Gerando mapa em alta resolução..." : "Prévia leve ativa. A alta resolução carrega ao editar, ampliar ou abrir tela cheia."}</span>
+                <span>{mapHighResLoading ? "Gerando mapa em alta resolução..." : "Prévia leve ativa. A alta resolução carrega ao aproximar; ao afastar, volta para a versão leve."}</span>
               </div>
             )}
             <div
@@ -3636,8 +3684,9 @@ const LotDashboard = ({
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
               onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
-              style={{ maxWidth: "1000px", touchAction: mapActive ? "none" : "auto", overscrollBehavior: "contain" }}
+              style={{ maxWidth: "1000px", touchAction: (isEditingMap || mapFullscreen || mapActive) ? "none" : "auto", overscrollBehavior: "contain" }}
             >
             <div
               ref={mapContainerRef}
@@ -3704,12 +3753,12 @@ const LotDashboard = ({
                     onClick={(ev) => {
                       if (draggingId) return;
                       ev.stopPropagation();
-                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
-                      // CTRL seleção múltipla no modo edição
-                      if (isEditingMap && mapAction === "editar" && ev.ctrlKey) {
+                      // CTRL seleção múltipla no modo edição: também alimenta a edição em massa.
+                      if (isEditingMap && ev.ctrlKey) {
                         toggleCtrlSel(ponto.id);
                         return;
                       }
+                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
@@ -3729,6 +3778,12 @@ const LotDashboard = ({
                 </div>
               )}
             </div>
+            {(isEditingMap || mapFullscreen) && (
+              <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
+              </div>
+            )}
             </div>
             {!isEditingMap && (
               <button
@@ -3738,7 +3793,6 @@ const LotDashboard = ({
                   setMapActive(true);
                   setMapZoom(1);
                   setMapPan({ x: 0, y: 0 });
-                  void requestHighResolutionMap();
                   try {
                     const lockPromise = (screen as any).orientation?.lock?.("landscape");
                     lockPromise?.catch?.(() => undefined);
@@ -3793,7 +3847,7 @@ const LotDashboard = ({
                     <button type="button" onClick={() => { setMapEditTool("mover"); setMapActive(true); void requestHighResolutionMap(); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "mover" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Mover mapa</button>
                     <button type="button" onClick={() => setMapEditTool("marcar")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "marcar" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Marcar lote</button>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-medium">No PC, use Zoom + para aproximar. CTRL + roda do mouse também aproxima o mapa. O zoom é apenas visual; as bolinhas continuam salvas em percentual.</p>
+                  <p className="text-[10px] text-slate-400 font-medium">No PC, passe o mouse sobre o mapa e use a roda do mouse para aproximar, igual Google Maps. O zoom é apenas visual; as bolinhas continuam salvas em percentual.</p>
                 </div>
 
                 {/* Instrução contextual */}
@@ -3940,10 +3994,14 @@ const LotDashboard = ({
                 {/* Ação */}
                 <select className="input-field" value={massaAcao} onChange={(e) => setMassaAcao(e.target.value as any)}>
                   <option value="">Escolha uma ação</option>
+                  <option value="selecionar">Somente selecionar</option>
                   <option value="disponivel">Marcar como disponível</option>
                   <option value="reservado">Marcar como reservado</option>
                   <option value="indisponivel">Marcar como indisponível</option>
                   <option value="excluir">Excluir selecionadas</option>
+                  <option value="alinharHorizontal">Alinhar horizontalmente</option>
+                  <option value="alinharVertical">Alinhar verticalmente</option>
+                  <option value="distribuirHorizontal">Distribuir/alinhar pela sequência</option>
                 </select>
                 <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
               </div>
@@ -3975,15 +4033,13 @@ const LotDashboard = ({
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
               transition={{ duration: 0.12 }}
-              className="fixed z-50 pointer-events-auto will-change-transform"
-              style={marcadorPanelPos
-                ? { left: marcadorPanelPos.x, top: marcadorPanelPos.y }
-                : { top: "50%", left: "50%", transform: "translate(-50%, -50%)" }}
+              className="fixed inset-0 z-50 pointer-events-none flex items-center justify-end p-3 sm:p-4"
+              style={{}}
             >
-              <div className="bg-white rounded-3xl shadow-2xl w-72 overflow-hidden border border-slate-200">
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[360px] max-h-[calc(100dvh-24px)] overflow-y-auto border border-slate-200 pointer-events-auto">
                 {/* Handle de arrastar */}
                 <div
-                  className="flex items-center justify-between px-5 pt-4 pb-2 cursor-move bg-slate-50 border-b border-slate-100 select-none"
+                  className="flex items-center justify-between px-5 pt-4 pb-2 cursor-default bg-slate-50 border-b border-slate-100 select-none"
                   onMouseDown={(e) => {
                     e.stopPropagation();
                     e.preventDefault();
@@ -4111,6 +4167,8 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
@@ -4154,6 +4212,10 @@ const LotDashboard = ({
                     />
                   );
                 })}
+              </div>
+              <div className="absolute bottom-4 right-4 z-[10001] flex flex-col gap-2">
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">−</button>
               </div>
             </div>
           </div>
@@ -8272,9 +8334,9 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                     }}
                   />
                 </div>
-                {vendedores.length > 0 && (
-                  <div>
-                    <label className="label">Vendedor / Corretor</label>
+                <div>
+                  <label className="label">Corretor / Vendedor</label>
+                  {vendedores.length > 0 ? (
                     <select
                       className="input-field font-semibold"
                       value={saleData.vendedorId || ""}
@@ -8288,11 +8350,18 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                         <option key={v.id} value={v.id}>{v.nome}</option>
                       ))}
                     </select>
-                    <p className="mt-1 text-[10px] text-slate-400 font-bold">
-                      Aparece apenas no ranking e no resumo copiado como VENDEDOR.
-                    </p>
-                  </div>
-                )}
+                  ) : (
+                    <input
+                      className="input-field font-semibold"
+                      placeholder="Nome do corretor/vendedor"
+                      value={saleData.vendedor || ""}
+                      onChange={(e) => setSaleData({ ...saleData, vendedor: textoMaiusculo(e.target.value), vendedorId: "" })}
+                    />
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400 font-bold">
+                    Fica salvo já no Registro de Nova Venda e será usado no resumo, ranking, contrato e recibo quando aplicável.
+                  </p>
+                </div>
                 <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
                   <label className="label">Entrada</label>
                   <input
@@ -8599,7 +8668,7 @@ const ContratosSection = ({
   onEditVenda?: (v: Venda) => void;
   onNovoContrato?: () => void;
   onClearInitialVenda?: () => void;
-  userProfile?: { nome?: string; creci?: string; telefone?: string };
+  userProfile?: { nome?: string; creci?: string; telefone?: string; assinaturaUrl?: string };
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -8920,7 +8989,7 @@ const ContratosSection = ({
     const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / ");
     const vendAddr = `${vendedor.endereco||"___"}, nº ${vendedor.numero||"s/n"}, ${vendedor.bairro||""}, ${vendedor.cidade||"Santarém"}, ${vendedor.estado||"PA"}, CEP ${vendedor.cep||""}`.replace(/,\s*,/g,",").trim();
     const compAddr = `${cliente.endereco||"___"}, nº ${cliente.numero||"s/n"}, ${cliente.bairro||""}, ${cliente.cidade||""}, ${cliente.estado||""}, CEP ${cliente.cep||""}`.replace(/,\s*,/g,",").trim();
-    const carimboPago = carimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:36pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;">PAGO</div>` : "";
+    const carimboPago = carimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:34pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;text-align:center;line-height:1;">PAGO<br><span style="font-size:10pt;letter-spacing:1px;font-family:Arial,sans-serif;">${new Date().toLocaleDateString('pt-BR')}</span></div>` : "";
 
     const titulo = isAvista ? "Recibo de Compra e Venda à Vista" : "Contrato de Compra e Venda a Prazo";
 
@@ -9321,6 +9390,7 @@ const ContratosSection = ({
     const corretorNome = userProfile?.nome || '___________________________';
     const corretorCargo = userProfile?.creci ? 'Corretor de Imóveis' : 'Angariador/Captador';
     const corretorCreci = userProfile?.creci || '';
+    const assinaturaUrl = userProfile?.assinaturaUrl || '';
     const dataFormatada = new Date(selectedVenda.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
     return `<!DOCTYPE html>
 <html>
@@ -9348,7 +9418,8 @@ const ContratosSection = ({
     .obs { font-size: 13px; font-style: italic; color: #64748b; margin-bottom: 32px; }
     .rodape { margin-top: 80px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
     .data-texto { font-size: 14px; font-weight: 700; color: #1e293b; }
-    .assinatura { width: 240px; text-align: center; }
+    .assinatura { width: 260px; text-align: center; }
+    .assinatura-img { max-width: 230px; max-height: 86px; object-fit: contain; margin: 0 auto -6px auto; display: block; }
     .linha-assinatura { height: 1px; background: #0f172a; margin-bottom: 8px; }
     .assinatura-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
     .assinatura-nome { font-weight: 700; color: #0f172a; font-size: 14px; }
@@ -9387,6 +9458,7 @@ const ContratosSection = ({
           <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
         </div>
         <div class="assinatura">
+          ${assinaturaUrl ? `<img class="assinatura-img" src="${assinaturaUrl}" />` : ''}
           <div class="linha-assinatura"></div>
           <p class="assinatura-label">${corretorCargo}</p>
           <p class="assinatura-nome">${corretorNome}</p>
@@ -10830,6 +10902,13 @@ VENDEDOR: ${venda.vendedor}`;
                     <X size={22} />
                   </button>
                 </div>
+                <label className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 cursor-pointer">
+                  <span>
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-700">Carimbo PAGO</span>
+                    <span className="block text-xs text-emerald-700/80">Marque para sair com carimbo e data no recibo.</span>
+                  </span>
+                  <input type="checkbox" checked={comCarimbo} onChange={(e) => setComCarimbo(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
+                </label>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={handleDownloadImage}
@@ -10940,6 +11019,9 @@ VENDEDOR: ${venda.vendedor}`;
                       </p>
                     </div>
                     <div className="w-64 text-center">
+                      {userProfile?.assinaturaUrl && (
+                        <img src={userProfile.assinaturaUrl} alt="Assinatura" className="mx-auto max-h-24 max-w-[230px] object-contain -mb-2" />
+                      )}
                       <div className="h-px bg-slate-900 mb-2" />
                       <p className="text-[10px] font-bold uppercase text-slate-400">
                         {userProfile?.creci ? "Corretor de Imóveis" : "Angariador/Captador"}
@@ -10974,7 +11056,7 @@ VENDEDOR: ${venda.vendedor}`;
                       letterSpacing: '6px',
                       pointerEvents: 'none',
                       userSelect: 'none',
-                    }}>PAGO</div>
+                    }}>PAGO<div style={{ fontSize: '18px', letterSpacing: '1px', marginTop: '4px', fontFamily: 'Arial, sans-serif' }}>{new Date().toLocaleDateString('pt-BR')}</div></div>
                   )}
                 </div>
               </div>
@@ -12407,354 +12489,8 @@ const ConfigSection = ({
       </div>
 
       {/* Vendedores */}
-      <div className="card-premium space-y-4">
-        <div className="flex items-center justify-between">
-          <h4 className="font-bold text-slate-800 flex items-center gap-2">
-            <UserCheck size={18} className="text-primary-main" />
-            Vendedores (Contratos)
-          </h4>
-          <button
-            className="btn-primary h-9 px-4 text-sm"
-            onClick={() => {
-              setEditingVendedor(null);
-              setVendedorForm(emptyVendedor);
-              setShowVendedorForm(true);
-            }}
-          >
-            <Plus size={15} /> Adicionar
-          </button>
-        </div>
-
-        {(formData.vendedores || []).length === 0 && !showVendedorForm && (
-          <p className="text-slate-400 text-sm text-center py-4">
-            Nenhum vendedor cadastrado. Adicione o(s) vendedor(es) que assinarão os contratos.
-          </p>
-        )}
-
-        {(formData.vendedores || []).map((v) => (
-          <div key={v.id} className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 rounded-2xl bg-slate-50 border border-border-subtle">
-            <div className="flex-1 min-w-0">
-              <p className="font-bold text-slate-800 text-sm truncate">{v.nome}</p>
-              <p className="text-xs text-slate-400">{v.estadoCivil} · CPF {v.cpf} · {v.cidade}/{v.estado}</p>
-            </div>
-            <div className="flex gap-2 shrink-0">
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-xl hover:bg-slate-200 text-slate-500 transition-colors"
-                onClick={() => {
-                  setEditingVendedor(v);
-                  setVendedorForm({ nome: v.nome, nacionalidade: v.nacionalidade, estadoCivil: v.estadoCivil, rg: v.rg, cpf: v.cpf, endereco: v.endereco, numero: v.numero, bairro: v.bairro, cidade: v.cidade, estado: v.estado, cep: v.cep });
-                  setShowVendedorForm(true);
-                }}
-              >
-                <Pencil size={14} />
-              </button>
-              <button
-                className="h-8 w-8 flex items-center justify-center rounded-xl hover:bg-red-50 text-red-400 transition-colors"
-                onClick={() => handleDeleteVendedor(v.id)}
-              >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          </div>
-        ))}
-
-        {showVendedorForm && (
-          <div ref={vendedorFormRef} className="border border-border-subtle rounded-2xl p-6 space-y-4 bg-slate-50/50">
-            <h5 className="font-bold text-slate-700 text-sm">{editingVendedor ? "Editar Vendedor" : "Novo Vendedor"}</h5>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="sm:col-span-2">
-                <label className="label">Nome Completo</label>
-                <input className="input-field" placeholder="Nome Completo" value={vendedorForm.nome} onChange={(e) => setVendedorForm({ ...vendedorForm, nome: textoMaiusculo(e.target.value) })} />
-              </div>
-              <div>
-                <label className="label">Nacionalidade</label>
-                <input className="input-field" value={vendedorForm.nacionalidade} onChange={(e) => setVendedorForm({ ...vendedorForm, nacionalidade: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Estado Civil</label>
-                <select className="input-field" value={vendedorForm.estadoCivil} onChange={(e) => setVendedorForm({ ...vendedorForm, estadoCivil: e.target.value })}>
-                  <option value="solteiro">Solteiro(a)</option>
-                  <option value="casado">Casado(a)</option>
-                  <option value="divorciado">Divorciado(a)</option>
-                  <option value="viuvo">Viúvo(a)</option>
-                  <option value="uniao_estavel">União Estável</option>
-                </select>
-              </div>
-              <div>
-                <label className="label">RG</label>
-                <input className="input-field" value={vendedorForm.rg} onChange={(e) => setVendedorForm({ ...vendedorForm, rg: maskRG(e.target.value) })} />
-              </div>
-              <div>
-                <label className="label">CPF</label>
-                <input className="input-field" placeholder="000.000.000-00" value={vendedorForm.cpf} onChange={(e) => setVendedorForm({ ...vendedorForm, cpf: maskCPF(e.target.value) })} />
-              </div>
-              <div className="sm:col-span-2">
-                <label className="label">Endereço (Tipo + Nome)</label>
-                <input className="input-field" placeholder="Ex: Travessa Maranhão" value={vendedorForm.endereco} onChange={(e) => setVendedorForm({ ...vendedorForm, endereco: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Número</label>
-                <input className="input-field" placeholder="Ex: 353" value={vendedorForm.numero} onChange={(e) => setVendedorForm({ ...vendedorForm, numero: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Bairro</label>
-                <input className="input-field" placeholder="Ex: Aeroporto Velho" value={vendedorForm.bairro} onChange={(e) => setVendedorForm({ ...vendedorForm, bairro: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Cidade</label>
-                <input className="input-field" value={vendedorForm.cidade} onChange={(e) => setVendedorForm({ ...vendedorForm, cidade: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Estado (UF)</label>
-                <input className="input-field" maxLength={2} value={vendedorForm.estado} onChange={(e) => setVendedorForm({ ...vendedorForm, estado: e.target.value.toUpperCase() })} />
-              </div>
-              <div>
-                <label className="label">CEP</label>
-                <input className="input-field" placeholder="00000-000" value={vendedorForm.cep} onChange={(e) => setVendedorForm({ ...vendedorForm, cep: maskCEP(e.target.value) })} />
-                <BuscarCEPPorRua
-                  estadoPadrao={vendedorForm.estado || "PA"}
-                  cidadePadrao={vendedorForm.cidade || ""}
-                  onSelect={(r) => setVendedorForm((prev) => ({
-                    ...prev,
-                    cep: maskCEP(r.cep),
-                    endereco: r.logradouro || prev.endereco,
-                    bairro: r.bairro || prev.bairro,
-                    cidade: r.localidade || prev.cidade,
-                    estado: r.uf || prev.estado,
-                  }))}
-                />
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end pt-2">
-              <button className="btn-ghost h-10 px-5" onClick={() => { setShowVendedorForm(false); setEditingVendedor(null); setVendedorForm(emptyVendedor); }}>Cancelar</button>
-              <button className="btn-primary h-10 px-8" onClick={handleSaveVendedor}>Salvar Vendedor</button>
-            </div>
-          </div>
-        )}
-
-        {(formData.vendedores || []).length > 0 && (
-          <div className="pt-2 flex justify-end">
-            <button
-              onClick={() => {
-                onSave(formData);
-                alert("Vendedores salvos com sucesso!");
-              }}
-              className="btn-primary px-10"
-            >
-              Salvar Alterações
-            </button>
-          </div>
-        )}
-      </div>
-
-      {/* Migração de dados */}
-      <div className="card-premium space-y-4">
-        <h4 className="font-bold text-slate-800 flex items-center gap-2">
-          <Download size={18} className="text-primary-main" />
-          Migração de Dados
-        </h4>
-        <p className="text-sm text-slate-500">
-          Se você tinha dados salvos anteriormente no navegador (localStorage), clique abaixo para migrá-los para o banco de dados de forma permanente.
-        </p>
-        {migrateMsg && (
-          <div className={`p-4 rounded-2xl text-sm font-semibold ${migrateMsg.includes('Erro') || migrateMsg.includes('Nenhum') ? 'bg-red-50 text-red-600' : 'bg-green-50 text-green-700'}`}>
-            {migrateMsg}
-          </div>
-        )}
-        <button
-          onClick={handleMigrate}
-          disabled={migrating}
-          className="btn-ghost px-8 disabled:opacity-40"
-        >
-          {migrating ? (
-            <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
-          ) : (
-            <><Download size={16} /> Migrar dados do navegador para o banco de dados</>
-          )}
-        </button>
-
-        <div className="border-t border-slate-100 pt-4 space-y-3">
-          <p className="text-sm text-slate-500">
-            <span className="font-semibold text-slate-700">Migração do banco:</span> Se seus dados aparecem em um navegador mas não em outro, clique abaixo para consolidar tudo em um único espaço compartilhado.
-          </p>
-          <button
-            onClick={async () => {
-              setMigrating(true);
-              setMigrateMsg('');
-              try {
-                const res = await fetch('/api/admin/migrate-to-shared', { method: 'POST', headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('rumo_auth_token') ? { Authorization: `Bearer ${localStorage.getItem('rumo_auth_token')}` } : {}) }, credentials: 'include' });
-                const data = await res.json();
-                if (data.ok) {
-                  setMigrateMsg(`Migração concluída! ${data.moved.empreendimentos} empreendimento(s), ${data.moved.clientes} cliente(s), ${data.moved.vendas} venda(s) consolidados. Recarregue a página.`);
-                } else {
-                  setMigrateMsg('Erro: ' + (data.error || 'Tente novamente.'));
-                }
-              } catch (e: any) {
-                setMigrateMsg('Erro de conexão: ' + (e?.message || 'Tente novamente.'));
-              } finally {
-                setMigrating(false);
-              }
-            }}
-            disabled={migrating}
-            className="btn-ghost px-8 border-amber-300 text-amber-700 hover:bg-amber-50 disabled:opacity-40"
-          >
-            {migrating ? (
-              <><RefreshCw size={16} className="animate-spin" /> Migrando...</>
-            ) : (
-              <><ShieldCheck size={16} /> Consolidar dados de todos os navegadores</>
-            )}
-          </button>
-        </div>
-      </div>
-      {/* Exportar / Importar Dados */}
-      <div className="card-premium space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="p-2.5 bg-slate-900 text-white rounded-xl">
-            <Database size={18} />
-          </div>
-          <div>
-            <h4 className="font-bold text-slate-800">Exportar e Importar Dados</h4>
-            <p className="text-xs text-slate-400 mt-0.5">Faça backup completo ou restaure seus dados de um arquivo anterior</p>
-          </div>
-        </div>
-
-        {/* Export */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-green-50 border border-green-100">
-          <div className="flex items-start gap-3">
-            <div className="p-2 bg-green-100 rounded-xl mt-0.5">
-              <Download size={16} className="text-green-700" />
-            </div>
-            <div>
-              <p className="font-semibold text-green-900 text-sm">Exportar Backup</p>
-              <p className="text-xs text-green-700 mt-0.5">
-                {developments.length} empreendimento{developments.length !== 1 ? 's' : ''} · {clients.length} cliente{clients.length !== 1 ? 's' : ''} · {sales.length} venda{sales.length !== 1 ? 's' : ''}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={handleExport}
-            className="flex items-center gap-2 px-5 py-2.5 bg-green-700 hover:bg-green-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
-          >
-            <Download size={15} /> Baixar .json
-          </button>
-        </div>
-
-        {/* Import */}
-        <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-blue-50 border border-blue-100">
-            <div className="flex items-start gap-3">
-              <div className="p-2 bg-blue-100 rounded-xl mt-0.5">
-                <Upload size={16} className="text-blue-700" />
-              </div>
-              <div>
-                <p className="font-semibold text-blue-900 text-sm">Importar Backup</p>
-                <p className="text-xs text-blue-700 mt-0.5">Selecione um arquivo .json exportado anteriormente</p>
-              </div>
-            </div>
-            <button
-              onClick={() => importInputRef.current?.click()}
-              className="flex items-center gap-2 px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-sm font-semibold transition-colors whitespace-nowrap"
-            >
-              <Upload size={15} /> Selecionar arquivo
-            </button>
-            <input
-              ref={importInputRef}
-              type="file"
-              accept=".json"
-              className="hidden"
-              onChange={handleFileSelect}
-            />
-          </div>
-
-          {importError && (
-            <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 border border-red-100">
-              <AlertTriangle size={16} className="text-red-500 shrink-0" />
-              <p className="text-sm text-red-700 font-medium">{importError}</p>
-            </div>
-          )}
-
-          {importSuccess && (
-            <div className="flex items-center gap-3 p-4 rounded-2xl bg-green-50 border border-green-100">
-              <ShieldCheck size={16} className="text-green-600 shrink-0" />
-              <p className="text-sm text-green-700 font-semibold">{importSuccess}</p>
-            </div>
-          )}
-
-          {importPreview && (
-            <div className="border border-border-subtle rounded-2xl p-5 space-y-5 bg-slate-50/60">
-              <div>
-                <p className="font-bold text-slate-800 text-sm mb-1">Prévia do arquivo</p>
-                {importPreview.exportedAt && (
-                  <p className="text-xs text-slate-400">
-                    Exportado em: {new Date(importPreview.exportedAt).toLocaleString('pt-BR')}
-                  </p>
-                )}
-              </div>
-
-              <div className="grid grid-cols-3 gap-3">
-                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
-                  <p className="text-lg font-bold text-slate-800">{importPreview.empreendimentos.length}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Empreendimentos</p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
-                  <p className="text-lg font-bold text-slate-800">{importPreview.clientes.length}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Clientes</p>
-                </div>
-                <div className="p-3 bg-white rounded-xl border border-border-subtle text-center">
-                  <p className="text-lg font-bold text-slate-800">{importPreview.vendas.length}</p>
-                  <p className="text-xs text-slate-400 mt-0.5">Vendas</p>
-                </div>
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-slate-600 uppercase tracking-widest mb-2">Modo de importação</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setImportMode('merge')}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${importMode === 'merge' ? 'border-primary-main bg-primary-main/5' : 'border-slate-200 bg-white'}`}
-                  >
-                    <p className={`font-bold text-sm ${importMode === 'merge' ? 'text-primary-main' : 'text-slate-700'}`}>Mesclar</p>
-                    <p className="text-xs text-slate-400 mt-1">Adiciona os registros do backup. Itens com o mesmo ID serão atualizados.</p>
-                  </button>
-                  <button
-                    onClick={() => setImportMode('replace')}
-                    className={`p-4 rounded-xl border-2 text-left transition-all ${importMode === 'replace' ? 'border-red-500 bg-red-50' : 'border-slate-200 bg-white'}`}
-                  >
-                    <p className={`font-bold text-sm ${importMode === 'replace' ? 'text-red-600' : 'text-slate-700'}`}>Substituir tudo</p>
-                    <p className="text-xs text-slate-400 mt-1">Apaga todos os dados atuais e substitui pelo conteúdo do backup.</p>
-                  </button>
-                </div>
-                {importMode === 'replace' && (
-                  <div className="flex items-center gap-2 mt-3 p-3 rounded-xl bg-red-50 border border-red-100">
-                    <AlertTriangle size={14} className="text-red-500 shrink-0" />
-                    <p className="text-xs text-red-600 font-medium">Atenção: esta ação não pode ser desfeita. Todos os dados atuais serão perdidos.</p>
-                  </div>
-                )}
-              </div>
-
-              <div className="flex gap-3 justify-end pt-1">
-                <button
-                  className="btn-ghost px-6 h-10"
-                  onClick={() => { setImportPreview(null); setImportError(''); }}
-                >
-                  Cancelar
-                </button>
-                <button
-                  className={`flex items-center gap-2 px-8 h-10 rounded-xl text-sm font-bold text-white transition-colors disabled:opacity-50 ${importMode === 'replace' ? 'bg-red-600 hover:bg-red-700' : 'bg-primary-main hover:bg-primary-dark'}`}
-                  onClick={handleConfirmImport}
-                  disabled={importing}
-                >
-                  {importing ? (
-                    <><RefreshCw size={14} className="animate-spin" /> Importando...</>
-                  ) : (
-                    <><Check size={14} /> Confirmar importação</>
-                  )}
-                </button>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
+      
+      {/* Vendedores (Contratos) removido da tela de Configurações. O vendedor/corretor fica no Registro de Novas Vendas. */}
 
       {/* Exportar / Importar apenas Configurações */}
       <div className="card-premium space-y-6">
@@ -13384,10 +13120,10 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
 
   const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","editar_mapas"];
 
-  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string } }[]>([]);
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string; assinaturaUrl?: string; senhaVisivel?: string } }[]>([]);
 
   // Profile state
-  const [profile, setProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [profile, setProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
   const [profileLoading, setProfileLoading] = useState(true);
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
@@ -13398,7 +13134,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
         const res = await authFetch("/api/auth/profile");
         if (res.ok) {
           const data = await res.json();
-          setProfile({ nome: data.nome || "", creci: data.creci || "", telefone: data.telefone || "" });
+          setProfile({ nome: data.nome || "", creci: data.creci || "", telefone: data.telefone || "", assinaturaUrl: data.assinaturaUrl || data.assinaturaBase64 || "" });
         }
       } catch {}
       setProfileLoading(false);
@@ -13406,13 +13142,31 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     loadProfile();
   }, []);
 
+  const readImageAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+
+  const handleSignatureUpload = async (file: File | undefined, target: "me" | "edit") => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
+      alert("Use uma imagem PNG, JPG ou WEBP para a assinatura. PNG com fundo transparente é o ideal.");
+      return;
+    }
+    const dataUrl = await readImageAsDataUrl(file);
+    if (target === "me") setProfile((prev) => ({ ...prev, assinaturaUrl: dataUrl }));
+    else setEditProfileData((prev) => ({ ...prev, assinaturaUrl: dataUrl }));
+  };
+
   const handleSaveProfile = async () => {
     setProfileSaving(true);
     setProfileMsg(null);
     try {
       const res = await authFetch("/api/auth/profile", {
         method: "PATCH",
-        body: JSON.stringify({ nome: profile.nome, creci: profile.creci, telefone: profile.telefone }),
+        body: JSON.stringify({ nome: profile.nome, creci: profile.creci, telefone: profile.telefone, assinaturaUrl: profile.assinaturaUrl }),
       });
       if (!res.ok) throw new Error("Erro ao salvar");
       setProfileMsg({ type: "ok", text: "Perfil salvo com sucesso!" });
@@ -13435,7 +13189,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
   const [savingPerms, setSavingPerms] = useState(false);
   const [editingProfileUser, setEditingProfileUser] = useState<string | null>(null);
-  const [editProfileData, setEditProfileData] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [editProfileData, setEditProfileData] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
   const [savingUserProfile, setSavingUserProfile] = useState(false);
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
 
@@ -13496,7 +13250,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   };
 
   const handleOpenEditProfile = (u: typeof users[0]) => {
-    setEditProfileData({ nome: u.profile?.nome || "", creci: u.profile?.creci || "", telefone: u.profile?.telefone || "" });
+    setEditProfileData({ nome: u.profile?.nome || "", creci: u.profile?.creci || "", telefone: u.profile?.telefone || "", assinaturaUrl: u.profile?.assinaturaUrl || "" });
     setEditingProfileUser(editingProfileUser === u.id ? null : u.id);
     setEditingPermUser(null);
   };
@@ -13516,6 +13270,26 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
       alert(err.message || "Erro ao salvar perfil.");
     } finally {
       setSavingUserProfile(false);
+    }
+  };
+
+  const handleResetPassword = async (id: string, email: string) => {
+    const novaSenha = window.prompt(`Digite uma nova senha temporária para ${email}:`);
+    if (!novaSenha) return;
+    if (novaSenha.length < 6) { alert("A senha precisa ter pelo menos 6 caracteres."); return; }
+    try {
+      const res = await authFetch(`/api/admin/users/${id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: novaSenha }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Endpoint de redefinição de senha não disponível.");
+      }
+      alert(`Senha temporária definida para ${email}. Copie e envie ao usuário: ${novaSenha}`);
+    } catch (err: any) {
+      alert(err.message || "Não foi possível redefinir a senha por este arquivo. Verifique a rota /api/admin/users/:id/password no backend.");
     }
   };
 
@@ -13609,6 +13383,22 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                   value={profile.telefone}
                   onChange={(e) => setProfile({ ...profile, telefone: maskPhone(e.target.value) })}
                 />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Assinatura do Corretor (PNG/JPG)</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="input-field"
+                  onChange={(e) => handleSignatureUpload(e.target.files?.[0], "me")}
+                />
+                {profile.assinaturaUrl && (
+                  <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Prévia da assinatura</p>
+                    <img src={profile.assinaturaUrl} alt="Assinatura" className="max-h-20 object-contain" />
+                    <button type="button" onClick={() => setProfile({ ...profile, assinaturaUrl: "" })} className="mt-2 text-[10px] font-black uppercase text-red-500">Remover assinatura</button>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -13713,6 +13503,9 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
         <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
           Usuários Cadastrados
         </h2>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-bold text-amber-800 leading-relaxed">
+          Por segurança, o app não consegue mostrar a senha antiga quando ela é salva criptografada no servidor. O administrador deve usar “Redefinir senha” para criar uma nova senha temporária quando precisar recuperar acesso.
+        </div>
         {loading ? (
           <p className="text-slate-400 text-sm">Carregando...</p>
         ) : (
@@ -13735,10 +13528,18 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                     <button
                       onClick={() => handleOpenEditProfile(u)}
                       className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingProfileUser === u.id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white"}`}
-                      title="Editar nome, CRECI e telefone"
+                      title="Editar nome, CRECI, telefone e assinatura"
                     >
                       <User size={12} />
                       Perfil
+                    </button>
+                    <button
+                      onClick={() => handleResetPassword(u.id, u.email)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all"
+                      title="Definir nova senha temporária"
+                    >
+                      <ShieldCheck size={12} />
+                      Redefinir senha
                     </button>
                     {!u.isAdmin && (
                       <>
@@ -13806,6 +13607,21 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                               value={editProfileData.telefone}
                               onChange={(e) => setEditProfileData({ ...editProfileData, telefone: maskPhone(e.target.value) })}
                             />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Assinatura no Recibo</label>
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="w-full h-10 px-3 py-2 rounded-xl border border-border-subtle bg-surface-bg text-xs font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              onChange={(e) => handleSignatureUpload(e.target.files?.[0], "edit")}
+                            />
+                            {editProfileData.assinaturaUrl && (
+                              <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                                <img src={editProfileData.assinaturaUrl} alt="Assinatura" className="max-h-20 object-contain" />
+                                <button type="button" onClick={() => setEditProfileData({ ...editProfileData, assinaturaUrl: "" })} className="mt-2 text-[10px] font-black uppercase text-red-500">Remover assinatura</button>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <div className="flex justify-end gap-3 pt-1">
@@ -14023,7 +13839,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
-  const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string }>({ nome: "", creci: "", telefone: "" });
+  const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl?: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
 
@@ -14083,7 +13899,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   useEffect(() => {
     authFetch("/api/auth/profile")
       .then(r => r.ok ? r.json() : null)
-      .then(d => { if (d) setUserProfile({ nome: d.nome || "", creci: d.creci || "", telefone: d.telefone || "" }); })
+      .then(d => { if (d) setUserProfile({ nome: d.nome || "", creci: d.creci || "", telefone: d.telefone || "", assinaturaUrl: d.assinaturaUrl || d.assinaturaBase64 || "" }); })
       .catch(() => {});
   }, []);
 
