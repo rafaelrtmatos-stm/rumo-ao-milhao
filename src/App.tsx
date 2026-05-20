@@ -170,6 +170,37 @@ function parseFicha(text: string): Record<string, any> {
   return result;
 }
 
+function getEmpreendimentoMapsUrl(dev?: Partial<Empreendimento> | null): string {
+  if (!dev) return "";
+  const anyDev = dev as any;
+  return String(
+    anyDev.mapaLocalizacaoUrl ||
+    anyDev.googleMapsUrl ||
+    anyDev.localizacaoMapaUrl ||
+    anyDev.linkMapa ||
+    ""
+  ).trim();
+}
+
+function normalizarLinkGoogleMaps(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^(maps\.app\.goo\.gl|goo\.gl|google\.com|www\.google\.com|maps\.google\.com)/i.test(raw)) {
+    return `https://${raw}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(raw)}`;
+}
+
+function abrirLocalizacaoGoogleMaps(dev?: Partial<Empreendimento> | null) {
+  const url = normalizarLinkGoogleMaps(getEmpreendimentoMapsUrl(dev));
+  if (!url) {
+    alert("Este empreendimento ainda não possui link de localização cadastrado.");
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
 function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?: string }): string[] {
   if (!faixa) return [];
   if (faixa.especificos && faixa.especificos.trim()) {
@@ -2402,30 +2433,6 @@ const LotDashboard = ({
     onSaveDev(recalculado);
   };
 
-  const copyTextToClipboard = async (textToCopy: string) => {
-    if (navigator.clipboard && window.isSecureContext) {
-      await navigator.clipboard.writeText(textToCopy);
-      return true;
-    }
-
-    const textarea = document.createElement("textarea");
-    textarea.value = textToCopy;
-    textarea.setAttribute("readonly", "true");
-    textarea.style.position = "fixed";
-    textarea.style.left = "-9999px";
-    textarea.style.top = "0";
-    document.body.appendChild(textarea);
-
-    try {
-      textarea.focus();
-      textarea.select();
-      textarea.setSelectionRange(0, textarea.value.length);
-      return document.execCommand("copy");
-    } finally {
-      document.body.removeChild(textarea);
-    }
-  };
-
   const copyScriptForChatGPT = async () => {
     const scriptAtual = formatLotScriptFromEmpreendimento(localDev, sales);
     const payload = [
@@ -2442,17 +2449,12 @@ const LotDashboard = ({
     ].join("\n");
 
     setLotScriptText(payload);
-
+    setLotScriptMsg("Script preparado para enviar ao ChatGPT.");
     try {
-      const copied = await copyTextToClipboard(payload);
-      if (copied) {
-        setLotScriptMsg("Script copiado automaticamente. Agora é só colar no ChatGPT junto com o mapa.");
-      } else {
-        setLotScriptMsg("Script gerado, mas o navegador bloqueou a cópia automática. Selecione e copie manualmente.");
-      }
-    } catch (error) {
-      console.error("Erro ao copiar script para o clipboard:", error);
-      setLotScriptMsg("Script gerado, mas não foi possível copiar automaticamente. Selecione e copie manualmente.");
+      await navigator.clipboard?.writeText(payload);
+      setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
+    } catch {
+      // Mantém no campo para cópia manual.
     }
   };
 
@@ -3565,6 +3567,15 @@ const LotDashboard = ({
               <div className="card-premium p-4 space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
                 <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
+                {getEmpreendimentoMapsUrl(localDev) && (
+                  <button
+                    type="button"
+                    onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-primary-contrast py-3 text-[11px] font-black uppercase tracking-widest transition-colors"
+                  >
+                    <MapPin size={14} /> Ir no Google Maps
+                  </button>
+                )}
                 {!canEditMap && <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
               </div>
             )}
@@ -3659,8 +3670,7 @@ const LotDashboard = ({
                     <button
                       type="button"
                       onClick={copyScriptForChatGPT}
-                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100 active:scale-[0.98] active:bg-emerald-200 transition-all"
-                      title="Gera o script, mostra na tela e copia automaticamente para a área de transferência"
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
                     >
                       Copiar script para ChatGPT
                     </button>
@@ -4103,7 +4113,16 @@ const LotDashboard = ({
             </div>
           </div>
           {/* Botão Editar mapa — somente no canto superior direito, apenas para admin */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {getEmpreendimentoMapsUrl(localDev) && (
+              <button
+                onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
+                className="flex px-4 py-2 bg-primary-main/10 text-primary-main rounded-xl text-xs font-black uppercase items-center gap-2 hover:bg-primary-main hover:text-primary-contrast transition-colors"
+                title="Abrir localização no Google Maps"
+              >
+                <MapPin size={13} />Google Maps
+              </button>
+            )}
             {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
               <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
                 <MapPin size={13} />Editar mapa
@@ -4235,8 +4254,8 @@ const EmpreendimentosSection = ({
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
-    descricao: "", comunidade: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [], lotesPorQuadra: {},
-  };
+    descricao: "", comunidade: "", mapaLocalizacaoUrl: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [], lotesPorQuadra: {},
+  } as any;
   const [isAdding, setIsAdding] = useState(false);
   const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
@@ -4356,11 +4375,12 @@ const EmpreendimentosSection = ({
     setFormData({
       nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
       totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
+      mapaLocalizacaoUrl: getEmpreendimentoMapsUrl(dev),
       quadras: dev.quadras, ruas: dev.ruas,
       ruasPorQuadra: dev.ruasPorQuadra || {},
       ruasFaixas: dev.ruasFaixas || [],
       lotesPorQuadra: dev.lotesPorQuadra || {},
-    });
+    } as any);
     setIsAdding(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -4601,6 +4621,22 @@ const EmpreendimentosSection = ({
                   }
                   placeholder="Ex: Centro, Vila Nova"
                 />
+              </div>
+
+              <div>
+                <label className="label">Link da Localização no Google Maps</label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-main" />
+                  <input
+                    className="input-field pl-10"
+                    value={(formData as any).mapaLocalizacaoUrl || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, mapaLocalizacaoUrl: e.target.value } as any)
+                    }
+                    placeholder="Cole aqui o link do Google Maps"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Esse link será usado no botão “Ir no Google Maps”.</p>
               </div>
               <div className="md:col-span-2 space-y-4">
                 <div>
@@ -4905,6 +4941,16 @@ const EmpreendimentosSection = ({
                   <MapPin size={12} className="text-primary-light" />
                   {dev.cidade} • {dev.estado}
                 </div>
+                {getEmpreendimentoMapsUrl(dev) && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); abrirLocalizacaoGoogleMaps(dev); }}
+                    className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary-main bg-primary-main/10 hover:bg-primary-main hover:text-primary-contrast rounded-lg px-2 py-1 transition-colors"
+                    title="Abrir localização no Google Maps"
+                  >
+                    <MapPin size={11} /> Google Maps
+                  </button>
+                )}
               </div>
             </div>
 
@@ -5057,6 +5103,15 @@ const EmpreendimentosSection = ({
                 >
                   <MapPin size={14} />
                   <span>Ver Mapa</span>
+                </button>
+                <button
+                  onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                  disabled={!getEmpreendimentoMapsUrl(dev)}
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors ${getEmpreendimentoMapsUrl(dev) ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
+                  title={getEmpreendimentoMapsUrl(dev) ? "Abrir localização no Google Maps" : "Cadastre o link da localização em Editar"}
+                >
+                  <MapPin size={14} />
+                  <span>Ir no Google Maps</span>
                 </button>
                 <button
                   onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
