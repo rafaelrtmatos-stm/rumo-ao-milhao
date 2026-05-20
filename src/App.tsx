@@ -257,6 +257,149 @@ function getMapaStatusLabel(status: any, hasVenda = false): string {
   return "Disponível";
 }
 
+
+type LotScriptItem = { quadra: string; lote: string; status: MapaLoteStatus };
+type LotScriptParseResult = { items: LotScriptItem[]; errors: string[] };
+
+function lotScriptStatusToLabel(status: MapaLoteStatus): string {
+  if (status === "indisponivel") return "Indisponível";
+  if (status === "reservado") return "Reservado";
+  return "Disponível";
+}
+
+function lotScriptStatusToLetter(status: any): "D" | "I" | "R" {
+  const normalized = normalizeMapaStatus(status);
+  if (normalized === "indisponivel") return "I";
+  if (normalized === "reservado") return "R";
+  return "D";
+}
+
+function parseLotScriptStatus(letter: string): MapaLoteStatus | null {
+  const l = String(letter || "").trim().toUpperCase();
+  if (l === "D") return "disponivel";
+  if (l === "I") return "indisponivel";
+  if (l === "R") return "reservado";
+  return null;
+}
+
+/**
+ * Formato oficial de importação por texto:
+ * Q1:1D,2I,3R.
+ * A:1D,2D,3I.
+ *
+ * - A quadra termina com ":"
+ * - Lotes são separados por ","
+ * - Cada lote termina com D, I ou R
+ * - A lista da quadra termina com "."
+ */
+function parseLotScriptByQuadra(raw: string): LotScriptParseResult {
+  const text = String(raw || "").replace(/\r/g, "\n").trim();
+  const result: LotScriptItem[] = [];
+  const errors: string[] = [];
+  if (!text) return { items: result, errors: ["Cole o script no formato Q1:1D,2I,3R."] };
+
+  const blockRegex = /([^:\.\n]+)\s*:\s*([^\.]+)\./g;
+  let match: RegExpExecArray | null;
+  let found = false;
+
+  while ((match = blockRegex.exec(text)) !== null) {
+    found = true;
+    const quadra = normalizeLotText(match[1].replace(/^Q(?:UADRA)?\s*/i, "") || match[1]);
+    const loteParts = match[2].split(",").map((s) => s.trim()).filter(Boolean);
+    if (!quadra) {
+      errors.push(`Quadra inválida no bloco: ${match[0]}`);
+      continue;
+    }
+
+    loteParts.forEach((token) => {
+      const clean = token.replace(/\s+/g, "");
+      const m = clean.match(/^(.+?)([DIR])$/i);
+      if (!m) {
+        errors.push(`Lote "${token}" inválido. Use D, I ou R no final. Ex.: 12D`);
+        return;
+      }
+      const lote = normalizeLotText(m[1]);
+      const status = parseLotScriptStatus(m[2]);
+      if (!lote || !status) {
+        errors.push(`Lote "${token}" inválido.`);
+        return;
+      }
+      result.push({ quadra, lote, status });
+    });
+  }
+
+  if (!found) {
+    errors.push("Nenhuma quadra encontrada. Use o formato Q1:1D,2I,3R.");
+  }
+
+  const unique = new Map<string, LotScriptItem>();
+  result.forEach((item) => unique.set(getLotInfoKey(item.quadra, item.lote), item));
+  return { items: Array.from(unique.values()), errors };
+}
+
+function formatLotScriptFromEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): string {
+  const byQuadra = new Map<string, { lote: string; status: MapaLoteStatus }[]>();
+  const addItem = (quadra: string, lote: string, status?: any) => {
+    const q = normalizeLotText(quadra);
+    const l = normalizeLotText(lote);
+    if (!q || !l) return;
+    const infoStatus = status || getLotStatusForSale(dev, q, l, vendas).status;
+    const normalized = normalizeMapaStatus(infoStatus === "vendido" ? "indisponivel" : infoStatus);
+    const arr = byQuadra.get(q) || [];
+    if (!arr.some((item) => normalizeLotKeyPart(item.lote) === normalizeLotKeyPart(l))) {
+      arr.push({ lote: l, status: normalized });
+    }
+    byQuadra.set(q, arr);
+  };
+
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      const key = getLotInfoKey(quadra, lote);
+      addItem(quadra, lote, (dev.lotesInfo || {})[key]?.status);
+    });
+  });
+
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    const split = splitLotKeyLabel(key);
+    addItem(split.quadra, split.lote, (info as any)?.status);
+  });
+
+  ((dev as any).mapaPontos || []).forEach((ponto: any) => {
+    addItem(ponto.quadra, ponto.lote, ponto.status);
+  });
+
+  return Array.from(byQuadra.entries())
+    .sort(([a], [b]) => a.localeCompare(b, "pt-BR", { numeric: true }))
+    .map(([quadra, lotes]) => {
+      const lotesOrdenados = lotes
+        .slice()
+        .sort((a, b) => String(a.lote).localeCompare(String(b.lote), "pt-BR", { numeric: true }))
+        .map((item) => `${item.lote}${lotScriptStatusToLetter(item.status)}`)
+        .join(",");
+      return `Q${quadra}:${lotesOrdenados}.`;
+    })
+    .join("\n");
+}
+
+function getQuadraCadastroSummary(dev: Empreendimento, quadra: string): { exists: boolean; count: number; first?: string; last?: string; lotes: string[] } {
+  const realQuadra = findQuadraName(dev, quadra) || normalizeLotText(quadra);
+  const lotesFromRange = getLotesDeQuadra(dev.lotesPorQuadra?.[realQuadra]);
+  const lotesFromInfo = Object.keys(dev.lotesInfo || {})
+    .map(splitLotKeyLabel)
+    .filter((item) => normalizeLotKeyPart(item.quadra) === normalizeLotKeyPart(realQuadra))
+    .map((item) => item.lote);
+  const lotes = Array.from(new Set([...lotesFromRange, ...lotesFromInfo]))
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true }));
+  return {
+    exists: !!findQuadraName(dev, quadra) || lotes.length > 0,
+    count: lotes.length,
+    first: lotes[0],
+    last: lotes[lotes.length - 1],
+    lotes,
+  };
+}
+
 function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
   const quadraName = findQuadraName(dev, quadra);
   const key = getLotInfoKey(quadra, lote);
@@ -2006,6 +2149,8 @@ const LotDashboard = ({
   const [marcadorPonto1, setMarcadorPonto1] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+  const [lotScriptText, setLotScriptText] = useState("");
+  const [lotScriptMsg, setLotScriptMsg] = useState("");
 
   // Tamanho visual das bolinhas configurável em porcentagem.
   // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
@@ -2257,6 +2402,116 @@ const LotDashboard = ({
     onSaveDev(recalculado);
   };
 
+  const copyScriptForChatGPT = async () => {
+    const scriptAtual = formatLotScriptFromEmpreendimento(localDev, sales);
+    const payload = [
+      `EMPREENDIMENTO: ${localDev.nome}`,
+      "REGRA: devolver somente no padrão Q1:1D,2I,3R.",
+      "STATUS: D=DISPONÍVEL; I=INDISPONÍVEL; R=RESERVADO.",
+      "CHAVE: empreendimento + quadra + lote. Não duplicar.",
+      "",
+      "SCRIPT_ATUAL:",
+      scriptAtual || "Q1:.",
+      "",
+      "ORIENTAÇÃO:",
+      "Analise o mapa enviado e devolva o script corrigido por quadra.",
+    ].join("\n");
+
+    setLotScriptText(payload);
+    setLotScriptMsg("Script preparado para enviar ao ChatGPT.");
+    try {
+      await navigator.clipboard?.writeText(payload);
+      setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
+    } catch {
+      // Mantém no campo para cópia manual.
+    }
+  };
+
+  const importScriptFromChatGPT = () => {
+    const parsed = parseLotScriptByQuadra(lotScriptText);
+    if (parsed.errors.length > 0) {
+      alert("Corrija o script antes de importar:\n\n" + parsed.errors.slice(0, 8).join("\n"));
+      return;
+    }
+    if (parsed.items.length === 0) {
+      alert("Nenhum lote encontrado no script.");
+      return;
+    }
+
+    const conflicts = parsed.items
+      .map((item) => {
+        const key = getLotInfoKey(item.quadra, item.lote);
+        const existingInfo = localDev.lotesInfo?.[key];
+        const existingPoint = mapaPontos.find((p: any) => getLotInfoKey(p.quadra, p.lote) === key);
+        const currentStatus = existingPoint?.status || existingInfo?.status;
+        if (currentStatus && normalizeMapaStatus(currentStatus) !== item.status) {
+          return { ...item, currentStatus: normalizeMapaStatus(currentStatus), hasPoint: !!existingPoint };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<LotScriptItem & { currentStatus: MapaLoteStatus; hasPoint: boolean }>;
+
+    let conflictMode: "update" | "keep" = "update";
+    if (conflicts.length > 0) {
+      const sample = conflicts.slice(0, 10).map((c) => `Q${c.quadra} L${c.lote}: atual ${lotScriptStatusToLabel(c.currentStatus)} → novo ${lotScriptStatusToLabel(c.status)}`).join("\n");
+      const update = window.confirm(
+        `Foram encontrados ${conflicts.length} conflito(s) de status.\n\n${sample}\n\nOK = atualizar com o script novo.\nCancelar = manter status atual e importar apenas novos lotes.`
+      );
+      conflictMode = update ? "update" : "keep";
+    }
+
+    let nextDevLocal = localDev;
+    let created = 0;
+    let updated = 0;
+    let kept = 0;
+    let linkedPoints = 0;
+
+    parsed.items.forEach((item) => {
+      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, item.quadra, item.lote);
+      const key = ensured.lotInfoKey;
+      const existingInfo = ensured.dev.lotesInfo?.[key] || {};
+      const currentPoint = ((ensured.dev as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === key);
+      const currentStatus = currentPoint?.status || (existingInfo as any)?.status;
+      const hasConflict = currentStatus && normalizeMapaStatus(currentStatus) !== item.status;
+      const shouldUpdate = !hasConflict || conflictMode === "update";
+      const nextStatus = shouldUpdate ? item.status : normalizeMapaStatus(currentStatus);
+
+      if (!existingInfo && !currentPoint) created += 1;
+      else if (shouldUpdate) updated += 1;
+      else kept += 1;
+      if (currentPoint) linkedPoints += 1;
+
+      const nextInfo = {
+        ...existingInfo,
+        status: nextStatus,
+        atualizadoEm: new Date().toISOString(),
+        origemAtualizacao: shouldUpdate ? "script-chatgpt" : ((existingInfo as any).origemAtualizacao || "mantido"),
+      };
+
+      const nextPontos = ((ensured.dev as any).mapaPontos || []).map((p: any) => {
+        if (getLotInfoKey(p.quadra, p.lote) !== key) return p;
+        return {
+          ...p,
+          status: nextStatus,
+          atualizadoEm: new Date().toISOString(),
+        };
+      });
+
+      nextDevLocal = {
+        ...ensured.dev,
+        lotesInfo: {
+          ...(ensured.dev.lotesInfo || {}),
+          [key]: nextInfo,
+        },
+        mapaPontos: nextPontos,
+      } as Empreendimento;
+    });
+
+    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    persistDev(finalDev);
+    setLotScriptMsg(`Importado: ${parsed.items.length} lote(s). Criados ${created}, atualizados ${updated}, mantidos ${kept}, bolinhas vinculadas ${linkedPoints}.`);
+  };
+
   const vendaDoLote = (quadra: string, lote: string, vendaId?: string) => {
     if (vendaId) {
       const byId = sales.find((v) => v.id === vendaId);
@@ -2471,18 +2726,50 @@ const LotDashboard = ({
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
-    const existingPoint = mapaPontos.find((p) => getLotInfoKey(p.quadra, p.lote) === getLotInfoKey(quadra, lote));
+
+    const key = getLotInfoKey(quadra, lote);
+    const existingPoint = mapaPontos.find((p) => getLotInfoKey(p.quadra, p.lote) === key);
     if (existingPoint && !raw.moveExisting) {
       if (raw.confirmDuplicate === false) return false;
-      const reposition = window.confirm("Este lote já existe no mapa. Deseja reposicionar a bolinha existente?");
+      const reposition = window.confirm(
+        "Este lote já possui uma bolinha no mapa.\n\nOK = reposicionar/vincular a bolinha existente.\nCancelar = não criar duplicata."
+      );
       if (!reposition) return false;
       return ensureMapLotAndPoint({ ...raw, moveExisting: true });
     }
+
+    const quadraSummary = getQuadraCadastroSummary(localDev, quadra);
     const lotExists = hasConfiguredLot(localDev, quadra, lote);
-    if (!lotExists && raw.confirmMissing !== false) {
+    let finalStatus: MapaLoteStatus = raw.status;
+    let finalObs = raw.observacao || "";
+
+    if (quadraSummary.exists && !raw.moveExisting) {
+      const infoTexto = quadraSummary.count > 0
+        ? `Quadra ${quadra} já possui ${quadraSummary.count} lote(s) cadastrado(s), de ${quadraSummary.first} até ${quadraSummary.last}.`
+        : `Quadra ${quadra} já existe no sistema.`;
+      if (lotExists) {
+        const existingInfo = localDev.lotesInfo?.[key];
+        const existingStatus = normalizeMapaStatus(existingInfo?.status || "disponivel");
+        const usarExistente = window.confirm(
+          `${infoTexto}\n\nO lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatus)}.\n\nOK = Vincular lote existente e usar as informações do sistema.\nCancelar = Vincular, mas atualizar com o status escolhido agora (${lotScriptStatusToLabel(raw.status)}).`
+        );
+        if (usarExistente) {
+          finalStatus = existingStatus;
+          finalObs = existingInfo?.observacao || finalObs;
+        }
+      } else {
+        const add = window.confirm(
+          `${infoTexto}\n\nO lote ${lote} ainda não existe nesta quadra.\nDeseja criar/complementar esse lote e vincular a bolinha?`
+        );
+        if (!add) return false;
+      }
+    }
+
+    if (!lotExists && !quadraSummary.exists && raw.confirmMissing !== false) {
       const add = window.confirm("Esta quadra/lote não existe no empreendimento. Deseja adicionar automaticamente?");
       if (!add) return false;
     }
+
     const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
     const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
     const pontoBase = {
@@ -2492,8 +2779,8 @@ const LotDashboard = ({
       lote,
       xPercent: raw.xPercent,
       yPercent: raw.yPercent,
-      status: raw.status,
-      observacao: raw.observacao || existingPoint?.observacao || "",
+      status: finalStatus,
+      observacao: finalObs || existingPoint?.observacao || "",
       criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
       atualizadoEm: new Date().toISOString(),
       vendaId: existingPoint?.vendaId,
@@ -2505,7 +2792,7 @@ const LotDashboard = ({
     const nextPontos = raw.moveExisting && existingPoint
       ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
       : [...currentPontos, pontoBase];
-    const nextInfo = { ...existingInfo, status: raw.status, observacao: raw.observacao || existingInfo.observacao || "" };
+    const nextInfo = { ...existingInfo, status: finalStatus, observacao: finalObs || existingInfo.observacao || "" };
     const nextDev = recalcularEstatisticasEmpreendimento({
       ...ensured.dev,
       lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
@@ -2514,7 +2801,7 @@ const LotDashboard = ({
     persistDev(nextDev);
     if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
     // Sync com Gerenciador de Lotes
-    if (onMarkerSaved) onMarkerSaved(ensured.quadraName, lote, raw.status, raw.observacao || "");
+    if (onMarkerSaved) onMarkerSaved(ensured.quadraName, lote, finalStatus, finalObs || "");
     return true;
   };
 
@@ -3333,6 +3620,40 @@ const LotDashboard = ({
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
 
+                {/* Script ChatGPT / importação por texto */}
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Adicionar por texto</p>
+                  <p className="text-[10px] text-emerald-700/80">
+                    Padrão: <strong>Q1:1D,2I,3R.</strong> D=disponível, I=indisponível, R=reservado.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={copyScriptForChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                    >
+                      Copiar script para ChatGPT
+                    </button>
+                    <textarea
+                      className="input-field min-h-[96px] text-[11px] font-mono leading-relaxed"
+                      value={lotScriptText}
+                      onChange={(e) => setLotScriptText(e.target.value)}
+                      placeholder={"Cole aqui o script recebido. Ex:\\nQ1:1D,2I,3R.\\nQ2:1I,2D,3R."}
+                    />
+                    <button
+                      type="button"
+                      onClick={importScriptFromChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      Colar/Importar script do ChatGPT
+                    </button>
+                  </div>
+                  {lotScriptMsg && <p className="text-[10px] font-bold text-emerald-800 bg-white/70 p-2 rounded-xl">{lotScriptMsg}</p>}
+                  <p className="text-[10px] text-slate-500">
+                    Se quadra/lote já existir, o sistema vincula e pergunta antes de substituir status diferente. Nunca cria duplicata.
+                  </p>
+                </div>
+
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
 
                 {/* Salvar / sair da edição */}
@@ -3446,6 +3767,16 @@ const LotDashboard = ({
                   <p className="text-xs text-slate-400">
                     Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
                   </p>
+                  {marcadorForm.quadra && (() => {
+                    const summary = getQuadraCadastroSummary(localDev, marcadorForm.quadra);
+                    if (!summary.exists) return null;
+                    return (
+                      <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold leading-relaxed">
+                        Quadra {marcadorForm.quadra} já cadastrada{summary.count ? ` · lotes ${summary.first} até ${summary.last} (${summary.count})` : ""}.
+                        <br />Use <span className="uppercase">Vincular lote existente</span> para aproveitar os dados do sistema e evitar duplicidade.
+                      </div>
+                    );
+                  })()}
                   <div>
                     <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Quadra</label>
                     <input
@@ -3491,7 +3822,7 @@ const LotDashboard = ({
                         setMarcadorPanelPos(null);
                       }
                     }} className="btn-primary">
-                      {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : "Adicionar"}
+                      {isMultiLote(marcadorForm.lote) ? "Próximo: 2º ponto" : hasConfiguredLot(localDev, marcadorForm.quadra, marcadorForm.lote) ? "Vincular lote existente" : "Adicionar"}
                     </button>
                     <button onClick={() => { setMarcadorFase("idle"); setMarcadorPonto1(null); setMarcadorPanelPos(null); }} className="btn-secondary">Cancelar</button>
                   </div>
