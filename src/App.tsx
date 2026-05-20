@@ -2250,7 +2250,8 @@ const LotDashboard = ({
   const [mapFullscreen, setMapFullscreen] = useState(false);
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
-  const HIGH_RES_ZOOM_THRESHOLD = 1.08;
+  const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
+  const HIGH_RES_ZOOM_THRESHOLD = 2.5;  // zoom > 2.5 → imagem alta resolução
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -2274,6 +2275,15 @@ const LotDashboard = ({
     startX: number;
     startY: number;
   }>({ mode: "none", startDistance: 0, startZoom: 1, startPanX: 0, startPanY: 0, startX: 0, startY: 0 });
+
+  // Modal "Lote já cadastrado" — substitui window.prompt por UI React adequada
+  const [loteConflictModal, setLoteConflictModal] = useState<{
+    resolve: (escolha: "1" | "2" | "3" | "4") => void;
+    infoTexto: string;
+    lote: string;
+    existingStatus: string;
+    rawStatus: string;
+  } | null>(null);
 
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
@@ -2338,7 +2348,8 @@ const LotDashboard = ({
 
   const setMapZoomSafely = (nextZoom: number) => {
     const clamped = Math.max(1, Math.min(5, nextZoom));
-    if (clamped > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+    // Dispara geração de média+alta a partir do zoom médio (1.4x) para carregar antes de precisar
+    if (clamped > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
     setMapZoom(clamped);
     setMapPan((prev) => clampMapPan(prev, clamped));
   };
@@ -2363,20 +2374,23 @@ const LotDashboard = ({
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  // Imagem média: gerada sob demanda na faixa de zoom intermediário
+  const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemLeve;
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
   const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
-  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
+  const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : deveUsarMapaMedia ? mapaImagemMedia : mapaImagemLeve;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
-    // quando o mouse está sobre o mapa, o scroll controla somente o mapa,
-    // sem rolar nem aplicar zoom na página/navegador.
-    if (!isEditingMap && !mapFullscreen) return;
+    // o scroll sobre o mapa controla SOMENTE o zoom do mapa (não rola a página).
+    // Funciona em modo visualização, edição e tela cheia — sem precisar de Ctrl.
+    if (!mapaImagem) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
-    void requestHighResolutionMap();
     const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
     setMapZoomSafely(mapZoom + delta);
   };
 
@@ -2384,13 +2398,13 @@ const LotDashboard = ({
     const el = mapViewportRef.current;
     if (!el) return;
     const onNativeWheel = (ev: WheelEvent) => {
-      if (!isEditingMap && !mapFullscreen) return;
-      // Impede zoom/scroll da página inteira quando o mouse está sobre o mapa.
+      if (!mapaImagem) return;
+      // { passive: false } obrigatório para poder chamar preventDefault() sem erro.
       ev.preventDefault();
       ev.stopPropagation();
       setMapActive(true);
       const delta = ev.deltaY < 0 ? 0.25 : -0.25;
-      if (mapZoom + delta > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
       setMapZoomSafely(mapZoom + delta);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
@@ -2532,6 +2546,8 @@ const LotDashboard = ({
   };
 
   const requestHighResolutionMap = async () => {
+    // Gera a imagem em alta resolução sob demanda (estágio 3).
+    // Se o PDF original não estiver disponível, apenas atualiza a escala.
     if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
     if (!originalPdf) {
@@ -2541,10 +2557,18 @@ const LotDashboard = ({
     try {
       setMapHighResLoading(true);
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+      // Estágio 2 — Média: 2x (carrega primeiro, melhora nitidez rapidamente)
+      const medScale = Math.max(2, Math.min(3, 2 * deviceRatio));
+      const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), medScale);
+
+      // Estágio 3 — Alta: 4–5x (para zoom avançado, edição e tela cheia)
       const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
       const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
+
       persistDev({
         ...localDev,
+        mapaImagemMedResBase64: medImage,
         mapaImagemHighResBase64: highImage,
         mapaAltaResolucao: true,
         mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
@@ -2945,7 +2969,14 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // CRIAR/PERSISTIR BOLINHA
   // ──────────────────────────────────────────────
-  const ensureMapLotAndPoint = (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }) => {
+  // Versão assíncrona do modal de conflito de lote (substitui window.prompt)
+  const showLoteConflictModal = (infoTexto: string, lote: string, existingStatus: string, rawStatus: string): Promise<"1" | "2" | "3" | "4"> => {
+    return new Promise((resolve) => {
+      setLoteConflictModal({ resolve, infoTexto, lote, existingStatus, rawStatus });
+    });
+  };
+
+  const ensureMapLotAndPoint = async (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean }): Promise<boolean> => {
     const quadra = normalizeLotText(raw.quadra);
     const lote = normalizeLotText(raw.lote);
     if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
@@ -2958,7 +2989,7 @@ const LotDashboard = ({
         "Este lote já possui uma bolinha no mapa.\n\nOK = reposicionar/vincular a bolinha existente.\nCancelar = não criar duplicata."
       );
       if (!reposition) return false;
-      return ensureMapLotAndPoint({ ...raw, moveExisting: true });
+      return await ensureMapLotAndPoint({ ...raw, moveExisting: true });
     }
 
     const quadraSummary = getQuadraCadastroSummary(localDev, quadra);
@@ -2973,18 +3004,17 @@ const LotDashboard = ({
       if (lotExists) {
         const existingInfo = localDev.lotesInfo?.[key];
         const existingStatus = normalizeMapaStatus(existingInfo?.status || "disponivel");
-        const escolha = window.prompt(
-          `${infoTexto}\n\nO lote ${lote} já está cadastrado no sistema como ${lotScriptStatusToLabel(existingStatus)}.\n\nEscolha antes de salvar a bolinha:\n1 = Vincular e obedecer dados do sistema\n2 = Vincular e atualizar com o status que estou marcando agora (${lotScriptStatusToLabel(raw.status)})\n3 = Manter como está no sistema\n4 = Cancelar`,
-          "1"
+        // Modal React em vez de window.prompt para melhor UX
+        const escolha = await showLoteConflictModal(
+          infoTexto,
+          lote,
+          lotScriptStatusToLabel(existingStatus),
+          lotScriptStatusToLabel(raw.status)
         );
-        if (escolha === null || escolha.trim() === "4") return false;
-        if (escolha.trim() === "1" || escolha.trim() === "3") {
+        if (escolha === "4") return false;
+        if (escolha === "1" || escolha === "3") {
           finalStatus = existingStatus;
           finalObs = existingInfo?.observacao || finalObs;
-        }
-        if (escolha.trim() !== "1" && escolha.trim() !== "2" && escolha.trim() !== "3") {
-          alert("Opção inválida. A bolinha não foi salva.");
-          return false;
         }
       } else {
         const add = window.confirm(
@@ -3673,7 +3703,17 @@ const LotDashboard = ({
             )}
             {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
               <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
-                <span>{mapHighResLoading ? "Gerando mapa em alta resolução..." : "Prévia leve ativa. A alta resolução carrega ao aproximar; ao afastar, volta para a versão leve."}</span>
+                <span>
+                  {mapHighResLoading
+                    ? "Gerando mapa em média e alta resolução..."
+                    : mapZoom <= 1
+                    ? "Prévia leve ativa. Use + ou scroll para aproximar e carregar mais nitidez."
+                    : mapZoom <= MED_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução leve. Aproxime mais para nitidez média.`
+                    : mapZoom <= HIGH_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução média. Aproxime mais para alta resolução.`
+                    : `Zoom ${Math.round(mapZoom * 100)}% — alta resolução ativa.`}
+                </span>
               </div>
             )}
             <div
@@ -3686,7 +3726,7 @@ const LotDashboard = ({
               onWheel={handleMapWheel}
               onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
-              style={{ maxWidth: "1000px", touchAction: (isEditingMap || mapFullscreen || mapActive) ? "none" : "auto", overscrollBehavior: "contain" }}
+              style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
             <div
               ref={mapContainerRef}
@@ -3778,9 +3818,11 @@ const LotDashboard = ({
                 </div>
               )}
             </div>
-            {(isEditingMap || mapFullscreen) && (
+            {/* Botões de zoom visíveis em todos os modos: visualização, edição e tela cheia */}
+            {mapaImagem && (
               <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
+                {mapZoom > 1 && <button type="button" onClick={(ev) => { ev.stopPropagation(); resetMapZoom(); }} className="w-8 h-8 mx-auto rounded-xl bg-slate-100 text-slate-600 shadow border border-slate-200 font-black text-[10px]">1:1</button>}
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
               </div>
             )}
@@ -4107,11 +4149,11 @@ const LotDashboard = ({
                   </select>
                   <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
                   <div className="grid grid-cols-2 gap-3">
-                    <button onClick={() => {
+                    <button onClick={async () => {
                       if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
                       const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
                       if (lotes.length === 1) {
-                        const ok = ensureMapLotAndPoint({
+                        const ok = await ensureMapLotAndPoint({
                           quadra: marcadorForm.quadra,
                           lote: lotes[0],
                           xPercent: marcadorPonto1!.xPercent,
@@ -4473,6 +4515,56 @@ const LotDashboard = ({
 
       </motion.div>
     </div>
+
+    {/* MODAL: Lote já cadastrado — substitui window.prompt por UI React */}
+    <AnimatePresence>
+      {loteConflictModal && (
+        <motion.div
+          key="lote-conflict-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => { loteConflictModal.resolve("4"); setLoteConflictModal(null); }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Lote já cadastrado</p>
+              <p className="text-sm font-semibold text-slate-700">{loteConflictModal.infoTexto}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                O lote <strong>{loteConflictModal.lote}</strong> já está no sistema como{" "}
+                <strong>{loteConflictModal.existingStatus}</strong>.
+                Você está marcando como <strong>{loteConflictModal.rawStatus}</strong>.
+              </p>
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">O que deseja fazer?</p>
+            <div className="space-y-2">
+              {[
+                { key: "1" as const, label: "Vincular e obedecer dados do sistema", desc: `Usar status: ${loteConflictModal.existingStatus}`, color: "bg-blue-600 text-white hover:bg-blue-700" },
+                { key: "2" as const, label: "Vincular e atualizar com o status atual", desc: `Usar status: ${loteConflictModal.rawStatus}`, color: "bg-emerald-600 text-white hover:bg-emerald-700" },
+                { key: "3" as const, label: "Manter como está no sistema", desc: "Não altera nada, apenas posiciona a bolinha", color: "bg-slate-100 text-slate-700 hover:bg-slate-200" },
+                { key: "4" as const, label: "Cancelar", desc: "A bolinha não será salva", color: "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { loteConflictModal.resolve(opt.key); setLoteConflictModal(null); }}
+                  className={`w-full text-left rounded-2xl px-4 py-3 transition-colors ${opt.color}`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-widest">{opt.label}</p>
+                  <p className="text-[10px] opacity-70 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
 
     {/* FULLSCREEN EDIT MODAL — separado do modal principal para ocupar tela cheia */}
     <AnimatePresence>
