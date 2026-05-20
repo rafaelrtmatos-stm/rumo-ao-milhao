@@ -2245,6 +2245,12 @@ const LotDashboard = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const mapImageRef = useRef<HTMLImageElement>(null);
+  // Canvas de renderização direta do PDF (opção C — qualidade vetorial infinita)
+  const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfCanvasFullscreenRef = useRef<HTMLCanvasElement>(null);
+  const pdfRenderTaskRef = useRef<any>(null);
+  const pdfDocCacheRef = useRef<any>(null);
+  const pdfRenderScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
@@ -2363,9 +2369,13 @@ const LotDashboard = ({
   };
 
   const setMapZoomSafely = (nextZoom: number) => {
-    const clamped = Math.max(1, Math.min(5, nextZoom));
-    // Dispara geração de média+alta a partir do zoom médio (1.4x) para carregar antes de precisar
-    if (clamped > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+    const clamped = Math.max(1, Math.min(10, nextZoom));
+    // Se há PDF original, renderiza direto (qualidade vetorial infinita)
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      schedulePdfRender(clamped);
+    } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
+      void requestHighResolutionMap();
+    }
     setMapZoom(clamped);
     setMapPan((prev) => clampMapPan(prev, clamped));
   };
@@ -2477,8 +2487,12 @@ const LotDashboard = ({
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      const nextZoom = Math.max(1, Math.min(5, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
-      if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      const nextZoom = Math.max(1, Math.min(10, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      if ((localDev as any).mapaPdfOriginalBase64) {
+        schedulePdfRender(nextZoom);
+      } else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) {
+        void requestHighResolutionMap();
+      }
       setMapZoom(nextZoom);
       setMapPan((prev) => clampMapPan(prev, nextZoom));
       return;
@@ -2561,6 +2575,57 @@ const LotDashboard = ({
     return canvas.toDataURL("image/png", 1);
   };
 
+  // ── OPÇÃO C: renderização direta do PDF no canvas ──────────────────────────
+  // Renderiza o PDF vetorial direto no <canvas> do mapa, na resolução exata
+  // do zoom atual × devicePixelRatio. Qualidade infinita, sem converter para PNG.
+  const renderPdfDirect = async (canvasEl: HTMLCanvasElement | null, zoom: number) => {
+    if (!canvasEl) return;
+    const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+    if (!originalPdf) return;
+    try {
+      const pdfjsLib = await loadPdfJsIfNeeded();
+      if (!pdfDocCacheRef.current) {
+        const buffer = dataUrlToArrayBuffer(originalPdf);
+        pdfDocCacheRef.current = await pdfjsLib.getDocument({ data: buffer }).promise;
+      }
+      const pdfDoc = pdfDocCacheRef.current;
+      const page = await pdfDoc.getPage(1);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+      const renderScale = zoom * dpr;
+      const viewport = page.getViewport({ scale: renderScale });
+      if (pdfRenderTaskRef.current) {
+        pdfRenderTaskRef.current.cancel();
+        pdfRenderTaskRef.current = null;
+      }
+      canvasEl.width = Math.floor(viewport.width);
+      canvasEl.height = Math.floor(viewport.height);
+      canvasEl.style.width = `${Math.floor(viewport.width / dpr)}px`;
+      canvasEl.style.height = `${Math.floor(viewport.height / dpr)}px`;
+      const ctx = canvasEl.getContext("2d")!;
+      const task = page.render({ canvasContext: ctx, viewport });
+      pdfRenderTaskRef.current = task;
+      await task.promise;
+      pdfRenderTaskRef.current = null;
+      if (viewport.width > 0 && viewport.height > 0) {
+        setMapAspectRatio((viewport.width / dpr) / (viewport.height / dpr));
+      }
+      updateDisplayedMapScale();
+    } catch (err: any) {
+      if (err?.name !== "RenderingCancelledException") {
+        console.error("Erro ao renderizar PDF direto:", err);
+      }
+    }
+  };
+
+  const schedulePdfRender = (zoom: number) => {
+    if (pdfRenderScheduledRef.current) clearTimeout(pdfRenderScheduledRef.current);
+    pdfRenderScheduledRef.current = setTimeout(() => {
+      void renderPdfDirect(pdfCanvasRef.current, zoom);
+      if (mapFullscreen) void renderPdfDirect(pdfCanvasFullscreenRef.current, zoom);
+    }, 60);
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
+
   const requestHighResolutionMap = async () => {
     // Gera a imagem em alta resolução sob demanda (estágio 3).
     // Se o PDF original não estiver disponível, apenas atualiza a escala.
@@ -2637,11 +2702,34 @@ const LotDashboard = ({
     window.setTimeout(updateDisplayedMapScale, 500);
   };
 
+  // Renderização direta do PDF sempre que o zoom ou o empreendimento mudar
+  useEffect(() => {
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      // Invalida cache de documento ao trocar de empreendimento
+      pdfDocCacheRef.current = null;
+      schedulePdfRender(mapZoom);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(localDev as any).mapaPdfOriginalBase64]);
+
+  // Re-renderiza o canvas correto ao abrir/fechar fullscreen
+  useEffect(() => {
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      setTimeout(() => {
+        if (mapFullscreen) {
+          void renderPdfDirect(pdfCanvasFullscreenRef.current, mapZoom);
+        } else {
+          void renderPdfDirect(pdfCanvasRef.current, mapZoom);
+        }
+      }, 80);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapFullscreen]);
+
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
 
-    // Alta resolução sob demanda: só renderiza quando houver aproximação/zoom.
-    // Em zoom normal usa a prévia leve para não pesar o app.
+    // Alta resolução sob demanda (fallback para mapas sem PDF)
     if (mapZoom > HIGH_RES_ZOOM_THRESHOLD && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
       void requestHighResolutionMap();
     }
@@ -3793,7 +3881,11 @@ const LotDashboard = ({
               className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
-              <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+              {(localDev as any).mapaPdfOriginalBase64 ? (
+                <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
+              ) : (
+                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+              )}
 
               {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
@@ -4272,7 +4364,11 @@ const LotDashboard = ({
                   willChange: "transform",
                 }}
               >
-                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                {(localDev as any).mapaPdfOriginalBase64 ? (
+                  <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
+                ) : (
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                )}
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
