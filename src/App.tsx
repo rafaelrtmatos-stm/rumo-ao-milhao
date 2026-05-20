@@ -2014,6 +2014,8 @@ const LotDashboard = ({
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const mapImageRef = useRef<HTMLImageElement>(null);
+  const [displayedMapScale, setDisplayedMapScale] = useState(1);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
 
   // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
   const [mapActive, setMapActive] = useState(false);
@@ -2157,6 +2159,46 @@ const LotDashboard = ({
 
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
   const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+
+  const updateDisplayedMapScale = () => {
+    requestAnimationFrame(() => {
+      const img = mapImageRef.current;
+      const container = mapContainerRef.current;
+      if (!img || !container || !img.naturalWidth) return;
+
+      const displayedWidth = container.getBoundingClientRect().width || img.getBoundingClientRect().width;
+      const naturalWidth = img.naturalWidth;
+
+      if (displayedWidth > 0 && naturalWidth > 0) {
+        setDisplayedMapScale(Math.max(0.1, displayedWidth / naturalWidth));
+      }
+    });
+  };
+
+  useEffect(() => {
+    updateDisplayedMapScale();
+
+    const container = mapViewportRef.current || mapContainerRef.current;
+    if (!container) return;
+
+    const observer = new ResizeObserver(() => {
+      updateDisplayedMapScale();
+    });
+
+    observer.observe(container);
+    window.addEventListener("resize", updateDisplayedMapScale);
+
+    const t1 = window.setTimeout(updateDisplayedMapScale, 60);
+    const t2 = window.setTimeout(updateDisplayedMapScale, 250);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updateDisplayedMapScale);
+      window.clearTimeout(t1);
+      window.clearTimeout(t2);
+    };
+  }, [mapaImagem, mode, mapFullscreen]);
+
   const quadras = getQuadraList(localDev);
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
@@ -2260,11 +2302,7 @@ const LotDashboard = ({
   };
 
   const getDisplayedMapScale = () => {
-    const img = mapImageRef.current;
-    const container = mapContainerRef.current;
-    const naturalWidth = img?.naturalWidth || 1000;
-    const displayedWidth = container?.getBoundingClientRect().width || img?.getBoundingClientRect().width || naturalWidth;
-    return Math.max(0.1, displayedWidth / naturalWidth);
+    return Math.max(0.1, displayedMapScale || 1);
   };
 
   const getBallPixelSize = () => {
@@ -2325,7 +2363,7 @@ const LotDashboard = ({
           ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
-          ctx.lineWidth = Math.max(3 * exportScale, 1.5); ctx.strokeStyle = "#ffffff"; ctx.stroke();
+          ctx.lineWidth = Math.max(radius * 0.22, 1); ctx.strokeStyle = "#ffffff"; ctx.stroke();
           // Exportação/visualização impressa: bolinha limpa, sem número.
           // Os números aparecem somente no modo Editar mapa.
         });
@@ -3023,6 +3061,12 @@ const LotDashboard = ({
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           {/* CANVAS DO MAPA */}
           <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200">
+            {!isEditingMap && (
+              <div className="px-2 pb-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Modo visualização</p>
+                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
+              </div>
+            )}
             <div
               ref={mapViewportRef}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
@@ -3075,7 +3119,7 @@ const LotDashboard = ({
               className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
-              <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} />
+              <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
 
               {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
@@ -3105,8 +3149,8 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, pointerEvents: "auto" }}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${Math.max(1, Math.round(ballSize.size * 0.14))}px`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -3122,6 +3166,25 @@ const LotDashboard = ({
               )}
             </div>
             </div>
+            {!isEditingMap && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(true);
+                  setMapActive(true);
+                  setMapZoom(1);
+                  setMapPan({ x: 0, y: 0 });
+                  try {
+                    const lockPromise = (screen as any).orientation?.lock?.("landscape");
+                    lockPromise?.catch?.(() => undefined);
+                  } catch {}
+                  setTimeout(updateDisplayedMapScale, 80);
+                }}
+                className="mt-3 w-full rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
+              >
+                Ver em tela cheia
+              </button>
+            )}
           </div>
 
           {/* PAINEL LATERAL */}
@@ -3382,6 +3445,81 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+        {mapFullscreen && (
+          <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
+            <div className="absolute top-3 left-3 right-3 z-[10000] flex items-center justify-between gap-2">
+              <div className="rounded-2xl bg-white/90 px-3 py-2 shadow-xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Mapa em tela cheia</p>
+                <p className="text-[10px] text-slate-500">Dê zoom, arraste e clique na bolinha para iniciar venda.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(false);
+                  setMapZoom(1);
+                  setMapPan({ x: 0, y: 0 });
+                  try { (screen as any).orientation?.unlock?.(); } catch {}
+                  setTimeout(updateDisplayedMapScale, 80);
+                }}
+                className="rounded-2xl bg-white text-slate-900 px-4 py-3 text-[11px] font-black uppercase shadow-xl"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div
+              ref={mapViewportRef}
+              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onTouchStart={handleMapTouchStart}
+              onTouchMove={handleMapTouchMove}
+              onTouchEnd={handleMapTouchEnd}
+              onTouchCancel={handleMapTouchEnd}
+              className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
+              style={{ touchAction: "none", overscrollBehavior: "contain" }}
+            >
+              <div
+                ref={mapContainerRef}
+                className="absolute left-1/2 top-1/2 bg-white select-none"
+                style={{
+                  width: "100vw",
+                  maxWidth: "100vw",
+                  transform: `translate(calc(-50% + ${mapPan.x}px), calc(-50% + ${mapPan.y}px)) scale(${mapZoom})`,
+                  transformOrigin: "center center",
+                  willChange: "transform",
+                }}
+              >
+                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+
+                {mapaPontos.map((ponto) => {
+                  const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+                  const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                  return (
+                    <button
+                      key={`fullscreen-${ponto.id}`}
+                      onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
+                      onTouchStart={(ev) => { ev.stopPropagation(); }}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setSelectedPoint({ ...ponto, venda });
+                      }}
+                      title={`Q${ponto.quadra} L${ponto.lote}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow ${statusClass} border-white shadow-lg cursor-pointer z-10`}
+                      style={{
+                        left: `${ponto.xPercent}%`,
+                        top: `${ponto.yPercent}%`,
+                        width: `${ballSize.size}px`,
+                        height: `${ballSize.size}px`,
+                        fontSize: `${ballSize.font}px`,
+                        borderWidth: `${Math.max(1, Math.round(ballSize.size * 0.14))}px`,
+                        pointerEvents: "auto",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   };
