@@ -14,6 +14,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
+  Home,
   Building2,
   ShoppingCart,
   FileText,
@@ -1374,9 +1375,10 @@ const Header = ({
   <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 z-40 ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
     <button
       onClick={toggleSidebar}
-      className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 bg-surface-bg hover:bg-slate-100 rounded-2xl text-slate-600 transition-colors`}
+      aria-label="Abrir menu inicial"
+      className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main/15 active:scale-95 active:shadow-inner transition-all duration-150`}
     >
-      <LayoutDashboard size={22} />
+      <Home size={22} className="stroke-[2.4]" />
     </button>
     <h2 className="text-xl lg:text-2xl font-display font-bold text-slate-800 tracking-tight truncate">
       {title}
@@ -1560,7 +1562,7 @@ const DashboardSection = ({
     <div className="space-y-4 sm:space-y-8">
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
         <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
-          <LayoutDashboard className="text-primary-main" />
+          <PieChartIcon className="text-primary-main" />
           Visão Geral
         </h3>
         <button
@@ -2283,11 +2285,14 @@ const LotDashboard = ({
           const page = await pdfDoc.getPage(1);
           // Converter PDF em alta resolução para permitir zoom legível na pré-visualização/edição.
           // As bolinhas continuam salvas em xPercent/yPercent, então a troca de resolução não move os pontos.
-          const pdfScale = 4;
+          const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+          // Renderização alta para a pré-visualização/edição: mantém texto, medidas e lotes legíveis no zoom.
+          // Não altera as bolinhas, porque elas continuam em xPercent/yPercent.
+          const pdfScale = Math.max(4, Math.min(5, 3 * deviceRatio));
           const viewport = page.getViewport({ scale: pdfScale });
           const canvas = document.createElement("canvas");
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
           const ctx = canvas.getContext("2d")!;
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "high";
