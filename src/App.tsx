@@ -1986,17 +1986,13 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // TAMANHO DAS BOLINHAS
   // ──────────────────────────────────────────────
-  const getBallBasePixelSize = (contexto: "visualizacao" | "edicao" | "exportacao" = "visualizacao") => {
-    if (contexto === "edicao") return { size: 18, font: 7 };
-    if (contexto === "exportacao") return { size: 18, font: 0 };
-    return { size: 12, font: 0 };
-  };
+  const getBallBasePixelSize = () => ({ size: 18, font: 7 });
 
-  const getBallPixelSize = (contexto: "visualizacao" | "edicao" = isEditingMap ? "edicao" : "visualizacao") => {
-    const base = getBallBasePixelSize(contexto);
+  const getBallPixelSize = () => {
+    const base = getBallBasePixelSize();
     if (typeof window !== "undefined" && window.innerWidth < 640) {
-      const mobileSize = Math.round(base.size * (contexto === "edicao" ? 0.65 : 0.85));
-      return { size: Math.max(contexto === "edicao" ? 10 : 8, mobileSize), font: contexto === "edicao" ? Math.max(6, Math.round(base.font * 0.8)) : 0 };
+      const mobileSize = Math.round(base.size * 0.38);
+      return { size: Math.max(7, mobileSize), font: Math.max(5, Math.round(base.font * 0.6)) };
     }
     return base;
   };
@@ -2019,7 +2015,7 @@ const LotDashboard = ({
         const ctx = canvas.getContext("2d");
         if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        const baseSize = getBallBasePixelSize("exportacao").size;
+        const baseSize = getBallBasePixelSize().size;
         const scale = Math.max(canvas.width / 1000, 1);
         const radius = Math.max((baseSize * scale) / 2, 10);
         mapaPontos.forEach((ponto) => {
@@ -2032,7 +2028,10 @@ const LotDashboard = ({
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
           ctx.lineWidth = Math.max(3 * scale, 2); ctx.strokeStyle = "#ffffff"; ctx.stroke();
-          // Não desenhar número do lote na exportação: o mapa baixado deve ficar limpo.
+          ctx.fillStyle = reservado ? "#0f172a" : "#ffffff";
+          ctx.font = `900 ${Math.max(radius * 0.75, 10)}px Arial`;
+          ctx.textAlign = "center"; ctx.textBaseline = "middle";
+          ctx.fillText(String(ponto.lote || ""), x, y);
         });
         resolve(canvas);
       };
@@ -2397,11 +2396,7 @@ const LotDashboard = ({
   const editarPonto = (ponto: any) => {
     const quadraOriginal = normalizeLotText(ponto.quadra);
     const loteOriginal = normalizeLotText(ponto.lote);
-    const quadra = normalizeLotText(window.prompt(`Quadra do marcador atual: ${ponto.quadra}\nInforme a quadra correta`, ponto.quadra) || ponto.quadra);
-    if (quadra !== quadraOriginal) {
-      const confirmarQuadra = window.confirm(`Atenção: este marcador estava na Quadra ${quadraOriginal} e você informou Quadra ${quadra}.\nDeseja realmente alterar a quadra deste marcador?`);
-      if (!confirmarQuadra) return;
-    }
+    const quadra = normalizeLotText(window.prompt("Quadra", ponto.quadra) || ponto.quadra);
     const lote = normalizeLotText(window.prompt("Lote", ponto.lote) || ponto.lote);
     const statusInput = (window.prompt("Status: disponivel, reservado ou indisponivel", ponto.status) || ponto.status).toLowerCase();
     const status: MapaLoteStatus = statusInput === "indisponivel" ? "indisponivel" : statusInput === "reservado" ? "reservado" : "disponivel";
@@ -2570,7 +2565,7 @@ const LotDashboard = ({
     const lotes: number[] = [];
     for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
     const total = lotes.length;
-    const ballSize = getBallPixelSize("edicao");
+    const ballSize = getBallPixelSize();
     return lotes.map((loteNum, idx) => {
       const t = total === 1 ? 0 : idx / (total - 1);
       const x = seqPrimeiroClique!.xPercent + (seqPreview!.xPercent - seqPrimeiroClique!.xPercent) * t;
@@ -2626,7 +2621,7 @@ const LotDashboard = ({
   // RENDERIZAR MAPA
   // ──────────────────────────────────────────────
   const renderMapa = () => {
-    const ballSize = getBallPixelSize(isEditingMap ? "edicao" : "visualizacao");
+    const ballSize = getBallPixelSize();
     return (
       <div className={isEditingMap ? "fixed inset-0 z-[80] bg-white flex flex-col" : "space-y-4"}>
         {isEditingMap && (
@@ -2652,22 +2647,20 @@ const LotDashboard = ({
                 className={isEditingMap ? "relative bg-slate-100 rounded-3xl p-2 sm:p-4 overflow-auto border border-slate-200 max-h-[calc(100vh-170px)]" : "relative bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200"}
                 onWheel={bloquearCtrlScrollNoMapa}
               >
-                <div className="absolute left-3 top-1/2 -translate-y-1/2 z-40 flex flex-col gap-2">
+                <div className="sticky top-3 right-3 z-40 ml-auto mb-2 flex w-fit flex-col gap-2">
                   <button
                     type="button"
-                    onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); ajustarZoomMapa(0.15); }}
-                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-xl hover:bg-slate-50 active:scale-95"
+                    onClick={(ev) => { ev.stopPropagation(); ajustarZoomMapa(0.15); }}
+                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-lg hover:bg-slate-50"
                     title="Aumentar zoom do mapa"
-                    aria-label="Aumentar zoom do mapa"
                   >
                     +
                   </button>
                   <button
                     type="button"
-                    onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); ajustarZoomMapa(-0.15); }}
-                    className="w-10 h-10 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-xl hover:bg-slate-50 active:scale-95"
+                    onClick={(ev) => { ev.stopPropagation(); ajustarZoomMapa(-0.15); }}
+                    className="w-9 h-9 rounded-xl bg-white border border-slate-200 shadow-lg text-slate-800 font-black text-lg hover:bg-slate-50"
                     title="Diminuir zoom do mapa"
-                    aria-label="Diminuir zoom do mapa"
                   >
                     −
                   </button>
@@ -2679,7 +2672,7 @@ const LotDashboard = ({
               onMouseUp={() => { handleMapMouseUp(); commitDrag(); }}
               onMouseLeave={() => { if (draggingId) commitDrag(); }}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ width: `${(isEditingMap ? 1280 : 1000) * mapZoom}px`, maxWidth: "none" }}
+              style={{ maxWidth: `${(isEditingMap ? 1280 : 1000) * mapZoom}px` }}
             >
               <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
@@ -2717,7 +2710,7 @@ const LotDashboard = ({
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                   >
-                    {isEditingMap ? ponto.lote : null}
+                    {ponto.lote}
                   </button>
                 );
               })}
@@ -2920,7 +2913,7 @@ const LotDashboard = ({
           {pendingPoint && isEditingMap && mapAction === "manual" && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
               <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-                <h4 className="font-display font-bold text-slate-800 text-lg">Novo marcador</h4>
+                <h4 className="font-display font-bold text-slate-800 text-lg">Nova bolinha manual</h4>
                 <input className="input-field" placeholder="Quadra" value={pointForm.quadra} onChange={(e) => setPointForm({ ...pointForm, quadra: e.target.value })} autoFocus />
                 <input className="input-field" placeholder="Lote" value={pointForm.lote} onChange={(e) => setPointForm({ ...pointForm, lote: e.target.value })} />
                 <select className="input-field" value={pointForm.status} onChange={(e) => setPointForm({ ...pointForm, status: e.target.value as any })}>
@@ -2957,13 +2950,7 @@ const LotDashboard = ({
     return (
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-30">
         <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
-          <div className="space-y-2">
-            {isEditingMap && (
-              <div className="rounded-2xl bg-blue-50 border border-blue-100 px-4 py-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-blue-500">Editando marcador</p>
-                <p className="text-base font-black text-blue-900">Quadra {ponto.quadra} · Lote {ponto.lote}</p>
-              </div>
-            )}
+          <div>
             <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {ponto.quadra} · Lote {ponto.lote}</h4>
             <p className="text-sm text-slate-500">{getMapaStatusLabel(ponto.status, temVenda)}</p>
             {ponto.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {ponto.observacao}</p>}
