@@ -2434,7 +2434,26 @@ const LotDashboard = ({
       setMapZoomSafely(mapZoom + delta);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onNativeWheel as any);
+
+    // Touch events também precisam de passive:false para poder chamar preventDefault()
+    // O React registra onTouchMove como passivo por padrão — por isso cai o aviso no console.
+    const onNativeTouchStart = (ev: TouchEvent) => {
+      if (!mapaImagem) return;
+      if (ev.touches.length >= 2) ev.preventDefault(); // pinch
+    };
+    const onNativeTouchMove = (ev: TouchEvent) => {
+      if (!mapaImagem) return;
+      const gesture = mapTouchRef.current;
+      if (gesture.mode === "pinch" || gesture.mode === "pan") ev.preventDefault();
+    };
+    el.addEventListener("touchstart", onNativeTouchStart, { passive: false });
+    el.addEventListener("touchmove", onNativeTouchMove, { passive: false });
+
+    return () => {
+      el.removeEventListener("wheel", onNativeWheel as any);
+      el.removeEventListener("touchstart", onNativeTouchStart as any);
+      el.removeEventListener("touchmove", onNativeTouchMove as any);
+    };
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -2597,17 +2616,21 @@ const LotDashboard = ({
         pdfRenderTaskRef.current.cancel();
         pdfRenderTaskRef.current = null;
       }
+      // Dimensões físicas do canvas = resolução máxima de renderização
+      // CSS: w-full h-auto (via className) — o canvas estica para preencher o container igual ao <img>
       canvasEl.width = Math.floor(viewport.width);
       canvasEl.height = Math.floor(viewport.height);
-      canvasEl.style.width = `${Math.floor(viewport.width / dpr)}px`;
-      canvasEl.style.height = `${Math.floor(viewport.height / dpr)}px`;
+      // Não forçamos style.width/height em pixels — deixamos o CSS controlar o tamanho visual
+      // para as bolinhas (posicionadas em %) continuarem no lugar certo.
       const ctx = canvasEl.getContext("2d")!;
       const task = page.render({ canvasContext: ctx, viewport });
       pdfRenderTaskRef.current = task;
       await task.promise;
       pdfRenderTaskRef.current = null;
       if (viewport.width > 0 && viewport.height > 0) {
-        setMapAspectRatio((viewport.width / dpr) / (viewport.height / dpr));
+        // Aspect ratio natural da página PDF (independente do DPR)
+        const baseViewport = page.getViewport({ scale: 1 });
+        setMapAspectRatio(baseViewport.width / baseViewport.height);
       }
       updateDisplayedMapScale();
     } catch (err: any) {
@@ -2620,8 +2643,10 @@ const LotDashboard = ({
   const schedulePdfRender = (zoom: number) => {
     if (pdfRenderScheduledRef.current) clearTimeout(pdfRenderScheduledRef.current);
     pdfRenderScheduledRef.current = setTimeout(() => {
+      // Renderiza nos dois canvas — o que estiver visível exibe, o outro fica pronto.
+      // Evita problema de closure stale com mapFullscreen.
       void renderPdfDirect(pdfCanvasRef.current, zoom);
-      if (mapFullscreen) void renderPdfDirect(pdfCanvasFullscreenRef.current, zoom);
+      void renderPdfDirect(pdfCanvasFullscreenRef.current, zoom);
     }, 60);
   };
   // ─────────────────────────────────────────────────────────────────────────────
@@ -2716,11 +2741,9 @@ const LotDashboard = ({
   useEffect(() => {
     if ((localDev as any).mapaPdfOriginalBase64) {
       setTimeout(() => {
-        if (mapFullscreen) {
-          void renderPdfDirect(pdfCanvasFullscreenRef.current, mapZoom);
-        } else {
-          void renderPdfDirect(pdfCanvasRef.current, mapZoom);
-        }
+        // Renderiza nos dois — o visível atualiza imediatamente, o outro fica em standby.
+        void renderPdfDirect(pdfCanvasRef.current, mapZoom);
+        void renderPdfDirect(pdfCanvasFullscreenRef.current, mapZoom);
       }, 80);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
