@@ -2248,6 +2248,18 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  // Qualidade progressiva do mapa: prévia leve no card e alta resolução somente ao editar/zoom/tela cheia.
+  const [mapHighResLoading, setMapHighResLoading] = useState(false);
+  const [mapHighResRequested, setMapHighResRequested] = useState(false);
+  // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
+  const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
+  const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+  });
 
   // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
   const [mapActive, setMapActive] = useState(false);
@@ -2324,6 +2336,54 @@ const LotDashboard = ({
     };
   };
 
+  const setMapZoomSafely = (nextZoom: number) => {
+    const clamped = Math.max(1, Math.min(5, nextZoom));
+    if (clamped > 1.02) void requestHighResolutionMap();
+    setMapZoom(clamped);
+    setMapPan((prev) => clampMapPan(prev, clamped));
+  };
+
+  const zoomMapBy = (delta: number) => {
+    setMapActive(true);
+    setMapZoomSafely(mapZoom + delta);
+  };
+
+  const resetMapZoom = () => {
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+    scheduleMapScaleUpdate(true);
+  };
+
+  const fitMapToScreen = () => {
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+    scheduleMapScaleUpdate(true);
+  };
+
+  const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    if (!isEditingMap) return;
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMapActive(true);
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    setMapZoomSafely(mapZoom + delta);
+  };
+
+  const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isEditingMap || mapEditTool !== "mover") return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMapActive(true);
+    mapMousePanRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPanX: mapPan.x,
+      startPanY: mapPan.y,
+    };
+  };
+
   const handleMapTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     setMapActive(true);
     if (!mapActive && e.touches.length < 2) return;
@@ -2360,7 +2420,8 @@ const LotDashboard = ({
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      const nextZoom = Math.max(1, Math.min(4, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      const nextZoom = Math.max(1, Math.min(5, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      if (nextZoom > 1.02) void requestHighResolutionMap();
       setMapZoom(nextZoom);
       setMapPan((prev) => clampMapPan(prev, nextZoom));
       return;
@@ -2383,14 +2444,100 @@ const LotDashboard = ({
   // Resetar estado marcador ao trocar action
   useEffect(() => {
     if (mapAction !== "editar") {
+      setMapEditTool("marcar");
       setMarcadorFase("idle");
       setMarcadorPonto1(null);
       setMarcadorPonto2Preview(null);
     }
   }, [mapAction]);
 
+  const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
-  const mapaImagem = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta && (isEditingMap || mapFullscreen || mapHighResRequested || mapZoom > 1.02));
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : mapaImagemLeve;
+
+  const loadPdfJsIfNeeded = async () => {
+    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector('script[data-pdfjs="true"]') as HTMLScriptElement | null;
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Falha ao carregar PDF.js")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.dataset.pdfjs = "true";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Falha ao carregar PDF.js"));
+      document.head.appendChild(script);
+    });
+    (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return (window as any).pdfjsLib;
+  };
+
+  const arrayBufferToDataUrl = (buffer: ArrayBuffer, mime = "application/pdf") => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return `data:${mime};base64,${btoa(binary)}`;
+  };
+
+  const dataUrlToArrayBuffer = (dataUrl: string) => {
+    const base64 = dataUrl.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  };
+
+  const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number) => {
+    const pdfjsLib = await loadPdfJsIfNeeded();
+    const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL("image/png", 1);
+  };
+
+  const requestHighResolutionMap = async () => {
+    setMapHighResRequested(true);
+    if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
+    const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+    if (!originalPdf) {
+      scheduleMapScaleUpdate(false);
+      return;
+    }
+    try {
+      setMapHighResLoading(true);
+      const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+      const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
+      const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
+      persistDev({
+        ...localDev,
+        mapaImagemHighResBase64: highImage,
+        mapaAltaResolucao: true,
+        mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
+      } as Empreendimento);
+      window.setTimeout(() => scheduleMapScaleUpdate(false), 80);
+    } catch (err) {
+      console.error("Não foi possível gerar o mapa em alta resolução", err);
+      setLotScriptMsg("Não foi possível gerar o mapa em alta resolução. O app continuará usando a prévia atual.");
+    } finally {
+      setMapHighResLoading(false);
+    }
+  };
 
   const updateDisplayedMapScale = () => {
     requestAnimationFrame(() => {
@@ -2434,6 +2581,10 @@ const LotDashboard = ({
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
 
+    if ((isEditingMap || mapFullscreen) && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
+      void requestHighResolutionMap();
+    }
+
     const observed = [mapViewportRef.current, mapContainerRef.current, mapImageRef.current].filter(Boolean) as Element[];
     const observer = new ResizeObserver(() => {
       scheduleMapScaleUpdate(false);
@@ -2455,7 +2606,6 @@ const LotDashboard = ({
   }, [mapaImagem, mode, mapFullscreen]);
 
   const quadras = getQuadraList(localDev);
-  const isEditingMap = canEditMap && mapAction !== "visualizar";
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
   const extraLotKeySet = new Set(lotDivergences.extras);
   const hasExtraLot = (quadra: string, lote: string) => extraLotKeySet.has(getLotInfoKey(quadra, lote));
@@ -2606,42 +2756,21 @@ const LotDashboard = ({
       const reader = new FileReader();
       reader.onload = async () => {
         try {
-          if (!(window as any).pdfjsLib) {
-            await new Promise<void>((resolve, reject) => {
-              const script = document.createElement("script");
-              script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-              script.onload = () => {
-                (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc =
-                  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-                resolve();
-              };
-              script.onerror = reject;
-              document.head.appendChild(script);
-            });
-          }
-          const pdfjsLib = (window as any).pdfjsLib;
-          const pdfDoc = await pdfjsLib.getDocument({ data: reader.result as ArrayBuffer }).promise;
-          const page = await pdfDoc.getPage(1);
-          // Converter PDF em alta resolução para permitir zoom legível na pré-visualização/edição.
-          // As bolinhas continuam salvas em xPercent/yPercent, então a troca de resolução não move os pontos.
-          const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-          // Renderização alta para a pré-visualização/edição: mantém texto, medidas e lotes legíveis no zoom.
-          // Não altera as bolinhas, porque elas continuam em xPercent/yPercent.
-          const pdfScale = Math.max(4, Math.min(5, 3 * deviceRatio));
-          const viewport = page.getViewport({ scale: pdfScale });
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          const ctx = canvas.getContext("2d")!;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
-          await page.render({ canvasContext: ctx, viewport }).promise;
+          const originalBuffer = reader.result as ArrayBuffer;
+          const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
+          // Prévia leve para o mapa abrir rápido no card.
+          // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
+          const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
+          const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
           persistDev({
             ...localDev,
-            mapaImagemBase64: canvas.toDataURL("image/png", 1),
+            mapaImagemBase64: previewImage,
+            mapaImagemHighResBase64: "",
+            mapaPdfOriginalBase64: pdfOriginalBase64,
+            mapaPdfOriginalName: file.name,
             mapaImagemUrl: "",
             mapaPontos: mapaPontos,
-            mapaAltaResolucao: true,
+            mapaAltaResolucao: false,
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
@@ -2657,6 +2786,9 @@ const LotDashboard = ({
       persistDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
+        mapaImagemHighResBase64: "",
+        mapaPdfOriginalBase64: "",
+        mapaPdfOriginalName: "",
         mapaImagemUrl: "",
         mapaPontos: mapaPontos,
         mapaAltaResolucao: true,
@@ -2987,6 +3119,7 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
+    if (mapAction === "editar" && mapEditTool === "mover") return;
     if (draggingId) return; // não abre formulário durante arrastar
     const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
@@ -3065,6 +3198,9 @@ const LotDashboard = ({
   };
 
   const handleMapMouseUp = () => {
+    if (mapMousePanRef.current.active) {
+      mapMousePanRef.current.active = false;
+    }
     if (draggingId) {
       setDraggingId(null);
       setDragStart(null);
@@ -3072,6 +3208,14 @@ const LotDashboard = ({
   };
 
   const handleMapMouseMoveForDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (mapMousePanRef.current.active) {
+      const nextPan = {
+        x: mapMousePanRef.current.startPanX + (e.clientX - mapMousePanRef.current.startX),
+        y: mapMousePanRef.current.startPanY + (e.clientY - mapMousePanRef.current.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+      return;
+    }
     if (!draggingId || !dragStart || !mapContainerRef.current) return;
     const rect = mapContainerRef.current.getBoundingClientRect();
     const dx = ((e.clientX - dragStart.mouseX) / rect.width) * 100;
@@ -3479,6 +3623,11 @@ const LotDashboard = ({
                 <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
               </div>
             )}
+            {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
+              <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
+                <span>{mapHighResLoading ? "Gerando mapa em alta resolução..." : "Prévia leve ativa. A alta resolução carrega ao editar, ampliar ou abrir tela cheia."}</span>
+              </div>
+            )}
             <div
               ref={mapViewportRef}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
@@ -3486,12 +3635,14 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
               style={{ maxWidth: "1000px", touchAction: mapActive ? "none" : "auto", overscrollBehavior: "contain" }}
             >
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
+              onMouseDown={handleMapMousePanStart}
               onMouseMove={(e) => {
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
@@ -3520,6 +3671,7 @@ const LotDashboard = ({
                 }
               }}
               onMouseLeave={() => {
+                if (mapMousePanRef.current.active) mapMousePanRef.current.active = false;
                 if (draggingId) commitDrag();
                 if (isDraggingPanelRef.current) {
                   isDraggingPanelRef.current = false;
@@ -3528,7 +3680,7 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
               <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
@@ -3586,6 +3738,7 @@ const LotDashboard = ({
                   setMapActive(true);
                   setMapZoom(1);
                   setMapPan({ x: 0, y: 0 });
+                  void requestHighResolutionMap();
                   try {
                     const lockPromise = (screen as any).orientation?.lock?.("landscape");
                     lockPromise?.catch?.(() => undefined);
@@ -3624,6 +3777,25 @@ const LotDashboard = ({
               <div className="card-premium p-4 space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
 
+                {/* Controles de zoom para PC: no mobile a pinça continua funcionando. */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Zoom do mapa</span>
+                    <span className="text-[10px] font-black text-slate-700">{Math.round(mapZoom * 100)}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => zoomMapBy(-0.25)} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Zoom -</button>
+                    <button type="button" onClick={() => zoomMapBy(0.25)} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Zoom +</button>
+                    <button type="button" onClick={resetMapZoom} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Resetar</button>
+                    <button type="button" onClick={fitMapToScreen} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Ajustar</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => { setMapEditTool("mover"); setMapActive(true); void requestHighResolutionMap(); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "mover" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Mover mapa</button>
+                    <button type="button" onClick={() => setMapEditTool("marcar")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "marcar" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Marcar lote</button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">No PC, use Zoom + para aproximar. CTRL + roda do mouse também aproxima o mapa. O zoom é apenas visual; as bolinhas continuam salvas em percentual.</p>
+                </div>
+
                 {/* Instrução contextual */}
                 {mapAction === "editar" && marcadorFase === "idle" && (
                   <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">
@@ -3643,13 +3815,13 @@ const LotDashboard = ({
 
                 {/* Botão modo edição em massa */}
                 <button
-                  onClick={() => { setMapAction("massa"); setMassaSelIds(new Set()); setMarcadorFase("idle"); }}
+                  onClick={() => { setMapAction("massa"); setMapEditTool("marcar"); setMassaSelIds(new Set()); setMarcadorFase("idle"); }}
                   className={`w-full py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}
                 >
                   Edição em massa
                 </button>
                 {mapAction === "massa" && (
-                  <button onClick={() => { setMapAction("editar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
+                  <button onClick={() => { setMapAction("editar"); setMapEditTool("marcar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
                     ← Voltar ao marcador
                   </button>
                 )}
