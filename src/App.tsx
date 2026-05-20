@@ -1367,10 +1367,12 @@ const Header = ({
   title,
   toggleSidebar,
   forceDesktop,
+  onGoDashboard,
 }: {
   title: string;
   toggleSidebar: () => void;
   forceDesktop: boolean;
+  onGoDashboard?: () => void;
 }) => (
   <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 z-40 ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
     <button
@@ -1380,8 +1382,18 @@ const Header = ({
     >
       <Home size={22} className="stroke-[2.4]" />
     </button>
-    <h2 className="text-xl lg:text-2xl font-display font-bold text-slate-800 tracking-tight truncate">
-      {title}
+    <h2 className="text-xl lg:text-2xl font-display font-bold text-slate-800 tracking-tight truncate flex items-center gap-3">
+      {title === "Dashboard Geral" && (
+        <button
+          type="button"
+          onClick={onGoDashboard}
+          aria-label="Ir para o Dashboard"
+          className="w-11 h-11 rounded-2xl bg-primary-main/10 text-primary-main flex items-center justify-center shadow-sm transition-all duration-150 active:scale-95 active:bg-primary-main/20 active:shadow-inner hover:bg-primary-main/15"
+        >
+          <Home size={23} className="stroke-[2.5]" />
+        </button>
+      )}
+      <span className="truncate">{title}</span>
     </h2>
   </header>
 );
@@ -1394,7 +1406,7 @@ const BottomNav = ({
   setSection: (s: Section) => void;
 }) => {
   const items = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "dashboard", label: "Dashboard", icon: Home },
     { id: "contratos", label: "Contratos", icon: FileText },
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "empreendimentos", label: "Mapa", icon: MapPin },
@@ -1409,7 +1421,7 @@ const BottomNav = ({
           <button
             key={item.id}
             onClick={() => setSection(item.id as Section)}
-            className={`flex flex-col items-center justify-center gap-1.5 transition-all duration-300 relative px-4 py-2 ${isActive ? "text-primary-main" : "text-slate-400 hover:text-slate-600"}`}
+            className={`flex flex-col items-center justify-center gap-1.5 transition-all duration-200 relative px-4 py-2 rounded-2xl active:scale-95 ${isActive ? "text-primary-main bg-primary-main/10 shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
           >
             {isActive && (
               <motion.div
@@ -14005,6 +14017,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           title={getTitle()}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
           forceDesktop={forceDesktop}
+          onGoDashboard={() => setSection("dashboard")}
         />
 
         <AnimatePresence mode="wait">
