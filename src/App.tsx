@@ -2402,6 +2402,30 @@ const LotDashboard = ({
     onSaveDev(recalculado);
   };
 
+  const copyTextToClipboard = async (textToCopy: string) => {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(textToCopy);
+      return true;
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = textToCopy;
+    textarea.setAttribute("readonly", "true");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+
+    try {
+      textarea.focus();
+      textarea.select();
+      textarea.setSelectionRange(0, textarea.value.length);
+      return document.execCommand("copy");
+    } finally {
+      document.body.removeChild(textarea);
+    }
+  };
+
   const copyScriptForChatGPT = async () => {
     const scriptAtual = formatLotScriptFromEmpreendimento(localDev, sales);
     const payload = [
@@ -2418,12 +2442,17 @@ const LotDashboard = ({
     ].join("\n");
 
     setLotScriptText(payload);
-    setLotScriptMsg("Script preparado para enviar ao ChatGPT.");
+
     try {
-      await navigator.clipboard?.writeText(payload);
-      setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
-    } catch {
-      // Mantém no campo para cópia manual.
+      const copied = await copyTextToClipboard(payload);
+      if (copied) {
+        setLotScriptMsg("Script copiado automaticamente. Agora é só colar no ChatGPT junto com o mapa.");
+      } else {
+        setLotScriptMsg("Script gerado, mas o navegador bloqueou a cópia automática. Selecione e copie manualmente.");
+      }
+    } catch (error) {
+      console.error("Erro ao copiar script para o clipboard:", error);
+      setLotScriptMsg("Script gerado, mas não foi possível copiar automaticamente. Selecione e copie manualmente.");
     }
   };
 
@@ -3630,7 +3659,8 @@ const LotDashboard = ({
                     <button
                       type="button"
                       onClick={copyScriptForChatGPT}
-                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100 active:scale-[0.98] active:bg-emerald-200 transition-all"
+                      title="Gera o script, mostra na tela e copia automaticamente para a área de transferência"
                     >
                       Copiar script para ChatGPT
                     </button>
