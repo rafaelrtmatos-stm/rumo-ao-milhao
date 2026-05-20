@@ -264,6 +264,12 @@ function normalizeLotKeyPart(value?: string | number | null): string {
   return normalizeLotText(value).toUpperCase();
 }
 
+function normalizeQuadraKeyPart(value?: string | number | null): string {
+  return normalizeLotKeyPart(value)
+    .replace(/^QUADRA\s*/i, "")
+    .replace(/^Q(?=\d)/i, "");
+}
+
 /**
  * Quebra uma string de lotes em array de lotes individuais.
  * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
@@ -299,8 +305,8 @@ function getQuadraList(dev?: Empreendimento | null): string[] {
 }
 
 function findQuadraName(dev: Empreendimento, quadra: string): string | null {
-  const wanted = normalizeLotKeyPart(quadra);
-  return getQuadraList(dev).find((q) => normalizeLotKeyPart(q) === wanted) || null;
+  const wanted = normalizeQuadraKeyPart(quadra);
+  return getQuadraList(dev).find((q) => normalizeQuadraKeyPart(q) === wanted) || null;
 }
 
 function getLotInfoKey(quadra: string, lote: string): string {
@@ -472,11 +478,26 @@ function getQuadraCadastroSummary(dev: Empreendimento, quadra: string): { exists
 
 function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
   const quadraName = findQuadraName(dev, quadra);
-  const key = getLotInfoKey(quadra, lote);
-  if (dev.lotesInfo?.[key]) return true;
+  const qWanted = normalizeQuadraKeyPart(quadraName || quadra);
+  const lWanted = normalizeLotKeyPart(lote);
+
+  const possibleKeys = Array.from(new Set([
+    getLotInfoKey(quadra, lote),
+    quadraName ? getLotInfoKey(quadraName, lote) : "",
+    getLotInfoKey(`Q${normalizeLotText(quadra).replace(/^Q/i, "")}`, lote),
+  ].filter(Boolean)));
+
+  if (possibleKeys.some((key) => !!dev.lotesInfo?.[key])) return true;
+
+  const hasInfoKey = Object.keys(dev.lotesInfo || {}).some((key) => {
+    const split = splitLotKeyLabel(key);
+    return normalizeQuadraKeyPart(split.quadra) === qWanted && normalizeLotKeyPart(split.lote) === lWanted;
+  });
+  if (hasInfoKey) return true;
+
   if (!quadraName) return false;
   return getLotesDeQuadra(dev.lotesPorQuadra?.[quadraName]).some(
-    (l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote)
+    (l) => normalizeLotKeyPart(l) === lWanted
   );
 }
 
