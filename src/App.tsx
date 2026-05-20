@@ -2263,6 +2263,8 @@ const LotDashboard = ({
 
   // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
   const [mapActive, setMapActive] = useState(false);
+  // No PC, quando o mouse estiver sobre o mapa, a roda deve controlar somente o mapa (estilo Google Maps).
+  const mapPointerInsideRef = useRef(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const mapTouchRef = useRef<{
@@ -2381,21 +2383,28 @@ const LotDashboard = ({
   };
 
   useEffect(() => {
-    const el = mapViewportRef.current;
-    if (!el) return;
-    const onNativeWheel = (ev: WheelEvent) => {
+    const onGlobalMapWheel = (ev: WheelEvent) => {
+      // Captura em nível global para impedir Ctrl+scroll/scroll do navegador quando o mouse está sobre o mapa.
+      if (!mapPointerInsideRef.current) return;
       if (!isEditingMap && !mapFullscreen) return;
-      // Impede zoom/scroll da página inteira quando o mouse está sobre o mapa.
+
       ev.preventDefault();
       ev.stopPropagation();
       setMapActive(true);
+      void requestHighResolutionMap();
+
       const delta = ev.deltaY < 0 ? 0.25 : -0.25;
-      if (mapZoom + delta > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
-      setMapZoomSafely(mapZoom + delta);
+      setMapZoom((prevZoom) => {
+        const nextZoom = Math.max(1, Math.min(5, prevZoom + delta));
+        if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+        setMapPan((prevPan) => clampMapPan(prevPan, nextZoom));
+        return nextZoom;
+      });
     };
-    el.addEventListener("wheel", onNativeWheel, { passive: false });
-    return () => el.removeEventListener("wheel", onNativeWheel as any);
-  }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
+
+    window.addEventListener("wheel", onGlobalMapWheel, { capture: true, passive: false });
+    return () => window.removeEventListener("wheel", onGlobalMapWheel as any, { capture: true } as any);
+  }, [isEditingMap, mapFullscreen]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap || mapEditTool !== "mover") return;
@@ -3565,6 +3574,13 @@ const LotDashboard = ({
   // PREVIEW BOLINHAS PARA SEQUÊNCIA
   // ──────────────────────────────────────────────
   // Preview bolinhas para o novo fluxo de marcador multi-lote
+
+  useEffect(() => {
+    if ((isEditingMap || mapFullscreen) && mapZoom > HIGH_RES_ZOOM_THRESHOLD) {
+      void requestHighResolutionMap();
+    }
+  }, [isEditingMap, mapFullscreen, mapZoom]);
+
   const renderSeqPreviewBalls = () => {
     // Novo fluxo: marcador multi-lote aguardando segundo ponto
     if (mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && marcadorPonto2Preview) {
@@ -3678,6 +3694,8 @@ const LotDashboard = ({
             )}
             <div
               ref={mapViewportRef}
+              onPointerEnter={() => { mapPointerInsideRef.current = true; }}
+              onPointerLeave={() => { mapPointerInsideRef.current = false; }}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
@@ -4162,6 +4180,8 @@ const LotDashboard = ({
 
             <div
               ref={mapViewportRef}
+              onPointerEnter={() => { mapPointerInsideRef.current = true; }}
+              onPointerLeave={() => { mapPointerInsideRef.current = false; }}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}

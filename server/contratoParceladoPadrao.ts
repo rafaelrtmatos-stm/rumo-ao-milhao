@@ -153,12 +153,27 @@ function escapeRegExpLocal(texto: string): string {
 function aplicarNegritoDocx(xml: string, texto: string): string {
   const alvo = xmlEscape(String(texto || "").trim());
   if (!alvo) return xml;
-  const pattern = new RegExp(`(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)`, "g");
-  return xml.replace(
-    pattern,
-    `</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>$2</w:t></w:r><w:r><w:t>`
+
+  // Segurança: não fechar/reabrir runs manualmente. A versão anterior gerava
+  // XML inválido em alguns contratos (Word: "Cannot open because problems with content").
+  const alvoRegex = escapeRegExpLocal(alvo);
+  const pattern = new RegExp(
+    `(<w:r\b[^>]*>)(<w:rPr\b[^>]*>[\s\S]*?<\/w:rPr>)?(<w:t(?:\s+[^>]*)?>)(${alvoRegex})(<\/w:t>)(<\/w:r>)`,
+    "g"
   );
+
+  return xml.replace(pattern, (match, openRun, rPr = "", openText, textValue, closeText, closeRun) => {
+    if (rPr && /<w:b(?:\s|\/|>)/.test(rPr)) return match;
+
+    const bold = "<w:b/><w:bCs/>";
+    const nextRPr = rPr
+      ? rPr.replace(/<\/w:rPr>/, `${bold}</w:rPr>`)
+      : `<w:rPr>${bold}</w:rPr>`;
+
+    return `${openRun}${nextRPr}${openText}${textValue}${closeText}${closeRun}`;
+  });
 }
+
 
 function aplicarNegritosContratoParcelado(xml: string, vendedorNome: string, compradorNome: string, vendedorPapel: string, compradorPapel: string): string {
   const nomesCompradores = String(compradorNome || "").split(/\s*\/\s*/).map((v) => v.trim()).filter(Boolean);
