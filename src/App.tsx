@@ -15,6 +15,7 @@ import React, { useState, useEffect, useRef } from "react";
 import {
   LayoutDashboard,
   Home,
+  Menu,
   Building2,
   ShoppingCart,
   FileText,
@@ -1380,7 +1381,7 @@ const Header = ({
       aria-label="Abrir menu inicial"
       className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main/15 active:scale-95 active:shadow-inner transition-all duration-150`}
     >
-      <Home size={22} className="stroke-[2.4]" />
+      <Menu size={22} className="stroke-[2.4]" />
     </button>
     <h2 className="text-xl lg:text-2xl font-display font-bold text-slate-800 tracking-tight truncate flex items-center gap-3">
       {title === "Dashboard Geral" && (
@@ -1388,7 +1389,8 @@ const Header = ({
           type="button"
           onClick={onGoDashboard}
           aria-label="Ir para o Dashboard"
-          className="w-11 h-11 rounded-2xl bg-primary-main/10 text-primary-main flex items-center justify-center shadow-sm transition-all duration-150 active:scale-95 active:bg-primary-main/20 active:shadow-inner hover:bg-primary-main/15"
+          title="Ir para o início do Dashboard"
+          className="w-11 h-11 rounded-2xl bg-primary-main/10 text-primary-main flex items-center justify-center shadow-sm transition-all duration-150 cursor-pointer hover:bg-primary-main/15 hover:shadow-md active:scale-95 active:bg-primary-main/20 active:shadow-inner focus:outline-none focus:ring-2 focus:ring-primary-main/30"
         >
           <Home size={23} className="stroke-[2.5]" />
         </button>
