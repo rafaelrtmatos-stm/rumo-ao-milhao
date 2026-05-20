@@ -5806,6 +5806,7 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
 
     // Múltiplos lotes: validar cada um individualmente antes de salvar
     const erros: string[] = [];
+    const naoExistem: string[] = [];
     for (const { quadra, lote } of pares) {
       const sit = getLotStatusForSale(dev, quadra, lote, sales);
       if (sit.status === "vendido") {
@@ -5813,12 +5814,19 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
       } else if (sit.status === "indisponivel") {
         erros.push(`Quadra ${quadra} / Lote ${lote} está indisponível.`);
       } else if (!sit.exists) {
-        erros.push(`Quadra ${quadra} / Lote ${lote} não cadastrado no empreendimento.`);
+        naoExistem.push(`Quadra ${quadra} / Lote ${lote}`);
       }
     }
     if (erros.length > 0) {
       alert("Problemas encontrados:\n\n" + erros.join("\n"));
       return;
+    }
+    // Se algum lote não existe, perguntar se deseja adicionar (como no lote único)
+    if (naoExistem.length > 0) {
+      const confirmar = window.confirm(
+        `Os seguintes lotes não estão cadastrados no empreendimento:\n\n${naoExistem.join("\n")}\n\nDeseja adicionar ao empreendimento e continuar a venda?`
+      );
+      if (!confirmar) return;
     }
 
     // Salvar uma venda por lote
