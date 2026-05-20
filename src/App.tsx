@@ -1952,12 +1952,6 @@ const LotDashboard = ({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapSurfaceRef = useRef<HTMLDivElement>(null);
-  const [mapZoom, setMapZoom] = useState(1);
-  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
-  const [mapPanDrag, setMapPanDrag] = useState<{ mouseX: number; mouseY: number; startX: number; startY: number } | null>(null);
-  const mapMovedRef = useRef(false);
-  const mapClickSuppressRef = useRef(false);
 
   // Edição em massa
   const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
@@ -2352,62 +2346,17 @@ const LotDashboard = ({
   };
 
   // ──────────────────────────────────────────────
-  // ZOOM E NAVEGAÇÃO DO MAPA
-  // ──────────────────────────────────────────────
-  const alterarZoomMapa = (delta: number) => {
-    setMapZoom((prev) => {
-      const next = Math.max(0.5, Math.min(4, Number((prev + delta).toFixed(2))));
-      return next;
-    });
-  };
-
-  const resetarVisualizacaoMapa = () => {
-    setMapZoom(1);
-    setMapPan({ x: 0, y: 0 });
-    setMapPanDrag(null);
-    mapMovedRef.current = false;
-    mapClickSuppressRef.current = false;
-  };
-
-  const handleMapPanMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    const target = e.target as HTMLElement;
-    if (target.closest("button, input, label, select, textarea")) return;
-    setMapPanDrag({ mouseX: e.clientX, mouseY: e.clientY, startX: mapPan.x, startY: mapPan.y });
-    mapMovedRef.current = false;
-  };
-
-  const handleMapPanMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!mapPanDrag) return;
-    const dx = e.clientX - mapPanDrag.mouseX;
-    const dy = e.clientY - mapPanDrag.mouseY;
-    if (Math.abs(dx) > 4 || Math.abs(dy) > 4) mapMovedRef.current = true;
-    setMapPan({ x: mapPanDrag.startX + dx, y: mapPanDrag.startY + dy });
-  };
-
-  const handleMapPanMouseUp = () => {
-    if (mapPanDrag && mapMovedRef.current) {
-      mapClickSuppressRef.current = true;
-    }
-    setMapPanDrag(null);
-  };
-
-  // ──────────────────────────────────────────────
   // CLIQUE NO MAPA
   // ──────────────────────────────────────────────
   // ──────────────────────────────────────────────
   // CLIQUE NO MAPA — novo fluxo unificado
   // ──────────────────────────────────────────────
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (mapClickSuppressRef.current) {
-      mapClickSuppressRef.current = false;
-      return;
-    }
     if (!isEditingMap) return;
-    if (draggingId || mapPanDrag) return; // não abre formulário durante arrastar
-    const rect = (mapSurfaceRef.current || e.currentTarget).getBoundingClientRect();
-    const xPercent = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    const yPercent = Math.max(0, Math.min(100, ((e.clientY - rect.top) / rect.height) * 100));
+    if (draggingId) return; // não abre formulário durante arrastar
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
 
     // modo edição normal: clique abre formulário "Novo marcador"
     if (mapAction === "editar") {
@@ -2872,18 +2821,11 @@ const LotDashboard = ({
         )}
         <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
           {/* CANVAS DO MAPA */}
-          <div className="relative bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200 min-h-[60vh] lg:min-h-[72vh] flex items-center justify-center">
-            <div className="absolute left-3 top-1/2 -translate-y-1/2 z-40 flex flex-col rounded-2xl bg-white/95 border border-slate-200 shadow-xl overflow-hidden">
-              <button type="button" onClick={(e) => { e.stopPropagation(); alterarZoomMapa(0.15); }} className="w-10 h-10 text-lg font-black text-slate-800 hover:bg-slate-100">+</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); alterarZoomMapa(-0.15); }} className="w-10 h-10 text-lg font-black text-slate-800 hover:bg-slate-100 border-t border-slate-100">−</button>
-              <button type="button" onClick={(e) => { e.stopPropagation(); resetarVisualizacaoMapa(); }} className="w-10 h-8 text-[10px] font-black text-slate-600 hover:bg-slate-100 border-t border-slate-100">100%</button>
-            </div>
+          <div className="bg-slate-100 rounded-3xl p-2 overflow-auto border border-slate-200">
             <div
-              ref={(el) => { mapContainerRef.current = el; mapSurfaceRef.current = el; }}
+              ref={mapContainerRef}
               onClick={handleMapClick}
-              onMouseDown={handleMapPanMouseDown}
               onMouseMove={(e) => {
-                handleMapPanMouseMove(e);
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
                 // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
@@ -2901,7 +2843,6 @@ const LotDashboard = ({
                 }
               }}
               onMouseUp={() => {
-                handleMapPanMouseUp();
                 handleMapMouseUp();
                 commitDrag();
                 if (isDraggingPanelRef.current) {
@@ -2912,7 +2853,6 @@ const LotDashboard = ({
                 }
               }}
               onMouseLeave={() => {
-                handleMapPanMouseUp();
                 if (draggingId) commitDrag();
                 if (isDraggingPanelRef.current) {
                   isDraggingPanelRef.current = false;
@@ -2921,14 +2861,8 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none touch-none ${mapPanDrag ? "cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-grab"}`}
-              style={{
-                maxWidth: "min(1000px, 100%)",
-                maxHeight: "100%",
-                transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
-                transformOrigin: "center center",
-                transition: mapPanDrag ? "none" : "transform 120ms ease-out",
-              }}
+              className={`relative mx-auto bg-white rounded-2xl overflow-hidden min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              style={{ maxWidth: "1000px" }}
             >
               <img src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto" draggable={false} />
 
@@ -2959,21 +2893,8 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 font-black flex items-center justify-center transition-shadow ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{
-                      left: `${ponto.xPercent}%`,
-                      top: `${ponto.yPercent}%`,
-                      width: `${ballSize.size}px`,
-                      height: `${ballSize.size}px`,
-                      fontSize: `${ballSize.font}px`,
-                      transform: `translate(-50%, -50%) scale(${1 / mapZoom})`,
-                      transformOrigin: "center center",
-                    }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}
                   >
-                    {isEditingMap && (
-                      <span className="absolute left-1/2 bottom-full mb-1 -translate-x-1/2 rounded-full bg-slate-900/90 px-2 py-0.5 text-[9px] font-black text-white whitespace-nowrap shadow-lg pointer-events-none">
-                        Q{String(ponto.quadra).toUpperCase()}
-                      </span>
-                    )}
                     {isEditingMap ? ponto.lote : null}
                   </button>
                 );
@@ -2990,7 +2911,7 @@ const LotDashboard = ({
           </div>
 
           {/* PAINEL LATERAL */}
-          <div className="space-y-3 lg:sticky lg:top-4 lg:self-start">
+          <div className="space-y-3">
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
