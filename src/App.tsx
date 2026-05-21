@@ -2499,7 +2499,6 @@ const LotDashboard = ({
     setMapActive(true);
     if (!mapActive && e.touches.length < 2) return;
     if (e.touches.length >= 2) {
-      e.preventDefault();
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
@@ -2512,7 +2511,6 @@ const LotDashboard = ({
       return;
     }
     if (mapZoom > 1 && e.touches.length === 1) {
-      e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
@@ -2529,7 +2527,6 @@ const LotDashboard = ({
     if (!mapActive) return;
     const gesture = mapTouchRef.current;
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
-      e.preventDefault();
       const distance = getTouchDistance(e.touches);
       const nextZoom = Math.max(1, Math.min(10, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
       if ((localDev as any).mapaPdfOriginalBase64) {
@@ -2542,7 +2539,6 @@ const LotDashboard = ({
       return;
     }
     if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
-      e.preventDefault();
       const nextPan = {
         x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
         y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
@@ -2980,7 +2976,7 @@ const LotDashboard = ({
           // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
-          persistDev({
+          setLocalDev({
             ...localDev,
             mapaImagemBase64: previewImage,
             mapaImagemHighResBase64: "",
@@ -2992,6 +2988,7 @@ const LotDashboard = ({
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
+          setLotScriptMsg("Mapa carregado na tela. Clique em Salvar mapa para gravar no sistema.");
         } catch (err) {
           alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
         }
@@ -3001,7 +2998,7 @@ const LotDashboard = ({
     }
     const reader = new FileReader();
     reader.onload = () => {
-      persistDev({
+      setLocalDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
         mapaImagemHighResBase64: "",
@@ -3013,8 +3010,20 @@ const LotDashboard = ({
         mapaMarkerReferenceWidth: 1000,
       } as Empreendimento);
       setMode("mapa");
+      setLotScriptMsg("Mapa carregado na tela. Clique em Salvar mapa para gravar no sistema.");
     };
     reader.readAsDataURL(file);
+  };
+
+  const salvarMapaAtual = () => {
+    const devToSave = {
+      ...localDev,
+      mapaPontos,
+      mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+      mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
+    } as Empreendimento;
+    persistDev(devToSave);
+    setLotScriptMsg("Mapa salvo no sistema.");
   };
 
   // ──────────────────────────────────────────────
@@ -3901,8 +3910,6 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
-              onWheel={handleMapWheel}
-              onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
               style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
@@ -4148,6 +4155,16 @@ const LotDashboard = ({
                   <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
+                {mapaImagem && (
+                  <button
+                    type="button"
+                    onClick={salvarMapaAtual}
+                    className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-primary-main text-primary-contrast flex items-center justify-center gap-2"
+                  >
+                    <Save size={13} />
+                    Salvar mapa
+                  </button>
+                )}
 
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
 
@@ -4432,8 +4449,6 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
-              onWheel={handleMapWheel}
-              onWheelCapture={handleMapWheel}
               className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
@@ -4671,10 +4686,17 @@ const LotDashboard = ({
               </button>
             )}
             {canEditMap && !mapaImagem && (
-              <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
-                <Upload size={13} />Carregar mapa
-                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
-              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
+                  <Upload size={13} />Carregar mapa
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
+                </label>
+                {mapaImagem && (
+                  <button type="button" onClick={salvarMapaAtual} className="flex px-4 py-2 bg-primary-main text-primary-contrast rounded-xl text-xs font-black uppercase items-center gap-2">
+                    <Save size={13} />Salvar
+                  </button>
+                )}
+              </div>
             )}
             <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
           </div>
@@ -5987,7 +6009,7 @@ const EmpreendimentosSection = ({
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[380px]">
+                      <table className="w-full text-[11px] min-w-[440px] table-auto">
                         <thead className="bg-slate-50 sticky top-0">
                           <tr>
                             <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
@@ -6007,12 +6029,12 @@ const EmpreendimentosSection = ({
                               const isIndisponivel = info.status === "indisponivel";
                               const temDesistente = !!(info as any).desistente;
                               return (
-                                <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
-                                  <td className="px-4 py-3">
+                                <tr key={key} className={`border-t border-slate-50 transition-colors whitespace-nowrap ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
+                                  <td className="px-2 py-2 whitespace-nowrap">
                                     <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
                                   </td>
-                                  <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-2 whitespace-nowrap font-bold text-slate-800">{lote}</td>
+                                  <td className="px-2 py-2 whitespace-nowrap">
                                     {venda ? (
                                       <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
                                     ) : isIndisponivel ? (
@@ -6021,25 +6043,25 @@ const EmpreendimentosSection = ({
                                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 text-xs max-w-[130px]">
+                                  <td className="px-2 py-2 whitespace-nowrap text-[11px] max-w-[120px]">
                                     {venda ? (
-                                      <span className="text-red-600 font-bold flex items-center gap-1 truncate">
+                                      <span className="text-red-600 font-bold inline-flex items-center gap-1 truncate max-w-[110px]">
                                         <User size={11} />
                                         {venda.clienteNome.split(" ")[0]}
                                       </span>
                                     ) : temDesistente ? (
                                       <div>
-                                        <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
+                                        <span className="text-amber-600 font-bold inline-flex items-center gap-1 truncate max-w-[110px]">
                                           <AlertCircle size={11} />
                                           {(info as any).desistente.clienteNome.split(" ")[0]}
                                         </span>
                                         <span className="text-[9px] text-slate-400">Desistente</span>
                                       </div>
                                     ) : (
-                                      <span className="text-slate-300 italic text-[10px]">—</span>
+                                      <span className="text-slate-300 italic text-[10px] whitespace-nowrap">—</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-2 whitespace-nowrap">
                                     <div className="flex items-center justify-end gap-1">
                                       {/* Botão editar */}
                                       <button
