@@ -5803,60 +5803,68 @@ const EmpreendimentosSection = ({
                 </button>
               </div>
 
-              {/* Tabs */}
-              <div className="flex border-b border-slate-100 overflow-x-auto">
+              {/* Tabs compactas por ícone para caber na largura da página */}
+              <div className="grid grid-cols-4 border-b border-slate-100 overflow-hidden">
                 <button
+                  type="button"
+                  title={lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}
+                  aria-label={lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}
                   onClick={() => setLotRegTab("cadastrar")}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
                     lotRegTab === "cadastrar"
-                      ? "text-primary-main border-b-2 border-primary-main"
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <Plus size={13} />
-                  {lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()]
-                    ? "Editar Lote"
-                    : "Cadastrar"}
+                  <Plus size={18} />
+                  <span className="sr-only">{lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}</span>
                 </button>
                 <button
+                  type="button"
+                  title="Lotes cadastrados"
+                  aria-label="Lotes cadastrados"
                   onClick={() => setLotRegTab("lotes")}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
                     lotRegTab === "lotes"
-                      ? "text-primary-main border-b-2 border-primary-main"
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <List size={13} />
-                  Lotes
+                  <List size={18} />
                   {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
-                    <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                    <span className="absolute top-1.5 right-[22%] min-w-[16px] h-4 px-1 rounded-full bg-slate-100 text-slate-600 text-[9px] font-black flex items-center justify-center leading-none">
                       {Object.keys(lotRegDev.lotesInfo || {}).length}
                     </span>
                   )}
+                  <span className="sr-only">Lotes cadastrados</span>
                 </button>
                 <button
+                  type="button"
+                  title="Ações em massa"
+                  aria-label="Ações em massa"
                   onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
                     lotRegTab === "acoesMassa"
-                      ? "text-slate-700 border-b-2 border-slate-700"
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "text-slate-700 border-b-2 border-slate-700 bg-slate-100"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <Settings size={13} />
-                  <span className="hidden sm:inline">Ações em Massa</span>
-                  <span className="sm:hidden">Em Massa</span>
+                  <Settings size={18} />
+                  <span className="sr-only">Ações em massa</span>
                 </button>
                 <button
+                  type="button"
+                  title="Adicionar por texto"
+                  aria-label="Adicionar por texto"
                   onClick={() => { setLotRegTab("adicionarTexto"); setLotRegScriptMsg(""); }}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
                     lotRegTab === "adicionarTexto"
-                      ? "text-emerald-700 border-b-2 border-emerald-600"
-                      : "text-slate-400 hover:text-slate-600"
+                      ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50"
+                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
                   }`}
                 >
-                  <ClipboardPaste size={13} />
-                  <span className="hidden sm:inline">Adicionar por Texto</span>
-                  <span className="sm:hidden">Por Texto</span>
+                  <ClipboardPaste size={18} />
+                  <span className="sr-only">Adicionar por texto</span>
                 </button>
               </div>
 
