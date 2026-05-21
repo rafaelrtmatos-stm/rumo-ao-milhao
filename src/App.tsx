@@ -267,6 +267,7 @@ function normalizeLotKeyPart(value?: string | number | null): string {
 /**
  * Quebra uma string de lotes em array de lotes individuais.
  * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
+ * NÃO expande intervalos — use normalizeLotsInput para isso.
  */
 function parseLotesInput(input: string): string[] {
   return input
@@ -276,27 +277,54 @@ function parseLotesInput(input: string): string[] {
 }
 
 /**
- * Expande o campo Lote em lista de lotes individuais, suportando intervalos.
- * Regra: dois tokens em ordem ESTRITAMENTE CRESCENTE com diferença > 1 → intervalo.
- * Ex: "1,6" → ["1","2","3","4","5","6"]
- * Ex: "9,8" → ["9","8"]  (não crescente → lista)
- * Ex: "1,2,3" → ["1","2","3"] (mais de 2 tokens → lista)
+ * Função central para normalizar entrada de lotes.
+ * Regras:
+ * - Vírgula, ponto-e-vírgula e "e" → lista literal
+ * - Hífen, "até" ou "a" (entre dois números) → sequência/intervalo
+ *
+ * Exemplos:
+ * "1,20"       → ["1","20"]          (lista, não intervalo!)
+ * "1,2,3"      → ["1","2","3"]
+ * "1;2;3"      → ["1","2","3"]
+ * "1 e 2 e 3"  → ["1","2","3"]
+ * "1-20"       → ["1","2",...,"20"]  (intervalo)
+ * "1 até 20"   → ["1","2",...,"20"]  (intervalo)
+ * "1 a 20"     → ["1","2",...,"20"]  (intervalo)
+ */
+function normalizeLotsInput(input: string): string[] {
+  const raw = (input || "").trim();
+  if (!raw) return [];
+
+  // Detecta padrão de intervalo: N-M, N até M, N a M (apenas se não há vírgula/ponto-e-vírgula)
+  // A presença de vírgula/ponto-e-vírgula cancela a interpretação de intervalo
+  const hasListSeparator = /[,;]/.test(raw) || /\se\s/i.test(raw);
+  if (!hasListSeparator) {
+    // Tenta intervalo: "N-M", "N até M", "N a M"
+    const rangeMatch = raw.match(/^(\d+)\s*(?:-|até|a)\s*(\d+)$/i);
+    if (rangeMatch) {
+      const na = parseInt(rangeMatch[1], 10);
+      const nb = parseInt(rangeMatch[2], 10);
+      if (!isNaN(na) && !isNaN(nb) && nb >= na) {
+        const result: string[] = [];
+        for (let i = na; i <= nb; i++) result.push(String(i));
+        return result;
+      }
+    }
+  }
+
+  // Lista literal: separa por vírgula, ponto-e-vírgula ou " e "
+  return raw
+    .split(/[,;]|\se\s/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Expande o campo Lote em lista de lotes individuais.
+ * Usa normalizeLotsInput internamente — vírgula é sempre lista, hífen/"até"/"a" é intervalo.
  */
 function expandLotesInput(input: string): string[] {
-  const tokens = parseLotesInput(input);
-  if (tokens.length !== 2) return tokens; // lista literal quando ≠ 2 tokens
-  const [a, b] = tokens;
-  const na = Number(a), nb = Number(b);
-  // Só expande se ambos forem inteiros e for intervalo crescente com diff > 1
-  if (
-    Number.isInteger(na) && Number.isInteger(nb) &&
-    nb > na + 1
-  ) {
-    const result: string[] = [];
-    for (let i = na; i <= nb; i++) result.push(String(i));
-    return result;
-  }
-  return tokens; // lista literal (9,8 ou 1,2 etc)
+  return normalizeLotsInput(input);
 }
 
 /**
@@ -2292,7 +2320,29 @@ const LotDashboard = ({
     startPanY: 0,
   });
 
-  // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
+  // Ctrl+drag: atalho de teclado para mover o mapa temporariamente sem trocar o modo
+  const [isCtrlPanning, setIsCtrlPanning] = useState(false);
+  const ctrlPanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
+    active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0,
+  });
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control") setIsCtrlPanning(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        setIsCtrlPanning(false);
+        ctrlPanRef.current.active = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
   const [mapActive, setMapActive] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
@@ -2313,8 +2363,11 @@ const LotDashboard = ({
 
   useEffect(() => {
     const lotes = expandLotesInput(marcadorForm.lote);
-    // Mostra "Status do sistema" quando há exatamente 1 lote e ele já existe no cadastro
-    const shouldUseSystemStatus = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
+    // Mostra "Status do sistema" quando há pelo menos 1 lote já existente no cadastro
+    const existentesNoSistema = marcadorForm.quadra
+      ? lotes.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+      : [];
+    const shouldUseSystemStatus = !!marcadorForm.quadra && existentesNoSistema.length > 0;
     if (shouldUseSystemStatus && marcadorForm.status !== "sistema") {
       setMarcadorForm((prev) => ({ ...prev, status: "sistema" }));
     }
@@ -2482,10 +2535,23 @@ const LotDashboard = ({
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isEditingMap || mapEditTool !== "mover") return;
+    // Suporta pan: modo mover OU Ctrl pressionado
+    const isCtrlDown = e.ctrlKey || isCtrlPanning;
+    if (!isEditingMap || (mapEditTool !== "mover" && !isCtrlDown)) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
+    if (isCtrlDown) {
+      // Ctrl+drag: armazena em ctrlPanRef para não conflitar com mapMousePanRef do modo mover
+      ctrlPanRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+      };
+      return;
+    }
     mapMousePanRef.current = {
       active: true,
       startX: e.clientX,
@@ -3266,6 +3332,11 @@ const LotDashboard = ({
       const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
       const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
       const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
+      // Se o formulário pede "sistema", usa o status real deste lote específico no Gerenciador de Lotes
+      const useSystemStatus = (form.status as any) === "sistema";
+      const finalStatusLote: MapaLoteStatus = useSystemStatus
+        ? normalizeMapaStatus((existingInfo as any)?.status || getLotStatusForSale(nextDevLocal, quadra, loteStr, sales).status || "disponivel")
+        : (form.status as MapaLoteStatus);
       const pontoBase = {
         id,
         empreendimentoId: localDev.id,
@@ -3273,7 +3344,7 @@ const LotDashboard = ({
         lote: loteStr,
         xPercent,
         yPercent,
-        status: form.status,
+        status: finalStatusLote,
         observacao: form.observacao || existingPoint?.observacao || "",
         criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
         atualizadoEm: new Date().toISOString(),
@@ -3290,7 +3361,7 @@ const LotDashboard = ({
       const nextPontos = existingPoint
         ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
         : [...currentPontos, pontoBase];
-      const nextInfo = { ...existingInfo, status: form.status, observacao: form.observacao || existingInfo.observacao || "" };
+      const nextInfo = { ...existingInfo, status: finalStatusLote, observacao: form.observacao || existingInfo.observacao || "" };
       nextDevLocal = {
         ...ensured.dev,
         lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
@@ -3355,6 +3426,8 @@ const LotDashboard = ({
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
     if (mapAction === "editar" && mapEditTool === "mover") return;
+    // Não cria marcador se Ctrl estava pressionado (evita criação acidental ao soltar)
+    if (e.ctrlKey || ctrlPanRef.current.active) return;
     if (draggingId) return; // não abre formulário durante arrastar
     const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
@@ -3394,7 +3467,7 @@ const LotDashboard = ({
         criarBolinhasSequencia(
           marcadorPonto1!,
           { xPercent, yPercent },
-          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status, observacao: marcadorForm.observacao }
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status as any, observacao: marcadorForm.observacao }
         );
         // Não sai da edição — apenas reseta para próximo marcador
         setMarcadorFase("idle");
@@ -3434,6 +3507,9 @@ const LotDashboard = ({
   };
 
   const handleMapMouseUp = () => {
+    if (ctrlPanRef.current.active) {
+      ctrlPanRef.current.active = false;
+    }
     if (mapMousePanRef.current.active) {
       mapMousePanRef.current.active = false;
     }
@@ -3444,6 +3520,15 @@ const LotDashboard = ({
   };
 
   const handleMapMouseMoveForDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ctrl+drag pan
+    if (ctrlPanRef.current.active) {
+      const nextPan = {
+        x: ctrlPanRef.current.startPanX + (e.clientX - ctrlPanRef.current.startX),
+        y: ctrlPanRef.current.startPanY + (e.clientY - ctrlPanRef.current.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+      return;
+    }
     if (mapMousePanRef.current.active) {
       const nextPan = {
         x: mapMousePanRef.current.startPanX + (e.clientX - mapMousePanRef.current.startX),
@@ -3938,6 +4023,7 @@ const LotDashboard = ({
                 }
               }}
               onMouseLeave={() => {
+                if (ctrlPanRef.current.active) ctrlPanRef.current.active = false;
                 if (mapMousePanRef.current.active) mapMousePanRef.current.active = false;
                 if (draggingId) commitDrag();
                 if (isDraggingPanelRef.current) {
@@ -3947,7 +4033,7 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning && isEditingMap ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
               {(localDev as any).mapaPdfOriginalBase64 ? (
@@ -4108,7 +4194,7 @@ const LotDashboard = ({
                 {mapAction === "editar" && (
                   <div className="bg-slate-50 rounded-xl p-3 space-y-2">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleção múltipla</p>
-                    <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar.</p>
+                  <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar. Para mover o mapa, segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e arraste.</p>
                     {ctrlSelectedIds.size > 0 && (
                       <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
                     )}
@@ -4333,18 +4419,30 @@ const LotDashboard = ({
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
                   {(() => {
-                    // Alt 1&2: usa expandLotesInput para suportar intervalos
+                    // Usa normalizeLotsInput (via expandLotesInput) para interpretar corretamente vírgula=lista, hífen=intervalo
                     const lotesExpanded = expandLotesInput(marcadorForm.lote);
                     const isMulti = lotesExpanded.length > 1;
-                    // Alt 3: "Status do sistema" só aparece quando há exatamente 1 lote cadastrado
-                    const hasSystemLot = !isMulti && !!marcadorForm.quadra && lotesExpanded.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotesExpanded[0]);
-                    const systemStatus = hasSystemLot ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Verifica quais lotes já existem no sistema
+                    const existentesNoSistema = marcadorForm.quadra
+                      ? lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+                      : [];
+                    const todosExistem = existentesNoSistema.length === lotesExpanded.length && lotesExpanded.length > 0;
+                    const algunsExistem = existentesNoSistema.length > 0;
+                    // "Status do sistema" disponível quando há pelo menos 1 lote existente
+                    const hasSystemLot = !!marcadorForm.quadra && algunsExistem;
+                    // Para lote único, mostra o status específico
+                    const systemStatus = (!isMulti && hasSystemLot) ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Para múltiplos lotes existentes, verifica se há status diferentes
+                    const statusDosSistema = isMulti && hasSystemLot
+                      ? existentesNoSistema.map((l) => ({ lote: l, status: getSystemStatusForMarkerLot(marcadorForm.quadra, l) }))
+                      : [];
+                    const statusDiferentes = isMulti && statusDosSistema.length > 0 && new Set(statusDosSistema.map((s) => s.status)).size > 1;
                     // Preview de lotes expandidos
                     const previewLotes = isMulti ? lotesExpanded.slice(0, 8) : [];
                     const previewExtra = isMulti && lotesExpanded.length > 8 ? lotesExpanded.length - 8 : 0;
                     return (
                       <>
-                        {/* Preview dos lotes expandidos */}
+                        {/* Preview dos lotes gerados — mostra quadra/lote corretamente */}
                         {isMulti && marcadorForm.quadra && (
                           <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-800 font-bold">
                             <span className="font-black">Lotes gerados ({lotesExpanded.length}):</span>{" "}
@@ -4352,16 +4450,28 @@ const LotDashboard = ({
                             {previewExtra > 0 && ` ... +${previewExtra} mais`}
                           </div>
                         )}
-                        {/* Verificação individual por lote (Alt 2) */}
-                        {isMulti && marcadorForm.quadra && (() => {
-                          const existentes = lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l));
-                          if (!existentes.length) return null;
-                          return (
-                            <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
-                              Já existem no sistema: {existentes.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}. Serão vinculados com seu status atual.
+                        {/* Lotes existentes no sistema */}
+                        {isMulti && marcadorForm.quadra && algunsExistem && (
+                          <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
+                            {todosExistem
+                              ? `Todos os lotes já existem no sistema.`
+                              : `Já existem no sistema: ${existentesNoSistema.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}.`
+                            }
+                            {" "}Usando "Usar status do sistema", cada bolinha mantém o status atual cadastrado.
+                          </div>
+                        )}
+                        {/* Aviso de status diferentes entre lotes existentes */}
+                        {isMulti && statusDiferentes && (
+                          <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-800 font-bold">
+                            Os lotes selecionados possuem status diferentes no sistema. Ao usar "Usar status do sistema", cada lote manterá seu próprio status.
+                            <div className="mt-1 space-y-0.5">
+                              {statusDosSistema.slice(0, 6).map((s) => (
+                                <span key={s.lote} className="inline-block mr-2">{`L${s.lote}: ${lotScriptStatusToLabel(s.status)}`}</span>
+                              ))}
+                              {statusDosSistema.length > 6 && <span>...</span>}
                             </div>
-                          );
-                        })()}
+                          </div>
+                        )}
                         <div>
                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
                           <select
@@ -4369,17 +4479,33 @@ const LotDashboard = ({
                             value={marcadorForm.status}
                             onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
                           >
-                            {/* Alt 3: opção "Status do sistema" automática quando lote já existe */}
-                            {hasSystemLot && systemStatus && (
-                              <option value="sistema">Status do sistema: {lotScriptStatusToLabel(systemStatus)}</option>
+                            {/* Opção "Usar status do sistema" aparece sempre que há lotes existentes */}
+                            {hasSystemLot && (
+                              <option value="sistema">
+                                {!isMulti && systemStatus
+                                  ? `Usar status do sistema: ${lotScriptStatusToLabel(systemStatus)}`
+                                  : statusDiferentes
+                                    ? "Usar status do sistema (cada lote mantém o seu)"
+                                    : "Usar status do sistema"}
+                              </option>
                             )}
                             <option value="disponivel">Disponível</option>
                             <option value="reservado">Reservado</option>
                             <option value="indisponivel">Indisponível</option>
                           </select>
-                          {hasSystemLot && systemStatus && (
+                          {hasSystemLot && marcadorForm.status === "sistema" && (
                             <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
-                              Lote já cadastrado. Mantendo por padrão: {lotScriptStatusToLabel(systemStatus)}.
+                              {!isMulti && systemStatus
+                                ? `Lote já cadastrado. Mantendo por padrão: ${lotScriptStatusToLabel(systemStatus)}.`
+                                : todosExistem
+                                  ? "Todos os lotes existentes serão vinculados mantendo o status já cadastrado."
+                                  : `Lotes existentes (${existentesNoSistema.join(", ")}) manterão o status do sistema. Lotes novos usarão "Disponível".`
+                              }
+                            </p>
+                          )}
+                          {hasSystemLot && marcadorForm.status !== "sistema" && (
+                            <p className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                              Atenção: ao salvar, o status atual dos lotes existentes no sistema será substituído por "{marcadorForm.status === "disponivel" ? "Disponível" : marcadorForm.status === "reservado" ? "Reservado" : "Indisponível"}".
                             </p>
                           )}
                         </div>
