@@ -5018,7 +5018,7 @@ const EmpreendimentosSection = ({
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
-  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "texto">("cadastrar");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
@@ -5962,47 +5962,59 @@ const EmpreendimentosSection = ({
               </div>
 
               {/* Tabs */}
-              <div className="flex border-b border-slate-100 overflow-x-auto">
+              <div className="flex border-b border-slate-100 overflow-hidden px-1 sm:px-2">
                 <button
                   onClick={() => setLotRegTab("cadastrar")}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
                     lotRegTab === "cadastrar"
-                      ? "text-primary-main border-b-2 border-primary-main"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
+                  title="Cadastrar Lote"
                 >
-                  <Plus size={13} />
-                  {lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()]
-                    ? "Editar Lote"
-                    : "Cadastrar"}
+                  <Plus size={16} />
                 </button>
+
                 <button
                   onClick={() => setLotRegTab("lotes")}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all relative ${
                     lotRegTab === "lotes"
-                      ? "text-primary-main border-b-2 border-primary-main"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
+                  title="Gerenciar Lotes"
                 >
-                  <List size={13} />
-                  Lotes
+                  <List size={16} />
+
                   {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
-                    <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
+                    <span className="absolute top-1.5 right-2 bg-slate-100 text-slate-600 text-[8px] font-black px-1 py-0.5 rounded-full leading-none">
                       {Object.keys(lotRegDev.lotesInfo || {}).length}
                     </span>
                   )}
                 </button>
+
                 <button
-                  onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
-                    lotRegTab === "acoesMassa"
-                      ? "text-slate-700 border-b-2 border-slate-700"
+                  onClick={() => setLotRegTab("texto")}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
+                    lotRegTab === "texto"
+                      ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
                       : "text-slate-400 hover:text-slate-600"
                   }`}
+                  title="Adicionar por Texto"
                 >
-                  <Settings size={13} />
-                  <span className="hidden sm:inline">Ações em Massa</span>
-                  <span className="sm:hidden">Em Massa</span>
+                  <ClipboardPaste size={16} />
+                </button>
+
+                <button
+                  onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
+                    lotRegTab === "acoesMassa"
+                      ? "text-slate-700 border-b-2 border-slate-700 bg-slate-100"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title="Lotes em Massa"
+                >
+                  <Settings size={16} />
                 </button>
               </div>
 
