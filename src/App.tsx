@@ -267,6 +267,7 @@ function normalizeLotKeyPart(value?: string | number | null): string {
 /**
  * Quebra uma string de lotes em array de lotes individuais.
  * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
+ * NÃO expande intervalos — use normalizeLotsInput para isso.
  */
 function parseLotesInput(input: string): string[] {
   return input
@@ -276,27 +277,54 @@ function parseLotesInput(input: string): string[] {
 }
 
 /**
- * Expande o campo Lote em lista de lotes individuais, suportando intervalos.
- * Regra: dois tokens em ordem ESTRITAMENTE CRESCENTE com diferença > 1 → intervalo.
- * Ex: "1,6" → ["1","2","3","4","5","6"]
- * Ex: "9,8" → ["9","8"]  (não crescente → lista)
- * Ex: "1,2,3" → ["1","2","3"] (mais de 2 tokens → lista)
+ * Função central para normalizar entrada de lotes.
+ * Regras:
+ * - Vírgula, ponto-e-vírgula e "e" → lista literal
+ * - Hífen, "até" ou "a" (entre dois números) → sequência/intervalo
+ *
+ * Exemplos:
+ * "1,20"       → ["1","20"]          (lista, não intervalo!)
+ * "1,2,3"      → ["1","2","3"]
+ * "1;2;3"      → ["1","2","3"]
+ * "1 e 2 e 3"  → ["1","2","3"]
+ * "1-20"       → ["1","2",...,"20"]  (intervalo)
+ * "1 até 20"   → ["1","2",...,"20"]  (intervalo)
+ * "1 a 20"     → ["1","2",...,"20"]  (intervalo)
+ */
+function normalizeLotsInput(input: string): string[] {
+  const raw = (input || "").trim();
+  if (!raw) return [];
+
+  // Detecta padrão de intervalo: N-M, N até M, N a M (apenas se não há vírgula/ponto-e-vírgula)
+  // A presença de vírgula/ponto-e-vírgula cancela a interpretação de intervalo
+  const hasListSeparator = /[,;]/.test(raw) || /\se\s/i.test(raw);
+  if (!hasListSeparator) {
+    // Tenta intervalo: "N-M", "N até M", "N a M"
+    const rangeMatch = raw.match(/^(\d+)\s*(?:-|até|a)\s*(\d+)$/i);
+    if (rangeMatch) {
+      const na = parseInt(rangeMatch[1], 10);
+      const nb = parseInt(rangeMatch[2], 10);
+      if (!isNaN(na) && !isNaN(nb) && nb >= na) {
+        const result: string[] = [];
+        for (let i = na; i <= nb; i++) result.push(String(i));
+        return result;
+      }
+    }
+  }
+
+  // Lista literal: separa por vírgula, ponto-e-vírgula ou " e "
+  return raw
+    .split(/[,;]|\se\s/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Expande o campo Lote em lista de lotes individuais.
+ * Usa normalizeLotsInput internamente — vírgula é sempre lista, hífen/"até"/"a" é intervalo.
  */
 function expandLotesInput(input: string): string[] {
-  const tokens = parseLotesInput(input);
-  if (tokens.length !== 2) return tokens; // lista literal quando ≠ 2 tokens
-  const [a, b] = tokens;
-  const na = Number(a), nb = Number(b);
-  // Só expande se ambos forem inteiros e for intervalo crescente com diff > 1
-  if (
-    Number.isInteger(na) && Number.isInteger(nb) &&
-    nb > na + 1
-  ) {
-    const result: string[] = [];
-    for (let i = na; i <= nb; i++) result.push(String(i));
-    return result;
-  }
-  return tokens; // lista literal (9,8 ou 1,2 etc)
+  return normalizeLotsInput(input);
 }
 
 /**
@@ -2292,7 +2320,29 @@ const LotDashboard = ({
     startPanY: 0,
   });
 
-  // Zoom/pan mobile: o mapa só captura gestos quando estiver ativo/selecionado.
+  // Ctrl+drag: atalho de teclado para mover o mapa temporariamente sem trocar o modo
+  const [isCtrlPanning, setIsCtrlPanning] = useState(false);
+  const ctrlPanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
+    active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0,
+  });
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control") setIsCtrlPanning(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        setIsCtrlPanning(false);
+        ctrlPanRef.current.active = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
   const [mapActive, setMapActive] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
@@ -2313,8 +2363,11 @@ const LotDashboard = ({
 
   useEffect(() => {
     const lotes = expandLotesInput(marcadorForm.lote);
-    // Mostra "Status do sistema" quando há exatamente 1 lote e ele já existe no cadastro
-    const shouldUseSystemStatus = !!marcadorForm.quadra && lotes.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotes[0]);
+    // Mostra "Status do sistema" quando há pelo menos 1 lote já existente no cadastro
+    const existentesNoSistema = marcadorForm.quadra
+      ? lotes.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+      : [];
+    const shouldUseSystemStatus = !!marcadorForm.quadra && existentesNoSistema.length > 0;
     if (shouldUseSystemStatus && marcadorForm.status !== "sistema") {
       setMarcadorForm((prev) => ({ ...prev, status: "sistema" }));
     }
@@ -2482,10 +2535,23 @@ const LotDashboard = ({
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
-    if (!isEditingMap || mapEditTool !== "mover") return;
+    // Suporta pan: modo mover OU Ctrl pressionado
+    const isCtrlDown = e.ctrlKey || isCtrlPanning;
+    if (!isEditingMap || (mapEditTool !== "mover" && !isCtrlDown)) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
+    if (isCtrlDown) {
+      // Ctrl+drag: armazena em ctrlPanRef para não conflitar com mapMousePanRef do modo mover
+      ctrlPanRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+      };
+      return;
+    }
     mapMousePanRef.current = {
       active: true,
       startX: e.clientX,
@@ -2499,6 +2565,7 @@ const LotDashboard = ({
     setMapActive(true);
     if (!mapActive && e.touches.length < 2) return;
     if (e.touches.length >= 2) {
+      e.preventDefault();
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
@@ -2511,6 +2578,7 @@ const LotDashboard = ({
       return;
     }
     if (mapZoom > 1 && e.touches.length === 1) {
+      e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
@@ -2527,6 +2595,7 @@ const LotDashboard = ({
     if (!mapActive) return;
     const gesture = mapTouchRef.current;
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
+      e.preventDefault();
       const distance = getTouchDistance(e.touches);
       const nextZoom = Math.max(1, Math.min(10, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
       if ((localDev as any).mapaPdfOriginalBase64) {
@@ -2539,6 +2608,7 @@ const LotDashboard = ({
       return;
     }
     if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
+      e.preventDefault();
       const nextPan = {
         x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
         y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
@@ -2976,7 +3046,7 @@ const LotDashboard = ({
           // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
-          setLocalDev({
+          persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
             mapaImagemHighResBase64: "",
@@ -2988,7 +3058,6 @@ const LotDashboard = ({
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
-          setLotScriptMsg("Mapa carregado na tela. Clique em Salvar mapa para gravar no sistema.");
         } catch (err) {
           alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
         }
@@ -2998,7 +3067,7 @@ const LotDashboard = ({
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setLocalDev({
+      persistDev({
         ...localDev,
         mapaImagemBase64: String(reader.result || ""),
         mapaImagemHighResBase64: "",
@@ -3010,20 +3079,8 @@ const LotDashboard = ({
         mapaMarkerReferenceWidth: 1000,
       } as Empreendimento);
       setMode("mapa");
-      setLotScriptMsg("Mapa carregado na tela. Clique em Salvar mapa para gravar no sistema.");
     };
     reader.readAsDataURL(file);
-  };
-
-  const salvarMapaAtual = () => {
-    const devToSave = {
-      ...localDev,
-      mapaPontos,
-      mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
-      mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
-    } as Empreendimento;
-    persistDev(devToSave);
-    setLotScriptMsg("Mapa salvo no sistema.");
   };
 
   // ──────────────────────────────────────────────
@@ -3275,6 +3332,11 @@ const LotDashboard = ({
       const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
       const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
       const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
+      // Se o formulário pede "sistema", usa o status real deste lote específico no Gerenciador de Lotes
+      const useSystemStatus = (form.status as any) === "sistema";
+      const finalStatusLote: MapaLoteStatus = useSystemStatus
+        ? normalizeMapaStatus((existingInfo as any)?.status || getLotStatusForSale(nextDevLocal, quadra, loteStr, sales).status || "disponivel")
+        : (form.status as MapaLoteStatus);
       const pontoBase = {
         id,
         empreendimentoId: localDev.id,
@@ -3282,7 +3344,7 @@ const LotDashboard = ({
         lote: loteStr,
         xPercent,
         yPercent,
-        status: form.status,
+        status: finalStatusLote,
         observacao: form.observacao || existingPoint?.observacao || "",
         criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
         atualizadoEm: new Date().toISOString(),
@@ -3299,7 +3361,7 @@ const LotDashboard = ({
       const nextPontos = existingPoint
         ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
         : [...currentPontos, pontoBase];
-      const nextInfo = { ...existingInfo, status: form.status, observacao: form.observacao || existingInfo.observacao || "" };
+      const nextInfo = { ...existingInfo, status: finalStatusLote, observacao: form.observacao || existingInfo.observacao || "" };
       nextDevLocal = {
         ...ensured.dev,
         lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
@@ -3364,6 +3426,8 @@ const LotDashboard = ({
   const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!isEditingMap) return;
     if (mapAction === "editar" && mapEditTool === "mover") return;
+    // Não cria marcador se Ctrl estava pressionado (evita criação acidental ao soltar)
+    if (e.ctrlKey || ctrlPanRef.current.active) return;
     if (draggingId) return; // não abre formulário durante arrastar
     const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
     const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
@@ -3403,7 +3467,7 @@ const LotDashboard = ({
         criarBolinhasSequencia(
           marcadorPonto1!,
           { xPercent, yPercent },
-          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status === "sistema" ? "disponivel" : marcadorForm.status, observacao: marcadorForm.observacao }
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status as any, observacao: marcadorForm.observacao }
         );
         // Não sai da edição — apenas reseta para próximo marcador
         setMarcadorFase("idle");
@@ -3443,6 +3507,9 @@ const LotDashboard = ({
   };
 
   const handleMapMouseUp = () => {
+    if (ctrlPanRef.current.active) {
+      ctrlPanRef.current.active = false;
+    }
     if (mapMousePanRef.current.active) {
       mapMousePanRef.current.active = false;
     }
@@ -3453,6 +3520,15 @@ const LotDashboard = ({
   };
 
   const handleMapMouseMoveForDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ctrl+drag pan
+    if (ctrlPanRef.current.active) {
+      const nextPan = {
+        x: ctrlPanRef.current.startPanX + (e.clientX - ctrlPanRef.current.startX),
+        y: ctrlPanRef.current.startPanY + (e.clientY - ctrlPanRef.current.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+      return;
+    }
     if (mapMousePanRef.current.active) {
       const nextPan = {
         x: mapMousePanRef.current.startPanX + (e.clientX - mapMousePanRef.current.startX),
@@ -3910,6 +3986,8 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
               style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
@@ -3945,6 +4023,7 @@ const LotDashboard = ({
                 }
               }}
               onMouseLeave={() => {
+                if (ctrlPanRef.current.active) ctrlPanRef.current.active = false;
                 if (mapMousePanRef.current.active) mapMousePanRef.current.active = false;
                 if (draggingId) commitDrag();
                 if (isDraggingPanelRef.current) {
@@ -3954,7 +4033,7 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative bg-white min-w-[320px] select-none ${isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning && isEditingMap ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
               {(localDev as any).mapaPdfOriginalBase64 ? (
@@ -4115,7 +4194,7 @@ const LotDashboard = ({
                 {mapAction === "editar" && (
                   <div className="bg-slate-50 rounded-xl p-3 space-y-2">
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleção múltipla</p>
-                    <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar.</p>
+                  <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar. Para mover o mapa, segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e arraste.</p>
                     {ctrlSelectedIds.size > 0 && (
                       <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
                     )}
@@ -4155,16 +4234,40 @@ const LotDashboard = ({
                   <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
-                {mapaImagem && (
-                  <button
-                    type="button"
-                    onClick={salvarMapaAtual}
-                    className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-primary-main text-primary-contrast flex items-center justify-center gap-2"
-                  >
-                    <Save size={13} />
-                    Salvar mapa
-                  </button>
-                )}
+
+                {/* Script ChatGPT / importação por texto */}
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Adicionar por texto</p>
+                  <p className="text-[10px] text-emerald-700/80">
+                    Padrão: <strong>Q1:1D,2I,3R.</strong> D=disponível, I=indisponível, R=reservado.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={copyScriptForChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                    >
+                      Copiar script para ChatGPT
+                    </button>
+                    <textarea
+                      className="input-field min-h-[96px] text-[11px] font-mono leading-relaxed"
+                      value={lotScriptText}
+                      onChange={(e) => setLotScriptText(e.target.value)}
+                      placeholder={"Cole aqui o script recebido. Ex:\\nQ1:1D,2I,3R.\\nQ2:1I,2D,3R."}
+                    />
+                    <button
+                      type="button"
+                      onClick={importScriptFromChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      Colar/Importar script do ChatGPT
+                    </button>
+                  </div>
+                  {lotScriptMsg && <p className="text-[10px] font-bold text-emerald-800 bg-white/70 p-2 rounded-xl">{lotScriptMsg}</p>}
+                  <p className="text-[10px] text-slate-500">
+                    Se quadra/lote já existir, o sistema vincula e pergunta antes de substituir status diferente. Nunca cria duplicata.
+                  </p>
+                </div>
 
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
 
@@ -4316,18 +4419,30 @@ const LotDashboard = ({
                     onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
                   />
                   {(() => {
-                    // Alt 1&2: usa expandLotesInput para suportar intervalos
+                    // Usa normalizeLotsInput (via expandLotesInput) para interpretar corretamente vírgula=lista, hífen=intervalo
                     const lotesExpanded = expandLotesInput(marcadorForm.lote);
                     const isMulti = lotesExpanded.length > 1;
-                    // Alt 3: "Status do sistema" só aparece quando há exatamente 1 lote cadastrado
-                    const hasSystemLot = !isMulti && !!marcadorForm.quadra && lotesExpanded.length === 1 && hasConfiguredLot(localDev, marcadorForm.quadra, lotesExpanded[0]);
-                    const systemStatus = hasSystemLot ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Verifica quais lotes já existem no sistema
+                    const existentesNoSistema = marcadorForm.quadra
+                      ? lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+                      : [];
+                    const todosExistem = existentesNoSistema.length === lotesExpanded.length && lotesExpanded.length > 0;
+                    const algunsExistem = existentesNoSistema.length > 0;
+                    // "Status do sistema" disponível quando há pelo menos 1 lote existente
+                    const hasSystemLot = !!marcadorForm.quadra && algunsExistem;
+                    // Para lote único, mostra o status específico
+                    const systemStatus = (!isMulti && hasSystemLot) ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Para múltiplos lotes existentes, verifica se há status diferentes
+                    const statusDosSistema = isMulti && hasSystemLot
+                      ? existentesNoSistema.map((l) => ({ lote: l, status: getSystemStatusForMarkerLot(marcadorForm.quadra, l) }))
+                      : [];
+                    const statusDiferentes = isMulti && statusDosSistema.length > 0 && new Set(statusDosSistema.map((s) => s.status)).size > 1;
                     // Preview de lotes expandidos
                     const previewLotes = isMulti ? lotesExpanded.slice(0, 8) : [];
                     const previewExtra = isMulti && lotesExpanded.length > 8 ? lotesExpanded.length - 8 : 0;
                     return (
                       <>
-                        {/* Preview dos lotes expandidos */}
+                        {/* Preview dos lotes gerados — mostra quadra/lote corretamente */}
                         {isMulti && marcadorForm.quadra && (
                           <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-800 font-bold">
                             <span className="font-black">Lotes gerados ({lotesExpanded.length}):</span>{" "}
@@ -4335,16 +4450,28 @@ const LotDashboard = ({
                             {previewExtra > 0 && ` ... +${previewExtra} mais`}
                           </div>
                         )}
-                        {/* Verificação individual por lote (Alt 2) */}
-                        {isMulti && marcadorForm.quadra && (() => {
-                          const existentes = lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l));
-                          if (!existentes.length) return null;
-                          return (
-                            <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
-                              Já existem no sistema: {existentes.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}. Serão vinculados com seu status atual.
+                        {/* Lotes existentes no sistema */}
+                        {isMulti && marcadorForm.quadra && algunsExistem && (
+                          <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
+                            {todosExistem
+                              ? `Todos os lotes já existem no sistema.`
+                              : `Já existem no sistema: ${existentesNoSistema.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}.`
+                            }
+                            {" "}Usando "Usar status do sistema", cada bolinha mantém o status atual cadastrado.
+                          </div>
+                        )}
+                        {/* Aviso de status diferentes entre lotes existentes */}
+                        {isMulti && statusDiferentes && (
+                          <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-800 font-bold">
+                            Os lotes selecionados possuem status diferentes no sistema. Ao usar "Usar status do sistema", cada lote manterá seu próprio status.
+                            <div className="mt-1 space-y-0.5">
+                              {statusDosSistema.slice(0, 6).map((s) => (
+                                <span key={s.lote} className="inline-block mr-2">{`L${s.lote}: ${lotScriptStatusToLabel(s.status)}`}</span>
+                              ))}
+                              {statusDosSistema.length > 6 && <span>...</span>}
                             </div>
-                          );
-                        })()}
+                          </div>
+                        )}
                         <div>
                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
                           <select
@@ -4352,17 +4479,33 @@ const LotDashboard = ({
                             value={marcadorForm.status}
                             onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
                           >
-                            {/* Alt 3: opção "Status do sistema" automática quando lote já existe */}
-                            {hasSystemLot && systemStatus && (
-                              <option value="sistema">Status do sistema: {lotScriptStatusToLabel(systemStatus)}</option>
+                            {/* Opção "Usar status do sistema" aparece sempre que há lotes existentes */}
+                            {hasSystemLot && (
+                              <option value="sistema">
+                                {!isMulti && systemStatus
+                                  ? `Usar status do sistema: ${lotScriptStatusToLabel(systemStatus)}`
+                                  : statusDiferentes
+                                    ? "Usar status do sistema (cada lote mantém o seu)"
+                                    : "Usar status do sistema"}
+                              </option>
                             )}
                             <option value="disponivel">Disponível</option>
                             <option value="reservado">Reservado</option>
                             <option value="indisponivel">Indisponível</option>
                           </select>
-                          {hasSystemLot && systemStatus && (
+                          {hasSystemLot && marcadorForm.status === "sistema" && (
                             <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
-                              Lote já cadastrado. Mantendo por padrão: {lotScriptStatusToLabel(systemStatus)}.
+                              {!isMulti && systemStatus
+                                ? `Lote já cadastrado. Mantendo por padrão: ${lotScriptStatusToLabel(systemStatus)}.`
+                                : todosExistem
+                                  ? "Todos os lotes existentes serão vinculados mantendo o status já cadastrado."
+                                  : `Lotes existentes (${existentesNoSistema.join(", ")}) manterão o status do sistema. Lotes novos usarão "Disponível".`
+                              }
+                            </p>
+                          )}
+                          {hasSystemLot && marcadorForm.status !== "sistema" && (
+                            <p className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                              Atenção: ao salvar, o status atual dos lotes existentes no sistema será substituído por "{marcadorForm.status === "disponivel" ? "Disponível" : marcadorForm.status === "reservado" ? "Reservado" : "Indisponível"}".
                             </p>
                           )}
                         </div>
@@ -4449,6 +4592,8 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
               className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
@@ -4686,17 +4831,10 @@ const LotDashboard = ({
               </button>
             )}
             {canEditMap && !mapaImagem && (
-              <div className="flex items-center gap-2">
-                <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
-                  <Upload size={13} />Carregar mapa
-                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
-                </label>
-                {mapaImagem && (
-                  <button type="button" onClick={salvarMapaAtual} className="flex px-4 py-2 bg-primary-main text-primary-contrast rounded-xl text-xs font-black uppercase items-center gap-2">
-                    <Save size={13} />Salvar
-                  </button>
-                )}
-              </div>
+              <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
+                <Upload size={13} />Carregar mapa
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
+              </label>
             )}
             <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
           </div>
@@ -4880,9 +5018,7 @@ const EmpreendimentosSection = ({
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
-  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "adicionarTexto">("cadastrar");
-  const [lotRegScriptText, setLotRegScriptText] = useState("");
-  const [lotRegScriptMsg, setLotRegScriptMsg] = useState("");
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
@@ -5825,68 +5961,48 @@ const EmpreendimentosSection = ({
                 </button>
               </div>
 
-              {/* Tabs compactas por ícone para caber na largura da página */}
-              <div className="grid grid-cols-4 border-b border-slate-100 overflow-hidden">
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100 overflow-x-auto">
                 <button
-                  type="button"
-                  title={lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}
-                  aria-label={lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}
                   onClick={() => setLotRegTab("cadastrar")}
-                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "cadastrar"
-                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                      ? "text-primary-main border-b-2 border-primary-main"
+                      : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <Plus size={18} />
-                  <span className="sr-only">{lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] ? "Editar lote" : "Cadastrar lote"}</span>
+                  <Plus size={13} />
+                  {lotRegForm.quadra && lotRegForm.numeroLote && lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()]
+                    ? "Editar Lote"
+                    : "Cadastrar"}
                 </button>
                 <button
-                  type="button"
-                  title="Lotes cadastrados"
-                  aria-label="Lotes cadastrados"
                   onClick={() => setLotRegTab("lotes")}
-                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "lotes"
-                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                      ? "text-primary-main border-b-2 border-primary-main"
+                      : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <List size={18} />
+                  <List size={13} />
+                  Lotes
                   {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
-                    <span className="absolute top-1.5 right-[22%] min-w-[16px] h-4 px-1 rounded-full bg-slate-100 text-slate-600 text-[9px] font-black flex items-center justify-center leading-none">
+                    <span className="bg-slate-100 text-slate-600 text-[9px] font-black px-1.5 py-0.5 rounded-full">
                       {Object.keys(lotRegDev.lotesInfo || {}).length}
                     </span>
                   )}
-                  <span className="sr-only">Lotes cadastrados</span>
                 </button>
                 <button
-                  type="button"
-                  title="Ações em massa"
-                  aria-label="Ações em massa"
                   onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-3 ${
                     lotRegTab === "acoesMassa"
-                      ? "text-slate-700 border-b-2 border-slate-700 bg-slate-100"
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
+                      ? "text-slate-700 border-b-2 border-slate-700"
+                      : "text-slate-400 hover:text-slate-600"
                   }`}
                 >
-                  <Settings size={18} />
-                  <span className="sr-only">Ações em massa</span>
-                </button>
-                <button
-                  type="button"
-                  title="Adicionar por texto"
-                  aria-label="Adicionar por texto"
-                  onClick={() => { setLotRegTab("adicionarTexto"); setLotRegScriptMsg(""); }}
-                  className={`relative min-w-0 flex items-center justify-center py-3 transition-colors ${
-                    lotRegTab === "adicionarTexto"
-                      ? "text-emerald-700 border-b-2 border-emerald-600 bg-emerald-50"
-                      : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  <ClipboardPaste size={18} />
-                  <span className="sr-only">Adicionar por texto</span>
+                  <Settings size={13} />
+                  <span className="hidden sm:inline">Ações em Massa</span>
+                  <span className="sm:hidden">Em Massa</span>
                 </button>
               </div>
 
@@ -6009,7 +6125,7 @@ const EmpreendimentosSection = ({
                       </div>
                     ) : (
                       <div className="overflow-x-auto">
-                      <table className="w-full text-[11px] min-w-[440px] table-auto">
+                      <table className="w-full text-sm min-w-[380px]">
                         <thead className="bg-slate-50 sticky top-0">
                           <tr>
                             <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
@@ -6029,12 +6145,12 @@ const EmpreendimentosSection = ({
                               const isIndisponivel = info.status === "indisponivel";
                               const temDesistente = !!(info as any).desistente;
                               return (
-                                <tr key={key} className={`border-t border-slate-50 transition-colors whitespace-nowrap ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
-                                  <td className="px-2 py-2 whitespace-nowrap">
+                                <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
+                                  <td className="px-4 py-3">
                                     <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
                                   </td>
-                                  <td className="px-2 py-2 whitespace-nowrap font-bold text-slate-800">{lote}</td>
-                                  <td className="px-2 py-2 whitespace-nowrap">
+                                  <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
+                                  <td className="px-4 py-3">
                                     {venda ? (
                                       <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
                                     ) : isIndisponivel ? (
@@ -6043,25 +6159,25 @@ const EmpreendimentosSection = ({
                                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
                                     )}
                                   </td>
-                                  <td className="px-2 py-2 whitespace-nowrap text-[11px] max-w-[120px]">
+                                  <td className="px-4 py-3 text-xs max-w-[130px]">
                                     {venda ? (
-                                      <span className="text-red-600 font-bold inline-flex items-center gap-1 truncate max-w-[110px]">
+                                      <span className="text-red-600 font-bold flex items-center gap-1 truncate">
                                         <User size={11} />
                                         {venda.clienteNome.split(" ")[0]}
                                       </span>
                                     ) : temDesistente ? (
                                       <div>
-                                        <span className="text-amber-600 font-bold inline-flex items-center gap-1 truncate max-w-[110px]">
+                                        <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
                                           <AlertCircle size={11} />
                                           {(info as any).desistente.clienteNome.split(" ")[0]}
                                         </span>
                                         <span className="text-[9px] text-slate-400">Desistente</span>
                                       </div>
                                     ) : (
-                                      <span className="text-slate-300 italic text-[10px] whitespace-nowrap">—</span>
+                                      <span className="text-slate-300 italic text-[10px]">—</span>
                                     )}
                                   </td>
-                                  <td className="px-2 py-2 whitespace-nowrap">
+                                  <td className="px-4 py-3">
                                     <div className="flex items-center justify-end gap-1">
                                       {/* Botão editar */}
                                       <button
@@ -6318,158 +6434,11 @@ const EmpreendimentosSection = ({
                   </div>
                 </>
               )}
-              {/* Tab: Adicionar por Texto */}
-              {lotRegTab === "adicionarTexto" && (() => {
-                const handleCopyScript = async () => {
-                  const scriptAtual = formatLotScriptFromEmpreendimento(lotRegDev, sales);
-                  const payload = [
-                    `EMPREENDIMENTO: ${lotRegDev.nome}`,
-                    "REGRA: devolver somente no padrão Q1:1D,2I,3R.",
-                    "STATUS: D=DISPONÍVEL; I=INDISPONÍVEL; R=RESERVADO.",
-                    "CHAVE: empreendimento + quadra + lote. Não duplicar.",
-                    "",
-                    "SCRIPT_ATUAL:",
-                    scriptAtual || "Q1:.",
-                    "",
-                    "ORIENTAÇÃO:",
-                    "Analise o mapa enviado e devolva o script corrigido por quadra.",
-                  ].join("\n");
-                  setLotRegScriptText(payload);
-                  setLotRegScriptMsg("Script preparado para enviar ao ChatGPT.");
-                  try {
-                    await navigator.clipboard?.writeText(payload);
-                    setLotRegScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
-                  } catch {
-                    // campo mantido para cópia manual
-                  }
-                };
-
-                const handleImportScript = () => {
-                  const parsed = parseLotScriptByQuadra(lotRegScriptText);
-                  if (parsed.errors.length > 0) {
-                    alert("Corrija o script antes de importar:\n\n" + parsed.errors.slice(0, 8).join("\n"));
-                    return;
-                  }
-                  if (parsed.items.length === 0) {
-                    alert("Nenhum lote encontrado no script.");
-                    return;
-                  }
-
-                  const conflicts = parsed.items
-                    .map((item) => {
-                      const key = getLotInfoKey(item.quadra, item.lote);
-                      const existingInfo = lotRegDev.lotesInfo?.[key];
-                      const currentStatus = (existingInfo as any)?.status;
-                      if (currentStatus && normalizeMapaStatus(currentStatus) !== item.status) {
-                        return { ...item, currentStatus: normalizeMapaStatus(currentStatus) };
-                      }
-                      return null;
-                    })
-                    .filter(Boolean) as Array<LotScriptItem & { currentStatus: MapaLoteStatus }>;
-
-                  let conflictMode: "update" | "keep" = "update";
-                  if (conflicts.length > 0) {
-                    const sample = conflicts.slice(0, 10).map((c) => `Q${c.quadra} L${c.lote}: atual ${lotScriptStatusToLabel(c.currentStatus)} → novo ${lotScriptStatusToLabel(c.status)}`).join("\n");
-                    const update = window.confirm(
-                      `Foram encontrados ${conflicts.length} conflito(s) de status.\n\n${sample}\n\nOK = atualizar com o script novo.\nCancelar = manter status atual e importar apenas novos lotes.`
-                    );
-                    conflictMode = update ? "update" : "keep";
-                  }
-
-                  let nextDev = lotRegDev;
-                  let created = 0, updated = 0, kept = 0;
-
-                  parsed.items.forEach((item) => {
-                    const ensured = ensureLotExistsInEmpreendimento(nextDev, item.quadra, item.lote);
-                    const key = ensured.lotInfoKey;
-                    const existingInfo = ensured.dev.lotesInfo?.[key] || {};
-                    const currentStatus = (existingInfo as any)?.status;
-                    const hasConflict = currentStatus && normalizeMapaStatus(currentStatus) !== item.status;
-                    const shouldUpdate = !hasConflict || conflictMode === "update";
-                    const nextStatus = shouldUpdate ? item.status : normalizeMapaStatus(currentStatus);
-
-                    if (!currentStatus) created += 1;
-                    else if (shouldUpdate) updated += 1;
-                    else kept += 1;
-
-                    const nextInfo = {
-                      ...existingInfo,
-                      status: nextStatus,
-                      atualizadoEm: new Date().toISOString(),
-                      origemAtualizacao: shouldUpdate ? "script-texto" : ((existingInfo as any).origemAtualizacao || "mantido"),
-                    };
-
-                    nextDev = {
-                      ...ensured.dev,
-                      lotesInfo: { ...(ensured.dev.lotesInfo || {}), [key]: nextInfo },
-                    } as Empreendimento;
-                  });
-
-                  const finalDev = recalcularEstatisticasEmpreendimento(nextDev, sales);
-                  onUpdateLotesInfo(finalDev.id, finalDev.lotesInfo || {});
-                  setLotRegDev(finalDev);
-                  setLotRegScriptMsg(`Importado: ${parsed.items.length} lote(s). Criados ${created}, atualizados ${updated}, mantidos ${kept}.`);
-                };
-
-                return (
-                  <>
-                    <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Formato</p>
-                        <p className="text-[10px] text-emerald-700/80 font-medium">
-                          Padrão: <code className="bg-white/60 px-1 rounded font-mono">Q1:1D,2I,3R.</code><br />
-                          <strong>D</strong> = disponível · <strong>I</strong> = indisponível · <strong>R</strong> = reservado
-                        </p>
-                        <p className="text-[10px] text-emerald-600">
-                          Cada bloco termina com ponto. Separe lotes por vírgula. Quadra termina com dois-pontos.
-                        </p>
-                      </div>
-
-                      <div className="grid grid-cols-1 gap-2">
-                        <button
-                          type="button"
-                          onClick={handleCopyScript}
-                          className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-50 flex items-center justify-center gap-2 transition-colors"
-                        >
-                          <Copy size={12} /> Copiar script atual para ChatGPT
-                        </button>
-                        <textarea
-                          className="input-field min-h-[140px] text-[11px] font-mono leading-relaxed resize-y"
-                          value={lotRegScriptText}
-                          onChange={(e) => setLotRegScriptText(e.target.value)}
-                          placeholder={"Cole aqui o script. Exemplo:\nQ1:1D,2I,3R.\nQ2:1I,2D,3R."}
-                        />
-                        <button
-                          type="button"
-                          onClick={handleImportScript}
-                          disabled={!lotRegScriptText.trim()}
-                          className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-colors"
-                        >
-                          <ClipboardPaste size={12} /> Importar script
-                        </button>
-                      </div>
-
-                      {lotRegScriptMsg && (
-                        <div className="p-3 bg-white border border-emerald-200 rounded-xl text-[10px] font-bold text-emerald-800">
-                          {lotRegScriptMsg}
-                        </div>
-                      )}
-
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[10px] text-slate-500">
-                        Se quadra/lote já existir, o sistema pergunta antes de substituir status diferente. Nunca cria duplicata.
-                      </div>
-                    </div>
-                    <div className="p-5 border-t border-slate-100 flex justify-end">
-                      <button onClick={() => setLotRegTab("lotes")} className="btn-secondary px-6">Ver Lotes</button>
-                    </div>
-                  </>
-                );
-              })()}
-
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+      {/* Modal: Gerenciar Disponibilidade em Massa */}
       <AnimatePresence>
         {bulkAvailDev && (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
