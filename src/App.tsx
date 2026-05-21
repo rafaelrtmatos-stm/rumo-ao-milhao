@@ -5051,29 +5051,35 @@ const EmpreendimentosSection = ({
 
   const gerarScriptAtualParaModal = () => {
     if (!lotRegDev) return "";
-    const quadras = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
-    if (quadras.length === 0) return "";
-    return quadras.map(q => {
-      const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-      if (lotes.length === 0) return `Q${q}:.`;
-      const parts = lotes.map(l => {
-        const key = `${q}-${l}`.toUpperCase();
-        const info = lotRegDev.lotesInfo?.[key];
-        const s = info?.status || "disponivel";
-        const letter = s === "indisponivel" ? "I" : s === "reservado" ? "R" : "D";
-        return `${l}${letter}`;
-      });
-      return `Q${q}:${parts.join(",")}.`;
-    }).join("\n");
+    const payload = [
+      `EMPREENDIMENTO: ${lotRegDev.nome}`,
+      "REGRA: devolver somente no padrão Q1:1D,2I,3R.",
+      "STATUS: D=DISPONÍVEL; I=INDISPONÍVEL; R=RESERVADO.",
+      "CHAVE: empreendimento + quadra + lote. Não duplicar.",
+      "",
+      "SCRIPT_ATUAL:",
+      formatLotScriptFromEmpreendimento(lotRegDev, sales) || "Q1:.",
+      "",
+      "ORIENTAÇÃO:",
+      "Analise o mapa enviado e devolva o script corrigido por quadra.",
+    ].join("\n");
+    return payload;
   };
+
+  const [scriptGerado, setScriptGerado] = useState("");
 
   const copyScriptToClipboard = async () => {
     const script = gerarScriptAtualParaModal();
+    if (!script) {
+      setScriptMsg("Nenhum lote encontrado. Configure as quadras do empreendimento primeiro.");
+      return;
+    }
+    setScriptGerado(script);
     try {
       await navigator.clipboard.writeText(script);
-      setScriptMsg("Script copiado! Envie ao ChatGPT com o mapa.");
+      setScriptMsg("✅ Script copiado! Envie ao ChatGPT com o mapa.");
     } catch {
-      setScriptMsg("Não foi possível copiar automaticamente.");
+      setScriptMsg("Não foi possível copiar automaticamente. Copie o texto abaixo manualmente.");
     }
   };
 
@@ -6084,7 +6090,7 @@ const EmpreendimentosSection = ({
                 </button>
 
                 <button
-                  onClick={() => { setScriptPasteText(""); setScriptMsg(""); setShowScriptModal(true); }}
+                  onClick={() => { setScriptPasteText(""); setScriptMsg(""); setScriptGerado(""); setShowScriptModal(true); }}
                   className="flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all text-slate-400 hover:text-blue-600"
                   title="Adicionar por Texto (Script ChatGPT)"
                 >
@@ -6555,7 +6561,7 @@ const EmpreendimentosSection = ({
                     <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Script ChatGPT</p>
                   </div>
                 </div>
-                <button onClick={() => setShowScriptModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                <button onClick={() => { setShowScriptModal(false); setScriptGerado(""); setScriptPasteText(""); setScriptMsg(""); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
                   <X size={18} className="text-slate-500" />
                 </button>
               </div>
@@ -6567,7 +6573,7 @@ const EmpreendimentosSection = ({
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={copyScriptToClipboard}
+                    onClick={() => { setScriptGerado(""); setScriptPasteText(""); setScriptMsg(""); copyScriptToClipboard(); }}
                     className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
                   >
                     <Copy size={14} />
@@ -6581,20 +6587,38 @@ const EmpreendimentosSection = ({
                     Colar
                   </button>
                 </div>
-                {scriptPasteText ? (
-                  <textarea
-                    className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed"
-                    value={scriptPasteText}
-                    onChange={(e) => setScriptPasteText(e.target.value)}
-                    placeholder="Cole aqui ou use o botão Colar acima"
-                  />
-                ) : (
-                  <div className="min-h-[60px] flex items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-medium">
-                    Clique em "Colar" para pegar do clipboard
-                  </div>
-                )}
                 {scriptMsg && (
                   <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">{scriptMsg}</p>
+                )}
+                {/* Script gerado — visível para cópia manual se clipboard falhar */}
+                {scriptGerado && !scriptPasteText && (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Script gerado (selecione e copie se necessário)</p>
+                    <textarea
+                      readOnly
+                      className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed bg-slate-50"
+                      value={scriptGerado}
+                      onFocus={(e) => e.target.select()}
+                    />
+                  </div>
+                )}
+                {/* Campo para colar resposta do ChatGPT */}
+                {scriptPasteText ? (
+                  <div>
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Resposta do ChatGPT</p>
+                    <textarea
+                      className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed"
+                      value={scriptPasteText}
+                      onChange={(e) => setScriptPasteText(e.target.value)}
+                      placeholder="Cole aqui ou use o botão Colar acima"
+                    />
+                  </div>
+                ) : (
+                  !scriptGerado && (
+                    <div className="min-h-[60px] flex items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-medium">
+                      Clique em "Colar" para pegar do clipboard
+                    </div>
+                  )
                 )}
                 <button
                   disabled={!scriptPasteText.trim()}
