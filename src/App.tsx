@@ -2921,13 +2921,12 @@ const LotDashboard = ({
       "Analise o mapa enviado e devolva o script corrigido por quadra.",
     ].join("\n");
 
-    setLotScriptText(payload);
-    setLotScriptMsg("Script preparado para enviar ao ChatGPT.");
     try {
       await navigator.clipboard?.writeText(payload);
       setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
     } catch {
-      // Mantém no campo para cópia manual.
+      setLotScriptText(payload);
+      setLotScriptMsg("Copie o texto abaixo e envie ao ChatGPT.");
     }
   };
 
@@ -4241,32 +4240,47 @@ const LotDashboard = ({
                   <p className="text-[10px] text-emerald-700/80">
                     Padrão: <strong>Q1:1D,2I,3R.</strong> D=disponível, I=indisponível, R=reservado.
                   </p>
-                  <div className="grid grid-cols-1 gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={copyScriptForChatGPT}
-                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                      className="py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100 flex items-center justify-center gap-1"
                     >
-                      Copiar script para ChatGPT
+                      <Copy size={12} />Copiar
                     </button>
-                    <textarea
-                      className="input-field min-h-[96px] text-[11px] font-mono leading-relaxed"
-                      value={lotScriptText}
-                      onChange={(e) => setLotScriptText(e.target.value)}
-                      placeholder={"Cole aqui o script recebido. Ex:\\nQ1:1D,2I,3R.\\nQ2:1I,2D,3R."}
-                    />
                     <button
                       type="button"
-                      onClick={importScriptFromChatGPT}
-                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700"
+                      onClick={async () => {
+                        try {
+                          const text = await navigator.clipboard.readText();
+                          setLotScriptText(text);
+                          setLotScriptMsg("Colado! Clique Importar para aplicar.");
+                        } catch {
+                          setLotScriptMsg("Falha ao ler clipboard. Cole manualmente.");
+                        }
+                      }}
+                      className="py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700 flex items-center justify-center gap-1"
                     >
-                      Colar/Importar script do ChatGPT
+                      <ClipboardPaste size={12} />Colar
                     </button>
                   </div>
+                  {lotScriptText ? (
+                    <textarea
+                      className="input-field min-h-[80px] text-[11px] font-mono leading-relaxed"
+                      value={lotScriptText}
+                      onChange={(e) => setLotScriptText(e.target.value)}
+                      placeholder={"Cole aqui o script recebido. Ex:\nQ1:1D,2I,3R.\nQ2:1I,2D,3R."}
+                    />
+                  ) : null}
+                  <button
+                    type="button"
+                    disabled={!lotScriptText.trim()}
+                    onClick={importScriptFromChatGPT}
+                    className={`w-full py-2 rounded-xl text-[10px] font-black uppercase transition-colors ${lotScriptText.trim() ? "bg-emerald-700 text-white hover:bg-emerald-800" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                  >
+                    Importar Script
+                  </button>
                   {lotScriptMsg && <p className="text-[10px] font-bold text-emerald-800 bg-white/70 p-2 rounded-xl">{lotScriptMsg}</p>}
-                  <p className="text-[10px] text-slate-500">
-                    Se quadra/lote já existir, o sistema vincula e pergunta antes de substituir status diferente. Nunca cria duplicata.
-                  </p>
                 </div>
 
                 <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
@@ -5018,7 +5032,10 @@ const EmpreendimentosSection = ({
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
-  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "texto">("cadastrar");
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
+  const [showScriptModal, setShowScriptModal] = useState(false);
+  const [scriptPasteText, setScriptPasteText] = useState("");
+  const [scriptMsg, setScriptMsg] = useState("");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
@@ -5031,6 +5048,79 @@ const EmpreendimentosSection = ({
     info: any;
     venda: Venda;
   } | null>(null);
+
+  const gerarScriptAtualParaModal = () => {
+    if (!lotRegDev) return "";
+    const quadras = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+    if (quadras.length === 0) return "";
+    return quadras.map(q => {
+      const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+      if (lotes.length === 0) return `Q${q}:.`;
+      const parts = lotes.map(l => {
+        const key = `${q}-${l}`.toUpperCase();
+        const info = lotRegDev.lotesInfo?.[key];
+        const s = info?.status || "disponivel";
+        const letter = s === "indisponivel" ? "I" : s === "reservado" ? "R" : "D";
+        return `${l}${letter}`;
+      });
+      return `Q${q}:${parts.join(",")}.`;
+    }).join("\n");
+  };
+
+  const copyScriptToClipboard = async () => {
+    const script = gerarScriptAtualParaModal();
+    try {
+      await navigator.clipboard.writeText(script);
+      setScriptMsg("Script copiado! Envie ao ChatGPT com o mapa.");
+    } catch {
+      setScriptMsg("Não foi possível copiar automaticamente.");
+    }
+  };
+
+  const pasteScriptFromClipboard = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      setScriptPasteText(text);
+      setScriptMsg("Texto colado. Clique em Importar para aplicar.");
+    } catch {
+      setScriptMsg("Falha ao ler clipboard. Cole manualmente no campo abaixo.");
+    }
+  };
+
+  const importarScriptFromModal = () => {
+    if (!lotRegDev || !scriptPasteText.trim()) return;
+    const parsed = parseLotScriptByQuadra(scriptPasteText);
+    if (parsed.errors.length > 0) {
+      alert("Corrija o script:\n\n" + parsed.errors.slice(0, 5).join("\n"));
+      return;
+    }
+    if (parsed.items.length === 0) {
+      alert("Nenhum lote encontrado no script.");
+      return;
+    }
+    const mapStatus: Record<string, MapaLoteStatus> = { D: "disponivel", I: "indisponivel", R: "reservado" };
+    const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
+    let created = 0; let updated = 0;
+    for (const item of parsed.items) {
+      const key = `${item.quadra}-${item.lote}`.toUpperCase();
+      const existing = newLotesInfo[key];
+      const novoStatus: MapaLoteStatus = mapStatus[item.status] || "disponivel";
+      if (existing && existing.status !== novoStatus) {
+        const confirmar = window.confirm(`Lote ${key} já existe com status "${existing.status}". Substituir por "${novoStatus}"?`);
+        if (!confirmar) continue;
+        updated++;
+      } else if (!existing) {
+        created++;
+      } else {
+        continue;
+      }
+      newLotesInfo[key] = { ...(existing || {}), status: novoStatus };
+    }
+    onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
+    setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
+    setScriptMsg(`Importado: ${created} criado(s), ${updated} atualizado(s).`);
+    setScriptPasteText("");
+  };
 
   const confirmarLiberarLoteVendido = () => {
     if (!lotRegDev || !releaseLotPending) return;
@@ -5994,13 +6084,9 @@ const EmpreendimentosSection = ({
                 </button>
 
                 <button
-                  onClick={() => setLotRegTab("texto")}
-                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
-                    lotRegTab === "texto"
-                      ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                  title="Adicionar por Texto"
+                  onClick={() => { setScriptPasteText(""); setScriptMsg(""); setShowScriptModal(true); }}
+                  className="flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all text-slate-400 hover:text-blue-600"
+                  title="Adicionar por Texto (Script ChatGPT)"
                 >
                   <ClipboardPaste size={16} />
                 </button>
@@ -6450,6 +6536,79 @@ const EmpreendimentosSection = ({
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal: Adicionar por Texto (Script ChatGPT) */}
+      <AnimatePresence>
+        {showScriptModal && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[24px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-blue-600 rounded-xl text-white"><ClipboardPaste size={18} /></div>
+                  <div>
+                    <h3 className="text-base font-display font-bold text-slate-800">Adicionar por Texto</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Script ChatGPT</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowScriptModal(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={18} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-5 space-y-4">
+                <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700 border border-blue-100">
+                  <p className="font-bold mb-1">Padrão: <span className="font-mono">Q1:1D,2I,3R.</span></p>
+                  <p>D=disponível, I=indisponível, R=reservado.</p>
+                  <p className="mt-1 text-blue-600">1. Copie o script, envie ao ChatGPT com o mapa. 2. Copie a resposta. 3. Clique Colar e depois Importar.</p>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={copyScriptToClipboard}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
+                  >
+                    <Copy size={14} />
+                    Copiar Script
+                  </button>
+                  <button
+                    onClick={pasteScriptFromClipboard}
+                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase bg-blue-600 text-white hover:bg-blue-700"
+                  >
+                    <ClipboardPaste size={14} />
+                    Colar
+                  </button>
+                </div>
+                {scriptPasteText ? (
+                  <textarea
+                    className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed"
+                    value={scriptPasteText}
+                    onChange={(e) => setScriptPasteText(e.target.value)}
+                    placeholder="Cole aqui ou use o botão Colar acima"
+                  />
+                ) : (
+                  <div className="min-h-[60px] flex items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-medium">
+                    Clique em "Colar" para pegar do clipboard
+                  </div>
+                )}
+                {scriptMsg && (
+                  <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">{scriptMsg}</p>
+                )}
+                <button
+                  disabled={!scriptPasteText.trim()}
+                  onClick={importarScriptFromModal}
+                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors ${scriptPasteText.trim() ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                >
+                  Importar Script
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* Modal: Gerenciar Disponibilidade em Massa */}
       <AnimatePresence>
         {bulkAvailDev && (
