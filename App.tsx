@@ -1,0 +1,15086 @@
+
+// NOVAS FUNÇÕES ADICIONADAS
+// - Clique em vendidos do card abre contratos filtrados por empreendimento
+// - Cliente mostra compras e detalhes completos
+// - Botão "Ver mapa" em tela cheia no celular
+
+// ATUALIZAÇÃO MAPA
+// - Bolinhas sem número no modo visualização/exportação
+// - Números e quadra aparecem no modo edição
+// - Tamanho das bolinhas configurável por porcentagem no menu Editar mapa
+// - Sair da edição somente ao clicar em Salvar / OK
+// - Nome exportado: empreendimento + dia da semana + data + hora
+
+import React, { useState, useEffect, useRef } from "react";
+import {
+  LayoutDashboard,
+  Home,
+  Menu,
+  Building2,
+  ShoppingCart,
+  FileText,
+  Users,
+  Cake,
+  Calculator,
+  ChevronRight,
+  ChevronLeft,
+  TrendingUp,
+  DollarSign,
+  Package,
+  Calendar,
+  LogOut,
+  MapPin,
+  Search,
+  Plus,
+  Trash2,
+  Printer,
+  X,
+  Settings,
+  Info,
+  FileDown,
+  UserCheck,
+  Pencil,
+  ArrowLeft,
+  User,
+  List,
+  Check,
+  Monitor,
+  Smartphone,
+  ClipboardPaste,
+  Upload,
+  AlertTriangle,
+  Database,
+  ShieldCheck,
+  Banknote,
+  CreditCard,
+  Layers,
+  Sparkles,
+  Copy,
+  Save,
+  FileCheck,
+  MessageCircle,
+  BarChart3,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  RefreshCw,
+  PieChart as PieChartIcon,
+  Trophy,
+  Medal,
+  Download,
+} from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  Cell,
+  PieChart,
+  Pie,
+} from "recharts";
+import {
+  Section,
+  Empreendimento,
+  Cliente,
+  Venda,
+  VendaExcluida,
+  Vendedor,
+  Proprietario,
+  Address,
+  AppConfig,
+  AppTheme,
+} from "./types";
+import { dbService, setCurrentUser } from "./dbService";
+import { authFetch } from "./lib/authFetch";
+import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
+import { geminiService } from "./geminiService";
+
+const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
+
+type OfflineVendaDraft = {
+  id: string;
+  createdAt: string;
+  clientData: Partial<Cliente>;
+  saleData: Partial<Venda>;
+  secondBuyerData?: Venda["comprador2"];
+  hasSecondBuyer?: boolean;
+  observacao?: string;
+};
+
+function readOfflineVendaDrafts(): OfflineVendaDraft[] {
+  try {
+    const raw = localStorage.getItem(OFFLINE_DRAFTS_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeOfflineVendaDrafts(items: OfflineVendaDraft[]) {
+  try {
+    localStorage.setItem(OFFLINE_DRAFTS_KEY, JSON.stringify(items));
+  } catch {}
+}
+
+function addOfflineVendaDraft(item: Omit<OfflineVendaDraft, "id" | "createdAt">): OfflineVendaDraft {
+  const draft: OfflineVendaDraft = {
+    id: `draft-${Date.now()}`,
+    createdAt: new Date().toISOString(),
+    ...item,
+  };
+  const drafts = readOfflineVendaDrafts();
+  writeOfflineVendaDrafts([draft, ...drafts].slice(0, 50));
+  try { window.dispatchEvent(new Event("offline-drafts-updated")); } catch {}
+  return draft;
+}
+
+function parseFicha(text: string): Record<string, any> {
+  const result: Record<string, any> = {};
+  const lines = text.split(/\r?\n/);
+  const cleanCurrency = (v: string) =>
+    parseFloat(v.replace(/R\$\s*/gi, "").replace(/\./g, "").replace(",", ".").trim()) || 0;
+
+  // Converte DD/MM/AAAA ou DD/MM/AA → YYYY-MM-DD (formato do input type="date")
+  const toISODate = (v: string): string => {
+    const m = v.trim().match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (!m) return v;
+    const day = m[1].padStart(2, "0");
+    const month = m[2].padStart(2, "0");
+    const year = m[3].length === 2 ? "20" + m[3] : m[3];
+    return `${year}-${month}-${day}`;
+  };
+
+  for (const rawLine of lines) {
+    const colonIdx = rawLine.indexOf(":");
+    if (colonIdx < 0) continue;
+    // Normalize key: remove accents, uppercase, and strip trailing parenthetical like (3) or (2)
+    const key = rawLine.slice(0, colonIdx).trim().toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s*[\(\[]\d+[\)\]]\s*$/, "").trim();
+    const val = rawLine.slice(colonIdx + 1).trim();
+    if (!val) continue;
+
+    if (key === "NOME") { result.nome = val; }
+    else if (key === "RG") { result.rg = val; }
+    else if (key === "CPF") { result.cpf = val; }
+    else if (key === "ESTADO CIVIL") { result.estadoCivil = val; }
+    else if (["DATA DE ANIVERSARIO", "NASCIMENTO", "DATA NASC", "DATA NASCIMENTO", "ANIVERSARIO", "DATA DE NASCIMENTO"].includes(key)) {
+      result.nascimento = toISODate(val);
+    }
+    else if (["ENDERECO", "RUA"].includes(key)) { result.endereco = val; }
+    else if (["No", "NUMERO", "NUM", "Nº"].includes(key.replace(/[ºo]/i, "o"))) { result.numero = val; }
+    else if (key === "BAIRRO") { result.bairro = val; }
+    else if (key === "CEP") { result.cep = val; }
+    else if (["CONTATO", "TELEFONE", "FONE", "TEL", "CONTATO PRINCIPAL"].includes(key)) {
+      const phones = val.split("/").map((p) => p.trim()).filter(Boolean);
+      if (phones[0]) result.telefone1 = phones[0];
+      if (phones[1]) result.telefone2 = phones[1];
+    }
+    else if (["CONTATO SECUNDARIO", "TELEFONE 2", "FONE 2", "TEL 2", "CELULAR 2"].includes(key)) {
+      result.telefone2 = val.split("/")[0].trim();
+    }
+    else if (key === "LOTE") { result.lote = val; }
+    else if (key === "QUADRA") { result.quadra = val; }
+    else if (key === "EMPREENDIMENTO") { result.empreendimento = val; }
+    else if (["VALOR TOTAL", "VALOR"].includes(key)) { result.valorTotal = cleanCurrency(val); }
+    else if (key === "ENTRADA") { result.entrada = cleanCurrency(val); }
+    else if (["PARCELAS", "QUANTIDADE DE PARCELAS"].includes(key)) {
+      const m = val.match(/^(\d+)[xX]?\s*(?:de\s*)?(?:R\$\s*)?([\d.,]+)/i);
+      if (m) { result.numeroParcelas = parseInt(m[1]); result.valorParcela = cleanCurrency(m[2]); }
+      else { result.numeroParcelas = parseInt(val.replace(/\D/g, "")) || 0; }
+    }
+    else if (["VENCIMENTO", "DATA DE VENCIMENTO", "DATA VENCIMENTO"].includes(key)) {
+      // Handle "TODO DIA 10", "DIA 10", "10", or full date "10/05/2025"
+      const dayMatch = val.match(/\b(\d{1,2})\b/);
+      const fullDate = toISODate(val);
+      if (fullDate !== val) {
+        result.dataVencimento = fullDate;
+      } else if (dayMatch) {
+        result.diaVencimento = dayMatch[1];
+      }
+    }
+    else if (key === "PROFISSAO") { result.profissao = val; }
+    else if (key === "CIDADE") { result.cidade = val; }
+    else if (key === "ESTADO") { result.estado = val; }
+    else if (key === "NACIONALIDADE") { result.nacionalidade = val; }
+  }
+  return result;
+}
+
+function getEmpreendimentoMapsUrl(dev?: Partial<Empreendimento> | null): string {
+  if (!dev) return "";
+  const anyDev = dev as any;
+  return String(
+    anyDev.mapaLocalizacaoUrl ||
+    anyDev.googleMapsUrl ||
+    anyDev.localizacaoMapaUrl ||
+    anyDev.linkMapa ||
+    ""
+  ).trim();
+}
+
+function normalizarLinkGoogleMaps(value: string): string {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (/^(maps\.app\.goo\.gl|goo\.gl|google\.com|www\.google\.com|maps\.google\.com)/i.test(raw)) {
+    return `https://${raw}`;
+  }
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(raw)}`;
+}
+
+function abrirLocalizacaoGoogleMaps(dev?: Partial<Empreendimento> | null) {
+  const url = normalizarLinkGoogleMaps(getEmpreendimentoMapsUrl(dev));
+  if (!url) {
+    alert("Este empreendimento ainda não possui link de localização cadastrado.");
+    return;
+  }
+  window.open(url, "_blank", "noopener,noreferrer");
+}
+
+function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?: string }): string[] {
+  if (!faixa) return [];
+  if (faixa.especificos && faixa.especificos.trim()) {
+    return faixa.especificos
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort((a, b) => Number(a) - Number(b));
+  }
+  if (faixa.inicio !== undefined && faixa.fim !== undefined && faixa.fim >= faixa.inicio && faixa.fim > 0) {
+    return Array.from({ length: faixa.fim - faixa.inicio + 1 }, (_, i) => (faixa.inicio! + i).toString());
+  }
+  return [];
+}
+
+
+function normalizeLotText(value?: string | number | null): string {
+  return String(value ?? "").trim();
+}
+
+function normalizeLotKeyPart(value?: string | number | null): string {
+  return normalizeLotText(value).toUpperCase();
+}
+
+/**
+ * Quebra uma string de lotes em array de lotes individuais.
+ * Suporta: "9,8" → ["9","8"], "9;8" → ["9","8"], "9 e 8" → ["9","8"]
+ * NÃO expande intervalos — use normalizeLotsInput para isso.
+ */
+function parseLotesInput(input: string): string[] {
+  return input
+    .split(/[,;]|\se\s/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Função central para normalizar entrada de lotes.
+ * Regras:
+ * - Vírgula, ponto-e-vírgula e "e" → lista literal
+ * - Hífen, "até" ou "a" (entre dois números) → sequência/intervalo
+ *
+ * Exemplos:
+ * "1,20"       → ["1","20"]          (lista, não intervalo!)
+ * "1,2,3"      → ["1","2","3"]
+ * "1;2;3"      → ["1","2","3"]
+ * "1 e 2 e 3"  → ["1","2","3"]
+ * "1-20"       → ["1","2",...,"20"]  (intervalo)
+ * "1 até 20"   → ["1","2",...,"20"]  (intervalo)
+ * "1 a 20"     → ["1","2",...,"20"]  (intervalo)
+ */
+function normalizeLotsInput(input: string): string[] {
+  const raw = (input || "").trim();
+  if (!raw) return [];
+
+  // Detecta padrão de intervalo: N-M, N até M, N a M (apenas se não há vírgula/ponto-e-vírgula)
+  // A presença de vírgula/ponto-e-vírgula cancela a interpretação de intervalo
+  const hasListSeparator = /[,;]/.test(raw) || /\se\s/i.test(raw);
+  if (!hasListSeparator) {
+    // Tenta intervalo: "N-M", "N até M", "N a M"
+    const rangeMatch = raw.match(/^(\d+)\s*(?:-|até|a)\s*(\d+)$/i);
+    if (rangeMatch) {
+      const na = parseInt(rangeMatch[1], 10);
+      const nb = parseInt(rangeMatch[2], 10);
+      if (!isNaN(na) && !isNaN(nb) && nb >= na) {
+        const result: string[] = [];
+        for (let i = na; i <= nb; i++) result.push(String(i));
+        return result;
+      }
+    }
+  }
+
+  // Lista literal: separa por vírgula, ponto-e-vírgula ou " e "
+  return raw
+    .split(/[,;]|\se\s/i)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
+ * Expande o campo Lote em lista de lotes individuais.
+ * Usa normalizeLotsInput internamente — vírgula é sempre lista, hífen/"até"/"a" é intervalo.
+ */
+function expandLotesInput(input: string): string[] {
+  return normalizeLotsInput(input);
+}
+
+/**
+ * A partir dos campos quadra e lote (que podem ser múltiplos),
+ * retorna pares [{quadra, lote}] associando pela ordem quando ambos são múltiplos.
+ * Se quadra for única, aplica a mesma quadra para todos os lotes.
+ */
+function parseQuadrasLotesInput(quadraInput: string, loteInput: string): { quadra: string; lote: string }[] {
+  const quadras = parseLotesInput(quadraInput);
+  const lotes = parseLotesInput(loteInput);
+  if (quadras.length === 0 || lotes.length === 0) return [];
+  if (quadras.length === 1) {
+    return lotes.map((lote) => ({ quadra: quadras[0], lote }));
+  }
+  // Associação por ordem (A,B com 9,8 → A/9, B/8)
+  return lotes.map((lote, i) => ({ quadra: quadras[i] ?? quadras[quadras.length - 1], lote }));
+}
+
+function getQuadraList(dev?: Empreendimento | null): string[] {
+  return (dev?.quadras || "")
+    .split(",")
+    .map((q) => q.trim())
+    .filter(Boolean);
+}
+
+function findQuadraName(dev: Empreendimento, quadra: string): string | null {
+  const wanted = normalizeLotKeyPart(quadra);
+  return getQuadraList(dev).find((q) => normalizeLotKeyPart(q) === wanted) || null;
+}
+
+function getLotInfoKey(quadra: string, lote: string): string {
+  return `${normalizeLotKeyPart(quadra)}-${normalizeLotKeyPart(lote)}`;
+}
+
+type MapaLoteStatus = "disponivel" | "reservado" | "indisponivel";
+
+function normalizeMapaStatus(status: any): MapaLoteStatus {
+  if (status === "reservado") return "reservado";
+  if (status === "indisponivel" || status === "vendido") return "indisponivel";
+  return "disponivel";
+}
+
+function getMapaStatusColorClass(status: any, hasVenda = false): string {
+  if (hasVenda || status === "indisponivel" || status === "vendido") return "bg-red-500";
+  if (status === "reservado") return "bg-yellow-400 text-slate-900";
+  return "bg-blue-500";
+}
+
+function getMapaStatusLabel(status: any, hasVenda = false): string {
+  if (hasVenda || status === "indisponivel" || status === "vendido") return "Indisponível";
+  if (status === "reservado") return "Reservado";
+  return "Disponível";
+}
+
+
+type LotScriptItem = { quadra: string; lote: string; status: MapaLoteStatus };
+type LotScriptParseResult = { items: LotScriptItem[]; errors: string[] };
+
+function lotScriptStatusToLabel(status: MapaLoteStatus): string {
+  if (status === "indisponivel") return "Indisponível";
+  if (status === "reservado") return "Reservado";
+  return "Disponível";
+}
+
+function lotScriptStatusToLetter(status: any): "D" | "I" | "R" {
+  const normalized = normalizeMapaStatus(status);
+  if (normalized === "indisponivel") return "I";
+  if (normalized === "reservado") return "R";
+  return "D";
+}
+
+function parseLotScriptStatus(letter: string): MapaLoteStatus | null {
+  const l = String(letter || "").trim().toUpperCase();
+  if (l === "D") return "disponivel";
+  if (l === "I") return "indisponivel";
+  if (l === "R") return "reservado";
+  return null;
+}
+
+/**
+ * Formato oficial de importação por texto:
+ * Q1:1D,2I,3R.
+ * A:1D,2D,3I.
+ *
+ * - A quadra termina com ":"
+ * - Lotes são separados por ","
+ * - Cada lote termina com D, I ou R
+ * - A lista da quadra termina com "."
+ */
+function parseLotScriptByQuadra(raw: string): LotScriptParseResult {
+  const text = String(raw || "").replace(/\r/g, "\n").trim();
+  const result: LotScriptItem[] = [];
+  const errors: string[] = [];
+  if (!text) return { items: result, errors: ["Cole o script no formato Q1:1D,2I,3R."] };
+
+  const blockRegex = /([^:\.\n]+)\s*:\s*([^\.]+)\./g;
+  let match: RegExpExecArray | null;
+  let found = false;
+
+  while ((match = blockRegex.exec(text)) !== null) {
+    found = true;
+    const quadra = normalizeLotText(match[1].replace(/^Q(?:UADRA)?\s*/i, "") || match[1]);
+    const loteParts = match[2].split(",").map((s) => s.trim()).filter(Boolean);
+    if (!quadra) {
+      errors.push(`Quadra inválida no bloco: ${match[0]}`);
+      continue;
+    }
+
+    loteParts.forEach((token) => {
+      const clean = token.replace(/\s+/g, "");
+      const m = clean.match(/^(.+?)([DIR])$/i);
+      if (!m) {
+        errors.push(`Lote "${token}" inválido. Use D, I ou R no final. Ex.: 12D`);
+        return;
+      }
+      const lote = normalizeLotText(m[1]);
+      const status = parseLotScriptStatus(m[2]);
+      if (!lote || !status) {
+        errors.push(`Lote "${token}" inválido.`);
+        return;
+      }
+      result.push({ quadra, lote, status });
+    });
+  }
+
+  if (!found) {
+    errors.push("Nenhuma quadra encontrada. Use o formato Q1:1D,2I,3R.");
+  }
+
+  const unique = new Map<string, LotScriptItem>();
+  result.forEach((item) => unique.set(getLotInfoKey(item.quadra, item.lote), item));
+  return { items: Array.from(unique.values()), errors };
+}
+
+function formatLotScriptFromEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): string {
+  const byQuadra = new Map<string, { lote: string; status: MapaLoteStatus }[]>();
+  const addItem = (quadra: string, lote: string, status?: any) => {
+    const q = normalizeLotText(quadra);
+    const l = normalizeLotText(lote);
+    if (!q || !l) return;
+    const infoStatus = status || getLotStatusForSale(dev, q, l, vendas).status;
+    const normalized = normalizeMapaStatus(infoStatus === "vendido" ? "indisponivel" : infoStatus);
+    const arr = byQuadra.get(q) || [];
+    if (!arr.some((item) => normalizeLotKeyPart(item.lote) === normalizeLotKeyPart(l))) {
+      arr.push({ lote: l, status: normalized });
+    }
+    byQuadra.set(q, arr);
+  };
+
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      const key = getLotInfoKey(quadra, lote);
+      addItem(quadra, lote, (dev.lotesInfo || {})[key]?.status);
+    });
+  });
+
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    const split = splitLotKeyLabel(key);
+    addItem(split.quadra, split.lote, (info as any)?.status);
+  });
+
+  ((dev as any).mapaPontos || []).forEach((ponto: any) => {
+    addItem(ponto.quadra, ponto.lote, ponto.status);
+  });
+
+  return Array.from(byQuadra.entries())
+    .sort(([a], [b]) => a.localeCompare(b, "pt-BR", { numeric: true }))
+    .map(([quadra, lotes]) => {
+      const lotesOrdenados = lotes
+        .slice()
+        .sort((a, b) => String(a.lote).localeCompare(String(b.lote), "pt-BR", { numeric: true }))
+        .map((item) => `${item.lote}${lotScriptStatusToLetter(item.status)}`)
+        .join(",");
+      return `Q${quadra}:${lotesOrdenados}.`;
+    })
+    .join("\n");
+}
+
+function getQuadraCadastroSummary(dev: Empreendimento, quadra: string): { exists: boolean; count: number; first?: string; last?: string; lotes: string[] } {
+  const realQuadra = findQuadraName(dev, quadra) || normalizeLotText(quadra);
+  const lotesFromRange = getLotesDeQuadra(dev.lotesPorQuadra?.[realQuadra]);
+  const lotesFromInfo = Object.keys(dev.lotesInfo || {})
+    .map(splitLotKeyLabel)
+    .filter((item) => normalizeLotKeyPart(item.quadra) === normalizeLotKeyPart(realQuadra))
+    .map((item) => item.lote);
+  const lotes = Array.from(new Set([...lotesFromRange, ...lotesFromInfo]))
+    .filter(Boolean)
+    .sort((a, b) => String(a).localeCompare(String(b), "pt-BR", { numeric: true }));
+  return {
+    exists: !!findQuadraName(dev, quadra) || lotes.length > 0,
+    count: lotes.length,
+    first: lotes[0],
+    last: lotes[lotes.length - 1],
+    lotes,
+  };
+}
+
+function hasConfiguredLot(dev: Empreendimento, quadra: string, lote: string): boolean {
+  const quadraName = findQuadraName(dev, quadra);
+  const key = getLotInfoKey(quadra, lote);
+  if (dev.lotesInfo?.[key]) return true;
+  if (!quadraName) return false;
+  return getLotesDeQuadra(dev.lotesPorQuadra?.[quadraName]).some(
+    (l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(lote)
+  );
+}
+
+function getLotStatusForSale(
+  dev: Empreendimento | undefined,
+  quadra: string | undefined,
+  lote: string | undefined,
+  vendas: Venda[],
+  ignoreVendaId?: string
+): { exists: boolean; status: "disponivel" | "reservado" | "indisponivel" | "vendido" } {
+  if (!dev || !quadra || !lote) return { exists: true, status: "disponivel" };
+  const q = normalizeLotText(quadra);
+  const l = normalizeLotText(lote);
+  const key = getLotInfoKey(q, l);
+  const info = dev.lotesInfo?.[key];
+  const hasActiveSale = vendas.some(
+    (v) =>
+      v.id !== ignoreVendaId &&
+      v.empreendimentoId === dev.id &&
+      normalizeLotKeyPart(v.quadra) === normalizeLotKeyPart(q) &&
+      normalizeLotKeyPart(v.numeroLote) === normalizeLotKeyPart(l) &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho"
+  );
+
+  if (hasActiveSale || info?.status === "vendido") return { exists: hasConfiguredLot(dev, q, l), status: "vendido" };
+  if (info?.status === "reservado") return { exists: hasConfiguredLot(dev, q, l), status: "reservado" };
+  if (info?.status === "indisponivel") return { exists: hasConfiguredLot(dev, q, l), status: "indisponivel" };
+  return { exists: hasConfiguredLot(dev, q, l), status: "disponivel" };
+}
+
+function isVendaAtiva(venda?: Venda | null): boolean {
+  return !!venda && venda.status !== "cancelado" && venda.status !== "rascunho";
+}
+
+function findVendaAtivaDoLote(
+  vendas: Venda[],
+  empreendimentoId: string,
+  quadra: string,
+  lote: string,
+): Venda | undefined {
+  return vendas.find(
+    (s) =>
+      s.empreendimentoId === empreendimentoId &&
+      isVendaAtiva(s) &&
+      normalizeLotKeyPart(s.quadra) === normalizeLotKeyPart(quadra) &&
+      normalizeLotKeyPart(s.numeroLote) === normalizeLotKeyPart(lote),
+  );
+}
+
+function formatDateBR(date?: string): string {
+  if (!date) return "Não informada";
+  const parsed = new Date(date);
+  if (Number.isNaN(parsed.getTime())) return date;
+  return parsed.toLocaleDateString("pt-BR");
+}
+
+function countConfiguredLots(dev: Empreendimento): number {
+  const lotesPorQuadraTotal = getQuadraList(dev).reduce(
+    (sum, q) => sum + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length,
+    0
+  );
+  if (lotesPorQuadraTotal > 0) return lotesPorQuadraTotal;
+  return Object.keys(dev.lotesInfo || {}).length || dev.totalLotes || 0;
+}
+
+function getConfiguredLotKeys(dev: Empreendimento): Set<string> {
+  const keys = new Set<string>();
+
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      keys.add(getLotInfoKey(quadra, lote));
+    });
+  });
+
+  Object.keys(dev.lotesInfo || {}).forEach((key) => keys.add(key.toUpperCase()));
+  return keys;
+}
+
+function getConfiguredLotKeysFromRanges(dev: Empreendimento): Set<string> {
+  const keys = new Set<string>();
+  getQuadraList(dev).forEach((quadra) => {
+    getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]).forEach((lote) => {
+      keys.add(getLotInfoKey(quadra, lote));
+    });
+  });
+  return keys;
+}
+
+function getActiveSaleLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<string> {
+  const keys = new Set<string>();
+  vendas.forEach((v) => {
+    if (v.empreendimentoId === dev.id && isVendaAtiva(v) && v.quadra && v.numeroLote) {
+      keys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+  return keys;
+}
+
+function splitLotKeyLabel(key: string): { quadra: string; lote: string; label: string } {
+  const [quadra = "", ...loteParts] = String(key || "").split("-");
+  const lote = loteParts.join("-");
+  return { quadra, lote, label: `Quadra ${quadra} / Lote ${lote}` };
+}
+
+function getActualLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<string> {
+  const keys = new Set<string>();
+  Object.keys(dev.lotesInfo || {}).forEach((key) => {
+    if (key) keys.add(key.toUpperCase());
+  });
+  getActiveSaleLotKeys(dev, vendas).forEach((key) => keys.add(key));
+  return keys;
+}
+
+function getLotDivergenceDetails(dev: Empreendimento, vendas: Venda[] = []) {
+  const configured = getConfiguredLotKeysFromRanges(dev);
+  const actual = getActualLotKeys(dev, vendas);
+  const extras = Array.from(actual)
+    .filter((key) => configured.size > 0 && !configured.has(key))
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+  const missing = Array.from(configured)
+    .filter((key) => !actual.has(key))
+    .sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
+
+  return {
+    extras,
+    missing,
+    extraLabels: extras.map((key) => splitLotKeyLabel(key).label),
+    missingLabels: missing.map((key) => splitLotKeyLabel(key).label),
+  };
+}
+
+function removeLotFromLotesPorQuadra(dev: Empreendimento, quadra: string, lote: string): { quadras: string; lotesPorQuadra: Record<string, any> } {
+  const wantedQuadra = normalizeLotKeyPart(quadra);
+  const wantedLote = normalizeLotKeyPart(lote);
+  const nextLotesPorQuadra: Record<string, any> = { ...(dev.lotesPorQuadra || {}) };
+  const quadras = getQuadraList(dev);
+  const realQuadra = quadras.find((q) => normalizeLotKeyPart(q) === wantedQuadra) || quadra;
+  const currentLots = getLotesDeQuadra(nextLotesPorQuadra[realQuadra]);
+  if (currentLots.length > 0) {
+    const remaining = currentLots.filter((l) => normalizeLotKeyPart(l) !== wantedLote);
+    if (remaining.length > 0) {
+      nextLotesPorQuadra[realQuadra] = { especificos: remaining.join(",") };
+    } else {
+      delete nextLotesPorQuadra[realQuadra];
+      delete nextLotesPorQuadra[wantedQuadra];
+    }
+  }
+  const nextQuadras = quadras.filter((q) => {
+    if (normalizeLotKeyPart(q) !== wantedQuadra) return true;
+    return getLotesDeQuadra(nextLotesPorQuadra[q]).length > 0;
+  });
+  return { quadras: nextQuadras.join(", "), lotesPorQuadra: nextLotesPorQuadra };
+}
+
+function deleteLotFromEmpreendimento(dev: Empreendimento, key: string, vendas: Venda[] = []): Empreendimento {
+  const normalizedKey = key.toUpperCase();
+  const [quadra, ...loteParts] = normalizedKey.split("-");
+  const lote = loteParts.join("-");
+  const newLotesInfo = { ...(dev.lotesInfo || {}) };
+  delete newLotesInfo[normalizedKey];
+  const nextMapaPontos = ((dev as any).mapaPontos || []).filter((ponto: any) => getLotInfoKey(ponto.quadra, ponto.lote) !== normalizedKey);
+  const { quadras, lotesPorQuadra } = removeLotFromLotesPorQuadra(dev, quadra, lote);
+  return recalcularEstatisticasEmpreendimento({ ...dev, quadras, lotesPorQuadra, lotesInfo: newLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
+function applyLotesInfoPatchToEmpreendimento(dev: Empreendimento, info: Record<string, any>, vendas: Venda[] = []): Empreendimento {
+  let nextDev: Empreendimento = dev;
+  const nextLotesInfo: Record<string, any> = { ...(dev.lotesInfo || {}) };
+  Object.entries(info || {}).forEach(([rawKey, rawInfo]) => {
+    const key = rawKey.toUpperCase();
+    const [quadra, ...loteParts] = key.split("-");
+    const lote = loteParts.join("-");
+    const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, lote);
+    nextDev = ensured.dev;
+    nextLotesInfo[ensured.lotInfoKey] = { ...(nextLotesInfo[ensured.lotInfoKey] || {}), ...(rawInfo || {}) };
+  });
+  const nextMapaPontos = ((nextDev as any).mapaPontos || []).map((ponto: any) => {
+    const key = getLotInfoKey(ponto.quadra, ponto.lote);
+    const changed = nextLotesInfo[key];
+    if (!changed?.status) return ponto;
+    const venda = findVendaAtivaDoLote(vendas, nextDev.id, ponto.quadra, ponto.lote);
+    return {
+      ...ponto,
+      status: venda ? "indisponivel" : normalizeMapaStatus(changed.status),
+      observacao: changed.observacao ?? ponto.observacao,
+      vendaId: venda?.id || ponto.vendaId,
+      clienteNome: venda?.clienteNome || ponto.clienteNome,
+      dataVenda: venda?.dataVenda || ponto.dataVenda,
+      atualizadoEm: new Date().toISOString(),
+    };
+  });
+  return recalcularEstatisticasEmpreendimento({ ...nextDev, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
+function syncEmpreendimentoConfigWithMapa(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
+  const rangeKeys = getConfiguredLotKeysFromRanges(dev);
+  const quadras = getQuadraList(dev);
+  const activeSaleKeys = getActiveSaleLotKeys(dev, vendas);
+
+  if (rangeKeys.size === 0) {
+    // Se não existe nenhum lote configurado nas quadras, o mapa também não pode manter bolinhas antigas.
+    // Mantém o nome das quadras quando houver, mas zera lotes, mapa e contadores.
+    return recalcularEstatisticasEmpreendimento({
+      ...dev,
+      totalLotes: 0,
+      lotesInfo: {},
+      mapaPontos: [],
+      lotesPorQuadra: dev.lotesPorQuadra || {},
+      quadras: quadras.join(", "),
+    } as Empreendimento, vendas);
+  }
+
+  const keepKey = (key: string) => rangeKeys.has(key.toUpperCase()) || activeSaleKeys.has(key.toUpperCase());
+  const nextLotesInfo = Object.fromEntries(Object.entries(dev.lotesInfo || {}).filter(([key]) => keepKey(key)));
+  const nextMapaPontos = ((dev as any).mapaPontos || []).filter((ponto: any) => keepKey(getLotInfoKey(ponto.quadra, ponto.lote)));
+  return recalcularEstatisticasEmpreendimento({ ...dev, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+}
+
+function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
+  const soldKeys = new Set<string>();
+  vendas.forEach((v) => {
+    if (
+      v.empreendimentoId === dev.id &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho" &&
+      v.quadra &&
+      v.numeroLote
+    ) {
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    if ((info as any)?.status === "vendido") soldKeys.add(key.toUpperCase());
+  });
+  return soldKeys.size;
+}
+
+function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
+  const configuredKeys = getConfiguredLotKeys(dev);
+  const totalLotes = configuredKeys.size > 0 ? configuredKeys.size : Number(dev.totalLotes || 0);
+  const soldKeys = new Set<string>();
+  const indisponiveis = new Set<string>();
+  const reservados = new Set<string>();
+
+  vendas.forEach((v) => {
+    if (
+      v.empreendimentoId === dev.id &&
+      v.status !== "cancelado" &&
+      v.status !== "rascunho" &&
+      v.quadra &&
+      v.numeroLote
+    ) {
+      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
+    }
+  });
+
+  Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
+    const normalizedKey = key.toUpperCase();
+    if ((info as any)?.status === "vendido") soldKeys.add(normalizedKey);
+    if ((info as any)?.status === "reservado") reservados.add(normalizedKey);
+    if ((info as any)?.status === "indisponivel") indisponiveis.add(normalizedKey);
+  });
+
+  soldKeys.forEach((key) => { indisponiveis.delete(key); reservados.delete(key); });
+  reservados.forEach((key) => indisponiveis.delete(key));
+
+  const lotesVendidos = soldKeys.size;
+  const lotesReservados = reservados.size;
+  const lotesIndisponiveis = indisponiveis.size;
+  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesReservados - lotesIndisponiveis);
+
+  return {
+    ...dev,
+    totalLotes,
+    lotesVendidos,
+    lotesIndisponiveis,
+    lotesReservados,
+    lotesDisponiveis,
+  } as Empreendimento;
+}
+
+function ensureLotExistsInEmpreendimento(dev: Empreendimento, quadra: string, lote: string): { dev: Empreendimento; quadraName: string; lotInfoKey: string } {
+  const quadraText = normalizeLotText(quadra);
+  const loteText = normalizeLotText(lote);
+  const existingQuadra = findQuadraName(dev, quadraText);
+  const quadraName = existingQuadra || quadraText;
+  const quadras = getQuadraList(dev);
+  const nextQuadras = existingQuadra ? quadras : [...quadras, quadraName];
+
+  const currentLotesPorQuadra = { ...(dev.lotesPorQuadra || {}) };
+  const currentEntry = currentLotesPorQuadra[quadraName] || {};
+  const currentLots = getLotesDeQuadra(currentEntry);
+  const lotExistsInQuadra = currentLots.some((l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(loteText));
+
+  if (!lotExistsInQuadra) {
+    const uniqueLots: string[] = [];
+    [...currentLots, loteText].filter(Boolean).forEach((item) => {
+      if (!uniqueLots.some((existing) => normalizeLotKeyPart(existing) === normalizeLotKeyPart(item))) {
+        uniqueLots.push(item);
+      }
+    });
+    uniqueLots.sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return String(a).localeCompare(String(b), "pt-BR", { numeric: true });
+    });
+    currentLotesPorQuadra[quadraName] = { especificos: uniqueLots.join(",") };
+  }
+
+  const lotInfoKey = getLotInfoKey(quadraName, loteText);
+  return {
+    dev: {
+      ...dev,
+      quadras: nextQuadras.join(", "),
+      lotesPorQuadra: currentLotesPorQuadra,
+      lotesInfo: { ...(dev.lotesInfo || {}) },
+    } as Empreendimento,
+    quadraName,
+    lotInfoKey,
+  };
+}
+
+function updateLoteStatusInEmpreendimento(
+  dev: Empreendimento,
+  vendas: Venda[],
+  quadra: string,
+  lote: string,
+  novoStatus: "disponivel" | "reservado" | "indisponivel" | "vendido",
+  options: Record<string, any> = {},
+): Empreendimento {
+  const loteText = normalizeLotText(lote);
+  const { dev: ensuredDev, quadraName, lotInfoKey } = ensureLotExistsInEmpreendimento(dev, quadra, loteText);
+  const existingInfo = (ensuredDev.lotesInfo || {})[lotInfoKey] || {};
+  const historicoStatus = [
+    ...(((existingInfo as any).historicoStatus as any[]) || []),
+    {
+      statusAnterior: (existingInfo as any).status || "disponivel",
+      novoStatus,
+      data: new Date().toISOString(),
+      origem: options.origem || "manual",
+      vendaId: options.venda?.id || options.vendaId || (existingInfo as any).vendaId || null,
+      clienteId: options.venda?.clienteId || options.clienteId || (existingInfo as any).clienteId || null,
+      clienteNome: options.venda?.clienteNome || options.clienteNome || (existingInfo as any).clienteNome || null,
+    },
+  ];
+
+  const nextInfo: Record<string, any> = {
+    ...existingInfo,
+    rua: options.rua ?? options.venda?.rua ?? (existingInfo as any).rua ?? "",
+    status: novoStatus,
+    historicoStatus,
+  };
+
+  if (novoStatus === "vendido") {
+    nextInfo.vendaId = options.venda?.id || options.vendaId || nextInfo.vendaId;
+    nextInfo.clienteId = options.venda?.clienteId || options.clienteId || nextInfo.clienteId;
+    nextInfo.clienteNome = options.venda?.clienteNome || options.clienteNome || nextInfo.clienteNome;
+    nextInfo.dataVenda = options.venda?.dataVenda || options.dataVenda || nextInfo.dataVenda;
+    nextInfo.empreendimentoNome = options.venda?.empreendimentoNome || options.empreendimentoNome || dev.nome;
+  }
+
+  if (novoStatus === "disponivel" && options.removerVinculoAtivo !== false) {
+    if (nextInfo.vendaId || nextInfo.clienteNome || nextInfo.dataVenda || options.venda) {
+      nextInfo.historicoLiberacao = [
+        ...(((existingInfo as any).historicoLiberacao as any[]) || []),
+        {
+          vendaId: nextInfo.vendaId || options.venda?.id || "",
+          clienteId: nextInfo.clienteId || options.venda?.clienteId || "",
+          clienteNome: nextInfo.clienteNome || options.venda?.clienteNome || "Cliente não informado",
+          empreendimentoId: dev.id,
+          empreendimentoNome: nextInfo.empreendimentoNome || options.venda?.empreendimentoNome || dev.nome,
+          quadra: quadraName,
+          lote: loteText,
+          dataVenda: nextInfo.dataVenda || options.venda?.dataVenda || "",
+          dataLiberacao: new Date().toISOString(),
+        },
+      ];
+      nextInfo.desistente = {
+        clienteId: nextInfo.clienteId || options.venda?.clienteId || "",
+        clienteNome: nextInfo.clienteNome || options.venda?.clienteNome || "Cliente não informado",
+        dataDesistencia: new Date().toISOString().split("T")[0],
+        dataVenda: nextInfo.dataVenda || options.venda?.dataVenda || "",
+        vendaId: nextInfo.vendaId || options.venda?.id || "",
+      };
+    }
+    delete nextInfo.vendaId;
+    delete nextInfo.clienteId;
+    delete nextInfo.clienteNome;
+    delete nextInfo.dataVenda;
+    delete nextInfo.empreendimentoNome;
+  }
+
+  const nextMapaPontos = ((ensuredDev as any).mapaPontos || []).map((ponto: any) => {
+    const sameLot = getLotInfoKey(ponto.quadra, ponto.lote) === lotInfoKey;
+    if (!sameLot) return ponto;
+    const pontoAtualizado: any = {
+      ...ponto,
+      status: novoStatus === "vendido" ? "indisponivel" : normalizeMapaStatus(novoStatus),
+      atualizadoEm: new Date().toISOString(),
+    };
+    if (novoStatus === "vendido") {
+      pontoAtualizado.vendaId = options.venda?.id || options.vendaId || pontoAtualizado.vendaId;
+      pontoAtualizado.clienteNome = options.venda?.clienteNome || options.clienteNome || pontoAtualizado.clienteNome;
+      pontoAtualizado.dataVenda = options.venda?.dataVenda || options.dataVenda || pontoAtualizado.dataVenda;
+    }
+    if (novoStatus === "disponivel" && options.removerVinculoAtivo !== false) {
+      if (pontoAtualizado.vendaId || pontoAtualizado.clienteNome) {
+        pontoAtualizado.historico = [
+          ...((pontoAtualizado.historico as any[]) || []),
+          {
+            clienteAnterior: pontoAtualizado.clienteNome || nextInfo.clienteNome || "Cliente não informado",
+            vendaIdAnterior: pontoAtualizado.vendaId || nextInfo.vendaId || "",
+            dataVenda: pontoAtualizado.dataVenda || nextInfo.dataVenda || "",
+            dataLiberacao: new Date().toISOString(),
+            status: "liberado/desistiu",
+          },
+        ];
+      }
+      delete pontoAtualizado.vendaId;
+      delete pontoAtualizado.clienteNome;
+      delete pontoAtualizado.dataVenda;
+    }
+    return pontoAtualizado;
+  });
+
+  const nextDev = {
+    ...ensuredDev,
+    lotesInfo: {
+      ...(ensuredDev.lotesInfo || {}),
+      [lotInfoKey]: nextInfo,
+    },
+    mapaPontos: nextMapaPontos,
+  } as Empreendimento;
+
+  return recalcularEstatisticasEmpreendimento(nextDev, vendas);
+}
+
+function addOrUpdateSoldLotFromSale(dev: Empreendimento, venda: Venda, vendas: Venda[]): Empreendimento {
+  if (!venda.quadra || !venda.numeroLote) return recalcularEstatisticasEmpreendimento(dev, vendas);
+  return updateLoteStatusInEmpreendimento(dev, vendas, venda.quadra, venda.numeroLote, "vendido", {
+    venda,
+    origem: "venda",
+    rua: venda.rua || "",
+    removerVinculoAtivo: false,
+  });
+}
+
+function getRuaSugerida(dev: Empreendimento, quadra: string, lote: string): string | null {
+  const loteNum = parseInt(lote.replace(/\D/g, ""), 10);
+  if (!isNaN(loteNum) && dev.ruasFaixas && dev.ruasFaixas.length > 0) {
+    const faixa = dev.ruasFaixas.find(
+      (f) => f.quadra.toUpperCase() === quadra.toUpperCase() && loteNum >= f.loteInicio && loteNum <= f.loteFim
+    );
+    if (faixa?.rua) return faixa.rua;
+  }
+  const ruasQ = dev.ruasPorQuadra?.[quadra];
+  if (ruasQ) {
+    const arr = ruasQ.split(",").map((r) => r.trim()).filter(Boolean);
+    if (arr.length === 1) return arr[0];
+  }
+  return null;
+}
+
+function getRuasSugeridas(dev: Empreendimento, quadra: string, lote: string): string[] {
+  const exact = getRuaSugerida(dev, quadra, lote);
+  if (exact) return [exact];
+  if (dev.ruasFaixas) {
+    const ruas = dev.ruasFaixas
+      .filter((f) => f.quadra.toUpperCase() === quadra.toUpperCase() && f.rua)
+      .map((f) => f.rua);
+    if (ruas.length > 0) return [...new Set(ruas)];
+  }
+  const ruasQ = dev.ruasPorQuadra?.[quadra];
+  if (ruasQ) return ruasQ.split(",").map((r) => r.trim()).filter(Boolean);
+  return [];
+}
+
+function getFilledFieldNames(data: Record<string, any>): string[] {
+  const map: Record<string, string> = {
+    nome: "Nome", nomeComprador: "Nome",
+    cpf: "CPF", rg: "RG", nascimento: "Nascimento",
+    estadoCivil: "Estado Civil", profissao: "Profissão",
+    nacionalidade: "Nacionalidade",
+    endereco: "Endereço", numero: "Número", bairro: "Bairro",
+    cidade: "Cidade", estado: "Estado", cep: "CEP",
+    telefone1: "Telefone 1", telefone2: "Telefone 2",
+    lote: "Lote", numeroLote: "Lote", quadra: "Quadra",
+    empreendimento: "Empreendimento", empreendimentoNome: "Empreendimento",
+    valorTotal: "Valor Total", valorLote: "Valor Total",
+    entrada: "Entrada", valorEntrada: "Entrada",
+    numeroParcelas: "Parcelas", quantidadeParcelas: "Parcelas",
+    valorParcela: "Valor Parcela",
+    diaVencimento: "Vencimento", vendedor: "Vendedor",
+  };
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const [k, v] of Object.entries(data)) {
+    if (!map[k]) continue;
+    if (!v || v === 0 || v === "") continue;
+    const label = map[k];
+    if (!seen.has(label)) { seen.add(label); result.push(label); }
+  }
+  return result;
+}
+
+function defaultVencimento(): string {
+  const d = new Date();
+  d.setDate(d.getDate() + 30);
+  return d.toISOString().split("T")[0];
+}
+
+function textoMaiusculo(valor: any): string {
+  return String(valor || "").toLocaleUpperCase("pt-BR");
+}
+
+function normalizarNomeObrigatorio<T extends Record<string, any>>(obj: T): T {
+  return { ...obj, nome: textoMaiusculo(obj?.nome).trim() };
+}
+
+// ─── Componente: Busca de CEP por Rua / Cidade ──────────────────────────────
+type CepResultado = {
+  cep: string;
+  logradouro: string;
+  bairro: string;
+  localidade: string;
+  uf: string;
+};
+
+const BuscarCEPPorRua = ({
+  onSelect,
+  estadoPadrao = "PA",
+  cidadePadrao = "",
+}: {
+  onSelect: (r: CepResultado) => void;
+  estadoPadrao?: string;
+  cidadePadrao?: string;
+}) => {
+  const [open, setOpen] = React.useState(false);
+  const [uf, setUf] = React.useState(estadoPadrao);
+  const [cidade, setCidade] = React.useState(cidadePadrao);
+  const [rua, setRua] = React.useState("");
+  const [resultados, setResultados] = React.useState<CepResultado[]>([]);
+  const [buscando, setBuscando] = React.useState(false);
+  const [erro, setErro] = React.useState("");
+
+  const buscar = async () => {
+    const ufClean = uf.trim().toUpperCase();
+    const cidadeClean = cidade.trim();
+    const ruaClean = rua.trim();
+    if (!ufClean || !cidadeClean || !ruaClean) {
+      setErro("Preencha UF, cidade e pelo menos parte da rua.");
+      return;
+    }
+    setBuscando(true);
+    setErro("");
+    setResultados([]);
+    try {
+      const url = `https://viacep.com.br/ws/${encodeURIComponent(ufClean)}/${encodeURIComponent(cidadeClean)}/${encodeURIComponent(ruaClean)}/json/`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Erro de rede");
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setErro("Nenhum CEP encontrado. Tente termos mais genéricos.");
+      } else {
+        setResultados(data.slice(0, 20));
+      }
+    } catch {
+      setErro("Falha ao buscar. Verifique a conexão e tente novamente.");
+    } finally {
+      setBuscando(false);
+    }
+  };
+
+  const handleSelect = (r: CepResultado) => {
+    onSelect(r);
+    setOpen(false);
+    setResultados([]);
+    setRua("");
+  };
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="flex items-center gap-1.5 text-[10px] font-bold text-primary-main hover:underline mt-1"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+        Não sei o CEP — buscar por rua/cidade
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-2 bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Buscar CEP por endereço</p>
+        <button type="button" onClick={() => setOpen(false)} className="text-slate-400 hover:text-slate-600">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div className="grid grid-cols-3 gap-2">
+        <div>
+          <label className="label">UF *</label>
+          <input
+            className="input-field text-center font-bold uppercase"
+            maxLength={2}
+            value={uf}
+            onChange={(e) => setUf(e.target.value.toUpperCase())}
+            placeholder="PA"
+          />
+        </div>
+        <div className="col-span-2">
+          <label className="label">Cidade *</label>
+          <input
+            className="input-field"
+            value={cidade}
+            onChange={(e) => setCidade(e.target.value)}
+            placeholder="Ex: Santarém"
+          />
+        </div>
+      </div>
+      <div>
+        <label className="label">Rua / Logradouro * <span className="text-slate-400 font-normal">(mín. 3 letras)</span></label>
+        <div className="flex gap-2">
+          <input
+            className="input-field flex-1"
+            value={rua}
+            onChange={(e) => setRua(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && buscar()}
+            placeholder="Ex: Mendonça Furtado"
+          />
+          <button
+            type="button"
+            onClick={buscar}
+            disabled={buscando}
+            className="btn-primary h-11 px-4 text-sm font-bold disabled:opacity-50 flex items-center gap-1.5 shrink-0"
+          >
+            {buscando ? (
+              <span className="animate-spin h-4 w-4 border-2 border-white border-t-transparent rounded-full" />
+            ) : (
+              <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+            )}
+            Buscar
+          </button>
+        </div>
+      </div>
+      {erro && <p className="text-xs font-bold text-red-500 bg-red-50 px-3 py-2 rounded-xl">{erro}</p>}
+      {resultados.length > 0 && (
+        <div className="space-y-1.5 max-h-52 overflow-y-auto">
+          <p className="text-[10px] font-bold text-slate-400 uppercase">{resultados.length} resultado{resultados.length !== 1 ? "s" : ""} — clique para usar</p>
+          {resultados.map((r) => (
+            <button
+              key={r.cep}
+              type="button"
+              onClick={() => handleSelect(r)}
+              className="w-full text-left bg-white border border-slate-200 hover:border-primary-main hover:bg-primary-main/5 rounded-xl px-4 py-2.5 transition-all"
+            >
+              <p className="font-bold text-slate-800 text-sm">{r.logradouro || r.cep}</p>
+              <p className="text-[10px] font-semibold text-slate-500">{r.bairro && `${r.bairro} · `}{r.localidade}/{r.uf} · <span className="font-mono font-bold text-primary-main">{r.cep}</span></p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+// ─────────────────────────────────────────────────────────────────────────────
+
+function validarCPF(cpf: string): boolean {
+  const c = cpf.replace(/\D/g, "");
+  if (c.length !== 11 || /^(\d)\1+$/.test(c)) return false;
+  let sum = 0;
+  for (let i = 0; i < 9; i++) sum += parseInt(c[i]) * (10 - i);
+  let r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  if (r !== parseInt(c[9])) return false;
+  sum = 0;
+  for (let i = 0; i < 10; i++) sum += parseInt(c[i]) * (11 - i);
+  r = (sum * 10) % 11;
+  if (r === 10 || r === 11) r = 0;
+  return r === parseInt(c[10]);
+}
+
+function validarRG(rg: string): boolean {
+  const clean = rg.replace(/\s+/g, "").trim();
+  if (clean.length < 5 || clean.length > 14) return false;
+  return /^[a-zA-Z0-9.\-/]+$/.test(clean);
+}
+
+function cpfStatus(v: string | undefined | null): "empty" | "valid" | "invalid" {
+  if (!v) return "empty";
+  const digits = v.replace(/\D/g, "");
+  if (!digits.length) return "empty";
+  if (digits.length < 11) return "invalid";
+  return validarCPF(v) ? "valid" : "invalid";
+}
+
+function rgStatus(v: string | undefined | null): "empty" | "valid" | "invalid" {
+  if (!v) return "empty";
+  const clean = v.replace(/\s+/g, "").trim();
+  if (!clean.length) return "empty";
+  return validarRG(clean) ? "valid" : "invalid";
+}
+
+function genderizeEstadoCivil(raw: string, genero: string): string {
+  const base = (raw || "")
+    .toLowerCase()
+    .replace(/[()]/g, "")
+    .replace(/\ba\b/g, "")
+    .trim();
+  const masc: Record<string, string> = {
+    solteiro: "Solteiro", solteira: "Solteiro", casado: "Casado", casada: "Casado",
+    divorciado: "Divorciado", divorciada: "Divorciado", viúvo: "Viúvo", viuvo: "Viúvo",
+    viúva: "Viúvo", viuva: "Viúvo", separado: "Separado", separada: "Separado",
+    "união estável": "União Estável",
+  };
+  const fem: Record<string, string> = {
+    solteiro: "Solteira", solteira: "Solteira", casado: "Casada", casada: "Casada",
+    divorciado: "Divorciada", divorciada: "Divorciada", viúvo: "Viúva", viuvo: "Viúva",
+    viúva: "Viúva", viuva: "Viúva", separado: "Separada", separada: "Separada",
+    "união estável": "União Estável",
+  };
+  const outro: Record<string, string> = {
+    solteiro: "Solteiro(a)", solteira: "Solteiro(a)", casado: "Casado(a)", casada: "Casado(a)",
+    divorciado: "Divorciado(a)", divorciada: "Divorciado(a)", viúvo: "Viúvo(a)", viuvo: "Viúvo(a)",
+    viúva: "Viúvo(a)", viuva: "Viúvo(a)", separado: "Separado(a)", separada: "Separado(a)",
+    "união estável": "União Estável",
+  };
+  const map = genero === "F" ? fem : genero === "O" ? outro : masc;
+  return map[base] || raw;
+}
+
+type GeneroBinario = "M" | "F";
+
+function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
+  const genero: GeneroBinario = pessoa?.genero === "F" ? "F" : "M";
+  const feminino = genero === "F";
+  const papel = papelBase === "VENDEDOR"
+    ? (feminino ? "VENDEDORA" : "VENDEDOR")
+    : (feminino ? "COMPRADORA" : "COMPRADOR");
+
+  return {
+    genero,
+    tratamento: feminino ? "Sra." : "Sr.",
+    artigo: feminino ? "a" : "o",
+    nacionalidade: feminino ? "brasileira" : "brasileiro",
+    estadoCivil: genderizeEstadoCivil(pessoa?.estadoCivil || "", genero).toLowerCase(),
+    portador: feminino ? "portadora" : "portador",
+    domiciliado: feminino ? "domiciliada" : "domiciliado",
+    chamado: feminino ? "chamada" : "chamado",
+    papel,
+    aoA: feminino ? "à" : "ao",
+    peloPela: feminino ? "pela" : "pelo",
+  };
+}
+
+function generoContratoValido(pessoa: any): boolean {
+  return pessoa?.genero === "M" || pessoa?.genero === "F";
+}
+const DELETE_PASSWORD = "Geper3tp@";
+
+function useDeleteConfirm() {
+  const [pending, setPending] = React.useState<{ message: string; onConfirm: () => void } | null>(null);
+  const [inputVal, setInputVal] = React.useState("");
+  const [error, setError] = React.useState(false);
+
+  const request = (message: string, onConfirm: () => void) => {
+    setInputVal("");
+    setError(false);
+    setPending({ message, onConfirm });
+  };
+
+  const confirm = () => {
+    if (inputVal === DELETE_PASSWORD) {
+      pending?.onConfirm();
+      setPending(null);
+      setInputVal("");
+      setError(false);
+    } else {
+      setError(true);
+      setInputVal("");
+    }
+  };
+
+  const cancel = () => {
+    setPending(null);
+    setInputVal("");
+    setError(false);
+  };
+
+  const Modal = pending ? (
+    <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+      <div className="bg-white w-full max-w-sm rounded-[24px] shadow-2xl overflow-hidden">
+        <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+          <div className="p-2.5 bg-red-50 rounded-xl text-red-500">
+            <Trash2 size={20} />
+          </div>
+          <div>
+            <h4 className="font-display font-bold text-slate-800">Confirmar exclusão</h4>
+            <p className="text-[11px] text-slate-400 font-medium">Digite a senha para continuar</p>
+          </div>
+        </div>
+        <div className="p-6 space-y-4">
+          <p className="text-sm text-slate-600">{pending.message}</p>
+          <div>
+            <label className="label">Senha de segurança</label>
+            <input
+              type="password"
+              autoFocus
+              className={`input-field ${error ? "border-red-400 bg-red-50" : ""}`}
+              placeholder="Digite a senha..."
+              value={inputVal}
+              onChange={(e) => { setInputVal(e.target.value); setError(false); }}
+              onKeyDown={(e) => { if (e.key === "Enter") confirm(); if (e.key === "Escape") cancel(); }}
+            />
+            {error && <p className="text-xs text-red-500 font-semibold mt-1">Senha incorreta. Tente novamente.</p>}
+          </div>
+        </div>
+        <div className="p-6 border-t border-slate-100 flex gap-3">
+          <button onClick={cancel} className="btn-secondary flex-1">Cancelar</button>
+          <button onClick={confirm} className="flex-1 h-11 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+            <Trash2 size={16} />
+            Excluir
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  return { request, Modal };
+}
+
+const exportToCSV = (sales: Venda[]) => {
+  const headers = [
+    "Contrato",
+    "Cliente",
+    "Empreendimento",
+    "Quadra",
+    "Lote",
+    "Valor",
+    "Status",
+    "Data",
+  ];
+  const rows = sales.map((s) => [
+    s.numeroContrato,
+    s.clienteNome,
+    s.empreendimentoNome,
+    s.quadra,
+    s.numeroLote,
+    s.valorLote,
+    s.status || "pendente",
+    new Date(s.dataVenda).toLocaleDateString(),
+  ]);
+
+  const csvContent =
+    "data:text/csv;charset=utf-8," +
+    headers.join(",") +
+    "\n" +
+    rows.map((e) => e.join(",")).join("\n");
+
+  const encodedUri = encodeURI(csvContent);
+  const link = document.createElement("a");
+  link.setAttribute("href", encodedUri);
+  link.setAttribute(
+    "download",
+    `vendas_rumo_ao_milhao_${new Date().toLocaleDateString()}.csv`,
+  );
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+};
+
+// --- Shake + scroll utility ---
+function triggerShake(containerEl: HTMLElement | null) {
+  if (!containerEl) return;
+  containerEl.classList.remove('shake');
+  void containerEl.offsetWidth;
+  containerEl.classList.add('shake');
+  containerEl.addEventListener('animationend', () => containerEl.classList.remove('shake'), { once: true });
+
+  const firstInvalid = containerEl.querySelector<HTMLElement>(
+    'input:invalid, select:invalid, textarea:invalid'
+  ) || containerEl.querySelector<HTMLElement>(
+    'input[required], select[required], textarea[required]'
+  );
+  if (firstInvalid) {
+    firstInvalid.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    firstInvalid.classList.add('field-invalid');
+    const clear = () => { firstInvalid.classList.remove('field-invalid'); };
+    firstInvalid.addEventListener('input', clear, { once: true });
+    firstInvalid.addEventListener('change', clear, { once: true });
+  }
+}
+
+// --- Components ---
+
+const Sidebar = ({
+  currentSection,
+  setSection,
+  isOpen,
+  setIsOpen,
+  onLogout,
+  isAdmin,
+  forceDesktop,
+  onToggleDesktop,
+  userPermissions,
+  userEmail,
+}: {
+  currentSection: Section;
+  setSection: (s: Section) => void;
+  isOpen: boolean;
+  setIsOpen: (val: boolean) => void;
+  onLogout?: () => void;
+  isAdmin?: boolean;
+  forceDesktop: boolean;
+  onToggleDesktop: () => void;
+  userPermissions?: Record<string, boolean>;
+  userEmail?: string;
+}) => {
+  const allMenuItems = [
+    { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
+    { id: "contratos", label: "Contratos", icon: FileText },
+    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
+    { id: "clientes", label: "Clientes", icon: Users },
+    { id: "aniversarios", label: "Aniversários", icon: Cake },
+    { id: "proprietarios", label: "Proprietários", icon: UserCheck },
+    { id: "usuarios", label: "Usuários", icon: User },
+    { id: "calculadora", label: "Calculadora", icon: Calculator },
+  ];
+
+  // Filtra itens de menu por permissão (admin sempre vê tudo)
+  const mainMenuItems = isAdmin
+    ? allMenuItems
+    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
+
+  const configItem = { id: "config", label: "Configurações", icon: Settings };
+  const showConfig = isAdmin || userPermissions?.["config"] !== false;
+  const historicoItem = { id: "historico", label: "Lixeira", icon: Trash2 };
+  const showHistorico = isAdmin || userPermissions?.["historico"] !== false;
+
+  return (
+    <>
+      {/* Mobile Overlay */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setIsOpen(false)}
+            className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] lg:hidden"
+          />
+        )}
+      </AnimatePresence>
+
+      <div
+        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+      >
+        <div className="p-5 sm:p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
+          <div>
+            <h1 className="text-2xl font-display font-bold text-primary-main italic tracking-tight">
+              Rumo ao Milhão
+            </h1>
+            <p className="text-[10px] uppercase font-bold text-slate-400 mt-0.5 tracking-widest">
+              Soluções Imobiliárias
+            </p>
+          </div>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="lg:hidden p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-50"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
+          {mainMenuItems.map((item) => {
+            const Icon = item.icon;
+            const isActive = currentSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setSection(item.id as Section);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group ${
+                  isActive
+                    ? "bg-primary-main text-primary-contrast shadow-lg shadow-primary-main/20 font-semibold"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-primary-main"
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-lg ${isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main"} transition-colors`}
+                >
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{item.label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-active"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-contrast shadow-sm"
+                  />
+                )}
+              </button>
+            );
+          })}
+
+          {/* Toggle Mobile / PC */}
+          <button
+            onClick={onToggleDesktop}
+            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group text-slate-500 hover:bg-slate-50 hover:text-primary-main"
+          >
+            <div className="p-2 rounded-lg bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main transition-colors">
+              {forceDesktop ? <Smartphone size={18} /> : <Monitor size={18} />}
+            </div>
+            <span className="text-sm font-medium">
+              {forceDesktop ? "Versão Mobile" : "Versão PC"}
+            </span>
+          </button>
+
+          {/* Lixeira */}
+          {showHistorico && (() => {
+            const item = historicoItem;
+            const Icon = item.icon;
+            const isActive = currentSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => { setSection(item.id as Section); setIsOpen(false); }}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group ${isActive ? "bg-primary-main text-primary-contrast shadow-lg shadow-primary-main/20 font-semibold" : "text-slate-500 hover:bg-slate-50 hover:text-primary-main"}`}
+              >
+                <div className={`p-2 rounded-lg ${isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main"} transition-colors`}>
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{item.label}</span>
+                {isActive && <motion.div layoutId="nav-active" className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-contrast shadow-sm" />}
+              </button>
+            );
+          })()}
+
+          {/* Config */}
+          {showConfig && (() => {
+            const item = configItem;
+            const Icon = item.icon;
+            const isActive = currentSection === item.id;
+            return (
+              <button
+                key={item.id}
+                onClick={() => {
+                  setSection(item.id as Section);
+                  setIsOpen(false);
+                }}
+                className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group ${
+                  isActive
+                    ? "bg-primary-main text-primary-contrast shadow-lg shadow-primary-main/20 font-semibold"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-primary-main"
+                }`}
+              >
+                <div
+                  className={`p-2 rounded-lg ${isActive ? "bg-white/20" : "bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main"} transition-colors`}
+                >
+                  <Icon size={18} />
+                </div>
+                <span className="text-sm">{item.label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="nav-active"
+                    className="ml-auto w-1.5 h-1.5 rounded-full bg-primary-contrast shadow-sm"
+                  />
+                )}
+              </button>
+            );
+          })()}
+        </nav>
+
+        <div className="p-6 border-t border-slate-50 space-y-2">
+          {userEmail && (
+            <div className="px-3 py-2 rounded-xl bg-slate-50 mb-1">
+              <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Logado como</p>
+              <p className="text-xs font-bold text-slate-500 truncate">{userEmail}</p>
+              {isAdmin && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Administrador</p>}
+            </div>
+          )}
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50"
+          >
+            <LogOut size={20} />
+            <span className="font-semibold text-sm">Sair do Sistema</span>
+          </button>
+        </div>
+      </div>
+    </>
+  );
+};
+
+const Header = ({
+  title,
+  toggleSidebar,
+  forceDesktop,
+  onGoDashboard,
+}: {
+  title: string;
+  toggleSidebar: () => void;
+  forceDesktop: boolean;
+  onGoDashboard?: () => void;
+}) => (
+  <header className={`h-20 lg:h-24 bg-surface-card/80 backdrop-blur-md border-b border-border-subtle flex items-center px-6 lg:px-10 fixed top-0 right-0 z-40 ${forceDesktop ? "left-72" : "left-0 lg:left-72"}`}>
+    <button
+      onClick={toggleSidebar}
+      aria-label="Abrir menu inicial"
+      className={`${forceDesktop ? "hidden" : "lg:hidden"} p-3 mr-4 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main/15 active:scale-95 active:shadow-inner transition-all duration-150`}
+    >
+      <Menu size={22} className="stroke-[2.4]" />
+    </button>
+    <h2 className="text-xl lg:text-2xl font-display font-bold text-slate-800 tracking-tight truncate flex items-center gap-3">
+      {title === "Dashboard Geral" && (
+        <button
+          type="button"
+          onClick={onGoDashboard}
+          aria-label="Ir para o Dashboard"
+          title="Ir para o início do Dashboard"
+          className="w-11 h-11 rounded-2xl bg-primary-main/10 text-primary-main flex items-center justify-center shadow-sm transition-all duration-150 cursor-pointer hover:bg-primary-main/15 hover:shadow-md active:scale-95 active:bg-primary-main/20 active:shadow-inner focus:outline-none focus:ring-2 focus:ring-primary-main/30"
+        >
+          <Home size={23} className="stroke-[2.5]" />
+        </button>
+      )}
+      <span className="truncate">{title}</span>
+    </h2>
+  </header>
+);
+
+const BottomNav = ({
+  currentSection,
+  setSection,
+}: {
+  currentSection: Section;
+  setSection: (s: Section) => void;
+}) => {
+  const items = [
+    { id: "dashboard", label: "Dashboard", icon: Home },
+    { id: "contratos", label: "Contratos", icon: FileText },
+    { id: "clientes", label: "Clientes", icon: Users },
+    { id: "empreendimentos", label: "Mapa", icon: MapPin },
+  ];
+
+  return (
+    <nav className="lg:hidden fixed bottom-6 left-6 right-6 h-18 bg-surface-card/90 backdrop-blur-xl border border-border-subtle rounded-3xl shadow-2xl flex items-center justify-around px-2 z-50 no-print">
+      {items.map((item) => {
+        const Icon = item.icon;
+        const isActive = currentSection === item.id;
+        return (
+          <button
+            key={item.id}
+            onClick={() => setSection(item.id as Section)}
+            className={`flex flex-col items-center justify-center gap-1.5 transition-all duration-200 relative px-4 py-2 rounded-2xl active:scale-95 ${isActive ? "text-primary-main bg-primary-main/10 shadow-sm" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}
+          >
+            {isActive && (
+              <motion.div
+                layoutId="bottom-nav-indicator"
+                className="absolute -top-1 w-8 h-1 bg-primary-main rounded-full"
+              />
+            )}
+            <Icon
+              size={isActive ? 22 : 20}
+              className={isActive ? "stroke-[2.5]" : "stroke-[2]"}
+            />
+            <span
+              className={`text-[10px] font-bold uppercase tracking-wider ${isActive ? "opacity-100" : "opacity-70"}`}
+            >
+              {item.label}
+            </span>
+          </button>
+        );
+      })}
+    </nav>
+  );
+};
+
+const FAB = ({ setSection }: { setSection: (s: Section) => void }) => (
+  <button
+    onClick={() => setSection("vendas")}
+    className="lg:hidden fixed right-6 bottom-28 w-16 h-16 bg-primary-main text-primary-contrast rounded-2xl shadow-2xl shadow-primary-main/30 flex items-center justify-center z-50 active:scale-90 transition-transform no-print"
+  >
+    <Plus size={28} />
+  </button>
+);
+
+const StatCard = ({
+  title,
+  value,
+  icon: Icon,
+  colorClass,
+  onClick,
+  subtitle,
+}: {
+  title: string;
+  value: string;
+  icon: any;
+  colorClass: string;
+  onClick?: () => void;
+  subtitle?: string;
+}) => (
+  <div
+    className={`stat-card-gradient ${colorClass} ${onClick ? "cursor-pointer hover:scale-[1.03] hover:-translate-y-1 transition-transform duration-200" : ""}`}
+    onClick={onClick}
+  >
+    <div className="flex justify-between items-start gap-1">
+      <div className="min-w-0 flex-1">
+        <p className="text-[10px] font-bold uppercase tracking-widest opacity-80 mb-1.5">
+          {title}
+        </p>
+        <p className="text-base sm:text-2xl lg:text-3xl font-display font-bold tracking-tight break-all leading-tight">
+          {value}
+        </p>
+        {subtitle && (
+          <p className="text-[9px] opacity-70 mt-1 font-semibold">{subtitle}</p>
+        )}
+      </div>
+      <div className="p-2 sm:p-3 bg-white/20 rounded-xl sm:rounded-2xl backdrop-blur-md shrink-0">
+        <Icon size={20} className="stroke-[2.5]" />
+      </div>
+    </div>
+    <div className="absolute -right-4 -bottom-4 opacity-10">
+      <Icon size={80} />
+    </div>
+    {onClick && (
+      <p className="text-[9px] font-bold uppercase tracking-widest opacity-50 mt-2 flex items-center gap-1">
+        Ver <span className="text-base leading-none">›</span>
+      </p>
+    )}
+  </div>
+);
+
+// --- Sections ---
+
+const DashboardSection = ({
+  sales,
+  developments,
+  clients,
+  onNavigate,
+  onViewContract,
+}: {
+  sales: Venda[];
+  developments: Empreendimento[];
+  clients: Cliente[];
+  onNavigate?: (s: Section) => void;
+  onViewContract?: (v: Venda) => void;
+}) => {
+  const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
+  const totalLotesDisponiveis = developments.reduce(
+    (acc, d) => acc + Math.max(0, d.totalLotes - d.lotesVendidos),
+    0,
+  );
+
+  // À vista: quantidadeParcelas === 0 ou formaPagamento indica "à vista"
+  const vendasAvista = sales.filter(
+    (s) =>
+      s.quantidadeParcelas === 0 ||
+      (typeof s.formaPagamento === "string" &&
+        s.formaPagamento.toLowerCase().includes("vista")),
+  );
+  const vendasParceladas = sales.filter(
+    (s) =>
+      (s.quantidadeParcelas ?? 0) > 0 &&
+      !(
+        typeof s.formaPagamento === "string" &&
+        s.formaPagamento.toLowerCase().includes("vista")
+      ),
+  );
+  const totalAvistaValor = vendasAvista.reduce((acc, s) => acc + s.valorLote, 0);
+  const totalParceladoValor = vendasParceladas.reduce((acc, s) => acc + s.valorLote, 0);
+  const fmtBRL = (v: number) =>
+    new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      maximumFractionDigits: 0,
+    }).format(v);
+
+  // Chart Data: Sales per Day (last 7 days)
+  const last7Days = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "short" });
+  }).reverse();
+
+  const salesData = last7Days.map((day) => ({
+    name: day,
+    total: sales.filter(
+      (s) =>
+        new Date(s.dataVenda).toLocaleDateString("pt-BR", {
+          day: "2-digit",
+          month: "short",
+        }) === day,
+    ).length,
+  }));
+
+  // Chart Data: Occupancy per development
+  const occupancyData = developments.map((d) => ({
+    name: d.nome.split(" ")[0],
+    vendidos: d.lotesVendidos,
+    total: d.totalLotes,
+  }));
+
+  return (
+    <div className="space-y-4 sm:space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 px-2">
+        <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
+          <PieChartIcon className="text-primary-main" />
+          Visão Geral
+        </h3>
+        <button
+          onClick={() => exportToCSV(sales)}
+          className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
+        >
+          <Download size={14} />
+          <span className="hidden sm:inline">Exportar Vendas</span>
+          <span className="sm:hidden">Exportar</span>
+        </button>
+      </div>
+
+      {/* Cards principais — 2 colunas no celular, 4 no desktop */}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-6">
+        <StatCard
+          title="Vendas"
+          value={sales.length.toString()}
+          icon={TrendingUp}
+          colorClass="bg-gradient-to-br from-primary-main to-primary-accent"
+        />
+        <StatCard
+          title="Faturamento"
+          value={fmtBRL(totalRevenue)}
+          icon={DollarSign}
+          colorClass="bg-gradient-to-br from-slate-800 to-slate-900"
+        />
+        <StatCard
+          title="Lotes Disponíveis"
+          value={totalLotesDisponiveis.toString()}
+          icon={LayoutDashboard}
+          colorClass="bg-gradient-to-br from-chumbo-base to-chumbo-muted text-primary-contrast"
+          onClick={() => onNavigate?.("empreendimentos")}
+          subtitle={`em ${developments.length} empreend.`}
+        />
+        <StatCard
+          title="Clientes"
+          value={clients.length.toString()}
+          icon={Users}
+          colorClass="bg-gradient-to-br from-primary-main/90 to-primary-accent/80"
+          onClick={() => onNavigate?.("clientes")}
+          subtitle="cadastrados"
+        />
+      </div>
+
+      {/* Indicadores de tipo de venda */}
+      <div className="grid grid-cols-3 gap-2 sm:gap-6">
+        {/* À Vista */}
+        <div className="card-premium flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-emerald-100 rounded-lg sm:rounded-xl">
+              <Banknote size={14} className="text-emerald-700 sm:hidden" />
+              <Banknote size={18} className="text-emerald-700 hidden sm:block" />
+            </div>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">À Vista</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {vendasAvista.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-emerald-700 leading-none mt-1 break-all">
+              {fmtBRL(totalAvistaValor)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
+          </div>
+        </div>
+
+        {/* Parcelado */}
+        <div className="card-premium flex flex-col gap-2">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-blue-100 rounded-lg sm:rounded-xl">
+              <CreditCard size={14} className="text-blue-700 sm:hidden" />
+              <CreditCard size={18} className="text-blue-700 hidden sm:block" />
+            </div>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Parcelado</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {vendasParceladas.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-blue-700 leading-none mt-1 break-all">
+              {fmtBRL(totalParceladoValor)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
+          </div>
+        </div>
+
+        {/* Total Geral */}
+        <div className="card-premium flex flex-col gap-2 border-primary-main/20">
+          <div className="flex items-center gap-1.5 mb-1">
+            <div className="p-1.5 sm:p-2 bg-primary-main/10 rounded-lg sm:rounded-xl">
+              <Layers size={14} className="text-primary-main sm:hidden" />
+              <Layers size={18} className="text-primary-main hidden sm:block" />
+            </div>
+            <span className="text-[9px] sm:text-xs font-bold uppercase tracking-widest text-slate-500">Total</span>
+          </div>
+          <div className="flex flex-col gap-1">
+            <p className="text-xl sm:text-3xl font-display font-bold text-slate-800 leading-none">
+              {sales.length}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">unidades</p>
+            <p className="text-xs sm:text-sm font-display font-bold text-primary-main leading-none mt-1 break-all">
+              {fmtBRL(totalRevenue)}
+            </p>
+            <p className="text-[9px] text-slate-400 font-semibold">faturado</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-8">
+        <div className="card-premium">
+          <div className="flex items-center gap-2 mb-3 sm:mb-6">
+            <BarChart3 size={16} className="text-primary-main" />
+            <h4 className="font-display font-bold text-slate-800 text-sm sm:text-base">
+              Vendas (7 dias)
+            </h4>
+          </div>
+          <div className="h-48 sm:h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={salesData}
+                margin={{ top: 0, right: 0, left: -20, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  vertical={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis
+                  dataKey="name"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }}
+                />
+                <YAxis
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#94a3b8" }}
+                />
+                <Tooltip
+                  cursor={{ fill: "#f8fafc" }}
+                  contentStyle={{
+                    borderRadius: "16px",
+                    border: "none",
+                    boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+                    fontSize: "12px",
+                    fontWeight: 700,
+                  }}
+                />
+                <Bar
+                  dataKey="total"
+                  fill="#2d5016"
+                  radius={[6, 6, 0, 0]}
+                  barSize={24}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+
+        <div className="card-premium">
+          <div className="flex items-center gap-2 mb-3 sm:mb-6">
+            <PieChartIcon size={16} className="text-primary-main" />
+            <h4 className="font-display font-bold text-slate-800 text-sm sm:text-base">
+              Ocupação por Loteamento
+            </h4>
+          </div>
+          <div className="h-48 sm:h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart
+                data={occupancyData}
+                layout="vertical"
+                margin={{ top: 0, right: 30, left: 40, bottom: 0 }}
+              >
+                <CartesianGrid
+                  strokeDasharray="3 3"
+                  horizontal={false}
+                  stroke="#f1f5f9"
+                />
+                <XAxis type="number" hide />
+                <YAxis
+                  dataKey="name"
+                  type="category"
+                  axisLine={false}
+                  tickLine={false}
+                  tick={{ fontSize: 10, fontWeight: 700, fill: "#1e293b" }}
+                />
+                <Tooltip
+                  cursor={{ fill: "transparent" }}
+                  contentStyle={{
+                    borderRadius: "16px",
+                    border: "none",
+                    boxShadow: "0 10px 15px -3px rgb(0 0 0 / 0.1)",
+                  }}
+                />
+                <Bar
+                  dataKey="total"
+                  fill="#e2e8f0"
+                  radius={[0, 4, 4, 0]}
+                  barSize={12}
+                />
+                <Bar
+                  dataKey="vendidos"
+                  fill="#2d5016"
+                  radius={[0, 4, 4, 0]}
+                  barSize={12}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        </div>
+      </div>
+
+      <div className="card-premium">
+        <div className="flex items-center justify-between mb-4 sm:mb-8">
+          <h3 className="text-lg lg:text-xl font-display font-bold text-slate-800 flex items-center gap-2">
+            <div className="w-1.5 h-6 bg-primary-main rounded-full" />
+            Vendas Recentes
+          </h3>
+          <button
+            onClick={() => onNavigate?.("contratos")}
+            className="text-sm font-bold text-primary-main hover:underline"
+          >
+            Ver tudo
+          </button>
+        </div>
+
+        <div className="overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+          <table className="w-full text-left border-separate border-spacing-y-2">
+            <thead>
+              <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <th className="pb-3 px-4">Comprador</th>
+                <th className="pb-3 px-4">Local</th>
+                <th className="pb-3 px-4">Lote</th>
+                <th className="pb-3 px-4 text-right">Valor</th>
+                <th className="pb-3 px-4 lg:table-cell hidden">Data</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {sales.slice(0, 5).map((venda) => (
+                <tr
+                  key={venda.id}
+                  className="group cursor-pointer"
+                  onClick={() => onViewContract?.(venda)}
+                >
+                  <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors font-semibold">
+                    {venda.clienteNome}
+                  </td>
+                  <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
+                    {venda.empreendimentoNome}
+                  </td>
+                  <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-mono font-bold text-xs">
+                    L:{venda.numeroLote}/Q:{venda.quadra}
+                  </td>
+                  <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(venda.valorLote)}
+                  </td>
+                  <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-[10px] font-bold text-slate-400 lg:table-cell hidden">
+                    {new Date(venda.dataVenda).toLocaleDateString("pt-BR")}
+                  </td>
+                </tr>
+              ))}
+              {sales.length === 0 && (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="py-12 text-center text-slate-300 font-medium italic"
+                  >
+                    Nenhuma venda registrada ainda.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Ranking de Vendedores */}
+      {(() => {
+        const rankMap: Record<string, {
+          nome: string;
+          totalVendas: number;
+          totalContratos: number;
+          totalValor: number;
+          avista: number;
+          parcelado: number;
+        }> = {};
+
+        sales.forEach((s) => {
+          const nome = (s.vendedor || "").trim() || "Sem vendedor";
+          if (!rankMap[nome]) {
+            rankMap[nome] = { nome, totalVendas: 0, totalContratos: 0, totalValor: 0, avista: 0, parcelado: 0 };
+          }
+          rankMap[nome].totalVendas += 1;
+          rankMap[nome].totalValor += s.valorLote;
+          if (s.contratoGerado || s.numeroContrato) rankMap[nome].totalContratos += 1;
+          const isAvista =
+            s.quantidadeParcelas === 0 ||
+            (typeof s.formaPagamento === "string" && s.formaPagamento.toLowerCase().includes("vista"));
+          if (isAvista) rankMap[nome].avista += 1;
+          else rankMap[nome].parcelado += 1;
+        });
+
+        const ranking = Object.values(rankMap).sort(
+          (a, b) => b.totalValor - a.totalValor || b.totalVendas - a.totalVendas
+        );
+
+        if (ranking.length === 0) return null;
+
+        const medalColors = ["text-yellow-500", "text-slate-400", "text-amber-700"];
+        const maxValor = ranking[0]?.totalValor || 1;
+
+        return (
+          <div className="card-premium">
+            <div className="flex items-center gap-2 mb-4 sm:mb-6">
+              <Trophy size={18} className="text-primary-main" />
+              <h3 className="text-lg font-display font-bold text-slate-800">Ranking de Vendedores</h3>
+            </div>
+
+            <div className="hidden sm:grid grid-cols-[2rem_1fr_repeat(5,auto)] items-center gap-x-4 text-[10px] font-bold uppercase tracking-widest text-slate-400 pb-2 border-b border-slate-100 mb-2">
+              <span>#</span>
+              <span>Vendedor</span>
+              <span className="text-center w-12">Vendas</span>
+              <span className="text-center w-16">Contratos</span>
+              <span className="text-center w-14">À Vista</span>
+              <span className="text-center w-14">Parcelado</span>
+              <span className="text-right w-28">Total</span>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              {ranking.map((v, i) => {
+                const pct = Math.round((v.totalValor / maxValor) * 100);
+                return (
+                  <div key={v.nome} className="rounded-2xl bg-slate-50 hover:bg-primary-main/5 transition-colors p-3 sm:p-4">
+                    {/* Mobile */}
+                    <div className="flex items-start justify-between gap-3 sm:hidden">
+                      <div className="flex items-center gap-2">
+                        {i < 3
+                          ? <Medal size={18} className={medalColors[i]} />
+                          : <span className="w-[18px] text-center text-xs font-bold text-slate-400">{i + 1}</span>
+                        }
+                        <span className="font-semibold text-slate-800 text-sm">{v.nome}</span>
+                      </div>
+                      <span className="font-display font-bold text-primary-main text-sm whitespace-nowrap">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v.totalValor)}
+                      </span>
+                    </div>
+                    <div className="flex gap-3 mt-2 sm:hidden text-[11px] text-slate-500 font-semibold flex-wrap">
+                      <span>{v.totalVendas} vendas</span>
+                      <span>·</span>
+                      <span>{v.totalContratos} contratos</span>
+                      <span>·</span>
+                      <span>{v.avista} à vista</span>
+                      <span>·</span>
+                      <span>{v.parcelado} parc.</span>
+                    </div>
+                    <div className="mt-2 h-1 rounded-full bg-slate-200 sm:hidden">
+                      <div className="h-1 rounded-full bg-primary-main transition-all" style={{ width: `${pct}%` }} />
+                    </div>
+
+                    {/* Desktop */}
+                    <div className="hidden sm:grid grid-cols-[2rem_1fr_repeat(5,auto)] items-center gap-x-4">
+                      <div className="flex items-center justify-center">
+                        {i < 3
+                          ? <Medal size={16} className={medalColors[i]} />
+                          : <span className="text-xs font-bold text-slate-400">{i + 1}</span>
+                        }
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-semibold text-slate-800 text-sm truncate">{v.nome}</p>
+                        <div className="mt-1 h-1 rounded-full bg-slate-200">
+                          <div className="h-1 rounded-full bg-primary-main" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                      <span className="text-center text-sm font-bold text-slate-700 w-12">{v.totalVendas}</span>
+                      <span className="text-center text-sm font-bold text-slate-700 w-16">{v.totalContratos}</span>
+                      <span className="text-center text-sm font-bold text-emerald-700 w-14">{v.avista}</span>
+                      <span className="text-center text-sm font-bold text-blue-700 w-14">{v.parcelado}</span>
+                      <span className="text-right font-display font-bold text-primary-main text-sm whitespace-nowrap w-28">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(v.totalValor)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+};
+
+const LotDashboard = ({
+  dev,
+  sales,
+  clients,
+  onStartSale,
+  onClose,
+  onViewContract,
+  onSaveDev,
+  canEditMap = false,
+  onMarkerSaved,
+}: {
+  dev: Empreendimento;
+  sales: Venda[];
+  clients: Cliente[];
+  onStartSale: (v: Partial<Venda>) => void;
+  onClose: () => void;
+  onViewContract: (v: Venda) => void;
+  onSaveDev: (d: Empreendimento) => void;
+  canEditMap?: boolean;
+  onMarkerSaved?: (quadra: string, lote: string, status: MapaLoteStatus, observacao: string) => void;
+}) => {
+  const [localDev, setLocalDev] = useState<Empreendimento>(dev);
+  const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
+  // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
+  const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
+
+  // Novo marcador unificado: fase "idle" | "formulario" | "aguardando_segundo"
+  // lote pode ser "1" (único) ou "1,2,3,4" (múltiplos → linha entre dois pontos)
+  const [marcadorFase, setMarcadorFase] = useState<"idle" | "formulario" | "aguardando_segundo">("idle");
+  const [marcadorPonto1, setMarcadorPonto1] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus | "sistema", observacao: "" });
+  const [lotScriptText, setLotScriptText] = useState("");
+  const [lotScriptMsg, setLotScriptMsg] = useState("");
+
+  // Tamanho visual das bolinhas configurável em porcentagem.
+  // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
+  const [markerSizePercent, setMarkerSizePercent] = useState<number>(() => {
+    const initial = Number((dev as any).mapaMarkerSizePercent ?? 100);
+    return Number.isFinite(initial) ? Math.max(40, Math.min(220, initial)) : 100;
+  });
+
+  const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
+  const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
+  const [lastSessionPointIds, setLastSessionPointIds] = useState<string[]>([]);
+
+  // Sequencia 2 pontos: mantida internamente para compatibilidade com criarBolinhasSequencia
+  const [seqFase, setSeqFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_segundo">("aguardando_primeiro");
+  const [seqPrimeiroClique, setSeqPrimeiroClique] = useState<{ xPercent: number; yPercent: number } | null>(null);
+  const [seqForm, setSeqForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+  const [seqPreview, setSeqPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
+
+  // Arrastar bolinhas no modo edição
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
+  const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapViewportRef = useRef<HTMLDivElement>(null);
+  const mapImageRef = useRef<HTMLImageElement>(null);
+  // Canvas de renderização direta do PDF (opção C — qualidade vetorial infinita)
+  const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfCanvasFullscreenRef = useRef<HTMLCanvasElement>(null);
+  const pdfRenderTaskRef = useRef<any>(null);
+  const pdfDocCacheRef = useRef<any>(null);
+  const pdfRenderScheduledRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [displayedMapScale, setDisplayedMapScale] = useState(1);
+  const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
+  const [mapFullscreen, setMapFullscreen] = useState(false);
+  // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
+  const [mapHighResLoading, setMapHighResLoading] = useState(false);
+  const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
+  const HIGH_RES_ZOOM_THRESHOLD = 2.5;  // zoom > 2.5 → imagem alta resolução
+  // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
+  const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
+  const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    startPanX: 0,
+    startPanY: 0,
+  });
+
+  // Ctrl+drag: atalho de teclado para mover o mapa temporariamente sem trocar o modo
+  const [isCtrlPanning, setIsCtrlPanning] = useState(false);
+  const ctrlPanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
+    active: false, startX: 0, startY: 0, startPanX: 0, startPanY: 0,
+  });
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Control") setIsCtrlPanning(true);
+    };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (e.key === "Control") {
+        setIsCtrlPanning(false);
+        ctrlPanRef.current.active = false;
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+    };
+  }, []);
+  const [mapActive, setMapActive] = useState(false);
+  const [mapZoom, setMapZoom] = useState(1);
+  const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
+  const mapTouchRef = useRef<{
+    mode: "none" | "pan" | "pinch";
+    startDistance: number;
+    startZoom: number;
+    startPanX: number;
+    startPanY: number;
+    startX: number;
+    startY: number;
+  }>({ mode: "none", startDistance: 0, startZoom: 1, startPanX: 0, startPanY: 0, startX: 0, startY: 0 });
+
+  const getSystemStatusForMarkerLot = (quadra: string, lote: string): MapaLoteStatus => {
+    const status = getLotStatusForSale(localDev, quadra, lote, sales).status;
+    return normalizeMapaStatus(status);
+  };
+
+  useEffect(() => {
+    const lotes = expandLotesInput(marcadorForm.lote);
+    // Mostra "Status do sistema" quando há pelo menos 1 lote já existente no cadastro
+    const existentesNoSistema = marcadorForm.quadra
+      ? lotes.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+      : [];
+    const shouldUseSystemStatus = !!marcadorForm.quadra && existentesNoSistema.length > 0;
+    if (shouldUseSystemStatus && marcadorForm.status !== "sistema") {
+      setMarcadorForm((prev) => ({ ...prev, status: "sistema" }));
+    }
+    if (!shouldUseSystemStatus && marcadorForm.status === "sistema") {
+      setMarcadorForm((prev) => ({ ...prev, status: "disponivel" }));
+    }
+  }, [marcadorForm.quadra, marcadorForm.lote, marcadorForm.status, localDev]);
+
+  // Modal "Lote já cadastrado" — substitui window.prompt por UI React adequada
+  const [loteConflictModal, setLoteConflictModal] = useState<{
+    resolve: (escolha: "1" | "2" | "3" | "4") => void;
+    infoTexto: string;
+    lote: string;
+    existingStatus: string;
+    rawStatus: string;
+  } | null>(null);
+
+  // Edição em massa
+  const [massaSelIds, setMassaSelIds] = useState<Set<string>>(new Set());
+  const [massaAcao, setMassaAcao] = useState<"selecionar" | "disponivel" | "reservado" | "indisponivel" | "excluir" | "alinharHorizontal" | "alinharVertical" | "distribuirHorizontal" | "">("" as any);
+  const [massaFiltroQuadra, setMassaFiltroQuadra] = useState("");
+  const [massaFiltroLoteIni, setMassaFiltroLoteIni] = useState("");
+  const [massaFiltroLoteFin, setMassaFiltroLoteFin] = useState("");
+
+  // Seleção múltipla com CTRL (modo editar)
+  const [ctrlSelectedIds, setCtrlSelectedIds] = useState<Set<string>>(new Set());
+
+  // Posição do painel "Novo marcador" arrastável — via ref para zero re-renders durante drag
+  const [marcadorPanelPos, setMarcadorPanelPos] = useState<{ x: number; y: number } | null>(null);
+  const [draggingPanel, setDraggingPanel] = useState(false);
+  const marcadorPanelRef = useRef<HTMLDivElement>(null);
+  const dragPanelRef = useRef<{ mouseX: number; mouseY: number; panelX: number; panelY: number } | null>(null);
+  const isDraggingPanelRef = useRef(false);
+  const rafPanelRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    setLocalDev(dev);
+    const incomingMarkerSize = Number((dev as any).mapaMarkerSizePercent ?? 100);
+    if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
+    // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
+    if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
+  }, [dev]);
+
+  useEffect(() => {
+    if (!canEditMap) setMapAction("visualizar");
+  }, [canEditMap]);
+
+  useEffect(() => {
+    function handlePointerOutside(event: PointerEvent) {
+      if (mapViewportRef.current && !mapViewportRef.current.contains(event.target as Node)) {
+        setMapActive(false);
+      }
+    }
+    document.addEventListener("pointerdown", handlePointerOutside);
+    return () => document.removeEventListener("pointerdown", handlePointerOutside);
+  }, []);
+
+  const getTouchDistance = (touches: TouchList) => {
+    if (touches.length < 2) return 0;
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
+    const viewport = mapViewportRef.current?.getBoundingClientRect();
+    const content = mapContainerRef.current?.getBoundingClientRect();
+    if (!viewport || !content || zoom <= 1) return { x: 0, y: 0 };
+    const baseWidth = content.width / zoom;
+    const baseHeight = content.height / zoom;
+    const maxX = Math.max(0, (baseWidth * zoom - viewport.width) / 2);
+    const maxY = Math.max(0, (baseHeight * zoom - viewport.height) / 2);
+    return {
+      x: Math.max(-maxX, Math.min(maxX, pan.x)),
+      y: Math.max(-maxY, Math.min(maxY, pan.y)),
+    };
+  };
+
+  const setMapZoomSafely = (nextZoom: number) => {
+    const clamped = Math.max(1, Math.min(10, nextZoom));
+    // Se há PDF original, renderiza direto (qualidade vetorial infinita)
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      schedulePdfRender(clamped);
+    } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
+      void requestHighResolutionMap();
+    }
+    setMapZoom(clamped);
+    setMapPan((prev) => clampMapPan(prev, clamped));
+  };
+
+  const zoomMapBy = (delta: number) => {
+    setMapActive(true);
+    setMapZoomSafely(mapZoom + delta);
+  };
+
+  const resetMapZoom = () => {
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+    scheduleMapScaleUpdate(true);
+  };
+
+  const fitMapToScreen = () => {
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+    scheduleMapScaleUpdate(true);
+  };
+
+  const isEditingMap = canEditMap && mapAction !== "visualizar";
+  const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
+  const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  // Imagem média: gerada sob demanda na faixa de zoom intermediário
+  const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemLeve;
+  const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
+  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
+  const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : deveUsarMapaMedia ? mapaImagemMedia : mapaImagemLeve;
+
+  const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
+    // Comportamento tipo Google Maps:
+    // o scroll sobre o mapa controla SOMENTE o zoom do mapa (não rola a página).
+    // Funciona em modo visualização, edição e tela cheia — sem precisar de Ctrl.
+    if (!mapaImagem) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMapActive(true);
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
+    if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+    setMapZoomSafely(mapZoom + delta);
+  };
+
+  useEffect(() => {
+    const el = mapViewportRef.current;
+    if (!el) return;
+    const onNativeWheel = (ev: WheelEvent) => {
+      if (!mapaImagem) return;
+      // { passive: false } obrigatório para poder chamar preventDefault() sem erro.
+      ev.preventDefault();
+      ev.stopPropagation();
+      setMapActive(true);
+      const delta = ev.deltaY < 0 ? 0.25 : -0.25;
+      if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      setMapZoomSafely(mapZoom + delta);
+    };
+    el.addEventListener("wheel", onNativeWheel, { passive: false });
+
+    // Touch events também precisam de passive:false para poder chamar preventDefault()
+    // O React registra onTouchMove como passivo por padrão — por isso cai o aviso no console.
+    const onNativeTouchStart = (ev: TouchEvent) => {
+      if (!mapaImagem) return;
+      if (ev.touches.length >= 2) ev.preventDefault(); // pinch
+    };
+    const onNativeTouchMove = (ev: TouchEvent) => {
+      if (!mapaImagem) return;
+      const gesture = mapTouchRef.current;
+      if (gesture.mode === "pinch" || gesture.mode === "pan") ev.preventDefault();
+    };
+    el.addEventListener("touchstart", onNativeTouchStart, { passive: false });
+    el.addEventListener("touchmove", onNativeTouchMove, { passive: false });
+
+    return () => {
+      el.removeEventListener("wheel", onNativeWheel as any);
+      el.removeEventListener("touchstart", onNativeTouchStart as any);
+      el.removeEventListener("touchmove", onNativeTouchMove as any);
+    };
+  }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
+
+  const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Suporta pan: modo mover OU Ctrl pressionado
+    const isCtrlDown = e.ctrlKey || isCtrlPanning;
+    if (!isEditingMap || (mapEditTool !== "mover" && !isCtrlDown)) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setMapActive(true);
+    if (isCtrlDown) {
+      // Ctrl+drag: armazena em ctrlPanRef para não conflitar com mapMousePanRef do modo mover
+      ctrlPanRef.current = {
+        active: true,
+        startX: e.clientX,
+        startY: e.clientY,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+      };
+      return;
+    }
+    mapMousePanRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      startPanX: mapPan.x,
+      startPanY: mapPan.y,
+    };
+  };
+
+  const handleMapTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
+    setMapActive(true);
+    if (!mapActive && e.touches.length < 2) return;
+    if (e.touches.length >= 2) {
+      e.preventDefault();
+      mapTouchRef.current = {
+        mode: "pinch",
+        startDistance: getTouchDistance(e.touches),
+        startZoom: mapZoom,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+        startX: 0,
+        startY: 0,
+      };
+      return;
+    }
+    if (mapZoom > 1 && e.touches.length === 1) {
+      e.preventDefault();
+      mapTouchRef.current = {
+        mode: "pan",
+        startDistance: 0,
+        startZoom: mapZoom,
+        startPanX: mapPan.x,
+        startPanY: mapPan.y,
+        startX: e.touches[0].clientX,
+        startY: e.touches[0].clientY,
+      };
+    }
+  };
+
+  const handleMapTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!mapActive) return;
+    const gesture = mapTouchRef.current;
+    if (gesture.mode === "pinch" && e.touches.length >= 2) {
+      e.preventDefault();
+      const distance = getTouchDistance(e.touches);
+      const nextZoom = Math.max(1, Math.min(10, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      if ((localDev as any).mapaPdfOriginalBase64) {
+        schedulePdfRender(nextZoom);
+      } else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) {
+        void requestHighResolutionMap();
+      }
+      setMapZoom(nextZoom);
+      setMapPan((prev) => clampMapPan(prev, nextZoom));
+      return;
+    }
+    if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
+      e.preventDefault();
+      const nextPan = {
+        x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
+        y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+    }
+  };
+
+  const handleMapTouchEnd = () => {
+    mapTouchRef.current = { mode: "none", startDistance: 0, startZoom: mapZoom, startPanX: mapPan.x, startPanY: mapPan.y, startX: 0, startY: 0 };
+    if (mapZoom <= 1) setMapPan({ x: 0, y: 0 });
+  };
+
+  // Resetar estado marcador ao trocar action
+  useEffect(() => {
+    if (mapAction !== "editar") {
+      setMapEditTool("marcar");
+      setMarcadorFase("idle");
+      setMarcadorPonto1(null);
+      setMarcadorPonto2Preview(null);
+    }
+  }, [mapAction]);
+
+  const loadPdfJsIfNeeded = async () => {
+    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
+    await new Promise<void>((resolve, reject) => {
+      const existing = document.querySelector('script[data-pdfjs="true"]') as HTMLScriptElement | null;
+      if (existing) {
+        existing.addEventListener("load", () => resolve(), { once: true });
+        existing.addEventListener("error", () => reject(new Error("Falha ao carregar PDF.js")), { once: true });
+        return;
+      }
+      const script = document.createElement("script");
+      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+      script.dataset.pdfjs = "true";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Falha ao carregar PDF.js"));
+      document.head.appendChild(script);
+    });
+    (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+    return (window as any).pdfjsLib;
+  };
+
+  const arrayBufferToDataUrl = (buffer: ArrayBuffer, mime = "application/pdf") => {
+    const bytes = new Uint8Array(buffer);
+    let binary = "";
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return `data:${mime};base64,${btoa(binary)}`;
+  };
+
+  const dataUrlToArrayBuffer = (dataUrl: string) => {
+    const base64 = dataUrl.split(",")[1] || "";
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+    return bytes.buffer;
+  };
+
+  const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number) => {
+    const pdfjsLib = await loadPdfJsIfNeeded();
+    const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+    const page = await pdfDoc.getPage(1);
+    const viewport = page.getViewport({ scale });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(viewport.width);
+    canvas.height = Math.floor(viewport.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    await page.render({ canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL("image/png", 1);
+  };
+
+  // ── OPÇÃO C: renderização direta do PDF no canvas ──────────────────────────
+  // Renderiza o PDF vetorial direto no <canvas> do mapa, na resolução exata
+  // do zoom atual × devicePixelRatio. Qualidade infinita, sem converter para PNG.
+  const renderPdfDirect = async (canvasEl: HTMLCanvasElement | null, zoom: number) => {
+    if (!canvasEl) return;
+    const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+    if (!originalPdf) return;
+    try {
+      const pdfjsLib = await loadPdfJsIfNeeded();
+      if (!pdfDocCacheRef.current) {
+        const buffer = dataUrlToArrayBuffer(originalPdf);
+        pdfDocCacheRef.current = await pdfjsLib.getDocument({ data: buffer }).promise;
+      }
+      const pdfDoc = pdfDocCacheRef.current;
+      const page = await pdfDoc.getPage(1);
+      const dpr = Math.max(1, window.devicePixelRatio || 1);
+
+      // ── Escala correta para qualquer tela (mobile Retina, desktop, etc) ──
+      // 1. Mede a largura CSS real do container (pixels lógicos na tela)
+      const containerCssWidth = canvasEl.parentElement?.offsetWidth || canvasEl.offsetWidth || 360;
+      // 2. Largura física em pixels do dispositivo = CSS × DPR
+      const physicalWidth = containerCssWidth * dpr;
+      // 3. Viewport natural do PDF (scale=1) para calcular a proporção
+      const baseViewport = page.getViewport({ scale: 1 });
+      // 4. Scale para que o PDF ocupe exatamente a largura física, × zoom do usuário
+      const fitScale = (physicalWidth / baseViewport.width) * zoom;
+      const viewport = page.getViewport({ scale: fitScale });
+
+      if (pdfRenderTaskRef.current) {
+        pdfRenderTaskRef.current.cancel();
+        pdfRenderTaskRef.current = null;
+      }
+
+      // Canvas físico = tamanho real em pixels do dispositivo
+      canvasEl.width = Math.floor(viewport.width);
+      canvasEl.height = Math.floor(viewport.height);
+      // CSS: deixa o canvas ocupar 100% da largura do container,
+      // a altura se ajusta proporcionalmente (igual ao <img w-full h-auto>)
+      canvasEl.style.width = "100%";
+      canvasEl.style.height = "auto";
+      canvasEl.style.display = "block";
+
+      const ctx = canvasEl.getContext("2d")!;
+      const task = page.render({ canvasContext: ctx, viewport });
+      pdfRenderTaskRef.current = task;
+      await task.promise;
+      pdfRenderTaskRef.current = null;
+
+      if (baseViewport.width > 0 && baseViewport.height > 0) {
+        setMapAspectRatio(baseViewport.width / baseViewport.height);
+      }
+      updateDisplayedMapScale();
+    } catch (err: any) {
+      if (err?.name !== "RenderingCancelledException") {
+        console.error("Erro ao renderizar PDF direto:", err);
+      }
+    }
+  };
+
+  const schedulePdfRender = (zoom: number) => {
+    if (pdfRenderScheduledRef.current) clearTimeout(pdfRenderScheduledRef.current);
+    // Delay de 80ms garante que o layout já calculou offsetWidth do container
+    // (importante no primeiro render mobile onde o container pode ter largura 0)
+    pdfRenderScheduledRef.current = setTimeout(() => {
+      void renderPdfDirect(pdfCanvasRef.current, zoom);
+      void renderPdfDirect(pdfCanvasFullscreenRef.current, zoom);
+    }, 80);
+  };
+  // ─────────────────────────────────────────────────────────────────────────────
+
+  const requestHighResolutionMap = async () => {
+    // Gera a imagem em alta resolução sob demanda (estágio 3).
+    // Se o PDF original não estiver disponível, apenas atualiza a escala.
+    if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
+    const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+    if (!originalPdf) {
+      scheduleMapScaleUpdate(false);
+      return;
+    }
+    try {
+      setMapHighResLoading(true);
+      const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
+
+      // Estágio 2 — Média: 2x (carrega primeiro, melhora nitidez rapidamente)
+      const medScale = Math.max(2, Math.min(3, 2 * deviceRatio));
+      const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), medScale);
+
+      // Estágio 3 — Alta: 4–5x (para zoom avançado, edição e tela cheia)
+      const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
+      const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
+
+      persistDev({
+        ...localDev,
+        mapaImagemMedResBase64: medImage,
+        mapaImagemHighResBase64: highImage,
+        mapaAltaResolucao: true,
+        mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
+      } as Empreendimento);
+      window.setTimeout(() => scheduleMapScaleUpdate(false), 80);
+    } catch (err) {
+      console.error("Não foi possível gerar o mapa em alta resolução", err);
+      setLotScriptMsg("Não foi possível gerar o mapa em alta resolução. O app continuará usando a prévia atual.");
+    } finally {
+      setMapHighResLoading(false);
+    }
+  };
+
+  const updateDisplayedMapScale = () => {
+    requestAnimationFrame(() => {
+      const img = mapImageRef.current;
+      const container = mapContainerRef.current;
+      if (!img || !container || !img.naturalWidth) return;
+
+      const naturalWidth = img.naturalWidth;
+      const naturalHeight = img.naturalHeight || Math.round(naturalWidth / 1.414);
+      const layoutWidth = img.offsetWidth || container.clientWidth || img.getBoundingClientRect().width;
+      const layoutHeight = img.offsetHeight || container.clientHeight || img.getBoundingClientRect().height;
+
+      if (naturalWidth > 0 && naturalHeight > 0) {
+        setMapAspectRatio(naturalWidth / naturalHeight);
+      }
+
+      if (layoutWidth > 0 && naturalWidth > 0) {
+        // offsetWidth/clientWidth não inclui transform: scale(...).
+        // Isso evita escala dupla quando o usuário dá zoom ou rotaciona o celular.
+        // IMPORTANTE: a resolução da imagem pode ser alta (ex.: PDF em 4x). O tamanho das bolinhas
+        // não deve diminuir só porque a imagem tem mais pixels. Por isso usamos uma largura de
+        // referência visual para os marcadores, mantendo xPercent/yPercent intactos.
+        const markerReferenceWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 1000));
+        const markerReferenceHeight = markerReferenceWidth / Math.max(0.5, naturalWidth / naturalHeight);
+        const scaleX = layoutWidth / markerReferenceWidth;
+        const scaleY = layoutHeight > 0 ? layoutHeight / markerReferenceHeight : scaleX;
+        const safeScale = Math.max(0.1, Math.min(scaleX || 1, scaleY || scaleX || 1));
+        setDisplayedMapScale(safeScale);
+      }
+    });
+  };
+
+  const scheduleMapScaleUpdate = (resetPan = false) => {
+    if (resetPan) setMapPan({ x: 0, y: 0 });
+    updateDisplayedMapScale();
+    window.setTimeout(updateDisplayedMapScale, 80);
+    window.setTimeout(updateDisplayedMapScale, 250);
+    window.setTimeout(updateDisplayedMapScale, 500);
+  };
+
+  // Renderização direta do PDF sempre que o zoom ou o empreendimento mudar
+  useEffect(() => {
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      // Invalida cache de documento ao trocar de empreendimento
+      pdfDocCacheRef.current = null;
+      schedulePdfRender(mapZoom);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [(localDev as any).mapaPdfOriginalBase64]);
+
+  // Re-renderiza o canvas correto ao abrir/fechar fullscreen
+  useEffect(() => {
+    if ((localDev as any).mapaPdfOriginalBase64) {
+      setTimeout(() => {
+        // Renderiza nos dois — o visível atualiza imediatamente, o outro fica em standby.
+        void renderPdfDirect(pdfCanvasRef.current, mapZoom);
+        void renderPdfDirect(pdfCanvasFullscreenRef.current, mapZoom);
+      }, 80);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapFullscreen]);
+
+  useEffect(() => {
+    scheduleMapScaleUpdate(mapFullscreen);
+
+    // Alta resolução sob demanda (fallback para mapas sem PDF)
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD && !(localDev as any).mapaImagemHighResBase64 && (localDev as any).mapaPdfOriginalBase64) {
+      void requestHighResolutionMap();
+    }
+
+    const observed = [mapViewportRef.current, mapContainerRef.current, mapImageRef.current].filter(Boolean) as Element[];
+    const observer = new ResizeObserver(() => {
+      scheduleMapScaleUpdate(false);
+      // Re-renderiza o PDF com a nova largura do container (rotação, resize)
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+    });
+
+    observed.forEach((el) => observer.observe(el));
+
+    const handleResize = () => {
+      scheduleMapScaleUpdate(false);
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+    };
+    const handleOrientationChange = () => {
+      scheduleMapScaleUpdate(true);
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleOrientationChange);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleOrientationChange);
+    };
+  }, [mapaImagem, mode, mapFullscreen, mapZoom]);
+
+  const quadras = getQuadraList(localDev);
+  const lotDivergences = getLotDivergenceDetails(localDev, sales);
+  const extraLotKeySet = new Set(lotDivergences.extras);
+  const hasExtraLot = (quadra: string, lote: string) => extraLotKeySet.has(getLotInfoKey(quadra, lote));
+  const extraLotsByQuadra = (quadra: string) =>
+    lotDivergences.extras
+      .map(splitLotKeyLabel)
+      .filter((item) => normalizeLotKeyPart(item.quadra) === normalizeLotKeyPart(quadra))
+      .map((item) => item.lote);
+  const isMultiLote = (lote: string) => lote.includes(",") && lote.split(",").filter((s: string) => s.trim()).length > 1;
+
+  const persistDev = (nextDev: Empreendimento) => {
+    const recalculado = recalcularEstatisticasEmpreendimento(nextDev, sales);
+    setLocalDev(recalculado);
+    onSaveDev(recalculado);
+  };
+
+  const copyScriptForChatGPT = async () => {
+    const scriptAtual = formatLotScriptFromEmpreendimento(localDev, sales);
+    const payload = [
+      `EMPREENDIMENTO: ${localDev.nome}`,
+      "REGRA: devolver somente no padrão Q1:1D,2I,3R.",
+      "STATUS: D=DISPONÍVEL; I=INDISPONÍVEL; R=RESERVADO.",
+      "CHAVE: empreendimento + quadra + lote. Não duplicar.",
+      "",
+      "SCRIPT_ATUAL:",
+      scriptAtual || "Q1:.",
+      "",
+      "ORIENTAÇÃO:",
+      "Analise o mapa enviado e devolva o script corrigido por quadra.",
+    ].join("\n");
+
+    setLotScriptText(payload);
+    setLotScriptMsg("Script preparado para enviar ao ChatGPT.");
+    try {
+      await navigator.clipboard?.writeText(payload);
+      setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
+    } catch {
+      // Mantém no campo para cópia manual.
+    }
+  };
+
+  const importScriptFromChatGPT = () => {
+    const parsed = parseLotScriptByQuadra(lotScriptText);
+    if (parsed.errors.length > 0) {
+      alert("Corrija o script antes de importar:\n\n" + parsed.errors.slice(0, 8).join("\n"));
+      return;
+    }
+    if (parsed.items.length === 0) {
+      alert("Nenhum lote encontrado no script.");
+      return;
+    }
+
+    const conflicts = parsed.items
+      .map((item) => {
+        const key = getLotInfoKey(item.quadra, item.lote);
+        const existingInfo = localDev.lotesInfo?.[key];
+        const existingPoint = mapaPontos.find((p: any) => getLotInfoKey(p.quadra, p.lote) === key);
+        const currentStatus = existingPoint?.status || existingInfo?.status;
+        if (currentStatus && normalizeMapaStatus(currentStatus) !== item.status) {
+          return { ...item, currentStatus: normalizeMapaStatus(currentStatus), hasPoint: !!existingPoint };
+        }
+        return null;
+      })
+      .filter(Boolean) as Array<LotScriptItem & { currentStatus: MapaLoteStatus; hasPoint: boolean }>;
+
+    let conflictMode: "update" | "keep" = "update";
+    if (conflicts.length > 0) {
+      const sample = conflicts.slice(0, 10).map((c) => `Q${c.quadra} L${c.lote}: atual ${lotScriptStatusToLabel(c.currentStatus)} → novo ${lotScriptStatusToLabel(c.status)}`).join("\n");
+      const update = window.confirm(
+        `Foram encontrados ${conflicts.length} conflito(s) de status.\n\n${sample}\n\nOK = atualizar com o script novo.\nCancelar = manter status atual e importar apenas novos lotes.`
+      );
+      conflictMode = update ? "update" : "keep";
+    }
+
+    let nextDevLocal = localDev;
+    let created = 0;
+    let updated = 0;
+    let kept = 0;
+    let linkedPoints = 0;
+
+    parsed.items.forEach((item) => {
+      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, item.quadra, item.lote);
+      const key = ensured.lotInfoKey;
+      const existingInfo = ensured.dev.lotesInfo?.[key] || {};
+      const currentPoint = ((ensured.dev as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === key);
+      const currentStatus = currentPoint?.status || (existingInfo as any)?.status;
+      const hasConflict = currentStatus && normalizeMapaStatus(currentStatus) !== item.status;
+      const shouldUpdate = !hasConflict || conflictMode === "update";
+      const nextStatus = shouldUpdate ? item.status : normalizeMapaStatus(currentStatus);
+
+      if (!existingInfo && !currentPoint) created += 1;
+      else if (shouldUpdate) updated += 1;
+      else kept += 1;
+      if (currentPoint) linkedPoints += 1;
+
+      const nextInfo = {
+        ...existingInfo,
+        status: nextStatus,
+        atualizadoEm: new Date().toISOString(),
+        origemAtualizacao: shouldUpdate ? "script-chatgpt" : ((existingInfo as any).origemAtualizacao || "mantido"),
+      };
+
+      const nextPontos = ((ensured.dev as any).mapaPontos || []).map((p: any) => {
+        if (getLotInfoKey(p.quadra, p.lote) !== key) return p;
+        return {
+          ...p,
+          status: nextStatus,
+          atualizadoEm: new Date().toISOString(),
+        };
+      });
+
+      nextDevLocal = {
+        ...ensured.dev,
+        lotesInfo: {
+          ...(ensured.dev.lotesInfo || {}),
+          [key]: nextInfo,
+        },
+        mapaPontos: nextPontos,
+      } as Empreendimento;
+    });
+
+    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    persistDev(finalDev);
+    setLotScriptMsg(`Importado: ${parsed.items.length} lote(s). Criados ${created}, atualizados ${updated}, mantidos ${kept}, bolinhas vinculadas ${linkedPoints}.`);
+  };
+
+  const vendaDoLote = (quadra: string, lote: string, vendaId?: string) => {
+    if (vendaId) {
+      const byId = sales.find((v) => v.id === vendaId);
+      if (byId) return byId;
+    }
+    return findVendaAtivaDoLote(sales, localDev.id, quadra, lote);
+  };
+
+  // ──────────────────────────────────────────────
+  // UPLOAD DE IMAGEM
+  // ──────────────────────────────────────────────
+  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const allowedImages = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
+    const isPDF = file.type === "application/pdf";
+    if (!allowedImages.includes(file.type) && !isPDF) {
+      alert("Use imagem PNG, JPG, WEBP ou arquivo PDF.");
+      return;
+    }
+    if (isPDF) {
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          const originalBuffer = reader.result as ArrayBuffer;
+          const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
+          // Prévia leve para o mapa abrir rápido no card.
+          // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
+          const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
+          const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
+          persistDev({
+            ...localDev,
+            mapaImagemBase64: previewImage,
+            mapaImagemHighResBase64: "",
+            mapaPdfOriginalBase64: pdfOriginalBase64,
+            mapaPdfOriginalName: file.name,
+            mapaImagemUrl: "",
+            mapaPontos: mapaPontos,
+            mapaAltaResolucao: false,
+            mapaMarkerReferenceWidth: 1000,
+          } as Empreendimento);
+          setMode("mapa");
+        } catch (err) {
+          alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      persistDev({
+        ...localDev,
+        mapaImagemBase64: String(reader.result || ""),
+        mapaImagemHighResBase64: "",
+        mapaPdfOriginalBase64: "",
+        mapaPdfOriginalName: "",
+        mapaImagemUrl: "",
+        mapaPontos: mapaPontos,
+        mapaAltaResolucao: true,
+        mapaMarkerReferenceWidth: 1000,
+      } as Empreendimento);
+      setMode("mapa");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // ──────────────────────────────────────────────
+  // TAMANHO DAS BOLINHAS
+  // ──────────────────────────────────────────────
+  const getBallBasePixelSize = () => {
+    const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+    return {
+      size: Math.round(18 * pct),
+      font: Math.max(6, Math.round(7 * pct)),
+    };
+  };
+
+  const getDisplayedMapScale = () => {
+    return Math.max(0.1, displayedMapScale || 1);
+  };
+
+  const getBallPixelSize = () => {
+    // O slider define o tamanho base. A visualização recalcula pela escala real do mapa.
+    const base = getBallBasePixelSize();
+    const scale = getDisplayedMapScale();
+    return {
+      size: Math.max(5, Math.min(base.size, Math.round(base.size * scale))),
+      font: Math.max(5, Math.min(base.font, Math.round(base.font * scale))),
+    };
+  };
+
+  const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
+  const fullscreenMapWidth = `min(100vw, calc(100dvh * ${Math.max(0.5, Math.min(3, mapAspectRatio))}))`;
+
+  // ──────────────────────────────────────────────
+  // DOWNLOAD IMAGEM/PDF
+  // ──────────────────────────────────────────────
+  const limparNomeArquivoMapa = (value: string) =>
+    (value || "EMPREENDIMENTO")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9_-]+/g, "_")
+      .replace(/_+/g, "_")
+      .replace(/^_|_$/g, "")
+      .toUpperCase();
+
+  const getNomeArquivoMapaExportado = (ext: "png" | "pdf") => {
+    const now = new Date();
+    const diaSemana = limparNomeArquivoMapa(now.toLocaleDateString("pt-BR", { weekday: "long" }));
+    const data = now.toLocaleDateString("pt-BR").replace(/\//g, "-");
+    const hora = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "-");
+    const empreendimento = limparNomeArquivoMapa(localDev.nome || "EMPREENDIMENTO");
+    return `${empreendimento}_${diaSemana}_${data}_${hora}.${ext}`;
+  };
+
+  const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
+    return new Promise((resolve, reject) => {
+      if (!mapaImagem) {
+        reject(new Error("Nenhum mapa carregado para baixar."));
+        return;
+      }
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth || img.width;
+        canvas.height = img.naturalHeight || img.height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        const baseSize = getBallBasePixelSize().size;
+        const exportScale = Math.max(canvas.width / 1000, 0.1);
+        const radius = Math.max((baseSize * exportScale) / 2, 3);
+        mapaPontos.forEach((ponto) => {
+          const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+          const indisponivel = ponto.status === "indisponivel" || !!venda;
+          const reservado = !indisponivel && ponto.status === "reservado";
+          const x = (Number(ponto.xPercent) / 100) * canvas.width;
+          const y = (Number(ponto.yPercent) / 100) * canvas.height;
+          ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+          ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
+          ctx.fill();
+          ctx.lineWidth = Math.max(radius * 0.22, 1); ctx.strokeStyle = "#ffffff"; ctx.stroke();
+          // Exportação/visualização impressa: bolinha limpa, sem número.
+          // Os números aparecem somente no modo Editar mapa.
+        });
+        resolve(canvas);
+      };
+      img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
+      img.src = mapaImagem;
+    });
+  };
+
+  const baixarMapaInterativoImagem = async () => {
+    try {
+      const canvas = await gerarCanvasMapaInterativo();
+      const link = document.createElement("a");
+      link.download = getNomeArquivoMapaExportado("png");
+      link.href = canvas.toDataURL("image/png");
+      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+    } catch (error: any) {
+      alert(error?.message || "Não foi possível baixar o mapa com as bolinhas.");
+    }
+  };
+
+  const baixarMapaInterativoPdf = async () => {
+    try {
+      const canvas = await gerarCanvasMapaInterativo();
+      const { jsPDF } = await import("jspdf");
+      const landscape = canvas.width >= canvas.height;
+      const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const margin = 6;
+      const maxWidth = pageWidth - margin * 2;
+      const maxHeight = pageHeight - margin * 2;
+      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
+      const imgWidth = canvas.width * ratio;
+      const imgHeight = canvas.height * ratio;
+      const x = (pageWidth - imgWidth) / 2;
+      const y = (pageHeight - imgHeight) / 2;
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
+      pdf.save(getNomeArquivoMapaExportado("pdf"));
+    } catch (error: any) {
+      alert(error?.message || "Não foi possível baixar o mapa em PDF.");
+    }
+  };
+
+  // ──────────────────────────────────────────────
+  // CRIAR/PERSISTIR BOLINHA
+  // ──────────────────────────────────────────────
+  // Versão assíncrona do modal de conflito de lote (substitui window.prompt)
+  const showLoteConflictModal = (infoTexto: string, lote: string, existingStatus: string, rawStatus: string): Promise<"1" | "2" | "3" | "4"> => {
+    return new Promise((resolve) => {
+      setLoteConflictModal({ resolve, infoTexto, lote, existingStatus, rawStatus });
+    });
+  };
+
+  const ensureMapLotAndPoint = async (raw: { quadra: string; lote: string; xPercent: number; yPercent: number; status: MapaLoteStatus; observacao?: string; moveExisting?: boolean; confirmMissing?: boolean; confirmDuplicate?: boolean; useSystemStatus?: boolean }): Promise<boolean> => {
+    const quadra = normalizeLotText(raw.quadra);
+    const lote = normalizeLotText(raw.lote);
+    if (!quadra || !lote) { alert("Informe quadra e lote."); return false; }
+
+    const key = getLotInfoKey(quadra, lote);
+    const existingPoint = mapaPontos.find((p) => getLotInfoKey(p.quadra, p.lote) === key);
+    if (existingPoint && !raw.moveExisting) {
+      if (raw.confirmDuplicate === false) return false;
+      const reposition = window.confirm(
+        "Este lote já possui uma bolinha no mapa.\n\nOK = reposicionar/vincular a bolinha existente.\nCancelar = não criar duplicata."
+      );
+      if (!reposition) return false;
+      return await ensureMapLotAndPoint({ ...raw, moveExisting: true });
+    }
+
+    const quadraSummary = getQuadraCadastroSummary(localDev, quadra);
+    const lotExists = hasConfiguredLot(localDev, quadra, lote);
+    let finalStatus: MapaLoteStatus = raw.status;
+    let finalObs = raw.observacao || "";
+
+    if (quadraSummary.exists && !raw.moveExisting) {
+      const infoTexto = quadraSummary.count > 0
+        ? `Quadra ${quadra} já possui ${quadraSummary.count} lote(s) cadastrado(s), de ${quadraSummary.first} até ${quadraSummary.last}.`
+        : `Quadra ${quadra} já existe no sistema.`;
+      if (lotExists) {
+        const existingInfo = localDev.lotesInfo?.[key];
+        const existingStatus = getSystemStatusForMarkerLot(quadra, lote);
+        if (raw.useSystemStatus) {
+          finalStatus = existingStatus;
+          finalObs = existingInfo?.observacao || finalObs;
+        } else if (existingStatus !== raw.status) {
+          // Modal React em vez de window.prompt para melhor UX
+          const escolha = await showLoteConflictModal(
+            infoTexto,
+            lote,
+            lotScriptStatusToLabel(existingStatus),
+            lotScriptStatusToLabel(raw.status)
+          );
+          if (escolha === "4") return false;
+          if (escolha === "1" || escolha === "3") {
+            finalStatus = existingStatus;
+            finalObs = existingInfo?.observacao || finalObs;
+          }
+        }
+      } else {
+        const add = window.confirm(
+          `${infoTexto}\n\nO lote ${lote} ainda não existe nesta quadra.\nDeseja criar/complementar esse lote e vincular a bolinha?`
+        );
+        if (!add) return false;
+      }
+    }
+
+    if (!lotExists && !quadraSummary.exists && raw.confirmMissing !== false) {
+      const add = window.confirm("Esta quadra/lote não existe no empreendimento. Deseja adicionar automaticamente?");
+      if (!add) return false;
+    }
+
+    const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
+    const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+    const pontoBase = {
+      id: existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      empreendimentoId: localDev.id,
+      quadra: ensured.quadraName,
+      lote,
+      xPercent: raw.xPercent,
+      yPercent: raw.yPercent,
+      status: finalStatus,
+      observacao: finalObs || existingPoint?.observacao || "",
+      criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
+      atualizadoEm: new Date().toISOString(),
+      vendaId: existingPoint?.vendaId,
+      clienteNome: existingPoint?.clienteNome,
+      dataVenda: existingPoint?.dataVenda,
+      historico: existingPoint?.historico || [],
+    };
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const nextPontos = raw.moveExisting && existingPoint
+      ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
+      : [...currentPontos, pontoBase];
+    const nextInfo = { ...existingInfo, status: finalStatus, observacao: finalObs || existingInfo.observacao || "" };
+    const nextDev = recalcularEstatisticasEmpreendimento({
+      ...ensured.dev,
+      lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
+      mapaPontos: nextPontos,
+    } as Empreendimento, sales);
+    persistDev(nextDev);
+    if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(ensured.quadraName, lote, finalStatus, finalObs || "");
+    return true;
+  };
+
+  // ──────────────────────────────────────────────
+  // SEQUÊNCIA 2 PONTOS: criar bolinhas distribuídas
+  // ──────────────────────────────────────────────
+  const criarBolinhasSequencia = (p1: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: typeof seqForm) => {
+    const quadra = normalizeLotText(form.quadra);
+    const ini = parseInt(form.loteInicial);
+    const fin = parseInt(form.loteFinal);
+    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
+    const step = ini <= fin ? 1 : -1;
+    const lotes: number[] = [];
+    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
+    const total = lotes.length;
+    let nextDevLocal = localDev;
+    const newIds: string[] = [];
+    lotes.forEach((loteNum, idx) => {
+      const t = total === 1 ? 0 : idx / (total - 1);
+      const xPercent = p1.xPercent + (p2.xPercent - p1.xPercent) * t;
+      const yPercent = p1.yPercent + (p2.yPercent - p1.yPercent) * t;
+      const loteStr = String(loteNum);
+      const lotInfoKey = getLotInfoKey(quadra, loteStr);
+      const existingPoint = ((nextDevLocal as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === lotInfoKey);
+      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
+      const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+      const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
+      // Se o formulário pede "sistema", usa o status real deste lote específico no Gerenciador de Lotes
+      const useSystemStatus = (form.status as any) === "sistema";
+      const finalStatusLote: MapaLoteStatus = useSystemStatus
+        ? normalizeMapaStatus((existingInfo as any)?.status || getLotStatusForSale(nextDevLocal, quadra, loteStr, sales).status || "disponivel")
+        : (form.status as MapaLoteStatus);
+      const pontoBase = {
+        id,
+        empreendimentoId: localDev.id,
+        quadra: ensured.quadraName,
+        lote: loteStr,
+        xPercent,
+        yPercent,
+        status: finalStatusLote,
+        observacao: form.observacao || existingPoint?.observacao || "",
+        criadoEm: existingPoint?.criadoEm || new Date().toISOString(),
+        atualizadoEm: new Date().toISOString(),
+        vendaId: existingPoint?.vendaId,
+        clienteNome: existingPoint?.clienteNome,
+        dataVenda: existingPoint?.dataVenda,
+        historico: existingPoint?.historico || [],
+        // Linha de sequência para movimentação posterior
+        linhaSeqId: `seq-${quadra}-${ini}-${fin}-${Date.now()}`,
+        linhaSeqOrdem: idx,
+        linhaSeqTotal: total,
+      };
+      const currentPontos = ((ensured.dev as any).mapaPontos || []) as any[];
+      const nextPontos = existingPoint
+        ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
+        : [...currentPontos, pontoBase];
+      const nextInfo = { ...existingInfo, status: finalStatusLote, observacao: form.observacao || existingInfo.observacao || "" };
+      nextDevLocal = {
+        ...ensured.dev,
+        lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
+        mapaPontos: nextPontos,
+      } as Empreendimento;
+      if (!existingPoint) newIds.push(id);
+    });
+    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    persistDev(finalDev);
+    setLastSessionPointIds((prev) => [...prev, ...newIds]);
+  };
+
+  // Distribuir bolinhas em curva Bézier quadrática (3 pontos)
+  const criarBolinhasCurva = (p1: { xPercent: number; yPercent: number }, pmid: { xPercent: number; yPercent: number }, p2: { xPercent: number; yPercent: number }, form: { quadra: string; loteInicial: string; loteFinal: string; status: MapaLoteStatus; observacao: string }) => {
+    const quadra = normalizeLotText(form.quadra);
+    const ini = parseInt(form.loteInicial);
+    const fin = parseInt(form.loteFinal);
+    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
+    const step = ini <= fin ? 1 : -1;
+    const lotes: number[] = [];
+    for (let l = ini; step > 0 ? l <= fin : l >= fin; l += step) lotes.push(l);
+    const total = lotes.length;
+    let nextDevLocal = localDev;
+    const newIds: string[] = [];
+    lotes.forEach((loteNum, idx) => {
+      const t = total === 1 ? 0 : idx / (total - 1);
+      const inv = 1 - t;
+      const xPercent = (inv * inv * p1.xPercent) + (2 * inv * t * pmid.xPercent) + (t * t * p2.xPercent);
+      const yPercent = (inv * inv * p1.yPercent) + (2 * inv * t * pmid.yPercent) + (t * t * p2.yPercent);
+      const loteStr = String(loteNum);
+      const lotInfoKey = getLotInfoKey(quadra, loteStr);
+      const existingPoint = ((nextDevLocal as any).mapaPontos || []).find((p: any) => getLotInfoKey(p.quadra, p.lote) === lotInfoKey);
+      const ensured = ensureLotExistsInEmpreendimento(nextDevLocal, quadra, loteStr);
+      const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+      const id = existingPoint?.id || `map-${Date.now()}-${Math.random().toString(16).slice(2)}-${idx}`;
+      const pontoBase = {
+        id, empreendimentoId: localDev.id, quadra: ensured.quadraName, lote: loteStr, xPercent, yPercent,
+        status: form.status, observacao: form.observacao || existingPoint?.observacao || "",
+        criadoEm: existingPoint?.criadoEm || new Date().toISOString(), atualizadoEm: new Date().toISOString(),
+        vendaId: existingPoint?.vendaId, clienteNome: existingPoint?.clienteNome, dataVenda: existingPoint?.dataVenda,
+        historico: existingPoint?.historico || [],
+      };
+      const currentPontos = ((ensured.dev as any).mapaPontos || []) as any[];
+      const nextPontos = existingPoint
+        ? currentPontos.map((p: any) => p.id === existingPoint.id ? pontoBase : p)
+        : [...currentPontos, pontoBase];
+      const nextInfo = { ...existingInfo, status: form.status, observacao: form.observacao || existingInfo.observacao || "" };
+      nextDevLocal = { ...ensured.dev, lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo }, mapaPontos: nextPontos } as Empreendimento;
+      if (!existingPoint) newIds.push(id);
+    });
+    const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    persistDev(finalDev);
+    setLastSessionPointIds((prev) => [...prev, ...newIds]);
+  };
+
+  // ──────────────────────────────────────────────
+  // CLIQUE NO MAPA
+  // ──────────────────────────────────────────────
+  // ──────────────────────────────────────────────
+  // CLIQUE NO MAPA — novo fluxo unificado
+  // ──────────────────────────────────────────────
+  const handleMapClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isEditingMap) return;
+    if (mapAction === "editar" && mapEditTool === "mover") return;
+    // Não cria marcador se Ctrl estava pressionado (evita criação acidental ao soltar)
+    if (e.ctrlKey || ctrlPanRef.current.active) return;
+    if (draggingId) return; // não abre formulário durante arrastar
+    const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
+    const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
+
+    // modo edição normal: clique abre formulário "Novo marcador"
+    if (mapAction === "editar") {
+      if (marcadorFase === "idle") {
+        // Abre formulário no ponto clicado
+        setMarcadorPonto1({ xPercent, yPercent });
+        setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+        // Posicionar card à direita do clique, centralizado verticalmente na viewport
+        const CARD_WIDTH = 288; // w-72 = 288px
+        const CARD_HEIGHT = 340; // altura estimada do card
+        const OFFSET = 16; // espaço entre bolinha e card
+        const viewportW = window.innerWidth;
+        const viewportH = window.innerHeight;
+        let cardX = e.clientX + OFFSET;
+        let cardY = (viewportH - CARD_HEIGHT) / 2;
+        // Se sair pela direita, posicionar à esquerda do clique
+        if (cardX + CARD_WIDTH > viewportW - 8) {
+          cardX = e.clientX - CARD_WIDTH - OFFSET;
+        }
+        // Garantir que não saia pela esquerda
+        if (cardX < 8) cardX = 8;
+        // Garantir que não saia pelo topo/base
+        cardY = Math.max(8, Math.min(viewportH - CARD_HEIGHT - 8, cardY));
+        setMarcadorPanelPos({ x: cardX, y: cardY });
+        setMarcadorFase("formulario");
+        return;
+      }
+      if (marcadorFase === "aguardando_segundo") {
+        // Segundo clique: cria bolinhas em linha entre os dois pontos
+        const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+        const ini = parseInt(lotes[0]);
+        const fin = parseInt(lotes[lotes.length - 1]);
+        criarBolinhasSequencia(
+          marcadorPonto1!,
+          { xPercent, yPercent },
+          { quadra: marcadorForm.quadra, loteInicial: String(ini), loteFinal: String(fin), status: marcadorForm.status as any, observacao: marcadorForm.observacao }
+        );
+        // Não sai da edição — apenas reseta para próximo marcador
+        setMarcadorFase("idle");
+        setMarcadorPonto1(null);
+        setMarcadorPonto2Preview(null);
+        return;
+      }
+      return;
+    }
+  };
+
+  const handleMapMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isEditingMap) return;
+    const rect = mapContainerRef.current?.getBoundingClientRect() || e.currentTarget.getBoundingClientRect();
+    const xPercent = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPercent = ((e.clientY - rect.top) / rect.height) * 100;
+    // Preview linha multi-lote
+    if (mapAction === "editar" && marcadorFase === "aguardando_segundo") {
+      setMarcadorPonto2Preview({ xPercent, yPercent });
+    }
+    // Manter compatibilidade interna sequencia
+    if (marcadorFase === "aguardando_segundo") {
+      setSeqPreview({ xPercent, yPercent });
+    }
+  };
+
+  // ──────────────────────────────────────────────
+  // ARRASTAR BOLINHAS (modo edição)
+  // ──────────────────────────────────────────────
+  const handleBallMouseDown = (e: React.MouseEvent, ponto: any) => {
+    if (!isEditingMap) return;
+    if (e.ctrlKey) return;
+    e.stopPropagation();
+    e.preventDefault();
+    setDraggingId(ponto.id);
+    setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent });
+  };
+
+  const handleMapMouseUp = () => {
+    if (ctrlPanRef.current.active) {
+      ctrlPanRef.current.active = false;
+    }
+    if (mapMousePanRef.current.active) {
+      mapMousePanRef.current.active = false;
+    }
+    if (draggingId) {
+      setDraggingId(null);
+      setDragStart(null);
+    }
+  };
+
+  const handleMapMouseMoveForDrag = (e: React.MouseEvent<HTMLDivElement>) => {
+    // Ctrl+drag pan
+    if (ctrlPanRef.current.active) {
+      const nextPan = {
+        x: ctrlPanRef.current.startPanX + (e.clientX - ctrlPanRef.current.startX),
+        y: ctrlPanRef.current.startPanY + (e.clientY - ctrlPanRef.current.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+      return;
+    }
+    if (mapMousePanRef.current.active) {
+      const nextPan = {
+        x: mapMousePanRef.current.startPanX + (e.clientX - mapMousePanRef.current.startX),
+        y: mapMousePanRef.current.startPanY + (e.clientY - mapMousePanRef.current.startY),
+      };
+      setMapPan(clampMapPan(nextPan));
+      return;
+    }
+    if (!draggingId || !dragStart || !mapContainerRef.current) return;
+    const rect = mapContainerRef.current.getBoundingClientRect();
+    const dx = ((e.clientX - dragStart.mouseX) / rect.width) * 100;
+    const dy = ((e.clientY - dragStart.mouseY) / rect.height) * 100;
+    const newX = Math.max(0, Math.min(100, dragStart.xPercent + dx));
+    const newY = Math.max(0, Math.min(100, dragStart.yPercent + dy));
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const nextPontos = currentPontos.map((p: any) =>
+      p.id === draggingId ? { ...p, xPercent: newX, yPercent: newY, atualizadoEm: new Date().toISOString() } : p
+    );
+    setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
+  };
+
+  const commitDrag = () => {
+    if (!draggingId) return;
+    persistDev(localDev);
+    setDraggingId(null);
+    setDragStart(null);
+  };
+
+  // ──────────────────────────────────────────────
+  // ALINHAMENTO DE SEQUÊNCIA EXISTENTE
+  // ──────────────────────────────────────────────
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const alinharSequencia = (_tipo: "reta" | "bezier") => {
+    // função mantida para compatibilidade, não exposta na UI
+    const quadra = "";
+    const ini = 0;
+    const fin = 0;
+    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final para alinhar."); return; }
+    const min = Math.min(ini, fin); const max = Math.max(ini, fin);
+    const pontosSeq = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number.isFinite(Number(p.lote)) && Number(p.lote) >= min && Number(p.lote) <= max).sort((a, b) => ini <= fin ? Number(a.lote) - Number(b.lote) : Number(b.lote) - Number(a.lote));
+    if (pontosSeq.length < 2) { alert("Marque pelo menos dois pontos dessa sequência."); return; }
+    const primeiro = pontosSeq[0]; const ultimo = pontosSeq[pontosSeq.length - 1];
+    const meioEx = pontosSeq[Math.floor(pontosSeq.length / 2)];
+    const controle = tipo === "bezier" ? { xPercent: meioEx?.xPercent ?? ((primeiro.xPercent + ultimo.xPercent) / 2), yPercent: meioEx?.yPercent ?? (Math.min(primeiro.yPercent, ultimo.yPercent) - 10) } : null;
+    const ids = new Set(pontosSeq.map((p) => p.id));
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    pontosSeq.forEach((p, idx) => {
+      const t = pontosSeq.length === 1 ? 0 : idx / (pontosSeq.length - 1);
+      if (!controle) {
+        posicoes.set(p.id, { xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t, yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t });
+      } else {
+        const inv = 1 - t;
+        posicoes.set(p.id, { xPercent: (inv * inv * primeiro.xPercent) + (2 * inv * t * controle.xPercent) + (t * t * ultimo.xPercent), yPercent: (inv * inv * primeiro.yPercent) + (2 * inv * t * controle.yPercent) + (t * t * ultimo.yPercent) });
+      }
+    });
+    const nextPontos = mapaPontos.map((p) => ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p);
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+  };
+
+  // ──────────────────────────────────────────────
+  // AÇÕES NAS BOLINHAS (modo visualização)
+  // ──────────────────────────────────────────────
+  const marcarPonto = (ponto: any, status: MapaLoteStatus) => {
+    const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+    if (status === "disponivel" && venda) {
+      const ok = window.confirm(`Este lote está vinculado à venda de ${venda.clienteNome || ponto.clienteNome || "cliente não informado"}. Ao marcar como disponível, o lote será liberado para nova venda, mas o histórico será mantido. Deseja continuar?`);
+      if (!ok) return;
+    }
+    const historicoExtra = status === "disponivel" && (ponto.vendaId || ponto.clienteNome)
+      ? [{ clienteAnterior: ponto.clienteNome || venda?.clienteNome || "Cliente não informado", vendaIdAnterior: ponto.vendaId || venda?.id || "", dataVenda: ponto.dataVenda || venda?.dataVenda || "", dataLiberacao: new Date().toISOString(), status: "liberado/desistiu" }]
+      : [];
+    const nextPontos = mapaPontos.map((p) => {
+      if (p.id !== ponto.id) return p;
+      const next: any = { ...p, status, atualizadoEm: new Date().toISOString(), historico: [...(p.historico || []), ...historicoExtra] };
+      if (status === "disponivel") { delete next.vendaId; delete next.clienteNome; delete next.dataVenda; }
+      return next;
+    });
+    let nextDev = updateLoteStatusInEmpreendimento(localDev, sales, ponto.quadra, ponto.lote, status, { origem: "mapa", venda, removerVinculoAtivo: status === "disponivel" });
+    nextDev = { ...nextDev, mapaPontos: nextPontos } as Empreendimento;
+    persistDev(nextDev);
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(ponto.quadra, ponto.lote, status, ponto.observacao || "");
+    setSelectedPoint(null);
+  };
+
+  const editarPonto = (ponto: any) => {
+    const quadraOriginal = normalizeLotText(ponto.quadra);
+    const loteOriginal = normalizeLotText(ponto.lote);
+    const quadra = normalizeLotText(window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nQuadra`, ponto.quadra) || ponto.quadra);
+    // Alertar se a quadra foi alterada
+    if (normalizeLotKeyPart(quadra) !== normalizeLotKeyPart(quadraOriginal)) {
+      const confirmar = window.confirm(`⚠️ ATENÇÃO: Você está alterando a Quadra de "${quadraOriginal}" para "${quadra}".\n\nIsso moverá o marcador para outra quadra. Deseja continuar?`);
+      if (!confirmar) return;
+    }
+    const lote = normalizeLotText(window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nLote`, ponto.lote) || ponto.lote);
+    const statusInput = (window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nStatus: disponivel, reservado ou indisponivel`, ponto.status) || ponto.status).toLowerCase();
+    const status: MapaLoteStatus = statusInput === "indisponivel" ? "indisponivel" : statusInput === "reservado" ? "reservado" : "disponivel";
+    const observacao = window.prompt(`[Editando: Quadra ${ponto.quadra} · Lote ${ponto.lote}]\n\nObservação`, ponto.observacao || "") || "";
+    const oldNum = Number(loteOriginal); const newNum = Number(lote);
+    const mudouNumeroSequencial = quadra === quadraOriginal && lote !== loteOriginal && Number.isFinite(oldNum) && Number.isFinite(newNum);
+    const renumerarSequencia = mudouNumeroSequencial
+      ? window.confirm(`Você alterou o lote ${loteOriginal} para ${lote}. Deseja continuar a sequência a partir do lote ${lote}?\n\nOK = renumerar este e os próximos pontos.\nCancelar = alterar somente esta bolinha.`)
+      : false;
+    const pontosAfetados = renumerarSequencia
+      ? mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadraOriginal && Number.isFinite(Number(p.lote)) && Number(p.lote) >= oldNum).sort((a, b) => Number(a.lote) - Number(b.lote))
+      : [ponto];
+    const affectedIds = new Set(pontosAfetados.map((p) => p.id));
+    const targetKeys = renumerarSequencia
+      ? new Set(pontosAfetados.map((_, idx) => getLotInfoKey(quadra, String(newNum + idx))))
+      : new Set([getLotInfoKey(quadra, lote)]);
+    const duplicate = mapaPontos.find((p) => !affectedIds.has(p.id) && targetKeys.has(getLotInfoKey(p.quadra, p.lote)));
+    if (duplicate) { alert("Já existe uma bolinha com esta quadra/lote."); return; }
+    let nextDev: Empreendimento = localDev;
+    const atualizacaoPorId: Record<string, { quadra: string; lote: string }> = {};
+    if (renumerarSequencia) {
+      pontosAfetados.forEach((pAfetado, idx) => {
+        const targetLote = String(newNum + idx);
+        const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, targetLote);
+        const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+        nextDev = { ...ensured.dev, lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: { ...existingInfo, status: pAfetado.id === ponto.id ? status : (existingInfo.status || pAfetado.status || "disponivel"), observacao: pAfetado.id === ponto.id ? observacao : (existingInfo.observacao || pAfetado.observacao || "") } } } as Empreendimento;
+        atualizacaoPorId[pAfetado.id] = { quadra: ensured.quadraName, lote: targetLote };
+      });
+      const nextPontos = mapaPontos.map((p) => atualizacaoPorId[p.id] ? { ...p, ...atualizacaoPorId[p.id], status: p.id === ponto.id ? status : p.status, observacao: p.id === ponto.id ? observacao : p.observacao, atualizadoEm: new Date().toISOString() } : p);
+      persistDev({ ...nextDev, mapaPontos: nextPontos } as Empreendimento);
+    } else {
+      const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
+      const oldKey = getLotInfoKey(ponto.quadra, ponto.lote);
+      const nextPontos = mapaPontos.map((p) => p.id === ponto.id ? { ...p, quadra: ensured.quadraName, lote, status, observacao, atualizadoEm: new Date().toISOString() } : p);
+      const nextInfo = { ...(ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {}), status, observacao };
+      const lotesInfo = { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo };
+      if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) delete (lotesInfo as any)[oldKey];
+      persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
+    }
+    // Sync com Gerenciador de Lotes
+    if (onMarkerSaved) onMarkerSaved(quadra, lote, status, observacao);
+    setSelectedPoint(null);
+  };
+
+  const excluirPonto = (ponto: any) => {
+    const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+    if (venda) {
+      const ok = window.confirm("Esta bolinha possui venda vinculada. Excluir a bolinha não apagará a venda/contrato. Deseja continuar?");
+      if (!ok) return;
+    } else {
+      const ok = window.confirm("Excluir esta bolinha do mapa?");
+      if (!ok) return;
+    }
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => p.id !== ponto.id) } as Empreendimento);
+    setSelectedPoint(null);
+    // Não sai do modo edição
+  };
+
+  const desfazerUltimoPonto = () => {
+    const lastId = lastSessionPointIds[lastSessionPointIds.length - 1];
+    if (!lastId) return;
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => p.id !== lastId) } as Empreendimento);
+    setLastSessionPointIds((prev) => prev.slice(0, -1));
+  };
+
+  // ──────────────────────────────────────────────
+  // EDIÇÃO EM MASSA
+  // ──────────────────────────────────────────────
+  const toggleMassaSel = (id: string) => {
+    setMassaSelIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const selecionarQuadraCompleta = (quadra: string) => {
+    const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === normalizeLotText(quadra)).map((p) => p.id);
+    setMassaSelIds(new Set(ids));
+  };
+
+  const selecionarIntervalo = () => {
+    const quadra = normalizeLotText(massaFiltroQuadra);
+    const ini = parseInt(massaFiltroLoteIni);
+    const fin = parseInt(massaFiltroLoteFin);
+    if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
+    const min = Math.min(ini, fin); const max = Math.max(ini, fin);
+    const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number(p.lote) >= min && Number(p.lote) <= max).map((p) => p.id);
+    setMassaSelIds(new Set(ids));
+  };
+
+  const alinharMarcadoresSelecionados = (ids: Set<string>, tipo: "horizontal" | "vertical" | "distribuirHorizontal") => {
+    const selecionados = mapaPontos
+      .filter((p) => ids.has(p.id))
+      .slice()
+      .sort((a, b) => {
+        const na = Number(a.lote); const nb = Number(b.lote);
+        if (!isNaN(na) && !isNaN(nb)) return na - nb;
+        return String(a.lote).localeCompare(String(b.lote));
+      });
+    if (selecionados.length < 2) { alert("Selecione pelo menos duas bolinhas para alinhar."); return; }
+
+    const first = selecionados[0];
+    const last = selecionados[selecionados.length - 1];
+    const minX = Math.min(...selecionados.map((p) => Number(p.xPercent) || 0));
+    const maxX = Math.max(...selecionados.map((p) => Number(p.xPercent) || 0));
+    const avgY = selecionados.reduce((acc, p) => acc + (Number(p.yPercent) || 0), 0) / selecionados.length;
+    const avgX = selecionados.reduce((acc, p) => acc + (Number(p.xPercent) || 0), 0) / selecionados.length;
+
+    const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
+    selecionados.forEach((p, idx) => {
+      if (tipo === "horizontal") posicoes.set(p.id, { xPercent: p.xPercent, yPercent: avgY });
+      if (tipo === "vertical") posicoes.set(p.id, { xPercent: avgX, yPercent: p.yPercent });
+      if (tipo === "distribuirHorizontal") {
+        const t = selecionados.length === 1 ? 0 : idx / (selecionados.length - 1);
+        posicoes.set(p.id, {
+          xPercent: first.xPercent + ((last.xPercent ?? maxX) - (first.xPercent ?? minX)) * t,
+          yPercent: first.yPercent + ((last.yPercent ?? avgY) - (first.yPercent ?? avgY)) * t,
+        });
+      }
+    });
+
+    const nextPontos = mapaPontos.map((p) =>
+      ids.has(p.id) ? { ...p, ...(posicoes.get(p.id) || {}), atualizadoEm: new Date().toISOString() } : p
+    );
+    persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+  };
+
+  const aplicarAcaoMassa = () => {
+    if (massaSelIds.size === 0) { alert("Selecione ao menos uma bolinha."); return; }
+    if (!massaAcao) { alert("Selecione uma ação."); return; }
+    if (massaAcao === "selecionar") {
+      alert(`${massaSelIds.size} bolinha(s) selecionada(s). Escolha outra ação quando quiser alterar, excluir ou alinhar.`);
+      return;
+    }
+    if (massaAcao === "alinharHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "horizontal"); return; }
+    if (massaAcao === "alinharVertical") { alinharMarcadoresSelecionados(massaSelIds, "vertical"); return; }
+    if (massaAcao === "distribuirHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "distribuirHorizontal"); return; }
+    if (massaAcao === "excluir") {
+      const ok = window.confirm(`Excluir ${massaSelIds.size} bolinha(s)? Esta ação não pode ser desfeita.`);
+      if (!ok) return;
+      const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+      persistDev({ ...localDev, mapaPontos: currentPontos.filter((p: any) => !massaSelIds.has(p.id)) } as Empreendimento);
+      setMassaSelIds(new Set());
+      return;
+    }
+    const status = massaAcao as MapaLoteStatus;
+    let nextDevLocal = localDev;
+    massaSelIds.forEach((id) => {
+      const ponto = ((nextDevLocal as any).mapaPontos || []).find((p: any) => p.id === id);
+      if (!ponto) return;
+      const currentPontos = ((nextDevLocal as any).mapaPontos || []) as any[];
+      const nextPontos = currentPontos.map((p: any) => p.id === id ? { ...p, status, atualizadoEm: new Date().toISOString() } : p);
+      nextDevLocal = updateLoteStatusInEmpreendimento(nextDevLocal, sales, ponto.quadra, ponto.lote, status, { origem: "mapa" });
+      nextDevLocal = { ...nextDevLocal, mapaPontos: nextPontos } as Empreendimento;
+    });
+    persistDev(recalcularEstatisticasEmpreendimento(nextDevLocal, sales));
+    setMassaSelIds(new Set());
+    // Não sai do modo edição
+  };
+
+  // ──────────────────────────────────────────────
+  // SELEÇÃO COM CTRL
+  // ──────────────────────────────────────────────
+  const toggleCtrlSel = (id: string) => {
+    setCtrlSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      setMassaSelIds(new Set(next));
+      return next;
+    });
+  };
+
+  // ──────────────────────────────────────────────
+  // ALINHAR LOTES SELECIONADOS COM CTRL
+  // ──────────────────────────────────────────────
+  const alinharLotesSelecionados = () => {
+    if (ctrlSelectedIds.size < 2) return;
+    alinharMarcadoresSelecionados(ctrlSelectedIds, "distribuirHorizontal");
+    // NÃO sai do modo edição
+  };
+
+  // ──────────────────────────────────────────────
+  // SALVAR / SAIR DO MODO EDIÇÃO
+  // ──────────────────────────────────────────────
+  const salvarEdicaoMapa = () => {
+    persistDev({
+      ...localDev,
+      mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+    } as Empreendimento);
+    setDraggingId(null);
+    setDragStart(null);
+    setSelectedPoint(null);
+    setMarcadorFase("idle");
+    setMarcadorPonto1(null);
+    setMarcadorPonto2Preview(null);
+    setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+    setSeqFase("aguardando_primeiro");
+    setSeqPrimeiroClique(null);
+    setSeqPreview(null);
+    setMassaSelIds(new Set());
+    setCtrlSelectedIds(new Set());
+    setMarcadorPanelPos(null);
+    setLastSessionPointIds([]);
+    setMapAction("visualizar");
+    setMapActive(false);
+    setMapZoom(1);
+    setMapPan({ x: 0, y: 0 });
+  };
+
+  const entrarEdicao = () => {
+    setMapAction("editar");
+    setMarcadorFase("idle");
+    if (mapaImagem) setMode("mapa");
+  };
+
+  // ──────────────────────────────────────────────
+  // AVISO LOTES SEM BOLINHA
+  // ──────────────────────────────────────────────
+  const lotesConfigSemBolinha = (() => {
+    const pontoKeys = new Set(mapaPontos.map((p: any) => getLotInfoKey(p.quadra, p.lote)));
+    let count = 0;
+    quadras.forEach((q) => {
+      const lotes = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
+      lotes.forEach((l) => { if (!pontoKeys.has(getLotInfoKey(q, l))) count++; });
+    });
+    return count;
+  })();
+
+  // ──────────────────────────────────────────────
+  // PREVIEW BOLINHAS PARA SEQUÊNCIA
+  // ──────────────────────────────────────────────
+  // Preview bolinhas para o novo fluxo de marcador multi-lote
+  const renderSeqPreviewBalls = () => {
+    // Novo fluxo: marcador multi-lote aguardando segundo ponto
+    if (mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && marcadorPonto2Preview) {
+      const lotes = marcadorForm.lote.split(",").map((s: string) => s.trim()).filter(Boolean);
+      const total = lotes.length;
+      const ballSize = getBallPixelSize();
+      return (
+        <>
+          <svg className="absolute inset-0 w-full h-full pointer-events-none" xmlns="http://www.w3.org/2000/svg">
+            <line
+              x1={`${marcadorPonto1.xPercent}%`} y1={`${marcadorPonto1.yPercent}%`}
+              x2={`${marcadorPonto2Preview.xPercent}%`} y2={`${marcadorPonto2Preview.yPercent}%`}
+              stroke="#3b82f6" strokeWidth="2" strokeDasharray="6,4" opacity="0.6"
+            />
+          </svg>
+          {lotes.map((loteLabel, idx) => {
+            const t = total === 1 ? 0 : idx / (total - 1);
+            const x = marcadorPonto1.xPercent + (marcadorPonto2Preview.xPercent - marcadorPonto1.xPercent) * t;
+            const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
+            return (
+              <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
+                {loteLabel}
+              </div>
+            );
+          })}
+        </>
+      );
+    }
+    return null;
+  };
+
+  // ──────────────────────────────────────────────
+  // RENDERIZAR QUADRADINHOS
+  // ──────────────────────────────────────────────
+  const renderQuadradinhos = () => (
+    <div className="space-y-12">
+      {quadras.length > 0 ? quadras.map((q) => {
+        const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
+        const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter((key) => key.startsWith(q.toUpperCase() + "-")).map((key) => key.split("-")[1]);
+        const extraLots = extraLotsByQuadra(q);
+        const displayLots = Array.from(new Set([
+          ...(configuredLots.length > 0 ? configuredLots : []),
+          ...lotesInfoKeys,
+          ...extraLots,
+        ])).sort((a, b) => Number(a) - Number(b));
+        return (
+          <div key={q} className="space-y-4">
+            <div className="flex items-center gap-3"><h4 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-display font-bold text-sm">Quadra {q}</h4><div className="h-px flex-1 bg-slate-100" /></div>
+            {displayLots.length === 0 ? (
+              <div className="p-4 rounded-2xl bg-slate-50 text-sm text-slate-400 font-medium">Nenhum lote cadastrado nesta quadra.</div>
+            ) : (
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+                {displayLots.map((l) => {
+                  const soldData = vendaDoLote(q, l);
+                  const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
+                  const reserved = !soldData && lotInfo?.status === "reservado";
+                  const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
+                  const extraLot = hasExtraLot(q, l);
+                  return (
+                    <div
+                      key={l}
+                      title={extraLot ? `Lote a mais: Quadra ${q} / Lote ${l}${soldData ? " - possui contrato/venda vinculada" : " - verificar cadastro"}` : undefined}
+                      onClick={() => { if (soldData) setSelectedLotSale(soldData); }}
+                      className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${extraLot ? "bg-black border-black text-white cursor-pointer hover:bg-slate-900" : unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
+                      <span className="text-lg font-display font-bold leading-none">{l}</span>
+                      <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${extraLot ? "bg-white/20 text-white" : unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>
+                        {extraLot ? "A mais" : unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}
+                      </div>
+                      {extraLot && <div className="mt-1 text-[7px] font-black uppercase tracking-widest text-white/80">Verificar</div>}
+                      {!extraLot && !unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        );
+      }) : <div className="text-center py-20 space-y-4"><div className="p-4 bg-slate-50 rounded-full w-fit mx-auto text-slate-300"><Info size={32} /></div><p className="text-slate-400 font-medium">Nenhuma quadra cadastrada para este empreendimento.</p><p className="text-xs text-slate-300 max-w-xs mx-auto">Cadastre lotes manualmente ou carregue uma imagem do mapa.</p></div>}
+    </div>
+  );
+
+  // ──────────────────────────────────────────────
+  // RENDERIZAR MAPA
+  // ──────────────────────────────────────────────
+  const renderMapa = () => {
+    const ballSize = getBallPixelSize();
+    return (
+        <div className="space-y-4">
+        {/* Aviso lotes sem bolinha */}
+        {isEditingMap && lotesConfigSemBolinha > 0 && (
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
+            Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
+          </div>
+        )}
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+          {/* CANVAS DO MAPA */}
+          <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200">
+            {!isEditingMap && (
+              <div className="px-2 pb-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Modo visualização</p>
+                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
+              </div>
+            )}
+            {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
+              <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
+                <span>
+                  {mapHighResLoading
+                    ? "Gerando mapa em média e alta resolução..."
+                    : mapZoom <= 1
+                    ? "Prévia leve ativa. Use + ou scroll para aproximar e carregar mais nitidez."
+                    : mapZoom <= MED_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução leve. Aproxime mais para nitidez média.`
+                    : mapZoom <= HIGH_RES_ZOOM_THRESHOLD
+                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução média. Aproxime mais para alta resolução.`
+                    : `Zoom ${Math.round(mapZoom * 100)}% — alta resolução ativa.`}
+                </span>
+              </div>
+            )}
+            <div
+              ref={mapViewportRef}
+              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onTouchStart={handleMapTouchStart}
+              onTouchMove={handleMapTouchMove}
+              onTouchEnd={handleMapTouchEnd}
+              onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
+              className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
+              style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
+            >
+            <div
+              ref={mapContainerRef}
+              onClick={handleMapClick}
+              onMouseDown={handleMapMousePanStart}
+              onMouseMove={(e) => {
+                handleMapMouseMoveForDrag(e);
+                handleMapMouseMove(e);
+                // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
+                if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
+                  const mouseX = e.clientX;
+                  const mouseY = e.clientY;
+                  if (rafPanelRef.current) cancelAnimationFrame(rafPanelRef.current);
+                  rafPanelRef.current = requestAnimationFrame(() => {
+                    if (!dragPanelRef.current || !marcadorPanelRef.current) return;
+                    const newX = dragPanelRef.current.panelX + (mouseX - dragPanelRef.current.mouseX);
+                    const newY = dragPanelRef.current.panelY + (mouseY - dragPanelRef.current.mouseY);
+                    marcadorPanelRef.current.style.left = `${newX}px`;
+                    marcadorPanelRef.current.style.top = `${newY}px`;
+                  });
+                }
+              }}
+              onMouseUp={() => {
+                handleMapMouseUp();
+                commitDrag();
+                if (isDraggingPanelRef.current) {
+                  isDraggingPanelRef.current = false;
+                  dragPanelRef.current = null;
+                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
+                  setDraggingPanel(false);
+                }
+              }}
+              onMouseLeave={() => {
+                if (ctrlPanRef.current.active) ctrlPanRef.current.active = false;
+                if (mapMousePanRef.current.active) mapMousePanRef.current.active = false;
+                if (draggingId) commitDrag();
+                if (isDraggingPanelRef.current) {
+                  isDraggingPanelRef.current = false;
+                  dragPanelRef.current = null;
+                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
+                  setDraggingPanel(false);
+                }
+              }}
+              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning && isEditingMap ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
+            >
+              {(localDev as any).mapaPdfOriginalBase64 ? (
+                <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
+              ) : (
+                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+              )}
+
+              {/* Preview bolinhas + linha para multi-lote */}
+              {renderSeqPreviewBalls()}
+
+              {/* BOLINHAS */}
+              {mapaPontos.map((ponto) => {
+                const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+                const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                const isMassaSel = massaSelIds.has(ponto.id);
+                const isCtrlSel = ctrlSelectedIds.has(ponto.id);
+                const isDragging = draggingId === ponto.id;
+                return (
+                  <button
+                    key={ponto.id}
+                    onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
+                    onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
+                    onTouchStart={(ev) => { ev.stopPropagation(); }}
+                    onClick={(ev) => {
+                      if (draggingId) return;
+                      ev.stopPropagation();
+                      // CTRL seleção múltipla no modo edição: também alimenta a edição em massa.
+                      if (isEditingMap && ev.ctrlKey) {
+                        toggleCtrlSel(ponto.id);
+                        return;
+                      }
+                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
+                      setSelectedPoint({ ...ponto, venda });
+                    }}
+                    title={`Q${ponto.quadra} L${ponto.lote}`}
+                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto" }}
+                  >
+                    {isEditingMap ? ponto.lote : null}
+                  </button>
+                );
+              })}
+
+              {/* Marcador do primeiro ponto (multi-lote aguardando 2º clique) */}
+              {isEditingMap && mapAction === "editar" && marcadorFase === "aguardando_segundo" && marcadorPonto1 && (
+                <div className="absolute -translate-x-1/2 -translate-y-1/2 w-4 h-4 bg-blue-700 border-2 border-white rounded-full pointer-events-none z-20 flex items-center justify-center"
+                  style={{ left: `${marcadorPonto1.xPercent}%`, top: `${marcadorPonto1.yPercent}%` }}>
+                  <div className="w-1.5 h-1.5 bg-white rounded-full" />
+                </div>
+              )}
+            </div>
+            {/* Botões de zoom visíveis em todos os modos: visualização, edição e tela cheia */}
+            {mapaImagem && (
+              <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
+                {mapZoom > 1 && <button type="button" onClick={(ev) => { ev.stopPropagation(); resetMapZoom(); }} className="w-8 h-8 mx-auto rounded-xl bg-slate-100 text-slate-600 shadow border border-slate-200 font-black text-[10px]">1:1</button>}
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
+              </div>
+            )}
+            </div>
+            {!isEditingMap && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(true);
+                  setMapActive(true);
+                  setMapZoom(1);
+                  setMapPan({ x: 0, y: 0 });
+                  try {
+                    const lockPromise = (screen as any).orientation?.lock?.("landscape");
+                    lockPromise?.catch?.(() => undefined);
+                  } catch {}
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="mt-3 w-full rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
+              >
+                Ver em tela cheia
+              </button>
+            )}
+          </div>
+
+          {/* PAINEL LATERAL */}
+          <div className="space-y-3">
+            {/* MODO VISUALIZAÇÃO */}
+            {!isEditingMap && (
+              <div className="card-premium p-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
+                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
+                {getEmpreendimentoMapsUrl(localDev) && (
+                  <button
+                    type="button"
+                    onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
+                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-primary-contrast py-3 text-[11px] font-black uppercase tracking-widest transition-colors"
+                  >
+                    <MapPin size={14} /> Ir no Google Maps
+                  </button>
+                )}
+                {!canEditMap && <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
+              </div>
+            )}
+
+            {/* MODO EDIÇÃO — TOOLBAR SIMPLIFICADA */}
+            {isEditingMap && (
+              <div className="card-premium p-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
+
+                {/* Controles de zoom para PC: no mobile a pinça continua funcionando. */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Zoom do mapa</span>
+                    <span className="text-[10px] font-black text-slate-700">{Math.round(mapZoom * 100)}%</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => zoomMapBy(-0.25)} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Zoom -</button>
+                    <button type="button" onClick={() => zoomMapBy(0.25)} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Zoom +</button>
+                    <button type="button" onClick={resetMapZoom} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Resetar</button>
+                    <button type="button" onClick={fitMapToScreen} className="py-2 rounded-xl bg-white border border-slate-200 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-100">Ajustar</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button type="button" onClick={() => { setMapEditTool("mover"); setMapActive(true); void requestHighResolutionMap(); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "mover" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Mover mapa</button>
+                    <button type="button" onClick={() => setMapEditTool("marcar")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "marcar" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Marcar lote</button>
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-medium">No PC, passe o mouse sobre o mapa e use a roda do mouse para aproximar, igual Google Maps. O zoom é apenas visual; as bolinhas continuam salvas em percentual.</p>
+                </div>
+
+                {/* Instrução contextual */}
+                {mapAction === "editar" && marcadorFase === "idle" && (
+                  <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">
+                    Clique em qualquer ponto do mapa para adicionar um marcador.
+                  </p>
+                )}
+                {mapAction === "editar" && marcadorFase === "formulario" && (
+                  <p className="text-xs text-blue-600 bg-blue-50 p-2 rounded-xl font-medium">
+                    Preencha os dados e confirme. Se o lote tiver múltiplos (ex: 1,2,3), clique no 2º ponto do mapa depois.
+                  </p>
+                )}
+                {mapAction === "editar" && marcadorFase === "aguardando_segundo" && (
+                  <p className="text-xs text-emerald-700 bg-emerald-50 p-2 rounded-xl font-medium">
+                    Clique no mapa para definir o ponto final da linha.
+                  </p>
+                )}
+
+                {/* Botão modo edição em massa */}
+                <button
+                  onClick={() => { setMapAction("massa"); setMapEditTool("marcar"); setMassaSelIds(new Set()); setMarcadorFase("idle"); }}
+                  className={`w-full py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}
+                >
+                  Edição em massa
+                </button>
+                {mapAction === "massa" && (
+                  <button onClick={() => { setMapAction("editar"); setMapEditTool("marcar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
+                    ← Voltar ao marcador
+                  </button>
+                )}
+
+                {/* Seleção CTRL */}
+                {mapAction === "editar" && (
+                  <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleção múltipla</p>
+                  <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar. Para mover o mapa, segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e arraste.</p>
+                    {ctrlSelectedIds.size > 0 && (
+                      <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
+                    )}
+                    {ctrlSelectedIds.size >= 3 && (
+                      <button onClick={alinharLotesSelecionados} className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 hover:bg-emerald-200">
+                        ↔ Alinhar lotes
+                      </button>
+                    )}
+                    {ctrlSelectedIds.size > 0 && (
+                      <button onClick={() => setCtrlSelectedIds(new Set())} className="btn-secondary w-full text-[10px]">Limpar seleção</button>
+                    )}
+                  </div>
+                )}
+
+                {/* Tamanho das bolinhas */}
+                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tamanho das bolinhas</span>
+                    <span className="text-xs font-black text-slate-700">{markerSizePercent}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={40}
+                    max={220}
+                    step={5}
+                    value={markerSizePercent}
+                    onChange={(e) => setMarkerSizePercent(Number(e.target.value))}
+                    className="w-full"
+                  />
+                  <p className="text-[10px] text-slate-400 font-medium">
+                    Ajusta apenas o tamanho visual. A posição atual das bolinhas não é alterada.
+                  </p>
+                </div>
+
+                {/* Carregar mapa */}
+                <label className="btn-secondary w-full flex items-center justify-center gap-2 cursor-pointer">
+                  <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
+                </label>
+
+                {/* Script ChatGPT / importação por texto */}
+                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Adicionar por texto</p>
+                  <p className="text-[10px] text-emerald-700/80">
+                    Padrão: <strong>Q1:1D,2I,3R.</strong> D=disponível, I=indisponível, R=reservado.
+                  </p>
+                  <div className="grid grid-cols-1 gap-2">
+                    <button
+                      type="button"
+                      onClick={copyScriptForChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100"
+                    >
+                      Copiar script para ChatGPT
+                    </button>
+                    <textarea
+                      className="input-field min-h-[96px] text-[11px] font-mono leading-relaxed"
+                      value={lotScriptText}
+                      onChange={(e) => setLotScriptText(e.target.value)}
+                      placeholder={"Cole aqui o script recebido. Ex:\\nQ1:1D,2I,3R.\\nQ2:1I,2D,3R."}
+                    />
+                    <button
+                      type="button"
+                      onClick={importScriptFromChatGPT}
+                      className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700"
+                    >
+                      Colar/Importar script do ChatGPT
+                    </button>
+                  </div>
+                  {lotScriptMsg && <p className="text-[10px] font-bold text-emerald-800 bg-white/70 p-2 rounded-xl">{lotScriptMsg}</p>}
+                  <p className="text-[10px] text-slate-500">
+                    Se quadra/lote já existir, o sistema vincula e pergunta antes de substituir status diferente. Nunca cria duplicata.
+                  </p>
+                </div>
+
+                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
+
+                {/* Alt 5: Aplicar — salva sem sair da edição */}
+                <button onClick={() => {
+                  persistDev({
+                    ...localDev,
+                    mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+                  } as Empreendimento);
+                }} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-blue-500 text-white">Aplicar</button>
+
+                {/* Salvar / sair da edição */}
+                <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
+              </div>
+            )}
+
+            {/* PAINEL EDIÇÃO EM MASSA */}
+            {isEditingMap && mapAction === "massa" && (
+              <div className="card-premium p-4 space-y-3">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Edição em massa</p>
+                <p className="text-xs text-slate-500">Clique nas bolinhas para selecionar, ou use os filtros abaixo.</p>
+                <p className="text-xs font-bold text-slate-600">{massaSelIds.size} bolinha(s) selecionada(s)</p>
+
+                {/* Filtro por quadra */}
+                <div className="space-y-1">
+                  <input className="input-field" placeholder="Quadra para selecionar" value={massaFiltroQuadra} onChange={(e) => setMassaFiltroQuadra(e.target.value)} />
+                  <button onClick={() => { if (massaFiltroQuadra) selecionarQuadraCompleta(massaFiltroQuadra); }} className="btn-secondary w-full text-[11px]">Selecionar quadra inteira</button>
+                </div>
+
+                {/* Filtro por intervalo */}
+                <div className="space-y-1">
+                  <div className="grid grid-cols-2 gap-2">
+                    <input className="input-field" placeholder="Lote ini." value={massaFiltroLoteIni} onChange={(e) => setMassaFiltroLoteIni(e.target.value)} />
+                    <input className="input-field" placeholder="Lote fin." value={massaFiltroLoteFin} onChange={(e) => setMassaFiltroLoteFin(e.target.value)} />
+                  </div>
+                  <button onClick={selecionarIntervalo} className="btn-secondary w-full text-[11px]">Selecionar intervalo</button>
+                </div>
+
+                <button onClick={() => setMassaSelIds(new Set(mapaPontos.map((p: any) => p.id)))} className="btn-secondary w-full text-[11px]">Selecionar todas</button>
+                <button onClick={() => setMassaSelIds(new Set())} className="btn-secondary w-full text-[11px]">Limpar seleção</button>
+
+                {/* Ação */}
+                <select className="input-field" value={massaAcao} onChange={(e) => setMassaAcao(e.target.value as any)}>
+                  <option value="">Escolha uma ação</option>
+                  <option value="selecionar">Somente selecionar</option>
+                  <option value="disponivel">Marcar como disponível</option>
+                  <option value="reservado">Marcar como reservado</option>
+                  <option value="indisponivel">Marcar como indisponível</option>
+                  <option value="excluir">Excluir selecionadas</option>
+                  <option value="alinharHorizontal">Alinhar horizontalmente</option>
+                  <option value="alinharVertical">Alinhar verticalmente</option>
+                  <option value="distribuirHorizontal">Distribuir/alinhar pela sequência</option>
+                </select>
+                <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
+              </div>
+            )}
+
+            {/* LEGENDA */}
+            <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
+              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
+              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
+              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+            </div>
+          </div>
+        </div>
+
+        {/* BOTÕES IMAGEM / PDF — sempre embaixo do mapa */}
+        {mapaImagem && !isEditingMap && (
+          <div className="grid grid-cols-2 gap-2 max-w-xs">
+            <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
+            <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
+          </div>
+        )}
+
+        {/* FORMULÁRIO NOVO MARCADOR — flutuante e arrastável sobre o mapa */}
+        <AnimatePresence>
+          {isEditingMap && mapAction === "editar" && marcadorFase === "formulario" && marcadorPonto1 && (
+            <motion.div
+              ref={marcadorPanelRef}
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{ duration: 0.12 }}
+              className="fixed inset-0 z-50 pointer-events-none flex items-center justify-end p-3 sm:p-4"
+              style={{}}
+            >
+              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[360px] max-h-[calc(100dvh-24px)] overflow-y-auto border border-slate-200 pointer-events-auto">
+                {/* Handle de arrastar */}
+                <div
+                  className="flex items-center justify-between px-5 pt-4 pb-2 cursor-default bg-slate-50 border-b border-slate-100 select-none"
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    const panel = marcadorPanelRef.current;
+                    if (!panel) return;
+                    const rect = panel.getBoundingClientRect();
+                    dragPanelRef.current = { mouseX: e.clientX, mouseY: e.clientY, panelX: rect.left, panelY: rect.top };
+                    isDraggingPanelRef.current = true;
+                    setDraggingPanel(true);
+                    // Fixar posição atual via style para que o transform motion não interfira
+                    panel.style.left = `${rect.left}px`;
+                    panel.style.top = `${rect.top}px`;
+                    panel.style.transform = "none";
+                  }}
+                >
+                  <h4 className="font-display font-bold text-slate-800 text-base">Novo marcador</h4>
+                  <span className="text-slate-300 text-lg select-none" title="Arrastar">⠿</span>
+                </div>
+                <div className="p-5 space-y-3">
+                  {/* Identificação da quadra — exibida assim que o usuário preenche o campo */}
+                  {marcadorForm.quadra ? (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
+                      <MapPin size={13} className="text-blue-500 flex-none" />
+                      <span className="text-xs font-bold text-blue-700">Adicionando na <span className="font-black">Quadra {marcadorForm.quadra}</span>{marcadorForm.lote ? ` · Lote ${marcadorForm.lote}` : ""}</span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl">
+                      <MapPin size={13} className="text-slate-300 flex-none" />
+                      <span className="text-xs text-slate-400">Preencha a quadra para identificar o marcador</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-slate-400">
+                    Para múltiplos lotes em linha, separe por vírgula: <strong>1,2,3,4</strong>
+                  </p>
+                  {marcadorForm.quadra && (() => {
+                    const summary = getQuadraCadastroSummary(localDev, marcadorForm.quadra);
+                    if (!summary.exists) return null;
+                    return (
+                      <div className="p-2 rounded-xl bg-amber-50 border border-amber-200 text-[10px] text-amber-800 font-bold leading-relaxed">
+                        Quadra {marcadorForm.quadra} já cadastrada{summary.count ? ` · lotes ${summary.first} até ${summary.last} (${summary.count})` : ""}.
+                        <br />Use <span className="uppercase">Vincular lote existente</span> para aproveitar os dados do sistema e evitar duplicidade.
+                      </div>
+                    );
+                  })()}
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Quadra</label>
+                    <input
+                      className="input-field"
+                      placeholder="Quadra"
+                      value={marcadorForm.quadra}
+                      onChange={(e) => setMarcadorForm({ ...marcadorForm, quadra: e.target.value })}
+                      autoFocus
+                    />
+                  </div>
+                  <input
+                    className="input-field"
+                    placeholder="Lote — ex: 5 ou 1,2,3,4"
+                    value={marcadorForm.lote}
+                    onChange={(e) => setMarcadorForm({ ...marcadorForm, lote: e.target.value })}
+                  />
+                  {(() => {
+                    // Usa normalizeLotsInput (via expandLotesInput) para interpretar corretamente vírgula=lista, hífen=intervalo
+                    const lotesExpanded = expandLotesInput(marcadorForm.lote);
+                    const isMulti = lotesExpanded.length > 1;
+                    // Verifica quais lotes já existem no sistema
+                    const existentesNoSistema = marcadorForm.quadra
+                      ? lotesExpanded.filter((l) => hasConfiguredLot(localDev, marcadorForm.quadra, l))
+                      : [];
+                    const todosExistem = existentesNoSistema.length === lotesExpanded.length && lotesExpanded.length > 0;
+                    const algunsExistem = existentesNoSistema.length > 0;
+                    // "Status do sistema" disponível quando há pelo menos 1 lote existente
+                    const hasSystemLot = !!marcadorForm.quadra && algunsExistem;
+                    // Para lote único, mostra o status específico
+                    const systemStatus = (!isMulti && hasSystemLot) ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotesExpanded[0]) : null;
+                    // Para múltiplos lotes existentes, verifica se há status diferentes
+                    const statusDosSistema = isMulti && hasSystemLot
+                      ? existentesNoSistema.map((l) => ({ lote: l, status: getSystemStatusForMarkerLot(marcadorForm.quadra, l) }))
+                      : [];
+                    const statusDiferentes = isMulti && statusDosSistema.length > 0 && new Set(statusDosSistema.map((s) => s.status)).size > 1;
+                    // Preview de lotes expandidos
+                    const previewLotes = isMulti ? lotesExpanded.slice(0, 8) : [];
+                    const previewExtra = isMulti && lotesExpanded.length > 8 ? lotesExpanded.length - 8 : 0;
+                    return (
+                      <>
+                        {/* Preview dos lotes gerados — mostra quadra/lote corretamente */}
+                        {isMulti && marcadorForm.quadra && (
+                          <div className="px-3 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[10px] text-emerald-800 font-bold">
+                            <span className="font-black">Lotes gerados ({lotesExpanded.length}):</span>{" "}
+                            {previewLotes.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}
+                            {previewExtra > 0 && ` ... +${previewExtra} mais`}
+                          </div>
+                        )}
+                        {/* Lotes existentes no sistema */}
+                        {isMulti && marcadorForm.quadra && algunsExistem && (
+                          <div className="px-3 py-2 bg-amber-50 border border-amber-200 rounded-xl text-[10px] text-amber-800 font-bold">
+                            {todosExistem
+                              ? `Todos os lotes já existem no sistema.`
+                              : `Já existem no sistema: ${existentesNoSistema.map((l) => `${marcadorForm.quadra}/${l}`).join(", ")}.`
+                            }
+                            {" "}Usando "Usar status do sistema", cada bolinha mantém o status atual cadastrado.
+                          </div>
+                        )}
+                        {/* Aviso de status diferentes entre lotes existentes */}
+                        {isMulti && statusDiferentes && (
+                          <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-[10px] text-blue-800 font-bold">
+                            Os lotes selecionados possuem status diferentes no sistema. Ao usar "Usar status do sistema", cada lote manterá seu próprio status.
+                            <div className="mt-1 space-y-0.5">
+                              {statusDosSistema.slice(0, 6).map((s) => (
+                                <span key={s.lote} className="inline-block mr-2">{`L${s.lote}: ${lotScriptStatusToLabel(s.status)}`}</span>
+                              ))}
+                              {statusDosSistema.length > 6 && <span>...</span>}
+                            </div>
+                          </div>
+                        )}
+                        <div>
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Status do marcador</label>
+                          <select
+                            className="input-field"
+                            value={marcadorForm.status}
+                            onChange={(e) => setMarcadorForm({ ...marcadorForm, status: e.target.value as MapaLoteStatus | "sistema" })}
+                          >
+                            {/* Opção "Usar status do sistema" aparece sempre que há lotes existentes */}
+                            {hasSystemLot && (
+                              <option value="sistema">
+                                {!isMulti && systemStatus
+                                  ? `Usar status do sistema: ${lotScriptStatusToLabel(systemStatus)}`
+                                  : statusDiferentes
+                                    ? "Usar status do sistema (cada lote mantém o seu)"
+                                    : "Usar status do sistema"}
+                              </option>
+                            )}
+                            <option value="disponivel">Disponível</option>
+                            <option value="reservado">Reservado</option>
+                            <option value="indisponivel">Indisponível</option>
+                          </select>
+                          {hasSystemLot && marcadorForm.status === "sistema" && (
+                            <p className="mt-1 text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 rounded-lg px-2 py-1">
+                              {!isMulti && systemStatus
+                                ? `Lote já cadastrado. Mantendo por padrão: ${lotScriptStatusToLabel(systemStatus)}.`
+                                : todosExistem
+                                  ? "Todos os lotes existentes serão vinculados mantendo o status já cadastrado."
+                                  : `Lotes existentes (${existentesNoSistema.join(", ")}) manterão o status do sistema. Lotes novos usarão "Disponível".`
+                              }
+                            </p>
+                          )}
+                          {hasSystemLot && marcadorForm.status !== "sistema" && (
+                            <p className="mt-1 text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-2 py-1">
+                              Atenção: ao salvar, o status atual dos lotes existentes no sistema será substituído por "{marcadorForm.status === "disponivel" ? "Disponível" : marcadorForm.status === "reservado" ? "Reservado" : "Indisponível"}".
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    );
+                  })()}
+                  <input className="input-field" placeholder="Observação (opcional)" value={marcadorForm.observacao} onChange={(e) => setMarcadorForm({ ...marcadorForm, observacao: e.target.value })} />
+                  {/* Alt 4: Botão Cancelar sempre visível */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <button onClick={async () => {
+                      if (!marcadorForm.quadra || !marcadorForm.lote) { alert("Informe quadra e lote."); return; }
+                      // Alt 1&2: expande intervalos e verifica cada lote individualmente
+                      const lotes = expandLotesInput(marcadorForm.lote);
+                      if (lotes.length === 1) {
+                        const useSystemStatus = marcadorForm.status === "sistema";
+                        const finalStatus = useSystemStatus ? getSystemStatusForMarkerLot(marcadorForm.quadra, lotes[0]) : marcadorForm.status as MapaLoteStatus;
+                        const ok = await ensureMapLotAndPoint({
+                          quadra: marcadorForm.quadra,
+                          lote: lotes[0],
+                          xPercent: marcadorPonto1!.xPercent,
+                          yPercent: marcadorPonto1!.yPercent,
+                          status: finalStatus,
+                          useSystemStatus,
+                          observacao: marcadorForm.observacao,
+                        });
+                        if (ok) {
+                          setMarcadorFase("idle");
+                          setMarcadorPonto1(null);
+                          setMarcadorPanelPos(null);
+                          setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+                        }
+                      } else {
+                        // Múltiplos lotes → vai para 2º ponto para definir posição final da linha
+                        setMarcadorFase("aguardando_segundo");
+                        setMarcadorPanelPos(null);
+                      }
+                    }} className="btn-primary">
+                      {expandLotesInput(marcadorForm.lote).length > 1
+                        ? "Próximo: 2º ponto"
+                        : hasConfiguredLot(localDev, marcadorForm.quadra, expandLotesInput(marcadorForm.lote)[0] ?? marcadorForm.lote)
+                          ? "Vincular lote existente"
+                          : "Adicionar"}
+                    </button>
+                    {/* Alt 4: Cancelar limpa tudo sem salvar */}
+                    <button onClick={() => {
+                      setMarcadorFase("idle");
+                      setMarcadorPonto1(null);
+                      setMarcadorPonto2Preview(null);
+                      setMarcadorPanelPos(null);
+                      setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+                    }} className="btn-secondary">Cancelar</button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+        {mapFullscreen && (
+          <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
+            <div className="absolute top-3 left-3 right-3 z-[10000] flex items-center justify-between gap-2">
+              <div className="rounded-2xl bg-white/90 px-3 py-2 shadow-xl">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Mapa em tela cheia</p>
+                <p className="text-[10px] text-slate-500">Dê zoom, arraste e clique na bolinha para iniciar venda.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(false);
+                  setMapZoom(1);
+                  setMapPan({ x: 0, y: 0 });
+                  try { (screen as any).orientation?.unlock?.(); } catch {}
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="rounded-2xl bg-white text-slate-900 px-4 py-3 text-[11px] font-black uppercase shadow-xl"
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div
+              ref={mapViewportRef}
+              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onTouchStart={handleMapTouchStart}
+              onTouchMove={handleMapTouchMove}
+              onTouchEnd={handleMapTouchEnd}
+              onTouchCancel={handleMapTouchEnd}
+              onWheel={handleMapWheel}
+              onWheelCapture={handleMapWheel}
+              className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
+              style={{ touchAction: "none", overscrollBehavior: "contain" }}
+            >
+              <div
+                ref={mapContainerRef}
+                className="absolute left-1/2 top-1/2 bg-white select-none"
+                style={{
+                  width: fullscreenMapWidth,
+                  maxWidth: "100vw",
+                  maxHeight: "100dvh",
+                  transform: `translate(calc(-50% + ${mapPan.x}px), calc(-50% + ${mapPan.y}px)) scale(${mapZoom})`,
+                  transformOrigin: "center center",
+                  willChange: "transform",
+                }}
+              >
+                {(localDev as any).mapaPdfOriginalBase64 ? (
+                  <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
+                ) : (
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                )}
+
+                {mapaPontos.map((ponto) => {
+                  const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+                  const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                  return (
+                    <button
+                      key={`fullscreen-${ponto.id}`}
+                      onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
+                      onTouchStart={(ev) => { ev.stopPropagation(); }}
+                      onClick={(ev) => {
+                        ev.stopPropagation();
+                        setSelectedPoint({ ...ponto, venda });
+                      }}
+                      title={`Q${ponto.quadra} L${ponto.lote}`}
+                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} border-white shadow-lg cursor-pointer z-10`}
+                      style={{
+                        left: `${ponto.xPercent}%`,
+                        top: `${ponto.yPercent}%`,
+                        width: `${ballSize.size}px`,
+                        height: `${ballSize.size}px`,
+                        fontSize: `${ballSize.font}px`,
+                        borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
+                        pointerEvents: "auto",
+                      }}
+                    />
+                  );
+                })}
+              </div>
+              <div className="absolute bottom-4 right-4 z-[10001] flex flex-col gap-2">
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">−</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ──────────────────────────────────────────────
+  // MODAL DETALHES DA BOLINHA (visualização)
+  // ──────────────────────────────────────────────
+  const renderSelectedPointModal = () => {
+    if (!selectedPoint) return null;
+    const ponto = selectedPoint;
+    const venda = ponto.venda || vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+    const temVenda = !!(ponto.vendaId || venda);
+    return (
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 bg-slate-900/30 flex items-center justify-center p-4 z-[10050]">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+          {/* Cabeçalho com destaque da Quadra — especialmente útil na edição */}
+          {isEditingMap && (
+            <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl flex items-center gap-2">
+              <MapPin size={14} className="text-blue-500 flex-none" />
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-blue-400 block">Editando marcador da</span>
+                <span className="text-sm font-bold text-blue-700">Quadra {ponto.quadra} · Lote {ponto.lote}</span>
+              </div>
+            </div>
+          )}
+          <div>
+            <h4 className="font-display font-bold text-slate-800 text-lg">Quadra {ponto.quadra} · Lote {ponto.lote}</h4>
+            <p className="text-sm text-slate-500">{getMapaStatusLabel(ponto.status, temVenda)}</p>
+            {ponto.observacao && <p className="text-sm text-slate-500 mt-1">Obs.: {ponto.observacao}</p>}
+          </div>
+
+          {/* Info venda vinculada */}
+          {temVenda && (
+            <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700 space-y-1">
+              <p>Comprador: <strong>{venda?.clienteNome || ponto.clienteNome || "Cliente não informado"}</strong></p>
+              <p>{localDev.nome} · Quadra {ponto.quadra} · Lote {ponto.lote}</p>
+              <p>Data da venda: {formatDateBR(venda?.dataVenda || ponto.dataVenda)}</p>
+            </div>
+          )}
+
+          {/* Reservado sem venda */}
+          {!temVenda && ponto.status === "reservado" && (
+            <div className="p-3 bg-yellow-50 rounded-2xl text-sm text-yellow-800">Este lote está reservado, mas ainda não possui venda oficial.</div>
+          )}
+
+          {/* Indisponível sem venda */}
+          {!temVenda && ponto.status === "indisponivel" && (
+            <div className="p-3 bg-red-50 rounded-2xl text-sm text-red-700">Este lote está indisponível, mas não possui venda vinculada.</div>
+          )}
+
+          {/* Histórico */}
+          {ponto.historico?.length > 0 && (
+            <div className="p-3 bg-slate-50 rounded-2xl text-xs text-slate-500 space-y-1">
+              <p className="font-bold text-slate-600">Histórico</p>
+              {ponto.historico.slice(-3).map((h: any, idx: number) => (
+                <p key={idx}>{h.clienteAnterior || h.clienteNome || "Cliente"} {h.dataVenda ? `comprou em ${formatDateBR(h.dataVenda)}` : "teve vínculo"}{h.dataLiberacao ? ` · liberado em ${formatDateBR(h.dataLiberacao)}` : ""}</p>
+              ))}
+            </div>
+          )}
+
+          {/* Ações */}
+          <div className="space-y-2">
+            {/* Bolinha azul/disponível */}
+            {ponto.status === "disponivel" && !temVenda && (
+              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
+            )}
+            {ponto.status === "disponivel" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
+            )}
+            {ponto.status === "disponivel" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
+            )}
+
+            {/* Bolinha amarela/reservado */}
+            {ponto.status === "reservado" && !temVenda && (
+              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
+            )}
+            {ponto.status === "reservado" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
+            )}
+            {ponto.status === "reservado" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
+            )}
+
+            {/* Bolinha vermelha/indisponível — COM venda */}
+            {temVenda && (
+              <button className="btn-primary w-full" onClick={() => { onViewContract(venda); onClose(); }}>Abrir contrato/venda</button>
+            )}
+            {temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Liberar lote e manter histórico</button>
+            )}
+
+            {/* Bolinha vermelha/indisponível — SEM venda */}
+            {ponto.status === "indisponivel" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
+            )}
+            {ponto.status === "indisponivel" && !temVenda && (
+              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
+            )}
+
+            {/* Editar/excluir — apenas no modo edição */}
+            {isEditingMap && (
+              <>
+                <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
+                <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
+              </>
+            )}
+
+            <button className="btn-secondary w-full" onClick={() => setSelectedPoint(null)}>Fechar</button>
+          </div>
+        </div>
+      </motion.div>
+    );
+  };
+
+  // ──────────────────────────────────────────────
+  // RENDER PRINCIPAL
+  // ──────────────────────────────────────────────
+
+  // Modal de edição em tela cheia — renderizado separado do modal principal
+  const renderMapaFullscreenEdit = () => (
+    <div className="fixed inset-0 z-[200] flex flex-col bg-white">
+      {/* HEADER EDIÇÃO TELA CHEIA */}
+      <div className="flex-none p-4 border-b border-slate-100 flex items-center justify-between bg-slate-900 gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="p-2 bg-white/10 text-white rounded-xl"><MapPin size={18} /></div>
+          <div className="min-w-0">
+            <h3 className="text-base font-display font-bold text-white truncate">{localDev.nome}</h3>
+            <p className="text-xs text-slate-400 font-medium">Editando mapa — tela cheia</p>
+          </div>
+        </div>
+        <button onClick={salvarEdicaoMapa} className="flex-none px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2">
+          <Check size={14} />Salvar / OK
+        </button>
+      </div>
+
+      {/* CONTEÚDO EDIÇÃO */}
+      <div className="flex-1 overflow-y-auto">
+        <div className="p-4 sm:p-6">
+          {renderMapa()}
+        </div>
+      </div>
+
+      {/* Modal bolinha selecionada dentro do fullscreen */}
+      <AnimatePresence>
+        {selectedPoint && renderSelectedPointModal()}
+      </AnimatePresence>
+    </div>
+  );
+
+  return (
+    <>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
+      <motion.div initial={{ scale: 0.96, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl max-h-[94vh] rounded-[28px] shadow-2xl relative overflow-hidden flex flex-col">
+
+        {/* HEADER */}
+        <div className="p-5 sm:p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4">
+          <div className="flex items-center gap-4 min-w-0">
+            <div className="p-3 bg-primary-main text-white rounded-2xl"><MapPin size={22} /></div>
+            <div className="min-w-0">
+              <h3 className="text-lg sm:text-xl font-display font-bold text-slate-800 truncate">{localDev.nome}</h3>
+              <p className="text-sm text-slate-400 font-medium">Mapa e lotes do empreendimento</p>
+            </div>
+          </div>
+          {/* Botão Editar mapa — somente no canto superior direito, apenas para admin */}
+          <div className="flex items-center gap-3 flex-wrap justify-end">
+            {getEmpreendimentoMapsUrl(localDev) && (
+              <button
+                onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
+                className="flex px-4 py-2 bg-primary-main/10 text-primary-main rounded-xl text-xs font-black uppercase items-center gap-2 hover:bg-primary-main hover:text-primary-contrast transition-colors"
+                title="Abrir localização no Google Maps"
+              >
+                <MapPin size={13} />Google Maps
+              </button>
+            )}
+            {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
+              <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
+                <MapPin size={13} />Editar mapa
+              </button>
+            )}
+            {canEditMap && !mapaImagem && (
+              <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
+                <Upload size={13} />Carregar mapa
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
+              </label>
+            )}
+            <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
+          </div>
+        </div>
+
+        {/* ABAS */}
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
+          <div className="flex gap-2 flex-wrap">
+            {mapaImagem && (
+              <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
+                className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
+                Mapa interativo
+              </button>
+            )}
+            <button onClick={() => setMode("quadradinhos")}
+              className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
+              Quadradinhos/lotes atuais
+            </button>
+          </div>
+        </div>
+
+        {/* CONTEÚDO */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+          {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
+          <AnimatePresence>
+            {selectedPoint && renderSelectedPointModal()}
+          </AnimatePresence>
+        </div>
+
+        {/* FOOTER LEGENDA */}
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
+          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+        </div>
+
+        {/* Modal venda do lote (quadradinhos) */}
+        <AnimatePresence>
+          {selectedLotSale && (
+            <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 32 }} className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[28px]">
+              <div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
+                <button onClick={() => setSelectedLotSale(null)} className="p-2.5 hover:bg-slate-100 rounded-xl text-slate-400"><ArrowLeft size={20} /></button>
+                <div className="flex-1">
+                  <h3 className="text-xl font-display font-bold text-slate-800">Quadra {selectedLotSale.quadra} · Lote {selectedLotSale.numeroLote}</h3>
+                  <p className="text-sm text-red-400 font-medium">{localDev.nome} — Lote Indisponível</p>
+                </div>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                <div className="card-premium space-y-4">
+                  <h4 className="font-bold text-slate-800">Comprador</h4>
+                  <p className="text-lg font-display font-bold text-slate-800">{selectedLotSale.clienteNome}</p>
+                </div>
+                <div className="card-premium space-y-2 text-sm">
+                  <p><span className="text-slate-400">Valor total:</span> <strong>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedLotSale.valorLote)}</strong></p>
+                  <p><span className="text-slate-400">Data venda:</span> {formatDateBR(selectedLotSale.dataVenda)}</p>
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-between">
+                <button onClick={() => setSelectedLotSale(null)} className="btn-secondary px-6">Voltar ao Mapa</button>
+                <button onClick={() => { onViewContract(selectedLotSale); onClose(); }} className="btn-primary px-8">Ver Contrato</button>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+      </motion.div>
+    </div>
+
+    {/* MODAL: Lote já cadastrado — substitui window.prompt por UI React */}
+    <AnimatePresence>
+      {loteConflictModal && (
+        <motion.div
+          key="lote-conflict-modal"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60 p-4"
+          onClick={() => { loteConflictModal.resolve("4"); setLoteConflictModal(null); }}
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="bg-white rounded-3xl shadow-2xl p-6 max-w-sm w-full space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-1">
+              <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">Lote já cadastrado</p>
+              <p className="text-sm font-semibold text-slate-700">{loteConflictModal.infoTexto}</p>
+              <p className="text-xs text-slate-500 mt-1">
+                O lote <strong>{loteConflictModal.lote}</strong> já está no sistema como{" "}
+                <strong>{loteConflictModal.existingStatus}</strong>.
+                Você está marcando como <strong>{loteConflictModal.rawStatus}</strong>.
+              </p>
+            </div>
+            <p className="text-[11px] font-black uppercase tracking-widest text-slate-400">O que deseja fazer?</p>
+            <div className="space-y-2">
+              {[
+                { key: "1" as const, label: "Vincular e obedecer dados do sistema", desc: `Usar status: ${loteConflictModal.existingStatus}`, color: "bg-blue-600 text-white hover:bg-blue-700" },
+                { key: "2" as const, label: "Vincular e atualizar com o status atual", desc: `Usar status: ${loteConflictModal.rawStatus}`, color: "bg-emerald-600 text-white hover:bg-emerald-700" },
+                { key: "3" as const, label: "Manter como está no sistema", desc: "Não altera nada, apenas posiciona a bolinha", color: "bg-slate-100 text-slate-700 hover:bg-slate-200" },
+                { key: "4" as const, label: "Cancelar", desc: "A bolinha não será salva", color: "bg-rose-50 text-rose-700 hover:bg-rose-100 border border-rose-200" },
+              ].map((opt) => (
+                <button
+                  key={opt.key}
+                  onClick={() => { loteConflictModal.resolve(opt.key); setLoteConflictModal(null); }}
+                  className={`w-full text-left rounded-2xl px-4 py-3 transition-colors ${opt.color}`}
+                >
+                  <p className="text-[11px] font-black uppercase tracking-widest">{opt.label}</p>
+                  <p className="text-[10px] opacity-70 mt-0.5">{opt.desc}</p>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+
+    {/* FULLSCREEN EDIT MODAL — separado do modal principal para ocupar tela cheia */}
+    <AnimatePresence>
+      {isEditingMap && (
+        <motion.div
+          key="map-fullscreen-edit"
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.98 }}
+          transition={{ duration: 0.18 }}
+          className="fixed inset-0 z-[200]"
+        >
+          {renderMapaFullscreenEdit()}
+        </motion.div>
+      )}
+    </AnimatePresence>
+    </>
+  );
+};
+
+
+// fix-sales-scope
+const EmpreendimentosSection = ({
+  developments,
+  sales,
+  clients,
+  onSave,
+  onDelete,
+  onUpdateLotesInfo,
+  onDeleteLot,
+  onStartSale,
+  onViewContract,
+  onReleaseSoldLot,
+  proprietarios = [],
+  canEditMap = false,
+}: {
+  developments: Empreendimento[];
+  sales: Venda[];
+  clients: Cliente[];
+  onSave: (d: Empreendimento) => void;
+  onDelete: (id: string) => void;
+  onUpdateLotesInfo: (
+    id: string,
+    info: Record<string, any>,
+  ) => void;
+  onDeleteLot: (devId: string, key: string) => void;
+  onStartSale: (v: Partial<Venda>) => void;
+  onViewContract: (v: Venda) => void;
+  onReleaseSoldLot: (vendaId: string) => void;
+  proprietarios?: Proprietario[];
+  canEditMap?: boolean;
+}) => {
+  const emptyForm: Partial<Empreendimento> = {
+    nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
+    descricao: "", comunidade: "", mapaLocalizacaoUrl: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [], lotesPorQuadra: {},
+  } as any;
+  const [isAdding, setIsAdding] = useState(false);
+  const [editingDev, setEditingDev] = useState<Empreendimento | null>(null);
+  const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [devSearch, setDevSearch] = useState("");
+  const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
+  const devFormRef = useRef<HTMLFormElement>(null);
+  const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
+  const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
+  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
+  const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "texto">("cadastrar");
+  const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
+  const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
+  const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
+  const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+  const [releaseLotPending, setReleaseLotPending] = useState<{
+    key: string;
+    quadra: string;
+    lote: string;
+    info: any;
+    venda: Venda;
+  } | null>(null);
+
+  const confirmarLiberarLoteVendido = () => {
+    if (!lotRegDev || !releaseLotPending) return;
+
+    const { key, info, venda } = releaseLotPending;
+    const infoAtualizada = {
+      ...(info || {}),
+      status: "disponivel",
+      historicoLiberacao: [
+        ...(((info || {}).historicoLiberacao as any[]) || []),
+        {
+          vendaId: venda.id,
+          clienteId: venda.clienteId,
+          clienteNome: venda.clienteNome || "Cliente não informado",
+          empreendimentoId: venda.empreendimentoId,
+          empreendimentoNome: venda.empreendimentoNome || lotRegDev.nome,
+          quadra: venda.quadra,
+          lote: venda.numeroLote,
+          dataVenda: venda.dataVenda || "",
+          dataLiberacao: new Date().toISOString(),
+        },
+      ],
+      desistente: {
+        clienteId: venda.clienteId,
+        clienteNome: venda.clienteNome || "Cliente não informado",
+        dataDesistencia: new Date().toISOString().split("T")[0],
+        dataVenda: venda.dataVenda || "",
+        vendaId: venda.id,
+      },
+    };
+    delete (infoAtualizada as any).vendaId;
+
+    onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+    setLotRegDev((prev) => {
+      if (!prev) return null;
+      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
+    });
+    // Sincronizar mapa interativo se estiver aberto para o mesmo empreendimento
+    if (selectedDevForMap && selectedDevForMap.id === lotRegDev.id) {
+      setSelectedDevForMap((prev) => {
+        if (!prev) return null;
+        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
+      });
+    }
+
+    onReleaseSoldLot(venda.id);
+    setReleaseLotPending(null);
+  };
+
+  const handleSalvarLote = () => {
+    if (!lotRegDev || !lotRegForm.quadra || !lotRegForm.numeroLote) {
+      alert("Preencha a quadra e o número do lote.");
+      return;
+    }
+    const key = `${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase();
+    const existing = lotRegDev.lotesInfo?.[key] || {};
+    const vendaAtiva = findVendaAtivaDoLote(sales, lotRegDev.id, lotRegForm.quadra, lotRegForm.numeroLote);
+    if (vendaAtiva && lotRegForm.status === "disponivel") {
+      setReleaseLotPending({
+        key,
+        quadra: lotRegForm.quadra,
+        lote: lotRegForm.numeroLote,
+        info: existing,
+        venda: vendaAtiva,
+      });
+      return;
+    }
+    onUpdateLotesInfo(lotRegDev.id, { [key]: { ...existing, rua: lotRegForm.rua, status: lotRegForm.status } });
+    setLotRegDev((prev) => {
+      if (!prev) return null;
+      const existingInfo = prev.lotesInfo?.[key] || {};
+      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
+    });
+    // Sincronizar mapa interativo se estiver aberto para o mesmo empreendimento
+    if (selectedDevForMap && selectedDevForMap.id === lotRegDev.id) {
+      setSelectedDevForMap((prev) => {
+        if (!prev) return null;
+        const existingInfo = prev.lotesInfo?.[key] || {};
+        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
+      });
+    }
+    setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
+    setLotRegTab("lotes");
+  };
+
+  const openAddForm = () => {
+    setEditingDev(null);
+    setFormData(emptyForm);
+    setIsAdding(true);
+  };
+
+  const openEditForm = (dev: Empreendimento) => {
+    setEditingDev(dev);
+    setFormData({
+      nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
+      totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
+      mapaLocalizacaoUrl: getEmpreendimentoMapsUrl(dev),
+      quadras: dev.quadras, ruas: dev.ruas,
+      ruasPorQuadra: dev.ruasPorQuadra || {},
+      ruasFaixas: dev.ruasFaixas || [],
+      lotesPorQuadra: dev.lotesPorQuadra || {},
+    } as any);
+    setIsAdding(true);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!formData.nome) {
+      triggerShake(devFormRef.current);
+      return;
+    }
+    const formDataNormalizado = { ...formData, nome: textoMaiusculo(formData.nome).trim(), estado: (formData.estado || "").toUpperCase() };
+    if (editingDev) {
+      const mergedDev = {
+        ...editingDev,
+        ...formDataNormalizado,
+      } as Empreendimento;
+      onSave(syncEmpreendimentoConfigWithMapa(mergedDev, sales));
+    } else {
+      onSave({
+        ...(formDataNormalizado as Empreendimento),
+        id: Date.now().toString(),
+        lotesVendidos: 0,
+        lotesInfo: {},
+      });
+    }
+    setIsAdding(false);
+    setEditingDev(null);
+    setFormData(emptyForm);
+  };
+
+  const handleMapUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsAnalyzing(true);
+    try {
+      const result = await geminiService.analyzeMap(file);
+
+      const newLotesInfo: Record<string, { rua: string; status?: 'disponivel' | 'indisponivel'; desistente?: { clienteId: string; clienteNome: string; dataDesistencia: string } }> = {};
+      result.lotes.forEach((item: any) => {
+        const key = `${item.quadra}-${item.lote}`.toUpperCase();
+        newLotesInfo[key] = { rua: item.rua };
+      });
+
+      // Update form if we are adding
+      setFormData((prev) => ({
+        ...prev,
+        totalLotes: result.totalLotes || prev.totalLotes,
+        ruas: result.ruasEncontradas
+          ? result.ruasEncontradas.join(", ")
+          : prev.ruas,
+        lotesInfo: newLotesInfo,
+      }));
+
+      alert(
+        `Sucesso! IA identificou ${result.lotes.length} lotes e ${result.ruasEncontradas?.length || 0} ruas no mapa.`,
+      );
+      setIsAnalyzing(false);
+    } catch (err: any) {
+      console.error(err);
+      alert("Erro ao analisar mapa: " + (err?.message || "Tente novamente."));
+      setIsAnalyzing(false);
+    }
+  };
+
+  const normalizeDevSearch = (value: string) =>
+    (value || "")
+      .toString()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+
+  const getDevTimestamp = (dev: Empreendimento) => {
+    const anyDev = dev as any;
+    const rawDate = anyDev.createdAt || anyDev.dataCadastro || anyDev.updatedAt || anyDev.id;
+    const parsed = typeof rawDate === "number" ? rawDate : Date.parse(String(rawDate));
+    if (Number.isFinite(parsed)) return parsed;
+    const numericId = Number(String(anyDev.id || "").replace(/\D/g, ""));
+    return Number.isFinite(numericId) ? numericId : 0;
+  };
+
+  const getDevDisponiveis = (dev: Empreendimento) => {
+    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+    return Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, (dev.totalLotes || 0) - (dev.lotesVendidos || 0)));
+  };
+
+  const getDevVendidos = (dev: Empreendimento) => {
+    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+    return Math.max(0, recalc.lotesVendidos || dev.lotesVendidos || 0);
+  };
+
+  const filteredDevelopments = developments
+    .filter((dev) => {
+      const q = normalizeDevSearch(devSearch);
+      if (!q) return true;
+      return [dev.nome, dev.cidade, dev.estado, dev.comunidade, dev.endereco]
+        .some((field) => normalizeDevSearch(String(field || "")).includes(q));
+    })
+    .filter((dev) => {
+      const hasMap = Boolean((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl);
+      if (devSort === "comMapa") return hasMap;
+      if (devSort === "semMapa") return !hasMap;
+      if (devSort === "ativos") return getDevDisponiveis(dev) > 0;
+      if (devSort === "inativos") return getDevDisponiveis(dev) <= 0;
+      return true;
+    })
+    .sort((a, b) => {
+      switch (devSort) {
+        case "nomeAZ": return (a.nome || "").localeCompare(b.nome || "", "pt-BR");
+        case "nomeZA": return (b.nome || "").localeCompare(a.nome || "", "pt-BR");
+        case "antigos": return getDevTimestamp(a) - getDevTimestamp(b);
+        case "maisDisponiveis": return getDevDisponiveis(b) - getDevDisponiveis(a);
+        case "maisVendidos": return getDevVendidos(b) - getDevVendidos(a);
+        case "recentes":
+        default: return getDevTimestamp(b) - getDevTimestamp(a);
+      }
+    });
+
+  return (
+    <div className="space-y-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast shadow-lg shadow-primary-main/20">
+            <Building2 size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-display font-bold text-slate-800">
+              Empreendimentos
+            </h3>
+            <p className="text-sm text-slate-400 font-medium">
+              Gestão de Loteamentos
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 w-full sm:w-auto">
+          <button
+            onClick={() => {
+              if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
+              else openAddForm();
+            }}
+            className="btn-primary flex-1 sm:flex-none"
+          >
+            {isAdding ? <X size={20} /> : <Plus size={20} />}
+            <span>{isAdding ? "Cancelar" : "Novo Loteamento"}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
+        <div className="relative">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            className="input-field pl-10"
+            value={devSearch}
+            onChange={(e) => setDevSearch(e.target.value)}
+            placeholder="Buscar empreendimento pelo nome, cidade ou região"
+          />
+        </div>
+        <select
+          className="input-field font-bold"
+          value={devSort}
+          onChange={(e) => setDevSort(e.target.value as any)}
+          title="Classificar empreendimentos"
+        >
+          <option value="recentes">Mais recentes</option>
+          <option value="antigos">Mais antigos</option>
+          <option value="nomeAZ">Nome A-Z</option>
+          <option value="nomeZA">Nome Z-A</option>
+          <option value="maisDisponiveis">Mais lotes disponíveis</option>
+          <option value="maisVendidos">Mais lotes vendidos</option>
+          <option value="comMapa">Com mapa cadastrado</option>
+          <option value="semMapa">Sem mapa cadastrado</option>
+          <option value="ativos">Ativos</option>
+          <option value="inativos">Inativos</option>
+        </select>
+        <div className="md:col-span-2 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+          Exibindo {filteredDevelopments.length} de {developments.length} empreendimento(s)
+        </div>
+      </div>
+
+      <AnimatePresence>
+        {isAdding && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <form
+              ref={devFormRef}
+              onSubmit={handleSubmit}
+              className="card-premium grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50"
+            >
+              <div className="md:col-span-2">
+                <label className="label">Nome do Empreendimento</label>
+                <input
+                  required
+                  className="input-field"
+                  value={formData.nome}
+                  onChange={(e) =>
+                    setFormData({ ...formData, nome: textoMaiusculo(e.target.value) })
+                  }
+                  placeholder="Nome Completo"
+                />
+              </div>
+
+              <div className="md:col-span-1">
+                <label className="label">Cidade</label>
+                <input
+                  className="input-field"
+                  value={formData.cidade}
+                  onChange={(e) =>
+                    setFormData({ ...formData, cidade: e.target.value })
+                  }
+                  placeholder="0"
+                />
+              </div>
+              <div className="md:col-span-1">
+                <label className="label">Estado</label>
+                <input
+                  className="input-field font-bold"
+                  value={formData.estado}
+                  onChange={(e) =>
+                    setFormData({ ...formData, estado: e.target.value })
+                  }
+                  placeholder="0"
+                />
+              </div>
+
+              <div>
+                <label className="label">Comunidade / Região</label>
+                <input
+                  className="input-field"
+                  value={formData.comunidade}
+                  onChange={(e) =>
+                    setFormData({ ...formData, comunidade: e.target.value })
+                  }
+                  placeholder="Ex: Centro, Vila Nova"
+                />
+              </div>
+
+              <div>
+                <label className="label">Link da Localização no Google Maps</label>
+                <div className="relative">
+                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-main" />
+                  <input
+                    className="input-field pl-10"
+                    value={(formData as any).mapaLocalizacaoUrl || ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, mapaLocalizacaoUrl: e.target.value } as any)
+                    }
+                    placeholder="Cole aqui o link do Google Maps"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Esse link será usado no botão “Ir no Google Maps”.</p>
+              </div>
+              <div className="md:col-span-2 space-y-4">
+                <div>
+                  <label className="label">Quadras Disponíveis</label>
+                  <input
+                    className="input-field"
+                    value={formData.quadras}
+                    onChange={(e) => {
+                      const raw = e.target.value;
+                      const quadraList = raw.split(",").map((q) => q.trim()).filter(Boolean);
+                      const existing = formData.lotesPorQuadra || {};
+                      const newLpq: Record<string, { inicio?: number; fim?: number; especificos?: string }> = {};
+                      quadraList.forEach((q) => { newLpq[q] = existing[q] ?? {}; });
+                      const soma = Object.values(newLpq).reduce((s, r) => s + getLotesDeQuadra(r).length, 0);
+                      setFormData({ ...formData, quadras: raw, lotesPorQuadra: newLpq, totalLotes: soma || formData.totalLotes || 0 });
+                    }}
+                    placeholder="Ex: A, B, C, D"
+                  />
+                  <p className="text-[10px] text-slate-400 mt-1">Separe por vírgula. O total de lotes será calculado automaticamente abaixo.</p>
+                </div>
+
+                {/* Editor de lotes por quadra */}
+                {(() => {
+                  const quadraList = (formData.quadras || "").split(",").map((q) => q.trim()).filter(Boolean);
+                  if (quadraList.length === 0) return null;
+                  return (
+                    <div className="space-y-2">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Lotes por Quadra
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                        {quadraList.map((q) => {
+                          const entry = (formData.lotesPorQuadra || {})[q] ?? {};
+                          const isEspecificos = entry.especificos !== undefined;
+                          const count = getLotesDeQuadra(entry).length;
+                          const recalc = (updated: Record<string, { inicio?: number; fim?: number; especificos?: string }>) => {
+                            const soma = Object.values(updated).reduce((s, r) => s + getLotesDeQuadra(r).length, 0);
+                            setFormData({ ...formData, lotesPorQuadra: updated, totalLotes: soma });
+                          };
+                          return (
+                            <div key={q} className="flex flex-col gap-2 bg-slate-50 border border-slate-100 rounded-xl p-3">
+                              <div className="flex items-center justify-between">
+                                <label className="text-[9px] font-black uppercase tracking-widest text-primary-main">
+                                  Quadra {q}
+                                </label>
+                                {count > 0 && (
+                                  <span className="text-[9px] font-bold bg-primary-main/10 text-primary-main rounded-md px-1.5 py-0.5">
+                                    {count} lotes
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Toggle: Faixa / Específicos */}
+                              <div className="flex rounded-lg overflow-hidden border border-slate-200 text-[9px] font-bold">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const { especificos: _, ...rest } = entry;
+                                    const updated = { ...(formData.lotesPorQuadra || {}), [q]: rest };
+                                    recalc(updated);
+                                  }}
+                                  className={`flex-1 py-1 transition-colors ${!isEspecificos ? "bg-primary-main text-white" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  Faixa
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const updated = { ...(formData.lotesPorQuadra || {}), [q]: { especificos: entry.especificos ?? "" } };
+                                    recalc(updated);
+                                  }}
+                                  className={`flex-1 py-1 transition-colors ${isEspecificos ? "bg-primary-main text-white" : "text-slate-400 hover:bg-slate-100"}`}
+                                >
+                                  Específicos
+                                </button>
+                              </div>
+
+                              {isEspecificos ? (
+                                <div className="flex flex-col gap-0.5">
+                                  <span className="text-[8px] text-slate-400 font-bold uppercase">Lotes disponíveis (separados por vírgula)</span>
+                                  <input
+                                    type="text"
+                                    className="input-field text-sm font-bold w-full py-1.5"
+                                    placeholder="Ex: 1, 2, 6, 10, 15"
+                                    value={entry.especificos ?? ""}
+                                    onChange={(e) => {
+                                      const updated = { ...(formData.lotesPorQuadra || {}), [q]: { especificos: e.target.value } };
+                                      recalc(updated);
+                                    }}
+                                  />
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <div className="flex flex-col gap-0.5 flex-1">
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">De</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="input-field text-sm font-bold w-full py-1.5"
+                                      placeholder="1"
+                                      value={entry.inicio ?? ""}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 1;
+                                        const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...entry, inicio: val } };
+                                        recalc(updated);
+                                      }}
+                                    />
+                                  </div>
+                                  <span className="text-slate-300 font-bold mt-4">—</span>
+                                  <div className="flex flex-col gap-0.5 flex-1">
+                                    <span className="text-[8px] text-slate-400 font-bold uppercase">Até</span>
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      className="input-field text-sm font-bold w-full py-1.5"
+                                      placeholder="20"
+                                      value={entry.fim ?? ""}
+                                      onChange={(e) => {
+                                        const val = Number(e.target.value) || 0;
+                                        const updated = { ...(formData.lotesPorQuadra || {}), [q]: { ...entry, fim: val } };
+                                        recalc(updated);
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-xs font-bold text-slate-500 pt-1">
+                        Total calculado:{" "}
+                        <span className="text-primary-main">
+                          {Object.values(formData.lotesPorQuadra || {}).reduce((s, r) => s + getLotesDeQuadra(r).length, 0)} lotes
+                        </span>
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {/* Faixas de Rua por Lote */}
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                        Faixas de Rua por Lote
+                      </p>
+                      <p className="text-[10px] text-slate-300 normal-case font-normal mt-0.5">
+                        Ex: Q1 lotes 1–4 → Rua Principal · Q1 lotes 5–8 → Rua Amparo
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          ruasFaixas: [
+                            ...(formData.ruasFaixas || []),
+                            { quadra: formData.quadras?.split(",")[0]?.trim() || "", loteInicio: 1, loteFim: 4, rua: "" },
+                          ],
+                        })
+                      }
+                      className="flex items-center gap-1 text-[10px] font-bold text-primary-main hover:underline shrink-0"
+                    >
+                      <Plus size={11} /> Adicionar faixa
+                    </button>
+                  </div>
+                  {(formData.ruasFaixas || []).length === 0 && (
+                    <p className="text-[10px] text-slate-300 italic py-2">
+                      Nenhuma faixa definida. Clique em "Adicionar faixa" para mapear ruas por lote.
+                    </p>
+                  )}
+                  {(formData.ruasFaixas || []).map((faixa, idx) => (
+                    <div key={idx} className="flex flex-wrap items-end gap-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Quadra</label>
+                        <input
+                          list="faixa-quadras-list"
+                          className="input-field text-xs w-16 font-bold"
+                          placeholder="A"
+                          value={faixa.quadra}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, quadra: e.target.value };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                        <datalist id="faixa-quadras-list">
+                          {formData.quadras?.split(",").map((q) => <option key={q.trim()} value={q.trim()} />)}
+                        </datalist>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Lote início</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input-field text-xs w-20"
+                          placeholder="1"
+                          value={faixa.loteInicio || ""}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, loteInicio: Number(e.target.value) };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Lote fim</label>
+                        <input
+                          type="number"
+                          min={1}
+                          className="input-field text-xs w-20"
+                          placeholder="4"
+                          value={faixa.loteFim || ""}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, loteFim: Number(e.target.value) };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1 flex-1 min-w-[140px]">
+                        <label className="text-[8px] font-black uppercase tracking-widest text-slate-400">Rua / Acesso</label>
+                        <input
+                          className="input-field text-xs"
+                          placeholder="Ex: Rua Principal"
+                          value={faixa.rua}
+                          onChange={(e) => {
+                            const updated = [...(formData.ruasFaixas || [])];
+                            updated[idx] = { ...faixa, rua: e.target.value };
+                            setFormData({ ...formData, ruasFaixas: updated });
+                          }}
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = (formData.ruasFaixas || []).filter((_, i) => i !== idx);
+                          setFormData({ ...formData, ruasFaixas: updated });
+                        }}
+                        className="p-2 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="label">Total de Lotes</label>
+                {(formData.quadras || "").split(",").map(q => q.trim()).filter(Boolean).length > 0 ? (
+                  <div className="input-field font-bold bg-slate-100 cursor-not-allowed flex items-center justify-between">
+                    <span className="text-primary-main">{formData.totalLotes}</span>
+                    <span className="text-[10px] text-slate-400 font-normal">calculado automaticamente</span>
+                  </div>
+                ) : (
+                  <input
+                    type="number"
+                    className="input-field font-bold"
+                    value={formData.totalLotes}
+                    onChange={(e) =>
+                      setFormData({ ...formData, totalLotes: Number(e.target.value) })
+                    }
+                  />
+                )}
+              </div>
+
+              <div className="md:col-span-2 flex justify-between items-center pt-4">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+                  {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
+                </p>
+                <button
+                  type="submit"
+                  className="btn-primary w-full sm:w-auto px-12"
+                >
+                  {editingDev ? "Salvar Alterações" : "Criar Empreendimento"}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredDevelopments.map((dev) => (
+          <motion.div
+            layout
+            key={dev.id}
+            whileHover={{ scale: 1.01, translateY: -4 }}
+            className="card-premium flex flex-col group relative overflow-hidden"
+          >
+
+            <div className="mb-6 flex items-center gap-4">
+              <div className="p-4 bg-slate-50 text-primary-main rounded-2xl group-hover:bg-primary-main group-hover:text-primary-contrast transition-colors duration-300">
+                <Building2 size={24} className="stroke-[2.5]" />
+              </div>
+              <div>
+                <h4 className="text-xl font-display font-bold text-slate-800 leading-tight">
+                  {dev.nome}
+                </h4>
+                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
+                  <MapPin size={12} className="text-primary-light" />
+                  {dev.cidade} • {dev.estado}
+                </div>
+                {getEmpreendimentoMapsUrl(dev) && (
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); abrirLocalizacaoGoogleMaps(dev); }}
+                    className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary-main bg-primary-main/10 hover:bg-primary-main hover:text-primary-contrast rounded-lg px-2 py-1 transition-colors"
+                    title="Abrir localização no Google Maps"
+                  >
+                    <MapPin size={11} /> Google Maps
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="mb-4 px-1">
+              {dev.comunidade && (
+                <p className="text-[10px] font-bold text-primary-main uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-primary-main" />
+                  {dev.comunidade}
+                </p>
+              )}
+              {dev.ruasFaixas && dev.ruasFaixas.length > 0 ? (
+                <div className="mb-1 space-y-0.5">
+                  {dev.ruasFaixas.slice(0, 3).map((f, i) => (
+                    <p key={i} className="text-xs text-slate-500 line-clamp-1">
+                      <span className="font-bold text-slate-700">Q.{f.quadra} ({f.loteInicio}–{f.loteFim}):</span>{" "}{f.rua}
+                    </p>
+                  ))}
+                  {dev.ruasFaixas.length > 3 && (
+                    <p className="text-[10px] text-slate-400">+{dev.ruasFaixas.length - 3} faixas</p>
+                  )}
+                </div>
+              ) : dev.ruasPorQuadra && Object.keys(dev.ruasPorQuadra).length > 0 ? (
+                <div className="mb-1">
+                  {Object.entries(dev.ruasPorQuadra).slice(0, 2).map(([q, ruas]) => ruas ? (
+                    <p key={q} className="text-xs text-slate-500 line-clamp-1">
+                      <span className="font-bold text-slate-700">Q.{q}:</span>{" "}{ruas}
+                    </p>
+                  ) : null)}
+                </div>
+              ) : dev.ruas ? (
+                <p className="text-xs text-slate-500 line-clamp-1 mb-1">
+                  <span className="font-bold text-slate-700">Ruas:</span>{" "}{dev.ruas}
+                </p>
+              ) : null}
+              {dev.quadras && (
+                dev.lotesPorQuadra && Object.values(dev.lotesPorQuadra).some((r) => getLotesDeQuadra(r).length > 0) ? (
+                  <div className="mt-1">
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lotes por quadra</p>
+                    <div className="flex flex-wrap gap-1">
+                      {dev.quadras.split(",").map((q) => q.trim()).filter(Boolean).map((q) => {
+                        const entry = dev.lotesPorQuadra?.[q];
+                        const lotes = getLotesDeQuadra(entry);
+                        if (lotes.length === 0) return null;
+                        const label = entry?.especificos !== undefined
+                          ? `${lotes.length} espec.`
+                          : `${entry?.inicio}–${entry?.fim}`;
+                        return (
+                          <span key={q} className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary-main/8 text-primary-main rounded-lg px-2 py-0.5">
+                            Q.{q} <span className="font-black">{label}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-500 line-clamp-1">
+                    <span className="font-bold text-slate-700">Quadras:</span>{" "}
+                    {dev.quadras}
+                  </p>
+                )
+              )}
+            </div>
+
+
+            <div className="mt-auto space-y-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
+              {/* Warning: quadras sem faixa configurada */}
+              {(() => {
+                const quadraList = (dev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                const semFaixa = quadraList.filter(q => getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length === 0);
+                const somaQuadras = quadraList.reduce((s, q) => s + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length, 0);
+                const diffTotal = quadraList.length > 0 && somaQuadras > 0 && somaQuadras !== dev.totalLotes;
+                if (semFaixa.length === 0 && !diffTotal) return null;
+                return (
+                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
+                    <AlertCircle size={15} className="text-amber-500 mt-0.5 shrink-0" />
+                    <div className="text-[11px] font-bold text-amber-700 space-y-0.5">
+                      {semFaixa.length > 0 && (
+                        <p>⚠️ Quadra{semFaixa.length > 1 ? 's' : ''} sem lotes configurados: <span className="font-black">{semFaixa.map(q => `Q.${q}`).join(', ')}</span></p>
+                      )}
+                      {diffTotal && (
+                        <div className="space-y-1">
+                          <p>⚠️ Total configurado ({somaQuadras}) difere do total cadastrado ({dev.totalLotes}).</p>
+                          {(() => {
+                            const divergencias = getLotDivergenceDetails(dev, sales);
+                            return (
+                              <div className="space-y-0.5">
+                                {divergencias.extraLabels.length > 0 && (
+                                  <p>🛑 Lote a mais: <span className="font-black">{divergencias.extraLabels.join(", ")}</span>. Veja nos quadradinhos em preto e confira se há contrato vinculado.</p>
+                                )}
+                                {divergencias.missingLabels.length > 0 && (
+                                  <p>⚠️ Lote configurado sem cadastro: <span className="font-black">{divergencias.missingLabels.join(", ")}</span>.</p>
+                                )}
+                                {divergencias.extraLabels.length === 0 && divergencias.missingLabels.length === 0 && (
+                                  <p>Confira as faixas por quadra para encontrar a diferença.</p>
+                                )}
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Métricas: Vendidos / Disponíveis / Total */}
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Vendidos</p>
+                  <p className="text-lg font-display font-bold text-slate-800">{dev.lotesVendidos}</p>
+                </div>
+                <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-0.5">Disponíveis</p>
+                  <p className="text-lg font-display font-bold text-emerald-700">{(() => {
+                    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+                    return Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos));
+                  })()}</p>
+                </div>
+                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
+                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total</p>
+                  <p className="text-lg font-display font-bold text-slate-800">{dev.totalLotes}</p>
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                  <span>Progresso de vendas</span>
+                  <span className="text-primary-main">{dev.totalLotes > 0 ? Math.round((dev.lotesVendidos / dev.totalLotes) * 100) : 0}%</span>
+                </div>
+                <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
+                  <motion.div
+                    initial={{ width: 0 }}
+                    animate={{ width: `${dev.totalLotes > 0 ? (dev.lotesVendidos / dev.totalLotes) * 100 : 0}%` }}
+                    className="bg-primary-main h-full rounded-full shadow-[0_0_8px_rgba(45,80,22,0.3)]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest pt-2 border-t border-slate-100">
+                <span className="text-slate-400">Dados do Mapa:</span>
+                <span className="text-primary-main">
+                  {Object.keys(dev.lotesInfo || {}).length} lotes mapeados
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setSelectedDevForMap(dev)}
+                  className="flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
+                >
+                  <MapPin size={14} />
+                  <span>Ver Mapa</span>
+                </button>
+                <button
+                  onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                  disabled={!getEmpreendimentoMapsUrl(dev)}
+                  className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors ${getEmpreendimentoMapsUrl(dev) ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
+                  title={getEmpreendimentoMapsUrl(dev) ? "Abrir localização no Google Maps" : "Cadastre o link da localização em Editar"}
+                >
+                  <MapPin size={14} />
+                  <span>Ir no Google Maps</span>
+                </button>
+                <button
+                  onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className="flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
+                >
+                  <Settings size={14} />
+                  <span>Gerenciar Lotes</span>
+                </button>
+                <button
+                  onClick={() => openEditForm(dev)}
+                  className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-colors"
+                >
+                  <Pencil size={14} />
+                  <span>Editar</span>
+                </button>
+                <button
+                  onClick={() => requestDelete(`Excluir o empreendimento "${dev.nome}"? Esta ação não pode ser desfeita.`, () => onDelete(dev.id))}
+                  className="flex items-center justify-center gap-2 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors"
+                >
+                  <Trash2 size={14} />
+                  <span>Excluir</span>
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        ))}
+        {developments.length === 0 && !isAdding && (
+          <div className="col-span-full py-20 text-center flex flex-col items-center gap-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+            <div className="p-4 bg-surface-card rounded-full text-slate-300 shadow-sm">
+              <Building2 size={48} strokeWidth={1} />
+            </div>
+            <p className="text-slate-400 font-medium italic">
+              Sua base de empreendimentos está vazia.
+            </p>
+            <button
+              onClick={() => setIsAdding(true)}
+              className="btn-ghost text-sm mt-2 font-bold px-8"
+            >
+              Adicionar Primeiro Loteamento
+            </button>
+          </div>
+        )}
+      </div>
+
+      <AnimatePresence>
+        {selectedDevForMap && (
+          <LotDashboard
+            dev={selectedDevForMap}
+            sales={sales}
+            clients={clients}
+            onStartSale={(v) => {
+              onStartSale(v);
+              setSelectedDevForMap(null);
+            }}
+            onClose={() => setSelectedDevForMap(null)}
+            onViewContract={onViewContract}
+            onSaveDev={(updatedDev) => {
+              onSave(updatedDev);
+              setSelectedDevForMap(updatedDev);
+            }}
+            canEditMap={canEditMap}
+            onMarkerSaved={(quadra, lote, status, observacao) => {
+              // Sincronizar Gerenciador de Lotes com o marcador criado/editado no mapa
+              setLotRegDev(selectedDevForMap);
+              setLotRegForm({ quadra, numeroLote: lote, rua: "", status });
+              setLotRegTab("lotes");
+            }}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Cadastrar / Gerenciar Lotes */}
+      <AnimatePresence>
+        {lotRegDev && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <MapPin size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Lotes do Empreendimento</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lotRegDev.nome}</p>
+                  </div>
+                </div>
+                <button onClick={() => setLotRegDev(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100 overflow-hidden px-1 sm:px-2">
+                <button
+                  onClick={() => setLotRegTab("cadastrar")}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
+                    lotRegTab === "cadastrar"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title="Cadastrar Lote"
+                >
+                  <Plus size={16} />
+                </button>
+
+                <button
+                  onClick={() => setLotRegTab("lotes")}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all relative ${
+                    lotRegTab === "lotes"
+                      ? "text-primary-main border-b-2 border-primary-main bg-primary-main/5"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title="Gerenciar Lotes"
+                >
+                  <List size={16} />
+
+                  {Object.keys(lotRegDev.lotesInfo || {}).length > 0 && (
+                    <span className="absolute top-1.5 right-2 bg-slate-100 text-slate-600 text-[8px] font-black px-1 py-0.5 rounded-full leading-none">
+                      {Object.keys(lotRegDev.lotesInfo || {}).length}
+                    </span>
+                  )}
+                </button>
+
+                <button
+                  onClick={() => setLotRegTab("texto")}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
+                    lotRegTab === "texto"
+                      ? "text-blue-600 border-b-2 border-blue-600 bg-blue-50"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title="Adicionar por Texto"
+                >
+                  <ClipboardPaste size={16} />
+                </button>
+
+                <button
+                  onClick={() => { setLotRegTab("acoesMassa"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`flex-1 min-w-0 flex items-center justify-center py-3 rounded-t-xl transition-all ${
+                    lotRegTab === "acoesMassa"
+                      ? "text-slate-700 border-b-2 border-slate-700 bg-slate-100"
+                      : "text-slate-400 hover:text-slate-600"
+                  }`}
+                  title="Lotes em Massa"
+                >
+                  <Settings size={16} />
+                </button>
+              </div>
+
+              {/* Tab: Cadastrar */}
+              {lotRegTab === "cadastrar" && (
+                <>
+                  <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="label">Quadra *</label>
+                        <input
+                          list="lot-reg-quadras"
+                          className="input-field"
+                          placeholder="Ex: A"
+                          value={lotRegForm.quadra}
+                          onChange={(e) => setLotRegForm({ ...lotRegForm, quadra: e.target.value, rua: "" })}
+                        />
+                        <datalist id="lot-reg-quadras">
+                          {lotRegDev.quadras?.split(",").map((q) => (
+                            <option key={q.trim()} value={q.trim()} />
+                          ))}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="label">Nº do Lote *</label>
+                        <input
+                          className="input-field"
+                          placeholder="Ex: 01"
+                          value={lotRegForm.numeroLote}
+                          onChange={(e) => setLotRegForm({ ...lotRegForm, numeroLote: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      {(() => {
+                        const quadra = lotRegForm.quadra.trim();
+                        const sugestoes = quadra ? getRuasSugeridas(lotRegDev, quadra, lotRegForm.numeroLote) : [];
+                        const exactRua = quadra && lotRegForm.numeroLote ? getRuaSugerida(lotRegDev, quadra, lotRegForm.numeroLote) : null;
+                        return (
+                          <>
+                            <label className="label flex items-center gap-2">
+                              Rua / Acesso do Lote
+                              {sugestoes.length > 0 && (
+                                <span className="text-[9px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full normal-case">
+                                  {sugestoes.length} sugestão(ões)
+                                </span>
+                              )}
+                            </label>
+                            <input
+                              list="lot-reg-ruas"
+                              className="input-field"
+                              placeholder={sugestoes.length > 0 ? `Ex: ${sugestoes[0]}` : "Nome da rua ou acesso"}
+                              value={lotRegForm.rua}
+                              onChange={(e) => setLotRegForm({ ...lotRegForm, rua: e.target.value })}
+                            />
+                            {sugestoes.length > 0 && (
+                              <datalist id="lot-reg-ruas">
+                                {sugestoes.map((r) => <option key={r} value={r} />)}
+                              </datalist>
+                            )}
+                            {sugestoes.length > 0 && (
+                              <p className="text-[10px] text-slate-400 mt-1">Sugestões para Q.{quadra}: {sugestoes.join(", ")}</p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                    {lotRegForm.quadra && lotRegForm.numeroLote && (
+                      <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-500">
+                        <span className="font-bold text-slate-700">Chave:</span>{" "}
+                        {`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()}
+                        {lotRegDev.lotesInfo?.[`${lotRegForm.quadra}-${lotRegForm.numeroLote}`.toUpperCase()] && (
+                          <span className="ml-2 text-amber-600 font-bold">⚠ Será atualizado</span>
+                        )}
+                      </div>
+                    )}
+                    <div>
+                      <label className="label">Disponibilidade</label>
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                        <button
+                          type="button"
+                          onClick={() => setLotRegForm({ ...lotRegForm, status: "disponivel" })}
+                          className={`px-5 py-2.5 flex items-center gap-2 transition-colors ${lotRegForm.status === "disponivel" ? "bg-emerald-500 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                        >
+                          <Check size={14} />
+                          Disponível
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setLotRegForm({ ...lotRegForm, status: "indisponivel" })}
+                          className={`px-5 py-2.5 flex items-center gap-2 transition-colors ${lotRegForm.status === "indisponivel" ? "bg-slate-700 text-white" : "text-slate-500 hover:bg-slate-50"}`}
+                        >
+                          <X size={14} />
+                          Indisponível
+                        </button>
+                      </div>
+                      {lotRegForm.status === "indisponivel" && (
+                        <p className="text-[10px] text-slate-400 mt-2">Este lote não aparecerá como disponível para venda no dashboard.</p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                    <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
+                    <button onClick={handleSalvarLote} className="btn-primary px-8">Salvar Lote</button>
+                  </div>
+                </>
+              )}
+
+              {/* Tab: Lotes Registrados */}
+              {lotRegTab === "lotes" && (
+                <>
+                  <div className="flex-1 overflow-y-auto">
+                    {Object.keys(lotRegDev.lotesInfo || {}).length === 0 ? (
+                      <div className="p-10 text-center text-slate-400 space-y-2">
+                        <MapPin size={32} className="mx-auto opacity-30" />
+                        <p className="font-medium text-sm">Nenhum lote cadastrado ainda.</p>
+                        <button onClick={() => setLotRegTab("cadastrar")} className="text-xs text-primary-main font-bold underline">
+                          Cadastrar primeiro lote
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                      <table className="w-full text-sm min-w-[380px]">
+                        <thead className="bg-slate-50 sticky top-0">
+                          <tr>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
+                            <th className="px-3 py-3" />
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(lotRegDev.lotesInfo || {})
+                            .sort(([a], [b]) => a.localeCompare(b))
+                            .map(([key, info]) => {
+                              const [quadra, ...loteParts] = key.split("-");
+                              const lote = loteParts.join("-");
+                              const venda = findVendaAtivaDoLote(sales, lotRegDev.id, quadra, lote);
+                              const isIndisponivel = info.status === "indisponivel";
+                              const temDesistente = !!(info as any).desistente;
+                              return (
+                                <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
+                                  <td className="px-4 py-3">
+                                    <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
+                                  </td>
+                                  <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
+                                  <td className="px-4 py-3">
+                                    {venda ? (
+                                      <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
+                                    ) : isIndisponivel ? (
+                                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Indisponível</span>
+                                    ) : (
+                                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3 text-xs max-w-[130px]">
+                                    {venda ? (
+                                      <span className="text-red-600 font-bold flex items-center gap-1 truncate">
+                                        <User size={11} />
+                                        {venda.clienteNome.split(" ")[0]}
+                                      </span>
+                                    ) : temDesistente ? (
+                                      <div>
+                                        <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
+                                          <AlertCircle size={11} />
+                                          {(info as any).desistente.clienteNome.split(" ")[0]}
+                                        </span>
+                                        <span className="text-[9px] text-slate-400">Desistente</span>
+                                      </div>
+                                    ) : (
+                                      <span className="text-slate-300 italic text-[10px]">—</span>
+                                    )}
+                                  </td>
+                                  <td className="px-4 py-3">
+                                    <div className="flex items-center justify-end gap-1">
+                                      {/* Botão editar */}
+                                      <button
+                                        onClick={() => {
+                                          setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (info.status as any) || "disponivel" });
+                                          setLotRegTab("cadastrar");
+                                        }}
+                                        className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
+                                        title="Editar lote"
+                                      >
+                                        <Pencil size={13} />
+                                      </button>
+                                      {/* Botão alternar disponibilidade (só sem venda ativa) */}
+                                      {!venda && (
+                                        <button
+                                          onClick={() => {
+                                            const novoStatus = isIndisponivel ? "disponivel" : "indisponivel";
+                                            onUpdateLotesInfo(lotRegDev.id, { [key]: { ...(info as any), status: novoStatus } });
+                                            setLotRegDev((prev) => {
+                                              if (!prev) return null;
+                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...(info as any), status: novoStatus } }, sales);
+                                            });
+                                          }}
+                                          className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
+                                          title={isIndisponivel ? "Marcar como disponível" : "Marcar como indisponível"}
+                                        >
+                                          {isIndisponivel ? <Check size={13} /> : <X size={13} />}
+                                        </button>
+                                      )}
+                                      {/* Botão liberar lote vendido — mantém histórico simples */}
+                                      {venda && (
+                                        <button
+                                          onClick={() => setReleaseLotPending({ key, quadra, lote, info, venda })}
+                                          className="p-1.5 hover:bg-amber-50 text-amber-500 rounded-lg transition-colors"
+                                          title="Liberar lote e manter histórico"
+                                        >
+                                          <ArrowLeft size={13} />
+                                        </button>
+                                      )}
+                                      {/* Limpar histórico de desistente */}
+                                      {temDesistente && !venda && (
+                                        <button
+                                          onClick={() => {
+                                            const infoAtualizada = { ...(info as any) };
+                                            delete infoAtualizada.desistente;
+                                            onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+                                            setLotRegDev((prev) => {
+                                              if (!prev) return null;
+                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
+                                            });
+                                          }}
+                                          className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
+                                          title="Limpar histórico de desistência"
+                                        >
+                                          <RefreshCw size={13} />
+                                        </button>
+                                      )}
+                                      {/* Botão remover (só sem venda e sem desistente) */}
+                                      {!venda && !temDesistente && (
+                                        <button
+                                          onClick={() => {
+                                            requestDelete(`Remover lote ${key}?`, () => {
+                                              onDeleteLot(lotRegDev.id, key);
+                                              setLotRegDev((prev) => {
+                                                if (!prev) return null;
+                                                return deleteLotFromEmpreendimento(prev, key, sales);
+                                              });
+                                            });
+                                          }}
+                                          className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
+                                          title="Remover lote"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      )}
+                                    </div>
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                        </tbody>
+                      </table>
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-4 border-t border-slate-100 flex justify-between items-center">
+                    <p className="text-[10px] text-slate-400">Lotes com comprador não podem ser removidos.</p>
+                    <button
+                      onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); }}
+                      className="btn-primary px-5 py-2 text-xs flex items-center gap-2"
+                    >
+                      <Plus size={13} />
+                      Novo Lote
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {/* Tab: Ações em Massa */}
+              {lotRegTab === "acoesMassa" && (
+                <>
+                  <div className="flex border-b border-slate-100 overflow-x-auto px-4 sm:px-6 pt-4 gap-3 sm:gap-4">
+                    <button
+                      onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                      className={`shrink-0 pb-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-slate-700" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                    >
+                      <span className="flex items-center gap-1.5"><X size={13} /><span className="hidden sm:inline">Marcar </span>Indisponíveis</span>
+                    </button>
+                    <button
+                      onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                      className={`shrink-0 pb-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest border-b-2 transition-colors whitespace-nowrap ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-emerald-500" : "text-slate-400 border-transparent hover:text-slate-600"}`}
+                    >
+                      <span className="flex items-center gap-1.5"><Check size={13} /><span className="hidden sm:inline">Definir </span>Disponíveis</span>
+                    </button>
+                  </div>
+                  <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                    {(() => {
+                      const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                      if (quadraList.length === 0) {
+                        return <p className="text-slate-400 text-sm text-center py-8">Nenhuma quadra configurada neste empreendimento.</p>;
+                      }
+                      if (bulkAvailTab === "marcarIndisponiveis") {
+                        return (
+                          <div className="space-y-4">
+                            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                              <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
+                              <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
+                              <div className="flex flex-wrap gap-2 mb-3">
+                                <button
+                                  onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
+                                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                                >
+                                  {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                                </button>
+                              </div>
+                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                                {quadraList.map(q => {
+                                  const isSelected = bulkSelectedQuadras.includes(q);
+                                  const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                                  return (
+                                    <button
+                                      key={q}
+                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                      className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-slate-700 text-white border-slate-700 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
+                                    >
+                                      <span>Q.{q}</span>
+                                      {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-slate-300" : "text-slate-400"}`}>{lotes.length} lotes</span>}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              {bulkSelectedQuadras.length > 0 && (
+                                <p className="mt-3 text-xs text-slate-500 font-medium">
+                                  {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""} → todos os lotes disponíveis serão bloqueados.
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+                      return (
+                        <div className="space-y-4">
+                          <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                            <p className="font-bold mb-1">ℹ️ Como funciona</p>
+                            <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>.</p>
+                          </div>
+                          <div>
+                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
+                            <div className="space-y-3">
+                              {quadraList.map(q => {
+                                const isSelected = bulkSelectedQuadras.includes(q);
+                                const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                                return (
+                                  <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? "border-emerald-300" : "border-slate-100"}`}>
+                                    <button
+                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                      className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                    >
+                                      <span className="flex items-center gap-2">
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"}`}>
+                                          {isSelected && <Check size={10} />}
+                                        </span>
+                                        Quadra {q}
+                                      </span>
+                                      {lotes.length > 0 && <span className="text-[9px] text-slate-400">{lotes.length} lotes configurados</span>}
+                                    </button>
+                                    {isSelected && (
+                                      <div className="px-4 py-3 bg-white">
+                                        <label className="label text-[10px] mb-1">Lotes disponíveis (separados por vírgula)</label>
+                                        <input
+                                          className="input-field text-xs h-9"
+                                          placeholder="Ex: 01, 02, 05, 10"
+                                          value={bulkLotesEspecificos[q] || ""}
+                                          onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                        />
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                  <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                    <button onClick={() => { setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); setLotRegTab("cadastrar"); }} className="btn-secondary px-6">Cancelar</button>
+                    <button
+                      disabled={bulkSelectedQuadras.length === 0}
+                      onClick={() => {
+                        if (!lotRegDev) return;
+                        const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                        const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
+                        const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
+                        if (bulkAvailTab === "marcarIndisponiveis") {
+                          bulkSelectedQuadras.forEach(q => {
+                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                            lotes.forEach(l => {
+                              const key = `${q}-${l}`.toUpperCase();
+                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
+                              if (!temVendaAtiva) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                              }
+                            });
+                          });
+                        } else {
+                          bulkSelectedQuadras.forEach(q => {
+                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                            const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                            lotes.forEach(l => {
+                              const key = `${q}-${l}`.toUpperCase();
+                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
+                              if (!temVendaAtiva) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
+                              }
+                            });
+                          });
+                        }
+                        onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
+                        setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
+                        setBulkSelectedQuadras([]);
+                        setBulkLotesEspecificos({});
+                        setLotRegTab("lotes");
+                      }}
+                      className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                    >
+                      {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
+                      {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
+                    </button>
+                  </div>
+                </>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {/* Modal: Gerenciar Disponibilidade em Massa */}
+      <AnimatePresence>
+        {bulkAvailDev && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-700 rounded-xl text-white">
+                    <Settings size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Disponibilidade em Massa</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{bulkAvailDev.nome}</p>
+                  </div>
+                </div>
+                <button onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-slate-100 overflow-x-auto">
+                <button
+                  onClick={() => { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 ${bulkAvailTab === "marcarIndisponiveis" ? "text-slate-700 border-b-2 border-slate-700" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                  <X size={13} />
+                  <span className="hidden sm:inline">Marcar Indisponíveis</span>
+                  <span className="sm:hidden">Indisponíveis</span>
+                </button>
+                <button
+                  onClick={() => { setBulkAvailTab("marcarDisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className={`shrink-0 flex-1 flex items-center justify-center gap-1.5 py-3 text-[10px] sm:text-xs font-bold uppercase tracking-widest transition-colors whitespace-nowrap px-4 ${bulkAvailTab === "marcarDisponiveis" ? "text-emerald-600 border-b-2 border-emerald-600" : "text-slate-400 hover:text-slate-600"}`}
+                >
+                  <Check size={13} />
+                  <span className="hidden sm:inline">Definir Disponíveis</span>
+                  <span className="sm:hidden">Disponíveis</span>
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {(() => {
+                  const quadraList = (bulkAvailDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                  if (quadraList.length === 0) {
+                    return <p className="text-slate-400 text-sm text-center py-8">Nenhuma quadra configurada neste empreendimento.</p>;
+                  }
+
+                  if (bulkAvailTab === "marcarIndisponiveis") {
+                    return (
+                      <div className="space-y-4">
+                        <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                          <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
+                          <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
+                          <div className="flex flex-wrap gap-2 mb-3">
+                            <button
+                              onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
+                              className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                            >
+                              {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
+                            {quadraList.map(q => {
+                              const isSelected = bulkSelectedQuadras.includes(q);
+                              const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                              return (
+                                <button
+                                  key={q}
+                                  onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                  className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-slate-700 text-white border-slate-700 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
+                                >
+                                  <span>Q.{q}</span>
+                                  {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-slate-300" : "text-slate-400"}`}>{lotes.length} lotes</span>}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {bulkSelectedQuadras.length > 0 && (
+                            <p className="mt-3 text-xs text-slate-500 font-medium">
+                              {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? 's' : ''} selecionada{bulkSelectedQuadras.length > 1 ? 's' : ''} → todos os lotes disponíveis serão bloqueados.
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Tab: Definir disponíveis por quadra (lotes específicos separados por vírgula)
+                  return (
+                    <div className="space-y-4">
+                      <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                        <p className="font-bold mb-1">ℹ️ Como funciona</p>
+                        <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>. Lotes com venda ativa não são alterados.</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
+                        <div className="space-y-3">
+                          {quadraList.map(q => {
+                            const isSelected = bulkSelectedQuadras.includes(q);
+                            const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                            return (
+                              <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? "border-emerald-300" : "border-slate-100"}`}>
+                                <button
+                                  onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
+                                  className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"}`}>
+                                      {isSelected && <Check size={10} />}
+                                    </span>
+                                    Quadra {q}
+                                  </span>
+                                  {lotes.length > 0 && <span className="text-[9px] text-slate-400">{lotes.length} lotes configurados</span>}
+                                </button>
+                                {isSelected && (
+                                  <div className="px-4 py-3 bg-white space-y-2">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                      Lotes disponíveis (separados por vírgula)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="input-field text-sm font-bold w-full"
+                                      placeholder="Ex: 1, 3, 5, 10, 15"
+                                      value={bulkLotesEspecificos[q] ?? ""}
+                                      onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                    />
+                                    {bulkLotesEspecificos[q]?.trim() && (
+                                      <p className="text-[10px] text-emerald-600 font-bold">
+                                        Disponíveis: {bulkLotesEspecificos[q].split(",").map(s => s.trim()).filter(Boolean).join(", ")}
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => { setBulkAvailDev(null); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  disabled={bulkSelectedQuadras.length === 0}
+                  onClick={() => {
+                    if (!bulkAvailDev) return;
+                    const quadraList = (bulkAvailDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
+                    const vendas = sales.filter(s => s.empreendimentoId === bulkAvailDev.id);
+                    const newLotesInfo: Record<string, any> = { ...(bulkAvailDev.lotesInfo || {}) };
+
+                    if (bulkAvailTab === "marcarIndisponiveis") {
+                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como indisponíveis
+                      bulkSelectedQuadras.forEach(q => {
+                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                        lotes.forEach(l => {
+                          const key = `${q}-${l}`.toUpperCase();
+                          const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
+                          if (!temVendaAtiva) {
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                          }
+                        });
+                      });
+                    } else {
+                      // Para cada quadra com lotes específicos informados, marcar os informados como disponíveis e os demais como indisponíveis
+                      bulkSelectedQuadras.forEach(q => {
+                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                        const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                        lotes.forEach(l => {
+                          const key = `${q}-${l}`.toUpperCase();
+                          const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
+                          if (!temVendaAtiva) {
+                            const isDisponivel = disponiveis.includes(l);
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: isDisponivel ? "disponivel" : "indisponivel" };
+                          }
+                        });
+                      });
+                    }
+
+                    onUpdateLotesInfo(bulkAvailDev.id, newLotesInfo);
+                    setBulkAvailDev(null);
+                    setBulkSelectedQuadras([]);
+                    setBulkLotesEspecificos({});
+                  }}
+                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                >
+                  {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
+                  {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {releaseLotPending && (
+        <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+          <div className="bg-white w-full max-w-md rounded-[24px] shadow-2xl overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex items-center gap-3">
+              <div className="p-2.5 bg-amber-50 rounded-xl text-amber-500">
+                <AlertTriangle size={20} />
+              </div>
+              <div>
+                <h4 className="font-display font-bold text-slate-800">Liberar lote vendido</h4>
+                <p className="text-[11px] text-slate-400 font-medium">O histórico da venda será mantido</p>
+              </div>
+            </div>
+            <div className="p-6 space-y-4">
+              <p className="text-sm text-slate-600">
+                Este lote está vinculado à venda de <span className="font-bold text-slate-800">{releaseLotPending.venda.clienteNome || "Cliente não informado"}</span>.
+                Ao marcar como disponível, o lote será liberado para nova venda, mas o histórico será mantido. Deseja continuar?
+              </p>
+              <div className="rounded-2xl bg-slate-50 border border-slate-100 p-4 grid grid-cols-2 gap-3 text-xs">
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Cliente</p>
+                  <p className="font-bold text-slate-700 truncate">{releaseLotPending.venda.clienteNome || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Empreendimento</p>
+                  <p className="font-bold text-slate-700 truncate">{releaseLotPending.venda.empreendimentoNome || lotRegDev?.nome || "Não informado"}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Quadra</p>
+                  <p className="font-bold text-slate-700">{releaseLotPending.quadra}</p>
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Lote</p>
+                  <p className="font-bold text-slate-700">{releaseLotPending.lote}</p>
+                </div>
+                <div className="col-span-2">
+                  <p className="text-[10px] uppercase tracking-widest text-slate-400 font-black">Data da venda</p>
+                  <p className="font-bold text-slate-700">{formatDateBR(releaseLotPending.venda.dataVenda)}</p>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+              <button onClick={() => setReleaseLotPending(null)} className="btn-secondary flex-1">Cancelar</button>
+              <button onClick={confirmarLiberarLoteVendido} className="flex-1 h-11 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-xl transition-colors flex items-center justify-center gap-2">
+                <Check size={16} />
+                Liberar lote e manter histórico
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {DeleteModal}
+    </div>
+  );
+};
+
+const VendasSection = ({
+  developments,
+  sales = [],
+  onSaveVenda,
+  onGoToContracts,
+  onGoToContractsRecibo,
+  initialSaleData,
+  onSaveDev,
+  vendedores = [],
+  clients = [],
+  editingEntry,
+  onUpdateVendaFull,
+  onMergeClients,
+  isOnline = true,
+}: {
+  developments: Empreendimento[];
+  sales?: Venda[];
+  onSaveVenda: (v: Venda, c: Cliente) => Venda;
+  onGoToContracts: (v: Venda) => void;
+  onGoToContractsRecibo?: (v: Venda) => void;
+  initialSaleData?: Partial<Venda>;
+  onSaveDev: (d: Empreendimento) => void;
+  vendedores?: Vendedor[];
+  clients?: Cliente[];
+  editingEntry?: { venda: Venda; cliente: Cliente | null } | null;
+  onUpdateVendaFull?: (v: Venda, c: Cliente) => void;
+  onMergeClients?: (masterId: string, duplicateIds: string[]) => void;
+  isOnline?: boolean;
+}) => {
+  const [clientData, setClientData] = useState<Partial<Cliente>>({
+    nome: "",
+    nacionalidade: "Brasileira",
+    genero: "M",
+    rg: "",
+    cpf: "",
+    estadoCivil: "Solteiro(a)",
+    profissao: "",
+    nascimento: "",
+    cep: "",
+    endereco: "",
+    numero: "",
+    bairro: "",
+    cidade: "",
+    estado: "",
+    telefone1: "",
+    telefone2: "",
+  });
+  const [hasSecondBuyer, setHasSecondBuyer] = useState(false);
+  const [secondBuyerData, setSecondBuyerData] = useState<Venda["comprador2"]>({
+    nome: "",
+    nacionalidade: "Brasileira",
+    genero: "M",
+    rg: "",
+    cpf: "",
+    estadoCivil: "Solteiro(a)",
+    profissao: "",
+    nascimento: "",
+  });
+  const [saleData, setSaleData] = useState<Partial<Venda>>({
+    empreendimentoId: "",
+    numeroLote: "",
+    quadra: "",
+    rua: "",
+    valorLote: undefined,
+    valorEntrada: undefined,
+    quantidadeParcelas: undefined,
+    dataVencimento: defaultVencimento(),
+    vendedor: "",
+    valorParcela: 0,
+    custo: 0,
+    comissao: 0,
+    formaPagamento: "Boleto",
+    ...initialSaleData,
+  });
+  const [tipoVenda, setTipoVenda] = useState<'avista' | 'parcelado'>(
+    initialSaleData?.quantidadeParcelas === 0 ? 'avista' : 'parcelado'
+  );
+  const vendasFormRef = useRef<HTMLFormElement>(null);
+  const [showNovoDev, setShowNovoDev] = useState(false);
+  const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
+  const [cpfErr, setCpfErr] = useState<string | null>(null);
+  const [rgErr, setRgErr] = useState<string | null>(null);
+  const [cpf2Err, setCpf2Err] = useState<string | null>(null);
+  const [rg2Err, setRg2Err] = useState<string | null>(null);
+  const [invalidSaleFields, setInvalidSaleFields] = useState<Record<string, string>>({});
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const [showCpfDropdown, setShowCpfDropdown] = useState(false);
+  const [cpfMatch, setCpfMatch] = useState<Cliente | null>(null);
+  const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
+  const [hasDraft, setHasDraft] = useState(() => !!localStorage.getItem('venda_rascunho'));
+  const [showColarFicha, setShowColarFicha] = useState(false);
+  const [fichaText, setFichaText] = useState("");
+  const [fichaFilled, setFichaFilled] = useState<string[]>([]);
+  const [fichaSuccess, setFichaSuccess] = useState(false);
+
+  const handleSalvarNovoDev = () => {
+    if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
+    const novo: Empreendimento = {
+      id: `dev-${Date.now()}`,
+      nome: textoMaiusculo(novoDevData.nome).trim(),
+      endereco: "",
+      cidade: "",
+      estado: "",
+      totalLotes: novoDevData.totalLotes || 0,
+      descricao: "",
+      lotesVendidos: 0,
+      comunidade: novoDevData.comunidade,
+      quadras: novoDevData.quadras,
+    };
+    onSaveDev(novo);
+    setSaleData({ ...saleData, empreendimentoId: novo.id });
+    setShowNovoDev(false);
+    setNovoDevData({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
+  };
+
+  // Update saleData if initialSaleData changes (e.g. coming from Dashboard)
+  useEffect(() => {
+    if (initialSaleData) {
+      setSaleData((prev) => ({ ...prev, ...initialSaleData }));
+    }
+  }, [initialSaleData]);
+
+  // Pre-fill all data when editing an existing sale
+  useEffect(() => {
+    if (editingEntry) {
+      if (editingEntry.cliente) {
+        setClientData({ ...editingEntry.cliente });
+      }
+      setSaleData({ ...editingEntry.venda });
+      setTipoVenda(editingEntry.venda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
+      if (editingEntry.venda.comprador2) {
+        setHasSecondBuyer(true);
+        setSecondBuyerData({ ...editingEntry.venda.comprador2 });
+      } else {
+        setHasSecondBuyer(false);
+      }
+      setLastSavedVenda(null);
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [editingEntry]);
+
+  // CPF detection — match único mostra "Usar dados existentes", múltiplos mostra duplicatas
+  useEffect(() => {
+    const cpfRaw = (clientData.cpf || "").replace(/\D/g, "");
+    if (cpfRaw.length !== 11 || !validarCPF(clientData.cpf || "")) {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+      return;
+    }
+    // Exclui o cliente já carregado (edição ou após "Usar dados existentes")
+    const excludeId = editingEntry?.cliente?.id || clientData.id;
+    const matches = clients.filter(
+      (c) => c.cpf?.replace(/\D/g, "") === cpfRaw && c.id !== excludeId
+    );
+    if (matches.length === 1) {
+      setCpfMatch(matches[0]);
+      setCpfDuplicates([]);
+    } else if (matches.length > 1) {
+      setCpfMatch(null);
+      setCpfDuplicates(matches);
+    } else {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [clientData.cpf, clientData.id, clients, editingEntry]);
+
+  const [rawText, setRawText] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isExtractingFiles, setIsExtractingFiles] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
+  const [pendingMissingLotSale, setPendingMissingLotSale] = useState<{ venda: Venda; cliente: Cliente } | null>(null);
+
+  const requiredSaleFieldClass = (field: string) =>
+    invalidSaleFields[field] ? " border-red-500 ring-2 ring-red-200 focus:ring-red-400 bg-red-50/60" : "";
+
+  const clearInvalidSaleField = (field: string) => {
+    if (!invalidSaleFields[field]) return;
+    setInvalidSaleFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  const focusInvalidSaleField = (field: string) => {
+    const el = vendasFormRef.current?.querySelector<HTMLElement>(`[data-sale-field="${field}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      setTimeout(() => el.focus(), 250);
+    }
+  };
+
+  const validateVendaFields = () => {
+    const missing: Record<string, string> = {};
+    const add = (field: string, label: string, value: any) => {
+      if (value === undefined || value === null || String(value).trim() === "" || Number.isNaN(value)) {
+        missing[field] = label;
+      }
+    };
+    const addPositive = (field: string, label: string, value: any) => {
+      const num = Number(value);
+      if (value === undefined || value === null || String(value).trim() === "" || Number.isNaN(num) || num <= 0) {
+        missing[field] = label;
+      }
+    };
+
+    add("nome", "Nome completo do comprador", clientData.nome);
+    add("cpf", "CPF do comprador", clientData.cpf);
+    add("rg", "RG do comprador", clientData.rg);
+    add("empreendimentoId", "Empreendimento", saleData.empreendimentoId);
+    add("numeroLote", "Lote", saleData.numeroLote);
+    add("quadra", "Quadra", saleData.quadra);
+    addPositive("valorLote", "Valor total", saleData.valorLote);
+
+    if (tipoVenda === "parcelado") {
+      add("valorEntrada", "Entrada", saleData.valorEntrada);
+      addPositive("quantidadeParcelas", "Quantidade de parcelas", saleData.quantidadeParcelas);
+      addPositive("valorParcela", "Valor da parcela", saleData.valorParcela);
+      add("dataVencimento", "Data de vencimento", saleData.dataVencimento);
+    }
+
+    if (hasSecondBuyer) {
+      add("comprador2Nome", "Nome do segundo comprador", secondBuyerData?.nome);
+      add("comprador2Cpf", "CPF do segundo comprador", secondBuyerData?.cpf);
+      add("comprador2Rg", "RG do segundo comprador", secondBuyerData?.rg);
+    }
+
+    setInvalidSaleFields(missing);
+    const first = Object.keys(missing)[0];
+    if (first) {
+      focusInvalidSaleField(first);
+      triggerShake(vendasFormRef.current);
+      return false;
+    }
+    return true;
+  };
+
+  const [pasteSuccess, setPasteSuccess] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteFilledFields, setPasteFilledFields] = useState<string[]>([]);
+  const [fileExtractSuccess, setFileExtractSuccess] = useState(false);
+  const [fileExtractError, setFileExtractError] = useState<string | null>(null);
+  const [fileFilledFields, setFileFilledFields] = useState<string[]>([]);
+
+  const applyDataToState = (
+    data: Record<string, any>,
+    devList: Empreendimento[]
+  ) => {
+    // Match empreendimento by name (field: "empreendimento")
+    const empNome = (data.empreendimento || data.empreendimentoNome || "").toLowerCase().trim();
+    let empreendimentoId: string | undefined;
+    if (empNome) {
+      const match = devList.find(
+        (d) =>
+          d.nome.toLowerCase().includes(empNome) ||
+          empNome.includes(d.nome.toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+
+    // Detect gender from estadoCivil
+    const estadoCivil = data.estadoCivil || "";
+    const generoDetectado: "F" | "M" | undefined =
+      ["Solteira", "Casada", "Divorciada", "Viúva"].includes(estadoCivil) ? "F" :
+      ["Solteiro", "Casado", "Divorciado", "Viúvo"].includes(estadoCivil) ? "M" : undefined;
+
+    // Build dataVencimento date from diaVencimento day number
+    let dataVencimento: string | undefined;
+    const diaVenc = data.diaVencimento ? String(data.diaVencimento).replace(/\D/g, "") : "";
+    if (diaVenc) {
+      const now = new Date();
+      let year = now.getFullYear();
+      let month = now.getMonth() + 1;
+      const dia = parseInt(diaVenc);
+      if (dia <= now.getDate()) { month += 1; if (month > 12) { month = 1; year += 1; } }
+      dataVencimento = `${year}-${String(month).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    } else if (data.dataVencimento) {
+      dataVencimento = data.dataVencimento;
+    }
+
+    setClientData((prev) => ({
+      ...prev,
+      ...(data.nome ? { nome: textoMaiusculo(data.nome) } : {}),
+      ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
+      ...(data.rg ? { rg: data.rg } : {}),
+      ...(data.cpf ? { cpf: maskCPF(String(data.cpf)) } : {}),
+      ...(estadoCivil ? { estadoCivil } : {}),
+      ...(generoDetectado ? { genero: generoDetectado } : {}),
+      ...(data.profissao ? { profissao: data.profissao } : {}),
+      ...(data.nascimento ? { nascimento: data.nascimento } : {}),
+      ...(data.telefone1 ? { telefone1: maskPhone(String(data.telefone1)) } : {}),
+      ...(data.telefone2 ? { telefone2: maskPhone(String(data.telefone2)) } : {}),
+      ...(data.endereco ? { endereco: data.endereco } : {}),
+      ...(data.numero ? { numero: String(data.numero) } : {}),
+      ...(data.bairro ? { bairro: data.bairro } : {}),
+      ...(data.cidade ? { cidade: data.cidade } : {}),
+      ...(data.estado ? { estado: data.estado } : {}),
+      ...(data.cep ? { cep: maskCEP(String(data.cep)) } : {}),
+    }));
+
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      ...(data.lote || data.numeroLote ? { numeroLote: String(data.lote || data.numeroLote) } : {}),
+      ...(data.quadra ? { quadra: String(data.quadra) } : {}),
+      ...(data.valorTotal || data.valorLote ? { valorLote: Number(data.valorTotal || data.valorLote) } : {}),
+      ...(data.entrada || data.valorEntrada ? { valorEntrada: Number(data.entrada || data.valorEntrada) } : {}),
+      ...(data.valorParcela ? { valorParcela: Number(data.valorParcela) } : {}),
+      ...(data.numeroParcelas || data.quantidadeParcelas ? { quantidadeParcelas: Number(data.numeroParcelas || data.quantidadeParcelas) } : {}),
+      ...(dataVencimento ? { dataVencimento } : {}),
+    }));
+  };
+
+  const runExtraction = async (text: string) => {
+    setIsExtracting(true);
+    setPasteSuccess(false);
+    setPasteError(null);
+    setPasteFilledFields([]);
+    try {
+      const data = await geminiService.smartPaste(text);
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
+        applyDataToState(data, developments);
+        setPasteFilledFields(fields);
+        setPasteSuccess(true);
+        setRawText("");
+        setTimeout(() => { setPasteSuccess(false); setPasteFilledFields([]); }, 6000);
+      } else {
+        setPasteError("Não foi possível identificar dados. Verifique o texto.");
+        setTimeout(() => setPasteError(null), 5000);
+      }
+    } catch (err) {
+      console.error("Extraction error:", err);
+      setPasteError((err as any)?.message || "Erro ao processar o texto. Tente novamente.");
+      setTimeout(() => setPasteError(null), 5000);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleExtractIA = async () => {
+    if (!rawText.trim()) return;
+    await runExtraction(rawText);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData("text");
+    if (!pastedText.trim()) return;
+    setRawText(pastedText);
+    setTimeout(() => runExtraction(pastedText), 80);
+  };
+
+  const handleCopySummary = () => {
+    if (!lastSavedVenda) return;
+
+    const brl = (v: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+    // Format phone to +55 DD XXXXX-XXXX
+    const fmtPhone = (raw: string) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 11)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      return raw;
+    };
+
+    // Format nascimento YYYY-MM-DD → DD/MM/YYYY
+    const fmtNasc = (d: string) => {
+      if (!d) return "";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+
+    // Extract day from dataVencimento
+    const diaVenc = lastSavedVenda.dataVencimento
+      ? new Date(lastSavedVenda.dataVencimento + "T12:00:00").getDate()
+      : "";
+
+    // Build phone line
+    const phones = [clientData.telefone1, clientData.telefone2]
+      .filter(Boolean)
+      .map((p) => fmtPhone(p as string));
+    const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
+
+    const summary = `CADASTRO DO COMPRADOR
+NOME: ${(clientData.nome || "").toUpperCase()}
+RG: ${(clientData.rg || "").toUpperCase()}
+CPF: ${clientData.cpf || ""}
+ESTADO CIVIL: ${genderizeEstadoCivil(clientData.estadoCivil || "", clientData.genero || "M").toUpperCase()}
+DATA DE ANIVERSÁRIO: ${fmtNasc(clientData.nascimento || "")}
+ENDEREÇO: ${(clientData.endereco || "").toUpperCase()}
+Nº: ${clientData.numero || ""}
+BAIRRO: ${(clientData.bairro || "").toUpperCase()}
+CIDADE: ${(clientData.cidade || "").toUpperCase()}
+ESTADO: ${(clientData.estado || "").toUpperCase()}
+CEP: ${clientData.cep || ""}
+${phoneLabel}
+LOTE: ${lastSavedVenda.numeroLote}
+QUADRA: ${lastSavedVenda.quadra}
+EMPREENDIMENTO: ${lastSavedVenda.empreendimentoNome.toUpperCase()}
+VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
+ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
+QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
+DATA DE VENCIMENTO: ${diaVenc}
+VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
+
+    navigator.clipboard.writeText(summary);
+    alert("Resumo copiado para a área de transferência!");
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => {
+      const combined = [...prev, ...chosen];
+      return combined.slice(0, 2);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const applyExtractedData = (data: Record<string, any>, devs: typeof developments) => {
+    const nomeLower = (data.empreendimentoNome || "").toLowerCase();
+    let empreendimentoId: string | undefined;
+    if (nomeLower) {
+      const match = devs.find(
+        (d) =>
+          d.nome.toLowerCase().includes(nomeLower) ||
+          nomeLower.includes(d.nome.toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+    setClientData((prev) => ({
+      ...prev,
+      nome: data.nome || data.nomeComprador || prev.nome,
+      nacionalidade: data.nacionalidade || prev.nacionalidade,
+      rg: data.rg || prev.rg,
+      cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
+      estadoCivil: data.estadoCivil || prev.estadoCivil,
+      profissao: data.profissao || prev.profissao,
+      nascimento: data.nascimento || prev.nascimento,
+      telefone1: data.telefone1 ? maskPhone(data.telefone1) : prev.telefone1,
+      endereco: data.endereco || prev.endereco,
+      numero: data.numero || prev.numero,
+      bairro: data.bairro || prev.bairro,
+      cidade: data.cidade || prev.cidade,
+      estado: data.estado || prev.estado,
+      cep: data.cep ? maskCEP(data.cep) : prev.cep,
+    }));
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      numeroLote: data.numeroLote || prev.numeroLote,
+      quadra: data.quadra || prev.quadra,
+      valorLote: data.valorLote || prev.valorLote,
+      valorEntrada: data.valorEntrada || prev.valorEntrada,
+      valorParcela: data.valorParcela || prev.valorParcela,
+      quantidadeParcelas: data.quantidadeParcelas || prev.quantidadeParcelas,
+      dataVencimento: data.dataVencimento || prev.dataVencimento,
+      vendedor: data.vendedor || prev.vendedor,
+    }));
+  };
+
+  const handleExtractFromFiles = async () => {
+    if (attachedFiles.length === 0) return;
+    setIsExtractingFiles(true);
+    setFileExtractSuccess(false);
+    setFileExtractError(null);
+    setFileFilledFields([]);
+    try {
+      const data = await geminiService.extractFromFiles(attachedFiles);
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
+        applyExtractedData(data, developments);
+        setFileFilledFields(fields);
+        setFileExtractSuccess(true);
+        setAttachedFiles([]);
+        setTimeout(() => { setFileExtractSuccess(false); setFileFilledFields([]); }, 6000);
+      } else {
+        setFileExtractError("Não foi possível identificar dados nos documentos.");
+        setTimeout(() => setFileExtractError(null), 5000);
+      }
+    } catch (err) {
+      const msg = (err as any)?.message || "Erro ao ler os documentos.";
+      console.error("File extraction error:", err);
+      setFileExtractError(msg);
+      setTimeout(() => setFileExtractError(null), 5000);
+    } finally {
+      setIsExtractingFiles(false);
+    }
+  };
+
+  // Effect to auto-calculate default commission (e.g., 5%)
+  useEffect(() => {
+    if (saleData.valorLote && !saleData.comissao) {
+      setSaleData((prev) => ({ ...prev, comissao: prev.valorLote! * 0.05 }));
+    }
+  }, [saleData.valorLote]);
+
+  // Effect to auto-fill street if known (lotesInfo first, then ruasFaixas)
+  useEffect(() => {
+    if (saleData.empreendimentoId && saleData.quadra && saleData.numeroLote) {
+      const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+      const key = `${saleData.quadra}-${saleData.numeroLote}`.toUpperCase();
+      if (dev?.lotesInfo?.[key]?.rua) {
+        setSaleData((prev) => ({ ...prev, rua: dev!.lotesInfo![key].rua }));
+      } else {
+        const ruaSugerida = dev ? getRuaSugerida(dev, saleData.quadra, saleData.numeroLote) : null;
+        if (ruaSugerida) {
+          setSaleData((prev) => ({ ...prev, rua: ruaSugerida }));
+        }
+      }
+    }
+  }, [
+    saleData.empreendimentoId,
+    saleData.quadra,
+    saleData.numeroLote,
+    developments,
+  ]);
+
+  const buscarCEP = async (cep: string) => {
+    const cleanCEP = cep.replace(/\D/g, "");
+    if (cleanCEP.length !== 8) return;
+    try {
+      const response = await fetch(
+        `https://viacep.com.br/ws/${cleanCEP}/json/`,
+      );
+      const data = await response.json();
+      if (!data.erro) {
+        setClientData((prev) => ({
+          ...prev,
+          endereco: data.logradouro,
+          bairro: data.bairro,
+          cidade: data.localidade,
+          estado: data.uf,
+        }));
+      }
+    } catch (error) {}
+  };
+
+  const handleValueChange = (field: string, value: number) => {
+    let updatedData = { ...saleData, [field]: value };
+
+    // Total = Entry + (Count * Value)
+    // Value = (Total - Entry) / Count
+    // Total = (Value * Count) + Entry
+
+    if (
+      field === "valorLote" ||
+      field === "valorEntrada" ||
+      field === "quantidadeParcelas"
+    ) {
+      const vLote = field === "valorLote" ? value : saleData.valorLote || 0;
+      const vEntrada =
+        field === "valorEntrada" ? value : saleData.valorEntrada || 0;
+      const qParcelas =
+        field === "quantidadeParcelas"
+          ? value
+          : saleData.quantidadeParcelas || 1;
+
+      const calcParcela = Math.max(0, (vLote - vEntrada) / (qParcelas || 1));
+      updatedData.valorParcela = Number(calcParcela.toFixed(2));
+    } else if (field === "valorParcela") {
+      const vParcela = value;
+      const vEntrada = saleData.valorEntrada || 0;
+      const qParcelas = saleData.quantidadeParcelas || 1;
+
+      const calcLote = vParcela * qParcelas + vEntrada;
+      updatedData.valorLote = Number(calcLote.toFixed(2));
+    }
+
+    setSaleData(updatedData);
+  };
+
+  const finalizeVenda = (venda: Venda, cliente: Cliente) => {
+    const savedVenda = onSaveVenda(venda, cliente);
+    setPendingMissingLotSale(null);
+    setLastSavedVenda(savedVenda);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateVendaFields()) {
+      return;
+    }
+    if (!clientData.nome || !saleData.empreendimentoId) {
+      triggerShake(vendasFormRef.current);
+      return;
+    }
+    if (clientData.cpf && cpfStatus(clientData.cpf) === "invalid") {
+      setCpfErr("CPF inválido");
+      return;
+    }
+    if (clientData.rg && rgStatus(clientData.rg) === "invalid") {
+      setRgErr("RG inválido ou incompleto");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.cpf && cpfStatus(secondBuyerData.cpf) === "invalid") {
+      setCpf2Err("CPF inválido");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.rg && rgStatus(secondBuyerData.rg) === "invalid") {
+      setRg2Err("RG inválido ou incompleto");
+      return;
+    }
+    const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+
+    if (!isOnline) {
+      addOfflineVendaDraft({
+        clientData: { ...clientData },
+        saleData: {
+          ...saleData,
+          empreendimentoNome: dev?.nome || saleData.empreendimentoNome || "",
+          status: "rascunho" as Venda["status"],
+        },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+        observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
+      });
+      localStorage.setItem('venda_rascunho', JSON.stringify({
+        clientData,
+        saleData: { ...saleData, status: "rascunho" },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+      }));
+      setHasDraft(true);
+      alert(
+        "Você está offline.\n\nA venda foi salva apenas como RASCUNHO LOCAL.\nQuando a internet voltar, abra o rascunho e conclua somente após o sistema validar se o lote ainda está disponível."
+      );
+      return;
+    }
+
+    if (editingEntry && onUpdateVendaFull) {
+      const updatedCliente: Cliente = normalizarNomeObrigatorio({
+        ...(editingEntry.cliente || ({ id: Date.now().toString(), dataCadastro: new Date().toISOString() } as Cliente)),
+        ...(clientData as Cliente),
+        estado: (clientData.estado || "").toUpperCase(),
+      } as Cliente);
+      const updatedVenda: Venda = {
+        ...editingEntry.venda,
+        ...(saleData as Venda),
+        clienteId: updatedCliente.id,
+        clienteNome: updatedCliente.nome,
+        empreendimentoNome: dev?.nome || editingEntry.venda.empreendimentoNome,
+        valorParcela: saleData.valorParcela || 0,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      onUpdateVendaFull(updatedVenda, updatedCliente);
+      setLastSavedVenda(updatedVenda);
+      return;
+    }
+
+    // ── Multi-lote: quebrar lote e quadra por separadores ──────────────────
+    const pares = parseQuadrasLotesInput(
+      String(saleData.quadra || ""),
+      String(saleData.numeroLote || "")
+    );
+
+    if (pares.length === 0) {
+      alert("Informe ao menos uma quadra e um lote.");
+      return;
+    }
+
+    // Se for apenas 1 par, comportamento original (incluindo verificações de status)
+    if (pares.length === 1) {
+      const { quadra, lote } = pares[0];
+      const cliente: Cliente = normalizarNomeObrigatorio({
+        ...(clientData as Cliente),
+        estado: (clientData.estado || "").toUpperCase(),
+        id: Date.now().toString(),
+        dataCadastro: new Date().toISOString(),
+      } as Cliente);
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (Date.now() + 1).toString(),
+        numeroContrato: `CONT-${Date.now()}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const lotSituation = getLotStatusForSale(dev, quadra, lote, sales, editingEntry?.venda?.id);
+      if (lotSituation.status === "vendido") {
+        alert("Este lote já está vendido/vinculado a uma venda. Verifique a quadra e o lote antes de continuar.");
+        return;
+      }
+      if (lotSituation.status === "indisponivel") {
+        alert("Este lote está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.");
+        return;
+      }
+      if (!lotSituation.exists) {
+        setPendingMissingLotSale({ venda, cliente });
+        return;
+      }
+      finalizeVenda(venda, cliente);
+      return;
+    }
+
+    // Múltiplos lotes: validar cada um individualmente antes de salvar
+    const erros: string[] = [];
+    const naoExistem: string[] = [];
+    for (const { quadra, lote } of pares) {
+      const sit = getLotStatusForSale(dev, quadra, lote, sales);
+      if (sit.status === "vendido") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} já está vendido.`);
+      } else if (sit.status === "indisponivel") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} está indisponível.`);
+      } else if (!sit.exists) {
+        naoExistem.push(`Quadra ${quadra} / Lote ${lote}`);
+      }
+    }
+    if (erros.length > 0) {
+      alert("Problemas encontrados:\n\n" + erros.join("\n"));
+      return;
+    }
+    // Se algum lote não existe, perguntar se deseja adicionar (como no lote único)
+    if (naoExistem.length > 0) {
+      const confirmar = window.confirm(
+        `Os seguintes lotes não estão cadastrados no empreendimento:\n\n${naoExistem.join("\n")}\n\nDeseja adicionar ao empreendimento e continuar a venda?`
+      );
+      if (!confirmar) return;
+    }
+
+    // Salvar uma venda por lote
+    const clienteBase: Cliente = normalizarNomeObrigatorio({
+      ...(clientData as Cliente),
+      estado: (clientData.estado || "").toUpperCase(),
+      id: Date.now().toString(),
+      dataCadastro: new Date().toISOString(),
+    } as Cliente);
+
+    let lastVenda: Venda | null = null;
+    pares.forEach(({ quadra, lote }, idx) => {
+      const ts = Date.now() + idx * 2;
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (ts + 1).toString(),
+        numeroContrato: `CONT-${ts}`,
+        clienteId: clienteBase.id,
+        clienteNome: clienteBase.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const saved = onSaveVenda(venda, clienteBase);
+      lastVenda = saved;
+    });
+    if (lastVenda) {
+      setPendingMissingLotSale(null);
+      setLastSavedVenda(lastVenda);
+    }
+  };
+
+  if (lastSavedVenda) {
+    const wasEditing = !!editingEntry;
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="card-premium py-20 text-center space-y-8"
+      >
+        <div className="w-24 h-24 bg-primary-main/10 text-primary-main rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <FileCheck size={48} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-3xl font-display font-bold text-slate-800">
+            {wasEditing ? "Venda Atualizada!" : "Venda Registrada!"}
+          </h2>
+          <p className="text-slate-500">
+            {wasEditing ? "As alterações foram salvas com sucesso." : "O cadastro foi concluído e os dados estão salvos."}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 justify-center pt-8 flex-wrap">
+          <button onClick={handleCopySummary} className="btn-ghost px-6">
+            <Copy size={18} />
+            <span>Copiar Resumo</span>
+          </button>
+          <button
+            onClick={() => onGoToContracts(lastSavedVenda)}
+            className="btn-primary px-6"
+          >
+            <FileText size={18} />
+            <span>Gerar Contrato</span>
+          </button>
+          <button
+            onClick={() => onGoToContractsRecibo?.(lastSavedVenda)}
+            className="btn-ghost px-6"
+          >
+            <FileCheck size={18} />
+            <span>Gerar Recibo</span>
+          </button>
+          <button
+            onClick={() => setLastSavedVenda(null)}
+            className="btn-ghost px-6"
+          >
+            <span>Novo Cadastro</span>
+          </button>
+          <button
+            onClick={() => {
+              // Volta para o formulário sem apagar os dados já preenchidos
+              setLastSavedVenda(null);
+            }}
+            className="btn-ghost px-6"
+          >
+            <ChevronLeft size={18} />
+            <span>Voltar</span>
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 pb-32 lg:pb-0">
+      <AnimatePresence>
+        {pendingMissingLotSale && (
+          <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-start gap-3">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl flex-shrink-0">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Quadra/lote não cadastrado</h4>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Esta quadra/lote não existe no empreendimento. Deseja adicionar ao empreendimento e continuar a venda?
+                  </p>
+                  <p className="text-xs text-slate-400 mt-3 font-bold uppercase tracking-widest">
+                    Quadra {pendingMissingLotSale.venda.quadra} · Lote {pendingMissingLotSale.venda.numeroLote}
+                  </p>
+                </div>
+              </div>
+              <div className="p-5 flex flex-col sm:flex-row justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingMissingLotSale(null)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => finalizeVenda(pendingMissingLotSale.venda, pendingMissingLotSale.cliente)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-primary-main text-white hover:opacity-90 transition-opacity"
+                >
+                  Adicionar e continuar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit mode banner */}
+      {editingEntry && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-300 rounded-2xl"
+        >
+          <div className="p-2 bg-amber-500 rounded-xl text-white flex-shrink-0">
+            <Pencil size={16} />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-black text-amber-800 uppercase tracking-widest">Modo Edição</p>
+            <p className="text-sm font-semibold text-amber-700">
+              Editando venda de <strong>{editingEntry.venda.clienteNome}</strong> — {editingEntry.venda.empreendimentoNome}, Quadra {editingEntry.venda.quadra}, Lote {editingEntry.venda.numeroLote}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Merge Modal */}
+      <AnimatePresence>
+        {showMergeModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Mesclar Clientes Duplicados</h4>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Escolha o registro principal</p>
+                </div>
+                <button onClick={() => setShowMergeModal(false)} className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                <p className="text-sm text-slate-500 mb-4">
+                  Selecione qual registro manter como principal. Os outros serão excluídos e suas vendas serão transferidas para o registro principal.
+                </p>
+                {cpfDuplicates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setMergeTargetId(c.id)}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${mergeTargetId === c.id ? "border-primary-main bg-primary-main/5" : "border-slate-100 hover:border-slate-200"}`}
+                  >
+                    <p className="font-bold text-slate-800">{c.nome}</p>
+                    <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                      {c.cpf && <span>CPF: {c.cpf}</span>}
+                      {c.telefone1 && <span>Tel: {c.telefone1}</span>}
+                      {c.dataCadastro && <span>Cadastro: {new Date(c.dataCadastro).toLocaleDateString("pt-BR")}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowMergeModal(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  type="button"
+                  disabled={!mergeTargetId}
+                  onClick={() => {
+                    if (!mergeTargetId || !onMergeClients) return;
+                    const duplicateIds = cpfDuplicates.filter(c => c.id !== mergeTargetId).map(c => c.id);
+                    onMergeClients(mergeTargetId, duplicateIds);
+                    const master = cpfDuplicates.find(c => c.id === mergeTargetId);
+                    if (master) setClientData({ ...clientData, ...master });
+                    setCpfDuplicates([]);
+                    setShowMergeModal(false);
+                  }}
+                  className="btn-primary px-8 disabled:opacity-50"
+                >
+                  Mesclar e Manter Principal
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* IA Auto-fill Section — temporariamente desativado. Para reativar, remova o "hidden" abaixo */}
+      <div className="hidden card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 bg-primary-main text-primary-contrast rounded-2xl shadow-lg shadow-primary-main/10">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-display font-bold text-slate-800">
+              Auto-preenchimento
+            </h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+              Cole texto ou anexe documentos
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Textarea */}
+          <div className="relative">
+            <textarea
+              className="input-field min-h-[100px] resize-none"
+              placeholder="Cole o texto do cadastro aqui e os campos serão preenchidos automaticamente..."
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              onPaste={handlePaste}
+            />
+            {isExtracting && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex items-center justify-center gap-2 text-primary-main text-xs font-black uppercase tracking-widest">
+                <RefreshCw size={16} className="animate-spin" />
+                Preenchendo campos...
+              </div>
+            )}
+          </div>
+
+          <AnimatePresence>
+            {pasteSuccess && (
+              <motion.div
+                key="paste-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos automaticamente!
+                </div>
+                {pasteFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {pasteFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {pasteError && (
+              <motion.div
+                key="paste-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {pasteError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            disabled={isExtracting || !rawText.trim()}
+            onClick={handleExtractIA}
+            className="btn-primary w-full sm:w-auto px-8"
+          >
+            {isExtracting ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" />
+                <span>🤖 Analisando...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                <span>Preencher com IA</span>
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">ou</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {/* File upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <button
+            type="button"
+            disabled={attachedFiles.length >= 2}
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-secondary w-full sm:w-auto px-8"
+          >
+            <span>📎</span>
+            <span>Anexar Documentos</span>
+            <span className="text-xs opacity-60">(máx. 2)</span>
+          </button>
+
+          {/* Previews */}
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="relative flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-sm"
+                >
+                  {file.type.startsWith("image/") ? (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      className="w-10 h-10 object-cover rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-lg text-red-500 text-xl">
+                      📄
+                    </div>
+                  )}
+                  <div className="max-w-[120px]">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{file.name}</p>
+                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="ml-1 p-1 rounded-full hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Extract from files button — only when files are selected */}
+          {attachedFiles.length > 0 && (
+            <button
+              type="button"
+              disabled={isExtractingFiles}
+              onClick={handleExtractFromFiles}
+              className="btn-primary w-full sm:w-auto px-8"
+            >
+              {isExtractingFiles ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span>🤖 Lendo documentos...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  <span>Extrair com IA</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <AnimatePresence>
+            {fileExtractSuccess && (
+              <motion.div
+                key="file-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos a partir dos documentos!
+                </div>
+                {fileFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {fileFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {fileExtractError && (
+              <motion.div
+                key="file-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {fileExtractError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Colar Ficha Button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => { setShowColarFicha(true); setFichaText(""); setFichaFilled([]); setFichaSuccess(false); }}
+          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg"
+        >
+          <ClipboardPaste size={15} />
+          Colar Ficha
+        </button>
+      </div>
+
+      {/* Modal: Colar Ficha */}
+      <AnimatePresence>
+        {showColarFicha && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-xl rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-900 rounded-xl text-white">
+                    <ClipboardPaste size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Colar Ficha</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preenchimento automático por texto</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowColarFicha(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                  <p className="font-bold text-slate-700 mb-1">Como usar</p>
+                  <p>Cole o texto da ficha no formato <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">CHAVE: valor</span>, um por linha. Exemplos: <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Nome: João Silva</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Parcelas: 63x de R$ 600,00</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Contato: (11) 99999-0000 / (11) 88888-0000</span></p>
+                </div>
+                <textarea
+                  className="input-field min-h-[200px] resize-none font-mono text-xs"
+                  placeholder={"Nome: João da Silva\nCPF: 123.456.789-00\nRG: 1234567\nNascimento: 01/01/1990\nEstado Civil: Casado(a)\nProfissão: Comerciante\nEndereço: Rua das Flores\nBairro: Centro\nCidade: São Paulo\nCEP: 01001-000\nContato: (11) 99999-0000 / (11) 88888-0000\nEmpreendimento: Residencial Palmeiras\nQuadra: A\nLote: 05\nValor Total: R$ 50.000,00\nEntrada: R$ 5.000,00\nParcelas: 60x de R$ 750,00"}
+                  value={fichaText}
+                  onChange={(e) => setFichaText(e.target.value)}
+                  autoFocus
+                />
+                {fichaSuccess && fichaFilled.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+                  >
+                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                      <CheckCircle2 size={15} />
+                      Campos preenchidos com sucesso!
+                    </div>
+                    <p className="text-[11px] text-emerald-600 ml-5">{fichaFilled.join(", ")}</p>
+                  </motion.div>
+                )}
+              </div>
+              <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowColarFicha(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  disabled={!fichaText.trim()}
+                  onClick={() => {
+                    const parsed = parseFicha(fichaText);
+                    const filled: string[] = [];
+                    applyDataToState(parsed, developments);
+                    if (parsed.nome) filled.push("Nome");
+                    if (parsed.cpf) filled.push("CPF");
+                    if (parsed.rg) filled.push("RG");
+                    if (parsed.nascimento) filled.push("Nascimento");
+                    if (parsed.estadoCivil) filled.push("Estado Civil");
+                    if (parsed.profissao) filled.push("Profissão");
+                    if (parsed.endereco) filled.push("Endereço");
+                    if (parsed.bairro) filled.push("Bairro");
+                    if (parsed.cidade) filled.push("Cidade");
+                    if (parsed.cep) filled.push("CEP");
+                    if (parsed.telefone1) filled.push("Telefone");
+                    if (parsed.telefone2) filled.push("Telefone 2");
+                    if (parsed.empreendimento) filled.push("Empreendimento");
+                    if (parsed.quadra) filled.push("Quadra");
+                    if (parsed.lote) filled.push("Lote");
+                    if (parsed.valorTotal) filled.push("Valor Total");
+                    if (parsed.entrada) filled.push("Entrada");
+                    if (parsed.numeroParcelas) filled.push("Parcelas");
+                    if (parsed.valorParcela) filled.push("Valor Parcela");
+                    setFichaFilled(filled);
+                    setFichaSuccess(true);
+                    if (filled.length > 0) {
+                      setTimeout(() => setShowColarFicha(false), 1800);
+                    }
+                  }}
+                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${!fichaText.trim() ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-900 hover:bg-primary-main text-white"}`}
+                >
+                  <ClipboardPaste size={15} />
+                  Preencher Campos
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <form ref={vendasFormRef} onSubmit={handleSubmit} noValidate className="space-y-8">
+        {!isOnline && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 flex items-start gap-3">
+            <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest">Modo offline</p>
+              <p className="text-sm font-semibold">
+                Você pode preencher o cadastro, mas a venda será salva somente como rascunho local. A conclusão será liberada quando a internet voltar e o lote for validado novamente.
+              </p>
+            </div>
+          </div>
+        )}
+        {Object.keys(invalidSaleFields).length > 0 && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            Preencha o campo obrigatório destacado: {Object.values(invalidSaleFields)[0]}.
+          </div>
+        )}
+        <div className="card-premium">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
+              <Users size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-bold text-slate-800">
+                Dados do Proponente
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                Identificação e Contato
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="label">Nome Completo do Comprador</label>
+                <div className="relative">
+                  <input
+                    required
+                    data-sale-field="nome"
+                    className={`input-field${requiredSaleFieldClass("nome")}`}
+                    value={clientData.nome}
+                    onChange={(e) => {
+                      clearInvalidSaleField("nome");
+                      setClientData({ ...clientData, nome: textoMaiusculo(e.target.value) });
+                      setShowNameDropdown(true);
+                    }}
+                    onFocus={() => setShowNameDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowNameDropdown(false), 150)}
+                    placeholder="Nome Completo"
+                    autoComplete="off"
+                  />
+                  {showNameDropdown && clientData.nome.length >= 2 && (() => {
+                    const matches = clients.filter((c) =>
+                      c.nome?.toLowerCase().includes(clientData.nome.toLowerCase())
+                    ).slice(0, 6);
+                    if (!matches.length) return null;
+                    return (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                        {matches.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={() => {
+                              setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
+                              setShowNameDropdown(false);
+                              setShowCpfDropdown(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                              {c.nome?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                              {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="label">Gênero / Tratamento</label>
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newGenero = "M";
+                      let newEstadoCivil = clientData.estadoCivil;
+                      if (newEstadoCivil === "Solteira")
+                        newEstadoCivil = "Solteiro";
+                      else if (newEstadoCivil === "Casada")
+                        newEstadoCivil = "Casado";
+                      else if (newEstadoCivil === "Divorciada")
+                        newEstadoCivil = "Divorciado";
+                      else if (newEstadoCivil === "Viúva")
+                        newEstadoCivil = "Viúvo";
+                      setClientData({
+                        ...clientData,
+                        genero: newGenero,
+                        estadoCivil: newEstadoCivil,
+                      });
+                    }}
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "M" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Masc.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newGenero = "F";
+                      let newEstadoCivil = clientData.estadoCivil;
+                      if (newEstadoCivil === "Solteiro")
+                        newEstadoCivil = "Solteira";
+                      else if (newEstadoCivil === "Casado")
+                        newEstadoCivil = "Casada";
+                      else if (newEstadoCivil === "Divorciado")
+                        newEstadoCivil = "Divorciada";
+                      else if (newEstadoCivil === "Viúvo")
+                        newEstadoCivil = "Viúva";
+                      setClientData({
+                        ...clientData,
+                        genero: newGenero,
+                        estadoCivil: newEstadoCivil,
+                      });
+                    }}
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "F" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Fem.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setClientData({ ...clientData, genero: "O" })
+                    }
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "O" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Outro
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            <div>
+              <label className="label">CPF</label>
+              <div className="relative">
+                <input
+                  required
+                  data-sale-field="cpf"
+                  className={`input-field font-mono${requiredSaleFieldClass("cpf")} ${cpfErr ? "border-red-400 focus:ring-red-400" : cpfStatus(clientData.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                  value={clientData.cpf}
+                  onChange={(e) => {
+                    clearInvalidSaleField("cpf");
+                    const masked = maskCPF(e.target.value);
+                    setClientData({ ...clientData, cpf: masked });
+                    const st = cpfStatus(masked);
+                    setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                    setShowCpfDropdown(true);
+                  }}
+                  onFocus={() => setShowCpfDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCpfDropdown(false), 150)}
+                  placeholder="000.000.000-00"
+                  autoComplete="off"
+                />
+                {showCpfDropdown && clientData.cpf.replace(/\D/g, "").length >= 3 && (() => {
+                  const query = clientData.cpf.replace(/\D/g, "");
+                  const matches = clients.filter((c) =>
+                    c.cpf?.replace(/\D/g, "").includes(query)
+                  ).slice(0, 6);
+                  if (!matches.length) return null;
+                  return (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                      {matches.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
+                            setShowCpfDropdown(false);
+                            setShowNameDropdown(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                            {c.nome?.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                            {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
+              {cpfMatch && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-blue-700 uppercase tracking-widest">
+                    👤 Cliente já cadastrado: {cpfMatch.nome}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setClientData({ ...clientData, ...cpfMatch }); setCpfMatch(null); }}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Usar dados existentes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCpfMatch(null)}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      Ignorar
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+              {cpfDuplicates.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-amber-700 uppercase tracking-widest">
+                    ⚠️ {cpfDuplicates.length} clientes com este CPF
+                  </p>
+                  <div className="space-y-1">
+                    {cpfDuplicates.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2">
+                        <span className="text-amber-800 font-semibold">{c.nome}</span>
+                        <button
+                          type="button"
+                          onClick={() => setClientData({ ...clientData, ...c })}
+                          className="text-[9px] font-bold uppercase tracking-widest bg-amber-600 text-white px-2 py-1 rounded-lg hover:bg-amber-700 transition-colors"
+                        >
+                          Usar este
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setMergeTargetId(cpfDuplicates[0].id); setShowMergeModal(true); }}
+                    className="text-[10px] font-bold uppercase tracking-widest bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors w-full text-center"
+                  >
+                    Mesclar clientes duplicados
+                  </button>
+                </motion.div>
+              )}
+            </div>
+            <div>
+              <label className="label">RG</label>
+              <input
+                required
+                className={`input-field font-mono ${rgErr ? "border-red-400 focus:ring-red-400" : rgStatus(clientData.rg) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                value={clientData.rg}
+                onChange={(e) => {
+                  const masked = maskRG(e.target.value);
+                  setClientData({ ...clientData, rg: masked });
+                  const st = rgStatus(masked);
+                  setRgErr(st === "invalid" ? "RG inválido ou incompleto" : null);
+                }}
+                placeholder="Ex: 12.345.678-9"
+              />
+              {rgErr && <p className="text-red-500 text-xs mt-1 font-medium">{rgErr}</p>}
+            </div>
+            <div>
+              <label className="label">Estado Civil</label>
+              <select
+                className="input-field font-semibold"
+                value={clientData.estadoCivil}
+                onChange={(e) =>
+                  setClientData({ ...clientData, estadoCivil: e.target.value })
+                }
+              >
+                <option>
+                  {clientData.genero === "F" ? "Solteira" : "Solteiro"}
+                </option>
+                <option>
+                  {clientData.genero === "F" ? "Casada" : "Casado"}
+                </option>
+                <option>
+                  {clientData.genero === "F" ? "Divorciada" : "Divorciado"}
+                </option>
+                <option>{clientData.genero === "F" ? "Viúva" : "Viúvo"}</option>
+                <option>União Estável</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Aniversário (Data Nascimento)</label>
+              <input
+                type="date"
+                required
+                className="input-field font-semibold"
+                value={clientData.nascimento}
+                onChange={(e) =>
+                  setClientData({ ...clientData, nascimento: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="label">CEP</label>
+              <input
+                required
+                className="input-field font-mono"
+                value={clientData.cep}
+                onChange={(e) => {
+                  const value = maskCEP(e.target.value);
+                  setClientData({ ...clientData, cep: value });
+                  buscarCEP(value);
+                }}
+                placeholder="00000-000"
+              />
+              <BuscarCEPPorRua
+                estadoPadrao={clientData.estado || "PA"}
+                cidadePadrao={clientData.cidade || ""}
+                onSelect={(r) => setClientData((prev) => ({
+                  ...prev,
+                  cep: maskCEP(r.cep),
+                  endereco: r.logradouro || prev.endereco,
+                  bairro: r.bairro || prev.bairro,
+                  cidade: r.localidade || prev.cidade,
+                  estado: r.uf || prev.estado,
+                }))}
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className="label">Endereço</label>
+              <input
+                required
+                className="input-field"
+                value={clientData.endereco}
+                onChange={(e) =>
+                  setClientData({ ...clientData, endereco: e.target.value })
+                }
+                placeholder="Rua / Travessa"
+              />
+            </div>
+            <div>
+              <label className="label">Nº</label>
+              <input
+                required
+                className="input-field font-bold"
+                value={clientData.numero}
+                onChange={(e) =>
+                  setClientData({ ...clientData, numero: e.target.value })
+                }
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="label">Bairro</label>
+              <input
+                required
+                className="input-field"
+                value={clientData.bairro}
+                onChange={(e) =>
+                  setClientData({ ...clientData, bairro: e.target.value })
+                }
+                placeholder="Bairro"
+              />
+            </div>
+            <div>
+              <label className="label">Cidade</label>
+              <input
+                className="input-field"
+                value={clientData.cidade}
+                onChange={(e) => setClientData({ ...clientData, cidade: e.target.value })}
+                placeholder="Cidade"
+              />
+            </div>
+            <div>
+              <label className="label">Estado (UF)</label>
+              <input
+                className="input-field text-center font-bold uppercase"
+                maxLength={2}
+                value={clientData.estado}
+                onChange={(e) => setClientData({ ...clientData, estado: e.target.value.toUpperCase() })}
+                placeholder="PA"
+              />
+            </div>
+            <div>
+              <label className="label">Contato Principal</label>
+              <input
+                required
+                className="input-field font-semibold"
+                value={clientData.telefone1}
+                onChange={(e) =>
+                  setClientData({
+                    ...clientData,
+                    telefone1: maskPhone(e.target.value),
+                  })
+                }
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div>
+              <label className="label">Contato Secundário</label>
+              <input
+                className="input-field"
+                value={clientData.telefone2}
+                onChange={(e) =>
+                  setClientData({
+                    ...clientData,
+                    telefone2: maskPhone(e.target.value),
+                  })
+                }
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+          </div>
+
+          {/* --- Segundo Comprador --- */}
+          <div className="mt-8 pt-8 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-50 text-slate-400 rounded-xl">
+                  <Users size={18} />
+                </div>
+                <h4 className="font-bold text-slate-700">
+                  Segundo Comprador (Adicional)
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHasSecondBuyer(!hasSecondBuyer)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-bold text-xs uppercase tracking-widest ${hasSecondBuyer ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"}`}
+              >
+                {hasSecondBuyer ? "Remover" : "Adicionar"}
+              </button>
+            </div>
+
+            {hasSecondBuyer && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="space-y-6 overflow-hidden"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2 flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="label">Nome Completo</label>
+                      <input
+                        required
+                        className="input-field"
+                        value={secondBuyerData?.nome}
+                        onChange={(e) =>
+                          setSecondBuyerData({
+                            ...secondBuyerData!,
+                            nome: textoMaiusculo(e.target.value),
+                          })
+                        }
+                        placeholder="Nome Completo"
+                      />
+                    </div>
+                    <div className="w-full sm:w-auto">
+                      <label className="label">Gênero</label>
+                      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                        {(["M", "F", "O"] as const).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => {
+                              let newEC =
+                                secondBuyerData?.estadoCivil || "Solteiro(a)";
+                              if (g === "M") {
+                                if (newEC === "Solteira") newEC = "Solteiro";
+                                else if (newEC === "Casada") newEC = "Casado";
+                                else if (newEC === "Divorciada")
+                                  newEC = "Divorciado";
+                                else if (newEC === "Viúva") newEC = "Viúvo";
+                              } else if (g === "F") {
+                                if (newEC === "Solteiro") newEC = "Solteira";
+                                else if (newEC === "Casado") newEC = "Casada";
+                                else if (newEC === "Divorciado")
+                                  newEC = "Divorciada";
+                                else if (newEC === "Viúvo") newEC = "Viúva";
+                              }
+                              setSecondBuyerData({
+                                ...secondBuyerData!,
+                                genero: g,
+                                estadoCivil: newEC,
+                              });
+                            }}
+                            className={`flex-1 sm:px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${secondBuyerData?.genero === g ? "bg-primary-main text-white" : "text-slate-400"}`}
+                          >
+                            {g === "M" ? "Masc." : g === "F" ? "Fem." : "Outro"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-4">
+                  <div>
+                    <label className="label">CPF</label>
+                    <input
+                      required
+                      data-sale-field="comprador2Cpf"
+                      className={`input-field font-mono${requiredSaleFieldClass("comprador2Cpf")} ${cpf2Err ? "border-red-400 focus:ring-red-400" : cpfStatus(secondBuyerData?.cpf || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                      value={secondBuyerData?.cpf}
+                      onChange={(e) => {
+                        clearInvalidSaleField("comprador2Cpf");
+                        const masked = maskCPF(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, cpf: masked });
+                        const st = cpfStatus(masked);
+                        setCpf2Err(st === "invalid" ? "CPF inválido" : null);
+                      }}
+                      placeholder="000.000.000-00"
+                    />
+                    {cpf2Err && <p className="text-red-500 text-xs mt-1 font-medium">{cpf2Err}</p>}
+                  </div>
+                  <div>
+                    <label className="label">RG</label>
+                    <input
+                      required
+                      data-sale-field="comprador2Rg"
+                      className={`input-field font-mono${requiredSaleFieldClass("comprador2Rg")} ${rg2Err ? "border-red-400 focus:ring-red-400" : rgStatus(secondBuyerData?.rg || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                      value={secondBuyerData?.rg}
+                      onChange={(e) => {
+                        clearInvalidSaleField("comprador2Rg");
+                        const masked = maskRG(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, rg: masked });
+                        const st = rgStatus(masked);
+                        setRg2Err(st === "invalid" ? "RG inválido ou incompleto" : null);
+                      }}
+                      placeholder="Ex: 12.345.678-9"
+                    />
+                    {rg2Err && <p className="text-red-500 text-xs mt-1 font-medium">{rg2Err}</p>}
+                  </div>
+                  <div>
+                    <label className="label">Nacionalidade</label>
+                    <input
+                      required
+                      className="input-field"
+                      value={secondBuyerData?.nacionalidade}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          nacionalidade: e.target.value,
+                        })
+                      }
+                      placeholder="Brasileira"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Estado Civil</label>
+                    <select
+                      className="input-field font-semibold"
+                      value={secondBuyerData?.estadoCivil}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          estadoCivil: e.target.value,
+                        })
+                      }
+                    >
+                      <option>
+                        {secondBuyerData?.genero === "F"
+                          ? "Solteira"
+                          : "Solteiro"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F" ? "Casada" : "Casado"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F"
+                          ? "Divorciada"
+                          : "Divorciado"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F" ? "Viúva" : "Viúvo"}
+                      </option>
+                      <option>União Estável</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Aniversário</label>
+                    <input
+                      type="date"
+                      required
+                      className="input-field"
+                      value={secondBuyerData?.nascimento}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          nascimento: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </div>
+
+        <div className="card-premium border-primary-light/10 bg-primary-light/[0.02]">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl">
+              <Package size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-bold text-slate-800">
+                Negociação e Pagamento
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                Dados Comerciais
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="sm:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="label">Empreendimento Alvo</label>
+                <button
+                  type="button"
+                  onClick={() => setShowNovoDev(true)}
+                  className="text-[11px] font-bold text-primary-main hover:underline flex items-center gap-1"
+                >
+                  <Plus size={13} /> Cadastrar novo
+                </button>
+              </div>
+              <select
+                required
+                data-sale-field="empreendimentoId"
+                className={`input-field font-bold text-primary-main${requiredSaleFieldClass("empreendimentoId")}`}
+                value={saleData.empreendimentoId}
+                onChange={(e) => {
+                  clearInvalidSaleField("empreendimentoId");
+                  setSaleData({ ...saleData, empreendimentoId: e.target.value });
+                }}
+              >
+                <option value="">Escolha um loteamento...</option>
+                {developments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nome} — {d.totalLotes - d.lotesVendidos} livres
+                  </option>
+                ))}
+              </select>
+
+              {/* Mini modal: cadastrar empreendimento inline */}
+              <AnimatePresence>
+                {showNovoDev && (
+                  <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+                    >
+                      <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                            <Building2 size={20} />
+                          </div>
+                          <h3 className="text-lg font-display font-bold text-slate-800">Novo Empreendimento</h3>
+                        </div>
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                          <X size={20} className="text-slate-500" />
+                        </button>
+                      </div>
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome do Empreendimento *</label>
+                          <input className="input-field" placeholder="Ex: Loteamento Villa Nova" value={novoDevData.nome} onChange={(e) => setNovoDevData({ ...novoDevData, nome: textoMaiusculo(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">Comunidade / Região</label>
+                          <input className="input-field" placeholder="Ex: Centro, Vila Nova" value={novoDevData.comunidade} onChange={(e) => setNovoDevData({ ...novoDevData, comunidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Total de Lotes</label>
+                          <input type="number" className="input-field" placeholder="0" value={novoDevData.totalLotes || ""} onChange={(e) => setNovoDevData({ ...novoDevData, totalLotes: Number(e.target.value) })} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Quadras</label>
+                          <input className="input-field" placeholder="Ex: A, B, C" value={novoDevData.quadras} onChange={(e) => setNovoDevData({ ...novoDevData, quadras: e.target.value })} />
+                          <p className="text-[10px] text-slate-400 mt-1">As ruas por quadra podem ser definidas no cadastro completo do empreendimento.</p>
+                        </div>
+                      </div>
+                      <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="btn-secondary px-6">Cancelar</button>
+                        <button type="button" onClick={handleSalvarNovoDev} className="btn-primary px-8">Salvar e Selecionar</button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              {saleData.empreendimentoId && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 bg-surface-card border border-border-subtle rounded-2xl space-y-2"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Informações de Apoio
+                      </p>
+                      <h4 className="font-bold text-slate-800">
+                        {
+                          developments.find(
+                            (d) => d.id === saleData.empreendimentoId,
+                          )?.nome
+                        }
+                      </h4>
+                    </div>
+                    <div className="px-2 py-1 bg-primary-main/10 text-primary-main text-[10px] font-bold rounded-lg uppercase">
+                      {developments.find(
+                        (d) => d.id === saleData.empreendimentoId,
+                      )?.comunidade || "Geral"}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <p>
+                      <span className="font-bold text-slate-500">Quadras:</span>{" "}
+                      {developments.find((d) => d.id === saleData.empreendimentoId)?.quadras || "Não informada"}
+                    </p>
+                    {(() => {
+                      const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                      const q = saleData.quadra?.trim();
+                      const sugestao = q && dev ? getRuaSugerida(dev, q, saleData.numeroLote) : null;
+                      const fallback = dev?.ruas || null;
+                      return sugestao ? (
+                        <p><span className="font-bold text-slate-500">Rua prevista:</span>{" "}<span className="text-primary-main font-bold">{sugestao}</span></p>
+                      ) : fallback ? (
+                        <p><span className="font-bold text-slate-500">Ruas:</span>{" "}{fallback}</p>
+                      ) : null;
+                    })()}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:col-span-2">
+              <div>
+                <label className="label">Lote</label>
+                <input
+                  required
+                  data-sale-field="numeroLote"
+                  className={`input-field font-mono font-bold${requiredSaleFieldClass("numeroLote")}`}
+                  value={saleData.numeroLote}
+                  onChange={(e) => {
+                    clearInvalidSaleField("numeroLote");
+                    setSaleData({ ...saleData, numeroLote: e.target.value });
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="label">Quadra</label>
+                <input
+                  required
+                  list="quadras-list"
+                  data-sale-field="quadra"
+                  className={`input-field font-mono font-bold${requiredSaleFieldClass("quadra")}`}
+                  value={saleData.quadra}
+                  onChange={(e) => {
+                    clearInvalidSaleField("quadra");
+                    setSaleData({ ...saleData, quadra: e.target.value.toUpperCase() });
+                  }}
+                  placeholder="A"
+                />
+                <datalist id="quadras-list">
+                  {developments
+                    .find((d) => d.id === saleData.empreendimentoId)
+                    ?.quadras?.split(",")
+                    .map((q) => (
+                      <option key={q.trim()} value={q.trim()} />
+                    ))}
+                </datalist>
+              </div>
+            </div>
+
+            {/* Aviso: lote já vendido */}
+            {(() => {
+              if (!saleData.empreendimentoId || !saleData.quadra || !saleData.numeroLote) return null;
+              const vendaExistente = sales.find(v =>
+                v.id !== editingEntry?.venda?.id &&
+                v.empreendimentoId === saleData.empreendimentoId &&
+                v.quadra.toUpperCase() === saleData.quadra.toUpperCase() &&
+                v.numeroLote === saleData.numeroLote &&
+                v.status !== 'cancelado'
+              );
+              if (!vendaExistente) return null;
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="sm:col-span-2 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                >
+                  <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-black text-red-700 text-sm uppercase tracking-wide">
+                      ⚠️ Lote já vendido!
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      Quadra <strong>{vendaExistente.quadra}</strong> · Lote <strong>{vendaExistente.numeroLote}</strong> já está registrado para <strong>{vendaExistente.clienteNome}</strong> (contrato {vendaExistente.numeroContrato}, status: <strong>{vendaExistente.status || 'pendente'}</strong>). Confira antes de prosseguir.
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            <div className="space-y-6 lg:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="label font-bold text-primary-main">
+                    Valor Total
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorLote"
+                    className={`input-field border-primary-main/20 bg-primary-main/[0.02] font-display font-bold text-lg${requiredSaleFieldClass("valorLote")}`}
+                    value={saleData.valorLote ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorLote");
+                      handleValueChange(
+                        "valorLote",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="label">Corretor / Vendedor</label>
+                  {vendedores.length > 0 ? (
+                    <select
+                      className="input-field font-semibold"
+                      value={saleData.vendedorId || ""}
+                      onChange={(e) => {
+                        const v = vendedores.find(x => x.id === e.target.value);
+                        setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
+                      }}
+                    >
+                      <option value="">Selecionar vendedor...</option>
+                      {vendedores.map((v) => (
+                        <option key={v.id} value={v.id}>{v.nome}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      className="input-field font-semibold"
+                      placeholder="Nome do corretor/vendedor"
+                      value={saleData.vendedor || ""}
+                      onChange={(e) => setSaleData({ ...saleData, vendedor: textoMaiusculo(e.target.value), vendedorId: "" })}
+                    />
+                  )}
+                  <p className="mt-1 text-[10px] text-slate-400 font-bold">
+                    Fica salvo já no Registro de Nova Venda e será usado no resumo, ranking, contrato e recibo quando aplicável.
+                  </p>
+                </div>
+                <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
+                  <label className="label">Entrada</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorEntrada"
+                    className={`input-field font-display font-bold text-lg${requiredSaleFieldClass("valorEntrada")}`}
+                    value={saleData.valorEntrada ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorEntrada");
+                      handleValueChange(
+                        "valorEntrada",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                {/* Toggle À Vista / Parcelado */}
+                <div className="sm:col-span-2">
+                  <label className="label">Tipo de Pagamento</label>
+                  <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('avista');
+                        setSaleData({ ...saleData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      À Vista
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('parcelado');
+                        setSaleData({ ...saleData, quantidadeParcelas: undefined, dataVencimento: defaultVencimento() });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'parcelado' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      Parcelado
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modo de pagamento à vista */}
+                {tipoVenda === 'avista' && (
+                  <div className="sm:col-span-2">
+                    <label className="label">Modo de Pagamento</label>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        {
+                          value: 'dinheiro', label: 'Dinheiro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><circle cx="12" cy="16" r="2"/></svg>
+                        },
+                        {
+                          value: 'pix', label: 'PIX',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        },
+                        {
+                          value: 'cheque', label: 'Cheque',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+                        },
+                        {
+                          value: 'permuta', label: 'Permuta',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l5.1 5.1"/><path d="M4 4l5 5"/></svg>
+                        },
+                        {
+                          value: 'outro', label: 'Outro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        },
+                      ].map((modo) => (
+                        <button
+                          key={modo.value}
+                          type="button"
+                          onClick={() => setSaleData({ ...saleData, modoAvista: modo.value as any })}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                            saleData.modoAvista === modo.value
+                              ? 'bg-primary-main text-white shadow-lg shadow-primary-main/30'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {modo.icon}
+                          {modo.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Campo de descrição para Permuta ou Outro */}
+                    {(saleData.modoAvista === 'permuta' || saleData.modoAvista === 'outro') && (
+                      <div className="mt-4">
+                        <label className="label">
+                          {saleData.modoAvista === 'permuta' ? 'Descrição do bem (ex: Carro Gol 2015)' : 'Descreva a forma de pagamento'}
+                        </label>
+                        <textarea
+                          className="input-field min-h-[80px] resize-none"
+                          placeholder={saleData.modoAvista === 'permuta' 
+                            ? 'Ex: Carro Fiat Uno 2010, avaliado em R$ 15.000,00'
+                            : 'Ex: Metade em dinheiro, metade em cheque'
+                          }
+                          value={saleData.descricaoAvista || ''}
+                          onChange={(e) => setSaleData({ ...saleData, descricaoAvista: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {tipoVenda === 'parcelado' && (<>
+                <div>
+                  <label className="label">Quantidade de Parcelas</label>
+                  <input
+                    type="number"
+                    data-sale-field="quantidadeParcelas"
+                    className={`input-field font-bold text-lg${requiredSaleFieldClass("quantidadeParcelas")}`}
+                    value={saleData.quantidadeParcelas ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("quantidadeParcelas");
+                      handleValueChange(
+                        "quantidadeParcelas",
+                        e.target.value === "" ? 1 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="label font-bold text-chumbo-base opacity-70">
+                    Valor da Parcela
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorParcela"
+                    className={`input-field border-chumbo-base/20 bg-chumbo-base/[0.02] font-display font-bold text-lg${requiredSaleFieldClass("valorParcela")}`}
+                    value={saleData.valorParcela || ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorParcela");
+                      handleValueChange(
+                        "valorParcela",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                </>)}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {tipoVenda === 'parcelado' && (
+                <div>
+                  <label className="label">Data de Vencimento</label>
+                  <div className="relative">
+                    <Calendar
+                      size={18}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                    />
+                    <input
+                      type="date"
+                      data-sale-field="dataVencimento"
+                      className={`input-field pl-12 font-bold${requiredSaleFieldClass("dataVencimento")}`}
+                      value={saleData.dataVencimento}
+                      onChange={(e) => {
+                        clearInvalidSaleField("dataVencimento");
+                        setSaleData({
+                          ...saleData,
+                          dataVencimento: e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+                )}
+
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              <div className="bg-surface-card/60 backdrop-blur-sm p-8 rounded-3xl border border-border-subtle flex-1 flex flex-col justify-center shadow-inner">
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.2em] mb-4 text-center">
+                  Resumo da Negociação
+                </p>
+
+                <div className="space-y-6">
+                  {tipoVenda === 'avista' ? (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">Pagamento</span>
+                      <span className="text-xl font-display font-bold text-emerald-600 bg-emerald-50 px-4 py-1.5 rounded-xl">À Vista</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">
+                        Valor da Mensalidade
+                      </span>
+                      <p className="text-3xl font-display font-bold text-primary-main">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(saleData.valorParcela || 0)}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {tipoVenda !== 'avista' && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                        Saldo Financiado
+                      </p>
+                      <p className="font-display font-bold text-slate-700">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
+                        )}
+                      </p>
+                    </div>
+                    )}
+                    <div className={`space-y-1 ${tipoVenda !== 'avista' ? 'text-right' : 'col-span-2'}`}>
+                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                        Total Líquido
+                      </p>
+                      <p className="font-display font-bold text-slate-700">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(saleData.valorLote || 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <button type="button" className="btn-ghost w-full" onClick={() => {
+                  const key = 'venda_rascunho';
+                  localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
+                  setHasDraft(true);
+                  alert('Rascunho salvo!');
+                }}>
+                  <FileText size={18} />
+                  <span>Salvar Rascunho</span>
+                </button>
+                {hasDraft && (
+                  <button type="button" className="btn-ghost w-full border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => {
+                    const key = 'venda_rascunho';
+                    const saved = localStorage.getItem(key);
+                    if (!saved) return;
+                    const { clientData: cd, saleData: sd } = JSON.parse(saved);
+                    if (cd) setClientData((prev) => ({ ...prev, ...cd }));
+                    if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
+                  }}>
+                    <FileText size={18} />
+                    <span>Restaurar</span>
+                  </button>
+                )}
+                <button
+                  type="submit"
+                  className={`btn-primary w-full shadow-lg shadow-primary-main/20 ${hasDraft ? '' : 'sm:col-span-2'}`}
+                >
+                  <ShoppingCart size={18} />
+                  <span>{!isOnline ? 'Salvar rascunho offline' : (editingEntry ? 'Salvar Alterações' : 'Finalizar Venda')}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const ContratosSection = ({
+  sales,
+  clients,
+  developments,
+  initialVenda,
+  onUpdateStatus,
+  onSaveVenda,
+  onDeleteVenda,
+  onUpdateVenda,
+  vendedores = [],
+  proprietarios = [],
+  onEditVenda,
+  onNovoContrato,
+  onUpdateProprietario,
+  onSaveProprietario,
+  onClearInitialVenda,
+  userProfile,
+  initialMode,
+}: {
+  sales: Venda[];
+  clients: Cliente[];
+  developments: Empreendimento[];
+  initialVenda?: Venda | null;
+  onUpdateStatus: (id: string, s: "pendente" | "pago" | "cancelado") => void;
+  onSaveVenda: (v: Venda, c: Cliente) => void;
+  onDeleteVenda: (id: string) => void;
+  onUpdateVenda: (v: Venda) => void;
+  vendedores?: Vendedor[];
+  proprietarios?: Proprietario[];
+  initialMode?: 'recibo';
+  onUpdateProprietario?: (p: Proprietario) => void;
+  onSaveProprietario?: (p: Proprietario) => void;
+  onEditVenda?: (v: Venda) => void;
+  onNovoContrato?: () => void;
+  onClearInitialVenda?: () => void;
+  userProfile?: { nome?: string; creci?: string; telefone?: string; assinaturaUrl?: string };
+}) => {
+  const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
+    initialVenda || null,
+  );
+  const [showReciboModal, setShowReciboModal] = useState(false);
+  const [comCarimbo, setComCarimbo] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [corretorFilter, setCorretorFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [empFilter, setEmpFilter] = useState("");
+  const [dateFilter, setDateFilter] = useState("");
+  const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc" | "emp_asc" | "status_asc" | "corretor_asc">("data_desc");
+  const [paymentFilter] = useState<"" | "avista" | "parcelado">("");
+  const [showRanking, setShowRanking] = useState(false);
+  const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
+  const [showNovoContrato, setShowNovoContrato] = useState(false);
+  const [clienteMode, setClienteMode] = useState<"existente" | "novo">("existente");
+  const [clienteSelecionadoId, setClienteSelecionadoId] = useState("");
+  const [editingVenda, setEditingVenda] = useState<Venda | null>(null);
+  const [editVendaForm, setEditVendaForm] = useState<Partial<Venda>>({});
+  const [novoCliente, setNovoCliente] = useState<Partial<Cliente>>({
+    genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro",
+  });
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+  const emptyContrato = {
+    empreendimentoId: "", quadra: "", numeroLote: "", rua: "",
+    valorLote: 0, valorEntrada: 0, quantidadeParcelas: 1, valorParcela: 0,
+    dataVencimento: defaultVencimento(), formaPagamento: "Dinheiro", vendedor: "", vendedorId: "",
+    dataVenda: new Date().toISOString().split("T")[0],
+  };
+  const [contratoData, setContratoData] = useState(emptyContrato);
+  const [tipoContrato, setTipoContrato] = useState<'avista' | 'parcelado'>('parcelado');
+  const [ruaWarning, setRuaWarning] = useState<string | null>(null);
+  const [downloadingDocx, setDownloadingDocx] = useState(false);
+  const [gerarStep, setGerarStep] = useState(0);
+  const [showDuplicarModal, setShowDuplicarModal] = useState(false);
+  const [pendingEditVenda, setPendingEditVenda] = useState<Venda | null>(null);
+  // Quando editando um contrato existente via "Nova Venda", guarda a venda original
+  const [editandoVendaOriginal, setEditandoVendaOriginal] = useState<Venda | null>(null);
+  // Dialog de confirmação antes de editar: pede Mesclar, Duplicar ou Cancelar
+  const [preEditVenda, setPreEditVenda] = useState<Venda | null>(null);
+  // Erros visuais CPF/RG vendedor no wizard
+  const [vendedorCpfError, setVendedorCpfError] = useState<string | null>(null);
+  const [vendedorRgError, setVendedorRgError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) {
+      setRuaWarning(null);
+      return;
+    }
+    const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+    const key = `${contratoData.quadra}-${contratoData.numeroLote}`.toUpperCase();
+    const lotInfo = dev?.lotesInfo?.[key];
+    if (lotInfo?.rua) {
+      const ruaSistema = lotInfo.rua;
+      if (!contratoData.rua) {
+        setContratoData((prev) => ({ ...prev, rua: ruaSistema }));
+        setRuaWarning(null);
+      } else if (contratoData.rua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase()) {
+        setRuaWarning(`A rua do sistema para este lote é "${ruaSistema}". Verifique se está correta.`);
+      } else {
+        setRuaWarning(null);
+      }
+    } else {
+      setRuaWarning(null);
+    }
+  }, [contratoData.empreendimentoId, contratoData.quadra, contratoData.numeroLote, contratoData.rua, developments]);
+
+  const emptyGerarVendedor = {
+    nome: "", genero: "", nacionalidade: "brasileiro", estadoCivil: "Solteiro",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
+  };
+  const [showGerarModal, setShowGerarModal] = useState(false);
+  const [gerarProprietarioId, setGerarProprietarioId] = useState("");
+  const [gerarVendedor, setGerarVendedor] = useState(emptyGerarVendedor);
+  const [gerarExtra, setGerarExtra] = useState({
+    rua: "", comunidade: "", formaPagamento: "Dinheiro",
+    medidaFrente: "", medidaLateralDir: "", medidaLateralEsq: "", medidaFundos: "", areaTotal: "",
+  });
+  const [gerarEmp, setGerarEmp] = useState({ nome: "", comunidade: "", cidade: "", estado: "" });
+  const [fetchingCep, setFetchingCep] = useState(false);
+
+  const fetchCepGerar = async (cep: string) => {
+    const clean = cep.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setFetchingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setGerarVendedor((prev) => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          estado: data.uf || prev.estado,
+        }));
+      }
+    } catch { /* ignore */ } finally {
+      setFetchingCep(false);
+    }
+  };
+
+  const handleOpenGerarContrato = () => {
+    if (!selectedVenda) return;
+    const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    setGerarEmp({
+      nome: dev?.nome || "",
+      comunidade: dev?.comunidade || "",
+      cidade: dev?.cidade || "",
+      estado: dev?.estado || "",
+    });
+    setGerarExtra({
+      rua: selectedVenda.rua || "",
+      comunidade: dev?.comunidade || "",
+      formaPagamento: selectedVenda.formaPagamento || "Dinheiro",
+      medidaFrente: selectedVenda.medidaFrente || "",
+      medidaLateralDir: selectedVenda.medidaLateralDir || "",
+      medidaLateralEsq: selectedVenda.medidaLateralEsq || "",
+      medidaFundos: selectedVenda.medidaFundos || "",
+      areaTotal: selectedVenda.areaTotal || "",
+    });
+    // Auto-preencher proprietário: se houver snapshot anterior, usa ele;
+    // se houver apenas um proprietário cadastrado, seleciona automaticamente;
+    // caso contrário limpa para seleção manual.
+    const snap = selectedVenda.contratoSnapshot;
+    if (snap?.vendedor?.nome?.trim()) {
+      // Já tem snapshot salvo — restaurar
+      const snapPropId = proprietarios.find((p) => p.nome === snap.vendedor.nome)?.id || "";
+      setGerarProprietarioId(snapPropId);
+      setGerarVendedor(snap.vendedor);
+    } else if (proprietarios.length === 1) {
+      // Apenas um proprietário cadastrado — selecionar automaticamente
+      handleSelectProprietario(proprietarios[0].id);
+    } else {
+      setGerarProprietarioId("");
+      setGerarVendedor(emptyGerarVendedor);
+    }
+    setGerarStep(0);
+    setShowGerarModal(true);
+  };
+
+  const handleSelectProprietario = (propId: string) => {
+    setGerarProprietarioId(propId);
+    const prop = proprietarios.find((p) => p.id === propId);
+    if (prop) {
+      setGerarVendedor({
+        nome: prop.nome,
+        genero: (prop as any).genero || "",
+        nacionalidade: prop.nacionalidade || "brasileiro",
+        estadoCivil: genderizeEstadoCivil(prop.estadoCivil || "Solteiro", ((prop as any).genero || "M")),
+        rg: prop.rg || "",
+        cpf: prop.cpf || "",
+        endereco: prop.endereco || "",
+        numero: prop.numero || "",
+        bairro: prop.bairro || "",
+        cidade: prop.cidade || "",
+        estado: prop.estado || "",
+        cep: prop.cep || "",
+      });
+    } else {
+      setGerarVendedor(emptyGerarVendedor);
+    }
+  };
+
+  const validarGenerosAntesDeGerar = (vendedorAtivo: any, clienteAtivo: any): boolean => {
+    if (!generoContratoValido(vendedorAtivo)) {
+      alert("Selecione o gênero do vendedor para gerar o contrato corretamente.");
+      return false;
+    }
+    if (!generoContratoValido(clienteAtivo)) {
+      alert("Selecione o gênero do comprador para gerar o contrato corretamente.");
+      return false;
+    }
+    return true;
+  };
+
+  const handleDownloadDocx = async () => {
+    if (!selectedVenda) return;
+    // Restaurar dados do snapshot se wizard não foi aberto
+    const snap = selectedVenda.contratoSnapshot;
+    const vendedorAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+    const empAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? gerarEmp);
+    const extraAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
+    if (!vendedorAtivo.nome.trim()) { alert("Informe o nome do vendedor."); return; }
+    const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    if (!cliente) { alert("Cliente não encontrado para este contrato."); return; }
+    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (!validarGenerosAntesDeGerar(vendedorAtivo, cliente)) return;
+
+    setShowGerarModal(false);
+    setDownloadingDocx(true);
+    
+    // Determina qual endpoint usar baseado nos dados reais da venda (não do estado que pode estar desatualizado)
+    const isAvista = selectedVenda.quantidadeParcelas === 0;
+    const endpoint = isAvista 
+      ? "/api/contrato/avista-padrao" 
+      : "/api/contrato/parcelado-padrao";
+    
+    try {
+      const res = await authFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          vendedor: vendedorAtivo,
+          cliente,
+          empreendimento: { nome: empAtivo.nome || desenvolvimento.nome, comunidade: empAtivo.comunidade || extraAtivo.comunidade, cidade: empAtivo.cidade || desenvolvimento.cidade, estado: empAtivo.estado || desenvolvimento.estado },
+          comCarimbo,
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: extraAtivo.rua,
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: extraAtivo.formaPagamento,
+            medidaFrente: extraAtivo.medidaFrente,
+            medidaLateralDir: extraAtivo.medidaLateralDir,
+            medidaLateralEsq: extraAtivo.medidaLateralEsq,
+            medidaFundos: extraAtivo.medidaFundos,
+            areaTotal: extraAtivo.areaTotal,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Erro: " + (err.error || "Falha ao gerar contrato."));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      a.href = url;
+      a.download = `contrato_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra__${selectedVenda.quadra}_.docx`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      const snapshot = {
+        vendedor: vendedorAtivo,
+        empreendimento: empAtivo,
+        extra: extraAtivo,
+        tipoContrato: snap?.tipoContrato || tipoContrato,
+        geradoEm: new Date().toISOString(),
+      };
+      onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: snapshot });
+    } catch (e: any) {
+      alert("Erro ao gerar contrato: " + e.message);
+    } finally {
+      setDownloadingDocx(false);
+    }
+  };
+
+  // ─── Gerador de HTML do contrato (frontend-only, sem servidor) ────────────────
+  const gerarContratoHTML = (params: {
+    isAvista: boolean;
+    vendedor: any;
+    cliente: any;
+    empNome: string;
+    empCom: string;
+    empCidade: string;
+    empEstado: string;
+    venda: any;
+    xAtivo: any;
+    comCarimbo: boolean;
+  }): string => {
+    const { isAvista, vendedor, cliente, empNome, empCom, empCidade, empEstado, venda, xAtivo, comCarimbo: carimbo } = params;
+
+    // Utilitários
+    const brl = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+    const brlNum = (v: number) => (v || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const meses = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+    // Extenso por extenso
+    function inteiroExtenso(n: number): string {
+      if (n === 0) return "zero";
+      const un = ["","um","dois","três","quatro","cinco","seis","sete","oito","nove","dez","onze","doze","treze","quatorze","quinze","dezesseis","dezessete","dezoito","dezenove"];
+      const dz = ["","","vinte","trinta","quarenta","cinquenta","sessenta","setenta","oitenta","noventa"];
+      const ct = ["","cento","duzentos","trezentos","quatrocentos","quinhentos","seiscentos","setecentos","oitocentos","novecentos"];
+      if (n === 100) return "cem"; if (n === 1000) return "mil";
+      if (n < 20) return un[n];
+      if (n < 100) { const d2=Math.floor(n/10); const u2=n%10; return dz[d2]+(u2>0?" e "+un[u2]:""); }
+      if (n < 1000) { const c2=Math.floor(n/100); const r2=n%100; return ct[c2]+(r2>0?" e "+inteiroExtenso(r2):""); }
+      if (n < 1000000) { const m2=Math.floor(n/1000); const r2=n%1000; const mt=m2===1?"mil":inteiroExtenso(m2)+" mil"; if(r2===0)return mt; return mt+(r2<100||r2%100===0?" e ":" ")+inteiroExtenso(r2); }
+      const mi=Math.floor(n/1000000); const r3=n%1000000; const mit=mi===1?"um milhão":inteiroExtenso(mi)+" milhões"; if(r3===0)return mit; return mit+" e "+inteiroExtenso(r3);
+    }
+    function valorExtenso(n: number): string {
+      const safe = Math.abs(Math.round((n||0)*100))/100;
+      const ip = Math.floor(safe); const cs = Math.round((safe-ip)*100);
+      const lbl = ip===1?"Real":"Reais";
+      if(cs===0) return inteiroExtenso(ip)+" "+lbl;
+      return inteiroExtenso(ip)+" "+lbl+" e "+inteiroExtenso(cs)+(cs===1?" centavo":" centavos");
+    }
+    function cap(s: string): string { return s?s.charAt(0).toUpperCase()+s.slice(1):""; }
+    function numExt(v: number): string { const s=v||0; return `${brlNum(s)} (${cap(valorExtenso(s))})`; }
+
+    const valorLote = Number(venda.valorLote)||0;
+    const valorEntrada = Number(venda.valorEntrada)||0;
+    const saldo = valorLote - valorEntrada;
+    const nParcelas = Number(venda.quantidadeParcelas)||0;
+    const valorParcela = Number(venda.valorParcela)||0;
+    const corretagem = valorLote * 0.08;
+    const dataVenda = venda.dataVenda ? new Date(venda.dataVenda.split("T")[0]+"T12:00:00") : new Date();
+    const dataStr = `${dataVenda.getDate()} de ${meses[dataVenda.getMonth()]} de ${dataVenda.getFullYear()}`;
+    const diaVenc = venda.dataVencimento ? new Date(venda.dataVencimento+"T12:00:00").getDate() : "___";
+    const primeiraParcela = (() => { if(!venda.dataVencimento)return "___/___/______"; const d=new Date(venda.dataVencimento+"T12:00:00"); d.setMonth(d.getMonth()+1); return d.toLocaleDateString("pt-BR"); })();
+    const parcelasExt = cap(inteiroExtenso(nParcelas));
+    const generoVendedor = getGeneroPessoa(vendedor, "VENDEDOR");
+    const generoComprador = getGeneroPessoa(cliente, "COMPRADOR");
+    const dimStr = xAtivo?.medidaFrente
+      ? `${xAtivo.medidaFrente}m de frente, lateral direita ${xAtivo.medidaLateralDir||"___"}m, lateral esquerda ${xAtivo.medidaLateralEsq||"___"}m, fundos ${xAtivo.medidaFundos||"___"}m, área total ${xAtivo.areaTotal||"___"}m²`
+      : "Dimensões não informadas";
+    const phones = [cliente.telefone1, cliente.telefone2].filter(Boolean).join(" / ");
+    const vendAddr = `${vendedor.endereco||"___"}, nº ${vendedor.numero||"s/n"}, ${vendedor.bairro||""}, ${vendedor.cidade||"Santarém"}, ${vendedor.estado||"PA"}, CEP ${vendedor.cep||""}`.replace(/,\s*,/g,",").trim();
+    const compAddr = `${cliente.endereco||"___"}, nº ${cliente.numero||"s/n"}, ${cliente.bairro||""}, ${cliente.cidade||""}, ${cliente.estado||""}, CEP ${cliente.cep||""}`.replace(/,\s*,/g,",").trim();
+    const carimboPago = carimbo ? `<div style="position:fixed;bottom:60px;right:40px;transform:rotate(-20deg);border:6px solid #16a34a;border-radius:12px;padding:10px 24px;color:#16a34a;font-size:34pt;font-weight:900;font-family:serif;opacity:0.72;letter-spacing:4px;pointer-events:none;text-align:center;line-height:1;">PAGO<br><span style="font-size:10pt;letter-spacing:1px;font-family:Arial,sans-serif;">${new Date().toLocaleDateString('pt-BR')}</span></div>` : "";
+
+    const titulo = isAvista ? "Recibo de Compra e Venda à Vista" : "Contrato de Compra e Venda a Prazo";
+
+    return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8"><title>${titulo}</title><style>
+      *{box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
+      body{margin:0;padding:40px 54px;font-family:'Times New Roman',Times,serif;font-size:12pt;color:#000;background:#fff;line-height:1.6;}
+      h1{text-align:center;text-transform:uppercase;font-size:14pt;margin:0 0 4px;letter-spacing:1px;}
+      h2{text-align:center;font-size:11pt;font-weight:normal;margin:0 0 24px;color:#444;}
+      .sec{margin:20px 0;}
+      .sec-title{font-weight:bold;text-transform:uppercase;font-size:10pt;border-bottom:1.5px solid #000;padding-bottom:3px;margin-bottom:10px;letter-spacing:.5px;}
+      p{margin:6px 0;text-align:justify;}
+      table{width:100%;border-collapse:collapse;margin:8px 0;}
+      td{padding:5px 10px;border:1px solid #bbb;font-size:11pt;vertical-align:top;}
+      td.lbl{font-size:9pt;font-weight:bold;text-transform:uppercase;color:#555;background:#f7f7f7;width:36%;white-space:nowrap;}
+      .assin{margin-top:60px;display:flex;justify-content:space-around;flex-wrap:wrap;gap:20px;}
+      .assin-item{width:200px;text-align:center;}
+      .assin-linha{border-top:1px solid #000;padding-top:6px;margin-top:50px;font-size:10pt;}
+      .footer-info{margin-top:32px;font-size:10pt;text-align:center;color:#555;}
+      @media print{body{padding:20px 30px;}@page{margin:1.5cm 2cm;}}
+    </style></head><body>
+      <h1>${titulo}</h1>
+      <h2>Instrumento Particular</h2>
+
+      <div class="sec">
+        <div class="sec-title">I — Partes</div>
+        <table>
+          <tr><td class="lbl">${generoVendedor.papel} (Outorgante)</td><td>${generoVendedor.artigo} ${generoVendedor.tratamento} <strong>${(vendedor.nome||"___").toUpperCase()}</strong>, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil || "___"}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg||"___"} e do CPF nº ${vendedor.cpf||"___"}, residente e ${generoVendedor.domiciliado} no endereço ${vendAddr}, ora em diante ${generoVendedor.chamado} simplesmente <strong>${generoVendedor.papel}</strong></td></tr>
+          <tr><td class="lbl">${generoComprador.papel} (Outorgado)</td><td>${generoComprador.artigo} ${generoComprador.tratamento} <strong>${(cliente.nome||"___").toUpperCase()}</strong>, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil || "___"}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg||"___"} e do CPF nº ${cliente.cpf||"___"}${phones?`, telefone ${phones}`:""}, residente e ${generoComprador.domiciliado} no endereço ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente <strong>${generoComprador.papel}</strong></td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">II — Imóvel</div>
+        <table>
+          <tr><td class="lbl">Empreendimento</td><td>${empNome.toUpperCase()}${empCom?" — "+empCom:""}, ${empCidade}/${empEstado}</td></tr>
+          <tr><td class="lbl">Lote / Quadra</td><td>Lote <strong>${venda.numeroLote}</strong> da Quadra <strong>${venda.quadra}</strong>${venda.rua?" — "+venda.rua:""}</td></tr>
+          <tr><td class="lbl">Dimensões</td><td>${dimStr}</td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        <div class="sec-title">III — Condições Financeiras</div>
+        <table>
+          <tr><td class="lbl">Valor Total do Imóvel</td><td><strong>R$ ${numExt(valorLote)}</strong></td></tr>
+          ${isAvista
+            ? `<tr><td class="lbl">Modalidade</td><td>À Vista — ${xAtivo?.formaPagamento||venda.formaPagamento||"Dinheiro"}</td></tr>`
+            : `<tr><td class="lbl">Entrada</td><td>R$ ${numExt(valorEntrada)}</td></tr>
+               <tr><td class="lbl">Saldo Financiado</td><td>R$ ${numExt(saldo)}</td></tr>
+               <tr><td class="lbl">Parcelas</td><td>${nParcelas} (${parcelasExt}) x R$ ${numExt(valorParcela)}, vencendo dia ${diaVenc} de cada mês, primeira em ${primeiraParcela}</td></tr>
+               <tr><td class="lbl">Corretagem (8%)</td><td>R$ ${numExt(corretagem)}</td></tr>`
+          }
+          <tr><td class="lbl">Data da Negociação</td><td>${dataStr}</td></tr>
+        </table>
+      </div>
+
+      <div class="sec">
+        ${isAvista
+          ? `<p>Pelo presente instrumento particular, ${generoVendedor.artigo} <strong>${generoVendedor.papel}</strong> declara ter recebido ${generoComprador.artigo === "a" ? "da" : "do"} <strong>${generoComprador.papel}</strong> a importância de R$ ${numExt(valorLote)}, referente à aquisição do imóvel descrito acima, localizando-se no empreendimento ${empNome.toUpperCase()}, ${empCidade}/${empEstado}, dando ${generoComprador.aoA} <strong>${generoComprador.papel}</strong> plena, geral e irrevogável quitação.</p>
+           <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> declara conhecer o imóvel, aceitando-o nas condições em que se encontra, assumindo toda e qualquer responsabilidade sobre o mesmo a partir desta data.</p>`
+          : `<p>As partes acima identificadas celebram o presente Contrato de Compra e Venda, pelo qual ${generoVendedor.artigo} <strong>${generoVendedor.papel}</strong> vende ${generoComprador.aoA} <strong>${generoComprador.papel}</strong> o imóvel descrito acima, pelo valor e condições estabelecidos neste instrumento.</p>
+             <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> obriga-se a efetuar os pagamentos nas datas avençadas, sob pena de rescisão contratual. A posse do imóvel será transferida somente após a quitação integral do preço.</p>
+             <p>${generoComprador.artigo.toUpperCase()} <strong>${generoComprador.papel}</strong> declara conhecer e aceitar o imóvel nas condições em que se encontra.</p>`
+        }
+        <p>Fica eleito o foro de ${empCidade}/${empEstado} para dirimir quaisquer dúvidas oriundas do presente instrumento.</p>
+        <p style="margin-top:16px;">${empCidade}/${empEstado}, ${dataStr}.</p>
+      </div>
+
+      ${carimboPago}
+
+      <div class="assin">
+        <div class="assin-item"><div class="assin-linha">${generoVendedor.papel} - ${(vendedor.nome||"VENDEDOR").toUpperCase()}<br><span style="font-size:9pt">Outorgante</span>${vendedor.cpf?`<br><span style="font-size:9pt">CPF: ${vendedor.cpf}</span>`:""}</div></div>
+        <div class="assin-item"><div class="assin-linha">${generoComprador.papel} - ${(cliente.nome||"COMPRADOR").toUpperCase()}<br><span style="font-size:9pt">Outorgado</span>${cliente.cpf?`<br><span style="font-size:9pt">CPF: ${cliente.cpf}</span>`:""}</div></div>
+      </div>
+      <div class="footer-info">
+        <p>Nº do Contrato: ${venda.numeroContrato||"—"} &nbsp;|&nbsp; Gerado em: ${new Date().toLocaleDateString("pt-BR")}</p>
+      </div>
+    </body></html>`;
+  };
+
+  // Gera PDF do contrato via DOCX → CloudConvert → PDF (fiel ao DOCX)
+  const [downloadingPdf, setDownloadingPdf] = useState(false);
+  const handleDownloadPdfContrato = async () => {
+    if (!selectedVenda) return;
+    const snap = selectedVenda.contratoSnapshot;
+    const vendedorAtivo = gerarVendedor.nome.trim() ? gerarVendedor : (snap?.vendedor ?? gerarVendedor);
+    const empAtivo = gerarEmp.nome.trim() ? gerarEmp : (snap?.empreendimento ?? { nome: selectedVenda.empreendimentoNome || "", comunidade: "", cidade: "", estado: "" });
+    const extraAtivo = gerarExtra.rua !== undefined ? (gerarVendedor.nome.trim() ? gerarExtra : (snap?.extra ?? gerarExtra)) : gerarExtra;
+    const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const desenvolvimento = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    if (!cliente) { alert("Cliente não encontrado."); return; }
+    if (!desenvolvimento) { alert("Empreendimento não encontrado."); return; }
+    if (!vendedorAtivo.nome?.trim()) { alert("Informe o nome do vendedor antes de gerar o PDF."); return; }
+    if (!validarGenerosAntesDeGerar(vendedorAtivo, cliente)) return;
+
+    const isAvista = selectedVenda.quantidadeParcelas === 0 ||
+      (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
+
+    const endpoint = isAvista
+      ? "/api/contrato/avista-padrao-pdf"
+      : "/api/contrato/parcelado-padrao-pdf";
+
+    setDownloadingPdf(true);
+    try {
+      const res = await authFetch(endpoint, {
+        method: "POST",
+        body: JSON.stringify({
+          vendedor: vendedorAtivo,
+          cliente,
+          empreendimento: {
+            nome: empAtivo.nome || desenvolvimento.nome,
+            comunidade: empAtivo.comunidade || extraAtivo.comunidade,
+            cidade: empAtivo.cidade || desenvolvimento.cidade,
+            estado: empAtivo.estado || desenvolvimento.estado,
+          },
+          comCarimbo,
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: extraAtivo.rua || selectedVenda.rua || "",
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: extraAtivo.formaPagamento,
+            medidaFrente: extraAtivo.medidaFrente,
+            medidaLateralDir: extraAtivo.medidaLateralDir,
+            medidaLateralEsq: extraAtivo.medidaLateralEsq,
+            medidaFundos: extraAtivo.medidaFundos,
+            areaTotal: extraAtivo.areaTotal,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert("Erro ao gerar PDF: " + (err.error || "Falha desconhecida."));
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const nomeCliente = cliente.nome.replace(/\s+/g, "_");
+      const nomeEmp = desenvolvimento.nome.replace(/\s+/g, "_").toUpperCase();
+      const prefix = isAvista ? "contrato_avista" : "contrato";
+      a.href = url;
+      a.download = `${prefix}_-_${nomeCliente}_-_${nomeEmp}_-_Lote_${selectedVenda.numeroLote}_-_Quadra__${selectedVenda.quadra}_.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      alert("Erro ao gerar PDF: " + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setDownloadingPdf(false);
+    }
+  };
+
+  const [gerarFinalFormat, setGerarFinalFormat] = useState<'pdf' | 'docx'>('docx');
+
+  const handleOpenGerarContratoFormato = (formato: 'pdf' | 'docx') => {
+    setGerarFinalFormat(formato);
+    handleOpenGerarContrato();
+  };
+
+  // Abre "Nova Venda" pré-preenchida para editar contrato existente
+  const handleEditarContrato = (venda: Venda) => {
+    // Antes de editar, pergunta: Mesclar, Duplicar ou Cancelar
+    setPreEditVenda(venda);
+  };
+
+  const handleEditarContratoLegacy = (venda: Venda) => {
+    const cliente = clients.find((c) => c.id === venda.clienteId);
+    const snap = venda.contratoSnapshot;
+
+    // Pré-preenche contratoData com dados financeiros/lote da venda
+    setContratoData({
+      empreendimentoId: venda.empreendimentoId || "",
+      quadra: venda.quadra || "",
+      numeroLote: venda.numeroLote || "",
+      rua: venda.rua || "",
+      valorLote: venda.valorLote || 0,
+      valorEntrada: venda.valorEntrada || 0,
+      quantidadeParcelas: venda.quantidadeParcelas ?? 1,
+      valorParcela: venda.valorParcela || 0,
+      dataVencimento: venda.dataVencimento || defaultVencimento(),
+      formaPagamento: venda.formaPagamento || "Dinheiro",
+      vendedor: venda.vendedor || "",
+      vendedorId: venda.vendedorId || "",
+      dataVenda: venda.dataVenda || new Date().toISOString().split("T")[0],
+    });
+
+    // Pré-preenche cliente
+    if (cliente) {
+      setClienteMode("existente");
+      setClienteSelecionadoId(cliente.id);
+    } else {
+      setClienteMode("existente");
+      setClienteSelecionadoId("");
+    }
+
+    // Restaura vendedor/extras do snapshot se disponível
+    if (snap?.vendedor) {
+      setGerarVendedor(snap.vendedor);
+    } else {
+      setGerarVendedor(emptyGerarVendedor);
+    }
+    if (snap?.empreendimento) {
+      setGerarEmp(snap.empreendimento);
+    }
+    if (snap?.extra) {
+      setGerarExtra(snap.extra);
+    }
+
+    // Sincroniza tipo (à vista / parcelado) com a venda que está sendo editada
+    setTipoContrato(venda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
+
+    // Guarda referência da venda original para update (não criar nova)
+    setEditandoVendaOriginal(venda);
+    setShowNovoContrato(true);
+  };
+
+  const handleSalvarContrato = () => {
+    let cliente: Cliente;
+    if (clienteMode === "existente") {
+      const found = clients.find((c) => c.id === clienteSelecionadoId);
+      if (!found) { alert("Selecione um cliente existente."); return; }
+      cliente = found;
+    } else {
+      if (!novoCliente.nome || !novoCliente.cpf) { alert("Preencha ao menos Nome e CPF do cliente."); return; }
+      cliente = {
+        id: `cli-${Date.now()}`,
+        nome: novoCliente.nome || "",
+        nacionalidade: novoCliente.nacionalidade || "brasileiro",
+        genero: (novoCliente.genero as "M" | "F" | "O") || "M",
+        rg: novoCliente.rg || "",
+        cpf: novoCliente.cpf || "",
+        estadoCivil: novoCliente.estadoCivil || "solteiro",
+        profissao: novoCliente.profissao || "",
+        nascimento: novoCliente.nascimento || "",
+        cep: novoCliente.cep || "",
+        endereco: novoCliente.endereco || "",
+        numero: novoCliente.numero || "",
+        bairro: novoCliente.bairro || "",
+        cidade: novoCliente.cidade || "",
+        estado: novoCliente.estado || "",
+        telefone1: novoCliente.telefone1 || "",
+        dataCadastro: new Date().toISOString(),
+      };
+    }
+    const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+
+    // Modo edição: mostra Mesclar/Duplicar/Cancelar preservando snapshot
+    if (editandoVendaOriginal) {
+      const vendaAtualizada: Venda = {
+        ...editandoVendaOriginal,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        empreendimentoId: contratoData.empreendimentoId,
+        empreendimentoNome: dev?.nome || editandoVendaOriginal.empreendimentoNome,
+        numeroLote: contratoData.numeroLote,
+        quadra: contratoData.quadra,
+        rua: contratoData.rua,
+        valorLote: contratoData.valorLote,
+        valorEntrada: contratoData.valorEntrada,
+        quantidadeParcelas: contratoData.quantidadeParcelas,
+        valorParcela: contratoData.valorParcela,
+        dataVencimento: contratoData.dataVencimento,
+        vendedor: contratoData.vendedor,
+        vendedorId: contratoData.vendedorId,
+        dataVenda: contratoData.dataVenda,
+        formaPagamento: contratoData.formaPagamento,
+        contratoSnapshot: editandoVendaOriginal.contratoSnapshot ? {
+          ...editandoVendaOriginal.contratoSnapshot,
+          ...(gerarVendedor.nome.trim() ? { vendedor: gerarVendedor } : {}),
+          ...(gerarEmp.nome.trim() ? { empreendimento: gerarEmp } : {}),
+          ...(gerarExtra.rua !== undefined ? { extra: gerarExtra } : {}),
+        } : editandoVendaOriginal.contratoSnapshot,
+      };
+      setPendingEditVenda(vendaAtualizada);
+      setShowNovoContrato(false);
+      setShowDuplicarModal(true);
+      return;
+    }
+
+    const venda: Venda = {
+      id: `venda-${Date.now()}`,
+      numeroContrato: `CONT-${Date.now()}`,
+      clienteId: cliente.id,
+      clienteNome: cliente.nome,
+      empreendimentoId: contratoData.empreendimentoId,
+      empreendimentoNome: dev?.nome || "",
+      numeroLote: contratoData.numeroLote,
+      quadra: contratoData.quadra,
+      rua: contratoData.rua,
+      valorLote: contratoData.valorLote,
+      valorEntrada: contratoData.valorEntrada,
+      quantidadeParcelas: contratoData.quantidadeParcelas,
+      valorParcela: contratoData.valorParcela,
+      dataVencimento: contratoData.dataVencimento,
+      vendedor: contratoData.vendedor,
+      vendedorId: contratoData.vendedorId,
+      dataVenda: contratoData.dataVenda,
+      custo: 0,
+      comissao: 0,
+      formaPagamento: contratoData.formaPagamento,
+      status: "pendente",
+    };
+    onSaveVenda(venda, cliente);
+    setShowNovoContrato(false);
+    setContratoData(emptyContrato);
+    setNovoCliente({ genero: "M", nacionalidade: "brasileiro", estadoCivil: "solteiro" });
+    setClienteSelecionadoId("");
+    setSelectedVenda(venda);
+    setViewMode("contract");
+  };
+
+  useEffect(() => {
+    if (initialVenda) {
+      setSelectedVenda(initialVenda);
+      setViewMode("contract");
+      onClearInitialVenda?.();
+
+      if ((initialMode as any) === 'recibo') {
+        // Botão "Gerar Recibo" pós-venda → abrir modal de recibo
+        setTimeout(() => setShowReciboModal(true), 100);
+      } else if (!initialVenda.contratoGerado) {
+        // Botão "Gerar Contrato" pós-venda (sem contrato ainda) → abrir wizard direto
+        const dev = developments.find((d) => d.id === initialVenda.empreendimentoId);
+        setGerarProprietarioId("");
+        setGerarVendedor(emptyGerarVendedor);
+        setGerarEmp({
+          nome: dev?.nome || "",
+          comunidade: dev?.comunidade || "",
+          cidade: dev?.cidade || "",
+          estado: dev?.estado || "",
+        });
+        setGerarExtra({
+          rua: initialVenda.rua || "",
+          comunidade: dev?.comunidade || "",
+          formaPagamento: initialVenda.formaPagamento || "Dinheiro",
+          medidaFrente: initialVenda.medidaFrente || "",
+          medidaLateralDir: initialVenda.medidaLateralDir || "",
+          medidaLateralEsq: initialVenda.medidaLateralEsq || "",
+          medidaFundos: initialVenda.medidaFundos || "",
+          areaTotal: initialVenda.areaTotal || "",
+        });
+        setGerarStep(0);
+        setTimeout(() => setShowGerarModal(true), 80);
+      } else if (initialVenda.contratoGerado && initialVenda.contratoSnapshot) {
+        // Contrato já gerado → restaurar snapshot nos estados do wizard
+        const snap = initialVenda.contratoSnapshot;
+        if (snap.vendedor) setGerarVendedor(snap.vendedor);
+        if (snap.empreendimento) setGerarEmp(snap.empreendimento);
+        if (snap.extra) setGerarExtra(snap.extra);
+        if (snap.tipoContrato) setTipoContrato(snap.tipoContrato);
+      }
+    }
+  }, [initialVenda]);
+
+  // Sincroniza tipoContrato sempre que selectedVenda mudar
+  useEffect(() => {
+    if (selectedVenda) {
+      setTipoContrato(selectedVenda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
+    }
+  }, [selectedVenda]);
+
+  const reciboRef = useRef<HTMLDivElement>(null);
+  const [reciboDownloading, setReciboDownloading] = useState<'img' | 'pdf' | 'docx' | null>(null);
+
+  const handlePrint = () => {
+    if (!reciboRef.current) {
+      alert('Recibo não encontrado. Aguarde um momento e tente novamente.');
+      return;
+    }
+    // Cria overlay temporário na própria página para impressão
+    const overlay = document.createElement('div');
+    overlay.id = 'print-recibo-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;z-index:99999;background:white;padding:1rem;overflow:auto;';
+    overlay.innerHTML = `<div style="max-width:21cm;margin:0 auto;">${reciboRef.current.outerHTML}</div>`;
+    document.body.appendChild(overlay);
+    window.print();
+    document.body.removeChild(overlay);
+  };
+
+  const buildReciboPopupHTML = () => {
+    if (!selectedVenda) throw new Error('Venda não encontrada.');
+    const clienteNome = selectedVenda.clienteNome || '___________________________';
+    const clienteCpf = client?.cpf || '___.___.___-__';
+    const empreendimento = selectedVenda.empreendimentoNome || '';
+    const quadra = selectedVenda.quadra || '';
+    const lote = selectedVenda.numeroLote || '';
+    const rua = selectedVenda.rua || '';
+    const isAvista = selectedVenda.quantidadeParcelas === 0;
+    const valorNumerico = isAvista ? (selectedVenda.valorLote || 0) : (selectedVenda.valorEntrada || 0);
+    const valor = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(valorNumerico);
+    const pagamentoLabel = isAvista ? 'PAGAMENTO INTEGRAL À VISTA' : 'SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)';
+    const corretorNome = userProfile?.nome || '___________________________';
+    const corretorCargo = userProfile?.creci ? 'Corretor de Imóveis' : 'Angariador/Captador';
+    const corretorCreci = userProfile?.creci || '';
+    const assinaturaUrl = userProfile?.assinaturaUrl || '';
+    const dataFormatada = new Date(selectedVenda.dataVenda).toLocaleDateString('pt-BR', { day: '2-digit', month: 'long', year: 'numeric' });
+    return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Recibo</title>
+  <style>
+    * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    html, body { margin: 0; padding: 0; background: #ffffff; font-family: Arial, Helvetica, sans-serif; }
+    #recibo-root { padding: 32px; background: #ffffff; max-width: 21cm; margin: 0 auto; }
+    .recibo-card { background: #ffffff; padding: 64px; border: 1px solid #e2e8f0; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 4px solid #0f172a; padding-bottom: 32px; margin-bottom: 48px; }
+    .titulo { font-size: 36px; font-weight: 900; font-style: italic; letter-spacing: -1px; color: #0f172a; margin: 0; }
+    .subtitulo { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 2px; margin: 4px 0 0 0; }
+    .valor-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; text-align: right; }
+    .valor-box { background: #0f172a; color: #ffffff; font-size: 28px; font-weight: 700; padding: 8px 20px; border-radius: 12px; }
+    .corpo { font-size: 18px; line-height: 2; margin-bottom: 32px; text-align: justify; color: #1e293b; }
+    .destaque { font-weight: 700; text-transform: uppercase; text-decoration: underline; text-underline-offset: 4px; }
+    .negrito { font-weight: 700; }
+    .italico { font-weight: 700; font-style: italic; }
+    .imovel-box { background: #f8fafc; border: 2px dashed #e2e8f0; border-radius: 24px; padding: 32px; display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 32px; }
+    .imovel-col-full { grid-column: 1 / -1; }
+    .label-sm { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px; }
+    .valor-item { font-weight: 700; color: #1e293b; font-size: 16px; }
+    .obs { font-size: 13px; font-style: italic; color: #64748b; margin-bottom: 32px; }
+    .rodape { margin-top: 80px; padding-top: 40px; border-top: 1px solid #e2e8f0; display: flex; justify-content: space-between; align-items: flex-end; }
+    .data-texto { font-size: 14px; font-weight: 700; color: #1e293b; }
+    .assinatura { width: 260px; text-align: center; }
+    .assinatura-img { max-width: 230px; max-height: 86px; object-fit: contain; margin: 0 auto -6px auto; display: block; }
+    .linha-assinatura { height: 1px; background: #0f172a; margin-bottom: 8px; }
+    .assinatura-label { font-size: 10px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 1px; }
+    .assinatura-nome { font-weight: 700; color: #0f172a; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div id="recibo-root">
+    <div class="recibo-card">
+      <div class="header">
+        <div>
+          <p class="titulo">RECIBO</p>
+          <p class="subtitulo">Instrumento de Quitação de Valores</p>
+        </div>
+        <div>
+          <p class="valor-label">Valor do Recibo</p>
+          <p class="valor-box">${valor}</p>
+        </div>
+      </div>
+      <p class="corpo">
+        Recebemos de <span class="destaque">${clienteNome}</span>, inscrito(a) no CPF nº <span class="negrito">${clienteCpf}</span>, a importância supra de <span class="italico">(${valor})</span>, referente ao <span class="negrito">${pagamentoLabel}</span> para aquisição do imóvel:
+      </p>
+      <div class="imovel-box">
+        <div>
+          <p class="label-sm">Empreendimento</p>
+          <p class="valor-item">${empreendimento}</p>
+        </div>
+        <div>
+          <p class="label-sm">Localização</p>
+          <p class="valor-item">Q:${quadra} / L:${lote}</p>
+        </div>
+        ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
+      </div>
+      <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
+      <div class="rodape">
+        <div>
+          <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
+        </div>
+        <div class="assinatura">
+          ${assinaturaUrl ? `<img class="assinatura-img" src="${assinaturaUrl}" />` : ''}
+          <div class="linha-assinatura"></div>
+          <p class="assinatura-label">${corretorCargo}</p>
+          <p class="assinatura-nome">${corretorNome}</p>
+          ${corretorCreci ? `<p class="assinatura-label">CRECI: ${corretorCreci}</p>` : ''}
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+  };
+
+  const openReciboPopup = (): Promise<Window> => {
+    return new Promise((resolve, reject) => {
+      if (!selectedVenda) { reject(new Error('Venda não encontrada.')); return; }
+      const popup = window.open('', '_blank', 'width=900,height=1200,left=-10000,top=-10000,toolbar=no,scrollbars=no,menubar=no,status=no');
+      if (!popup) { reject(new Error('Popup bloqueado. Permita popups neste site.')); return; }
+      popup.document.open();
+      popup.document.write(buildReciboPopupHTML());
+      popup.document.close();
+      const onLoad = () => {
+        clearTimeout(timer);
+        setTimeout(() => resolve(popup), 800);
+      };
+      const timer = setTimeout(() => resolve(popup), 2500);
+      if (popup.document.readyState === 'complete') {
+        onLoad();
+      } else {
+        popup.addEventListener('load', onLoad, { once: true });
+      }
+    });
+  };
+
+  const captureReciboCanvas = async (): Promise<HTMLCanvasElement> => {
+    if (!reciboRef.current) throw new Error('Elemento de recibo não encontrado. Certifique-se de que o recibo está visível na tela.');
+    const captureEl = reciboRef.current;
+    const html2canvas = (await import('html2canvas')).default;
+    const canvas = await html2canvas(captureEl, {
+      scale: 2,
+      backgroundColor: '#ffffff',
+      useCORS: true,
+      logging: false,
+      allowTaint: false,
+      width: captureEl.scrollWidth,
+      height: captureEl.scrollHeight,
+      windowWidth: captureEl.scrollWidth,
+      windowHeight: captureEl.scrollHeight,
+      onclone: (_clonedDoc: Document, clonedEl: HTMLElement) => {
+        // html2canvas não suporta oklch (Tailwind v4) — neutralizar antes da captura
+        const style = clonedEl.ownerDocument.createElement('style');
+        style.textContent = [
+          '* { color: revert-layer !important; background-color: revert-layer !important; border-color: revert-layer !important; }',
+          '[class*="bg-"] { background-color: white !important; }',
+          '[class*="text-"] { color: black !important; }',
+          '[class*="border-"] { border-color: #d1d5db !important; }',
+        ].join('\n');
+        clonedEl.ownerDocument.head.appendChild(style);
+      },
+    });
+    return canvas;
+  };
+
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  };
+
+  const handleDownloadImage = async () => {
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
+      return;
+    }
+    setReciboDownloading('img');
+    try {
+      const canvas = await captureReciboCanvas();
+      const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
+      await new Promise<void>((resolve, reject) => {
+        canvas.toBlob((blob) => {
+          if (!blob) { reject(new Error('Falha ao gerar blob da imagem.')); return; }
+          triggerDownload(blob, `recibo-${nome}.png`);
+          resolve();
+        }, 'image/png');
+      });
+    } catch (e: unknown) {
+      console.error('Erro ao gerar imagem:', e);
+      alert('Erro ao gerar imagem: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setReciboDownloading(null);
+    }
+  };
+
+  const handleDownloadPdf = async () => {
+    if (!selectedVenda) {
+      alert('Nenhuma venda selecionada.');
+      return;
+    }
+    setReciboDownloading('pdf');
+    try {
+      const canvas = await captureReciboCanvas();
+      const { jsPDF: JsPDF } = await import("jspdf");
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new JsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+      const pdfW = pdf.internal.pageSize.getWidth();
+      const pdfH = (canvas.height * pdfW) / canvas.width;
+      pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
+      const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
+      const blob = pdf.output('blob');
+      triggerDownload(blob, `recibo-${nome}.pdf`);
+    } catch (e: unknown) {
+      console.error('Erro ao gerar PDF:', e);
+      alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
+    } finally {
+      setReciboDownloading(null);
+    }
+  };
+
+  const handleDownloadReciboDocx = async () => {
+    if (!selectedVenda) { alert('Nenhuma venda selecionada.'); return; }
+    const reciboCliente = clients.find((c) => c.id === selectedVenda.clienteId);
+    const reciboDev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+    if (!reciboCliente) { alert('Cliente não encontrado para este recibo.'); return; }
+    if (!reciboDev) { alert('Empreendimento não encontrado.'); return; }
+    setReciboDownloading('docx');
+    // Vendedor do recibo: usa snapshot do contrato se existir, senão objeto vazio
+    const snap = selectedVenda.contratoSnapshot;
+    const vendedorRecibo = snap?.vendedor ?? {
+      nome: '', nacionalidade: 'brasileiro', estadoCivil: 'Solteiro(a)',
+      rg: '', cpf: '', endereco: '', numero: '', bairro: '', cidade: '', estado: '', cep: '',
+    };
+    const empRecibo = {
+      nome: snap?.empreendimento?.nome || reciboDev.nome,
+      comunidade: snap?.empreendimento?.comunidade || reciboDev.comunidade || '',
+      cidade: snap?.empreendimento?.cidade || reciboDev.cidade || 'Santarém',
+      estado: snap?.empreendimento?.estado || reciboDev.estado || 'PA',
+    };
+    const endpoint = '/api/recibo/padrao';
+    try {
+      const res = await authFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify({
+          vendedor: vendedorRecibo,
+          cliente: reciboCliente,
+          empreendimento: empRecibo,
+          comCarimbo,
+          venda: {
+            numeroLote: selectedVenda.numeroLote,
+            quadra: selectedVenda.quadra,
+            rua: selectedVenda.rua || snap?.extra?.rua || '',
+            valorLote: selectedVenda.valorLote,
+            valorEntrada: selectedVenda.valorEntrada,
+            quantidadeParcelas: selectedVenda.quantidadeParcelas,
+            valorParcela: selectedVenda.valorParcela,
+            dataVencimento: selectedVenda.dataVencimento,
+            dataVenda: selectedVenda.dataVenda,
+            formaPagamento: selectedVenda.formaPagamento || snap?.extra?.formaPagamento || 'Dinheiro',
+          },
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert('Erro ao gerar recibo DOCX: ' + (err.error || 'Falha no servidor.'));
+        return;
+      }
+      const blob = await res.blob();
+      const nome = reciboCliente.nome.replace(/\s+/g, '_');
+      triggerDownload(blob, `recibo_-_${nome}_-_Lote_${selectedVenda.numeroLote}_Q_${selectedVenda.quadra}.docx`);
+    } catch (e: any) {
+      alert('Erro ao gerar recibo DOCX: ' + e.message);
+    } finally {
+      setReciboDownloading(null);
+    }
+  };
+
+  const client = selectedVenda
+    ? clients.find((c) => c.id === selectedVenda.clienteId)
+    : null;
+  const development = selectedVenda
+    ? developments.find((d) => d.id === selectedVenda.empreendimentoId)
+    : null;
+
+  const copyResumoVenda = (venda: Venda) => {
+    const cliente = clients.find((c) => c.id === venda.clienteId);
+    const brl = (v: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+    const fmtPhone = (raw: string) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 11)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      return raw;
+    };
+
+    const fmtNasc = (d: string) => {
+      if (!d) return "";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+
+    const diaVenc = venda.dataVencimento
+      ? new Date(venda.dataVencimento + "T12:00:00").getDate()
+      : "";
+
+    const phones = [cliente?.telefone1, (cliente as any)?.telefone2]
+      .filter(Boolean)
+      .map((p) => fmtPhone(p as string));
+    const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
+
+    const summary = `CADASTRO DO COMPRADOR
+NOME: ${(cliente?.nome || venda.clienteNome || "").toUpperCase()}
+RG: ${(cliente?.rg || "").toUpperCase()}
+CPF: ${cliente?.cpf || ""}
+ESTADO CIVIL: ${genderizeEstadoCivil(cliente?.estadoCivil || "", cliente?.genero || "M").toUpperCase()}
+DATA DE ANIVERSÁRIO: ${fmtNasc(cliente?.nascimento || "")}
+ENDEREÇO: ${(cliente?.endereco || "").toUpperCase()}
+Nº: ${cliente?.numero || ""}
+BAIRRO: ${(cliente?.bairro || "").toUpperCase()}
+CEP: ${cliente?.cep || ""}
+${phoneLabel}
+LOTE: ${venda.numeroLote}
+QUADRA: ${venda.quadra}
+EMPREENDIMENTO: ${venda.empreendimentoNome.toUpperCase()}
+VALOR TOTAL: ${brl(venda.valorLote)}
+ENTRADA: ${brl(venda.valorEntrada)}
+QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}
+DATA DE VENCIMENTO: ${diaVenc}
+VENDEDOR: ${venda.vendedor}`;
+
+    navigator.clipboard.writeText(summary).catch(() => {
+      // fallback
+      const ta = document.createElement("textarea");
+      ta.value = summary;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+    });
+    alert("Resumo copiado para a área de transferência!");
+  };
+
+  const filteredSales = (() => {
+    let list = sales.filter((venda) => {
+      const query = searchTerm.toLowerCase();
+      const matchesSearch = !query || (
+        venda.clienteNome.toLowerCase().includes(query) ||
+        venda.empreendimentoNome.toLowerCase().includes(query) ||
+        venda.numeroLote.toLowerCase().includes(query) ||
+        venda.quadra.toLowerCase().includes(query) ||
+        venda.numeroContrato.toLowerCase().includes(query) ||
+        venda.rua?.toLowerCase().includes(query) ||
+        venda.vendedor?.toLowerCase().includes(query)
+      );
+      const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
+      const matchesEmp = !empFilter || venda.empreendimentoId === empFilter;
+      const matchesDate = !dateFilter || (venda.dataVenda || "").startsWith(dateFilter);
+      // Filtro unificado: avista | parcelado | comcontrato | semcontrato
+      let matchesCombined = true;
+      if (statusFilter === "avista") matchesCombined = venda.quantidadeParcelas === 0;
+      else if (statusFilter === "parcelado") matchesCombined = venda.quantidadeParcelas > 0;
+      else if (statusFilter === "comcontrato") matchesCombined = !!venda.contratoGerado;
+      else if (statusFilter === "semcontrato") matchesCombined = !venda.contratoGerado;
+      return matchesSearch && matchesCorretor && matchesCombined && matchesEmp && matchesDate;
+    });
+    list = [...list].sort((a, b) => {
+      switch (sortBy) {
+        case "data_asc": return (a.dataVenda || "").localeCompare(b.dataVenda || "");
+        case "valor_desc": return (b.valorLote || 0) - (a.valorLote || 0);
+        case "valor_asc": return (a.valorLote || 0) - (b.valorLote || 0);
+        case "nome_asc": return a.clienteNome.localeCompare(b.clienteNome, "pt-BR");
+        case "emp_asc": return (a.empreendimentoNome || "").localeCompare(b.empreendimentoNome || "", "pt-BR");
+        case "status_asc": return normalizeStatus(a.status).localeCompare(normalizeStatus(b.status), "pt-BR");
+        case "corretor_asc": return (a.vendedor || "").localeCompare(b.vendedor || "", "pt-BR");
+        default: return (b.dataVenda || "").localeCompare(a.dataVenda || "");
+      }
+    });
+    return list;
+  })();
+
+  // Ranking de corretores
+  const rankingCorretores = (() => {
+    const map: Record<string, { nome: string; vendas: number; total: number }> = {};
+    for (const v of sales) {
+      const nome = v.vendedor?.trim() || "Sem corretor";
+      if (!map[nome]) map[nome] = { nome, vendas: 0, total: 0 };
+      map[nome].vendas += 1;
+      map[nome].total += v.valorLote || 0;
+    }
+    return Object.values(map).sort((a, b) => b.total - a.total);
+  })();
+  const totalGeralVendas = rankingCorretores.reduce((s, r) => s + r.total, 0);
+  const corretoresUnicos = [...new Set(sales.map(v => v.vendedor?.trim()).filter(Boolean))] as string[];
+
+  const getContratoInfo = (venda: Venda) => {
+    if (venda.contratoGerado) {
+      return { label: "Com Contrato", color: "text-emerald-700 bg-emerald-50", icon: "contrato" };
+    }
+    return { label: "Sem Contrato", color: "text-amber-600 bg-amber-50", icon: "sem" };
+  };
+
+  const getPagamentoInfo = (venda: Venda) => {
+    if (venda.quantidadeParcelas === 0) {
+      return { label: "À Vista", color: "text-sky-700 bg-sky-50", icon: "avista" };
+    }
+    return { label: "Parcelado", color: "text-violet-700 bg-violet-50", icon: "parcelado" };
+  };
+
+  const handleOpenGerarContratoForVenda = (venda: Venda) => {
+    const dev = developments.find((d) => d.id === venda.empreendimentoId);
+    // Pré-preenche gerarExtra/gerarEmp a partir do snapshot salvo ou dados da venda
+    const snap = venda.contratoSnapshot;
+    setGerarProprietarioId("");
+    setGerarVendedor(snap?.vendedor ?? emptyGerarVendedor);
+    setGerarEmp(snap?.empreendimento ?? {
+      nome: dev?.nome || "",
+      comunidade: dev?.comunidade || "",
+      cidade: dev?.cidade || "",
+      estado: dev?.estado || "",
+    });
+    setGerarExtra(snap?.extra ?? {
+      rua: venda.rua || "",
+      comunidade: dev?.comunidade || "",
+      formaPagamento: venda.formaPagamento || "Dinheiro",
+      medidaFrente: venda.medidaFrente || "",
+      medidaLateralDir: venda.medidaLateralDir || "",
+      medidaLateralEsq: venda.medidaLateralEsq || "",
+      medidaFundos: venda.medidaFundos || "",
+      areaTotal: venda.areaTotal || "",
+    });
+    setTipoContrato(snap?.tipoContrato ?? (venda.quantidadeParcelas === 0 ? "avista" : "parcelado"));
+    setGerarStep(0);
+
+    if (venda.contratoGerado) {
+      // Contrato já gerado: abre direto a visualização final (não o wizard)
+      setSelectedVenda(venda);
+    } else {
+      // Contrato ainda não gerado: abre wizard de geração
+      setSelectedVenda(venda);
+      setShowGerarModal(true);
+    }
+  };
+
+  const activeFilterCount = [statusFilter, empFilter, dateFilter, corretorFilter].filter(Boolean).length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header row */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 px-2">
+        <div className="space-y-1">
+          <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
+            <FileText className="text-primary-main" />
+            Contratos Gerados
+          </h3>
+          <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+            {filteredSales.length} de {sales.length} exibidos
+          </p>
+        </div>
+
+        <div className="flex gap-2 sm:gap-3 w-full sm:w-auto">
+          <button
+            onClick={() => setShowRanking(true)}
+            className="btn-secondary flex items-center gap-2"
+            title="Ranking de corretores"
+          >
+            <Trophy size={18} />
+            <span className="hidden sm:inline">Ranking</span>
+          </button>
+          <button
+            onClick={() => onNovoContrato ? onNovoContrato() : setShowNovoContrato(true)}
+            className="btn-primary flex items-center gap-2 flex-1 sm:flex-none justify-center"
+          >
+            <Plus size={18} />
+            <span className="hidden sm:inline">Novo Contrato</span>
+            <span className="sm:hidden">Novo</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter & Sort bar */}
+      <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3">
+        {/* Search */}
+        <div className="relative">
+          <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Pesquisar por cliente, empreendimento, lote, corretor..."
+            className="w-full h-10 pl-10 pr-4 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:ring-2 focus:ring-primary-main/20 focus:border-primary-main transition-all"
+            value={searchTerm}
+            onChange={(e) => setSearchTerm(e.target.value)}
+          />
+        </div>
+
+        {/* Filters row */}
+        <div className="flex flex-wrap gap-2">
+          {/* Filtro unificado */}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${statusFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+          >
+            <option value="">Todos</option>
+            <option value="avista">À Vista</option>
+            <option value="parcelado">Parcelado</option>
+            <option value="comcontrato">Com Contrato</option>
+            <option value="semcontrato">Sem Contrato</option>
+          </select>
+
+          {/* Empreendimento */}
+          {developments.length > 0 && (
+            <select
+              value={empFilter}
+              onChange={(e) => setEmpFilter(e.target.value)}
+              className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${empFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+            >
+              <option value="">Todos os empreendimentos</option>
+              {developments.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
+            </select>
+          )}
+
+          {/* Mês/Ano */}
+          <input
+            type="month"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${dateFilter ? "bg-primary-main text-white border-primary-main [color-scheme:dark]" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+          />
+
+          {/* Corretor */}
+          {corretoresUnicos.length > 0 && (
+            <select
+              value={corretorFilter}
+              onChange={(e) => setCorretorFilter(e.target.value)}
+              className={`h-9 px-3 rounded-xl text-xs font-bold border transition-all ${corretorFilter ? "bg-primary-main text-white border-primary-main" : "bg-slate-50 text-slate-600 border-slate-200"}`}
+            >
+              <option value="">Todos os corretores</option>
+              {corretoresUnicos.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          )}
+
+          {/* Ordenação */}
+          <select
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as any)}
+            className="h-9 px-3 rounded-xl text-xs font-bold border bg-slate-50 text-slate-600 border-slate-200 transition-all ml-auto"
+          >
+            <option value="data_desc">Data (recente primeiro)</option>
+            <option value="data_asc">Data (antigo primeiro)</option>
+            <option value="valor_desc">Valor (maior primeiro)</option>
+            <option value="valor_asc">Valor (menor primeiro)</option>
+            <option value="nome_asc">Cliente A–Z</option>
+            <option value="emp_asc">Empreendimento A–Z</option>
+            <option value="status_asc">Status A–Z</option>
+            <option value="corretor_asc">Corretor A–Z</option>
+          </select>
+
+          {/* Limpar filtros */}
+          {activeFilterCount > 0 && (
+            <button
+              onClick={() => { setStatusFilter(""); setEmpFilter(""); setDateFilter(""); setCorretorFilter(""); setSearchTerm(""); }}
+              className="h-9 px-3 rounded-xl text-xs font-bold border border-red-200 bg-red-50 text-red-500 hover:bg-red-100 transition-all flex items-center gap-1"
+            >
+              <X size={12} />
+              Limpar ({activeFilterCount})
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Modal: Ranking de Corretores */}
+      <AnimatePresence>
+        {showRanking && (
+          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              {/* Header */}
+              <div className="px-7 pt-7 pb-5 border-b border-slate-100 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 rounded-xl text-white">
+                    <Trophy size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Ranking de Corretores</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sales.length} venda{sales.length !== 1 ? 's' : ''} no total</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowRanking(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-400" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                {rankingCorretores.length === 0 ? (
+                  <p className="text-center text-slate-400 py-10 font-medium">Nenhuma venda registrada.</p>
+                ) : rankingCorretores.map((corretor, idx) => {
+                  const pct = totalGeralVendas > 0 ? (corretor.total / totalGeralVendas) * 100 : 0;
+                  const medals = ["🥇", "🥈", "🥉"];
+                  const medal = medals[idx] || `${idx + 1}º`;
+                  const barColors = [
+                    "bg-amber-400",
+                    "bg-slate-400",
+                    "bg-orange-400",
+                  ];
+                  const barColor = barColors[idx] || "bg-primary-main/60";
+                  return (
+                    <div key={corretor.nome} className="bg-slate-50 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-xl shrink-0">{medal}</span>
+                          <div className="min-w-0">
+                            <p className="font-bold text-slate-800 truncate">{corretor.nome}</p>
+                            <p className="text-xs text-slate-500">{corretor.vendas} venda{corretor.vendas !== 1 ? 's' : ''}</p>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <p className="font-display font-bold text-slate-800 text-sm">
+                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(corretor.total)}
+                          </p>
+                          <p className="text-[10px] font-bold text-slate-400">{pct.toFixed(1)}% do total</p>
+                        </div>
+                      </div>
+                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Footer totais */}
+              {rankingCorretores.length > 0 && (
+                <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Total geral</p>
+                  <p className="font-display font-bold text-slate-800">
+                    {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0 }).format(totalGeralVendas)}
+                  </p>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Novo Contrato */}
+      <AnimatePresence>
+        {showNovoContrato && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-3xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                    <FileText size={20} />
+                  </div>
+                  <h3 className="text-lg font-display font-bold text-slate-800">{editandoVendaOriginal ? "Editar Contrato" : "Novo Contrato"}</h3>
+                </div>
+                <button onClick={() => { setShowNovoContrato(false); setEditandoVendaOriginal(null); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+
+              <div className="overflow-y-auto p-6 space-y-6">
+                {/* Cliente */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Cliente</p>
+                  <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
+                    {(["existente", "novo"] as const).map((m) => (
+                      <button
+                        key={m}
+                        onClick={() => setClienteMode(m)}
+                        className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${clienteMode === m ? "bg-white shadow text-primary-main" : "text-slate-500"}`}
+                      >
+                        {m === "existente" ? "Cliente Existente" : "Novo Cliente"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {clienteMode === "existente" ? (
+                    <select
+                      className="input-field"
+                      value={clienteSelecionadoId}
+                      onChange={(e) => setClienteSelecionadoId(e.target.value)}
+                    >
+                      <option value="">Selecione um cliente...</option>
+                      {clients.map((c) => (
+                        <option key={c.id} value={c.id}>{c.nome} — {c.cpf}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {[
+                        { label: "Nome Completo *", field: "nome", placeholder: "Nome do cliente" },
+                        { label: "CPF *", field: "cpf", placeholder: "000.000.000-00" },
+                        { label: "RG", field: "rg", placeholder: "RG" },
+                        { label: "Nascimento", field: "nascimento", placeholder: "DD/MM/AAAA" },
+                        { label: "Telefone", field: "telefone1", placeholder: "(00) 00000-0000" },
+                        { label: "Endereço", field: "endereco", placeholder: "Rua / Av." },
+                        { label: "Número", field: "numero", placeholder: "Nº" },
+                        { label: "Bairro", field: "bairro", placeholder: "Bairro" },
+                        { label: "Cidade", field: "cidade", placeholder: "Cidade" },
+                        { label: "Estado", field: "estado", placeholder: "UF" },
+                        { label: "CEP", field: "cep", placeholder: "00000-000" },
+                      ].map(({ label, field, placeholder }) => (
+                        <div key={field}>
+                          <label className="label">{label}</label>
+                          <input
+                            className="input-field"
+                            placeholder={placeholder}
+                            value={(novoCliente as any)[field] || ""}
+                            onChange={(e) => setNovoCliente({ ...novoCliente, [field]: field === "nome" ? textoMaiusculo(e.target.value) : field === "estado" ? e.target.value.toUpperCase() : e.target.value })}
+                          />
+                          {field === "cep" && (
+                            <BuscarCEPPorRua
+                              estadoPadrao={(novoCliente as any).estado || "PA"}
+                              cidadePadrao={(novoCliente as any).cidade || ""}
+                              onSelect={(r) => setNovoCliente((prev) => ({
+                                ...prev,
+                                cep: maskCEP(r.cep),
+                                endereco: r.logradouro || prev.endereco,
+                                bairro: r.bairro || prev.bairro,
+                                cidade: r.localidade || prev.cidade,
+                                estado: r.uf || prev.estado,
+                              }))}
+                            />
+                          )}
+                        </div>
+                      ))}
+                      <div>
+                        <label className="label">Estado Civil</label>
+                        <select className="input-field" value={novoCliente.estadoCivil || "solteiro"} onChange={(e) => setNovoCliente({ ...novoCliente, estadoCivil: e.target.value })}>
+                          {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Gênero</label>
+                        <select className="input-field" value={novoCliente.genero || "M"} onChange={(e) => setNovoCliente({ ...novoCliente, genero: e.target.value as "M" | "F" | "O" })}>
+                          <option value="M">Masculino</option>
+                          <option value="F">Feminino</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Imóvel */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Imóvel</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="sm:col-span-2">
+                      <label className="label">Empreendimento</label>
+                      <select className="input-field" value={contratoData.empreendimentoId} onChange={(e) => setContratoData({ ...contratoData, empreendimentoId: e.target.value, quadra: "", numeroLote: "", rua: "" })}>
+                        <option value="">Selecione...</option>
+                        {developments.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="label">Quadra</label>
+                      <input className="input-field" placeholder="Ex: A" value={contratoData.quadra} onChange={(e) => setContratoData({ ...contratoData, quadra: e.target.value, rua: "" })} />
+                    </div>
+                    <div>
+                      <label className="label">Lote</label>
+                      <input className="input-field" placeholder="Ex: 01" value={contratoData.numeroLote} onChange={(e) => setContratoData({ ...contratoData, numeroLote: e.target.value, rua: "" })} />
+                    </div>
+
+                    {/* Aviso: lote já vendido */}
+                    {(() => {
+                      if (!contratoData.empreendimentoId || !contratoData.quadra || !contratoData.numeroLote) return null;
+                      const vendaExistente = sales.find(v =>
+                        v.empreendimentoId === contratoData.empreendimentoId &&
+                        v.quadra.toUpperCase() === contratoData.quadra.toUpperCase() &&
+                        v.numeroLote === contratoData.numeroLote &&
+                        v.status !== 'cancelado'
+                      );
+                      if (!vendaExistente) return null;
+                      return (
+                        <motion.div
+                          initial={{ opacity: 0, y: -4 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="sm:col-span-2 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                        >
+                          <AlertCircle size={16} className="text-red-500 mt-0.5 shrink-0" />
+                          <div>
+                            <p className="font-black text-red-700 text-sm uppercase tracking-wide">⚠️ Lote já vendido!</p>
+                            <p className="text-xs text-red-600 mt-1">
+                              Quadra <strong>{vendaExistente.quadra}</strong> · Lote <strong>{vendaExistente.numeroLote}</strong> já está registrado para <strong>{vendaExistente.clienteNome}</strong> (contrato {vendaExistente.numeroContrato}, status: <strong>{vendaExistente.status || 'pendente'}</strong>). Confira antes de prosseguir.
+                            </p>
+                          </div>
+                        </motion.div>
+                      );
+                    })()}
+
+                    <div>
+                      {(() => {
+                        const dev = developments.find((d) => d.id === contratoData.empreendimentoId);
+                        const key = `${contratoData.quadra}-${contratoData.numeroLote}`.toUpperCase();
+                        const lotInfo = dev?.lotesInfo?.[key];
+                        const ruaSistema = lotInfo?.rua;
+                        const isConfirmed = ruaSistema && contratoData.rua && contratoData.rua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                        const isNew = !ruaSistema && contratoData.rua && contratoData.rua.trim() !== "";
+                        return (
+                          <>
+                            <label className="label flex items-center gap-2">
+                              Rua
+                              {isConfirmed && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Confirmada pelo sistema</span>
+                              )}
+                              {isNew && (
+                                <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Nova — será salva no sistema</span>
+                              )}
+                            </label>
+                            <input
+                              className={`input-field ${ruaWarning ? "border-amber-400" : ""}`}
+                              placeholder="Nome da rua"
+                              value={contratoData.rua}
+                              onChange={(e) => setContratoData({ ...contratoData, rua: e.target.value })}
+                            />
+                            {ruaWarning && (
+                              <p className="mt-1 text-[11px] text-amber-600 font-semibold flex items-center gap-1">
+                                <AlertCircle size={13} /> {ruaWarning}
+                              </p>
+                            )}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pagamento */}
+                <div className="space-y-4">
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Pagamento</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    {/* Toggle À Vista / Parcelado */}
+                    <div className="sm:col-span-2">
+                      <label className="label">Tipo de Pagamento</label>
+                      <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                        <button type="button"
+                          onClick={() => { setTipoContrato('avista'); setContratoData({ ...contratoData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" }); }}
+                          className={`px-6 py-2.5 transition-colors ${tipoContrato === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                          À Vista
+                        </button>
+                        <button type="button"
+                          onClick={() => { setTipoContrato('parcelado'); setContratoData({ ...contratoData, quantidadeParcelas: 1, dataVencimento: defaultVencimento() }); }}
+                          className={`px-6 py-2.5 transition-colors ${tipoContrato === 'parcelado' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                          Parcelado
+                        </button>
+                      </div>
+                    </div>
+
+                    {[
+                      { label: "Valor do Lote (R$)", field: "valorLote", type: "number" },
+                      ...(tipoContrato === 'parcelado' ? [
+                        { label: "Entrada (R$)", field: "valorEntrada", type: "number" },
+                        { label: "Nº de Parcelas", field: "quantidadeParcelas", type: "number" },
+                        { label: "Valor da Parcela (R$)", field: "valorParcela", type: "number" },
+                      ] : []),
+                    ].map(({ label, field, type }) => (
+                      <div key={field}>
+                        <label className="label">{label}</label>
+                        <input type={type} className="input-field" value={(contratoData as any)[field]} onChange={(e) => setContratoData({ ...contratoData, [field]: type === "number" ? Number(e.target.value) : e.target.value })} />
+                      </div>
+                    ))}
+                    <div>
+                      <label className="label">Forma de Pagamento</label>
+                      <select className="input-field" value={contratoData.formaPagamento} onChange={(e) => setContratoData({ ...contratoData, formaPagamento: e.target.value })}>
+                        {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                      </select>
+                    </div>
+                    {tipoContrato === 'parcelado' && (
+                    <div>
+                      <label className="label">Data de Vencimento das Parcelas</label>
+                      <input className="input-field" placeholder="Ex: todo dia 10" value={contratoData.dataVencimento} onChange={(e) => setContratoData({ ...contratoData, dataVencimento: e.target.value })} />
+                    </div>
+                    )}
+                    <div>
+                      <label className="label">Data do Contrato</label>
+                      <input type="date" className="input-field" value={contratoData.dataVenda} onChange={(e) => setContratoData({ ...contratoData, dataVenda: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="label">Vendedor</label>
+                      {vendedores.length > 0 ? (
+                        <select
+                          className="input-field font-semibold"
+                          value={contratoData.vendedorId || ""}
+                          onChange={(e) => {
+                            const v = vendedores.find(x => x.id === e.target.value);
+                            setContratoData({ ...contratoData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
+                          }}
+                        >
+                          <option value="">Selecionar vendedor...</option>
+                          {vendedores.map((v) => (
+                            <option key={v.id} value={v.id}>{v.nome}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input className="input-field" placeholder="Nome do vendedor" value={contratoData.vendedor} onChange={(e) => setContratoData({ ...contratoData, vendedor: textoMaiusculo(e.target.value) })} />
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => { setShowNovoContrato(false); setEditandoVendaOriginal(null); }} className="btn-secondary px-6">Cancelar</button>
+                <button onClick={handleSalvarContrato} className="btn-primary px-8">{editandoVendaOriginal ? "Salvar Alterações" : "Gerar Contrato"}</button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Editar Contrato */}
+      <AnimatePresence>
+        {editingVenda && (
+          <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-2xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-amber-500 rounded-xl text-white">
+                    <Pencil size={20} />
+                  </div>
+                  <div>
+                    <h4 className="font-display font-bold text-slate-800">Editar Contrato</h4>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{editingVenda.numeroContrato} — {editingVenda.clienteNome}</p>
+                  </div>
+                </div>
+                <button onClick={() => setEditingVenda(null)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-6 space-y-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="label">Empreendimento</label>
+                    <select
+                      className="input-field"
+                      value={editVendaForm.empreendimentoId || ""}
+                      onChange={(e) => {
+                        const dev = developments.find(d => d.id === e.target.value);
+                        setEditVendaForm({ ...editVendaForm, empreendimentoId: e.target.value, empreendimentoNome: dev?.nome || editVendaForm.empreendimentoNome });
+                      }}
+                    >
+                      <option value="">Selecionar...</option>
+                      {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Vendedor</label>
+                    {vendedores.length > 0 ? (
+                      <select
+                        className="input-field"
+                        value={editVendaForm.vendedorId || ""}
+                        onChange={(e) => {
+                          const v = vendedores.find(x => x.id === e.target.value);
+                          setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
+                        }}
+                      >
+                        <option value="">Selecionar...</option>
+                        {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                      </select>
+                    ) : (
+                      <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: textoMaiusculo(e.target.value) })} />
+                    )}
+                  </div>
+                  <div>
+                    <label className="label">Quadra</label>
+                    <input className="input-field" value={editVendaForm.quadra || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quadra: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Nº Lote</label>
+                    <input className="input-field" value={editVendaForm.numeroLote || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, numeroLote: e.target.value })} />
+                  </div>
+                  <div>
+                    {(() => {
+                      const dev = developments.find((d) => d.id === (editVendaForm.empreendimentoId || editingVenda?.empreendimentoId));
+                      const key = `${editVendaForm.quadra || editingVenda?.quadra}-${editVendaForm.numeroLote || editingVenda?.numeroLote}`.toUpperCase();
+                      const lotInfo = dev?.lotesInfo?.[key];
+                      const ruaSistema = lotInfo?.rua;
+                      const currentRua = editVendaForm.rua || "";
+                      const isDivergent = ruaSistema && currentRua.trim() !== "" && currentRua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase();
+                      const isConfirmed = ruaSistema && currentRua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                      const isNew = !ruaSistema && currentRua.trim() !== "";
+                      return (
+                        <>
+                          <label className="label flex items-center gap-2">
+                            Rua
+                            {isConfirmed && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-green-600 bg-green-50 px-2 py-0.5 rounded-full">✓ Confirmada</span>
+                            )}
+                            {isNew && (
+                              <span className="text-[9px] font-bold uppercase tracking-widest text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full">Nova — será salva</span>
+                            )}
+                          </label>
+                          <input
+                            className={`input-field ${isDivergent ? "border-amber-400" : ""}`}
+                            value={currentRua}
+                            onChange={(e) => setEditVendaForm({ ...editVendaForm, rua: e.target.value })}
+                          />
+                          {isDivergent && (
+                            <p className="mt-1 text-[11px] text-amber-600 font-semibold flex items-center gap-1">
+                              <AlertCircle size={13} /> A rua do sistema para este lote é "{ruaSistema}". Verifique se está correta.
+                            </p>
+                          )}
+                        </>
+                      );
+                    })()}
+                  </div>
+                  <div>
+                    <label className="label">Valor do Lote (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorLote ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorLote: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  {/* Toggle À Vista / Parcelado */}
+                  <div className="col-span-2">
+                    <label className="label">Tipo de Pagamento</label>
+                    <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                      <button type="button"
+                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: 0, valorParcela: 0, valorEntrada: 0, dataVencimento: "" })}
+                        className={`px-5 py-2 transition-colors ${(editVendaForm.quantidadeParcelas === 0) ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        À Vista
+                      </button>
+                      <button type="button"
+                        onClick={() => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: editVendaForm.quantidadeParcelas || 1, dataVencimento: editVendaForm.dataVencimento || defaultVencimento() })}
+                        className={`px-5 py-2 transition-colors ${(editVendaForm.quantidadeParcelas !== 0) ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}>
+                        Parcelado
+                      </button>
+                    </div>
+                  </div>
+                  {editVendaForm.quantidadeParcelas !== 0 && (<>
+                  <div>
+                    <label className="label">Valor de Entrada (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorEntrada ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorEntrada: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label">Qtd. Parcelas</label>
+                    <input type="number" min={1} className="input-field" value={editVendaForm.quantidadeParcelas ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, quantidadeParcelas: parseInt(e.target.value) || 1 })} />
+                  </div>
+                  <div>
+                    <label className="label">Valor da Parcela (R$)</label>
+                    <input type="number" className="input-field" value={editVendaForm.valorParcela ?? ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, valorParcela: parseFloat(e.target.value) || 0 })} />
+                  </div>
+                  <div>
+                    <label className="label">Vencimento</label>
+                    <input type="date" className="input-field" value={editVendaForm.dataVencimento || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVencimento: e.target.value })} />
+                  </div>
+                  </>)}
+                  <div>
+                    <label className="label">Data do Contrato</label>
+                    <input type="date" className="input-field" value={editVendaForm.dataVenda || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, dataVenda: e.target.value })} />
+                  </div>
+                  <div>
+                    <label className="label">Forma de Pagamento</label>
+                    <select className="input-field" value={editVendaForm.formaPagamento || "Dinheiro"} onChange={(e) => setEditVendaForm({ ...editVendaForm, formaPagamento: e.target.value })}>
+                      <option>Dinheiro</option>
+                      <option>Boleto</option>
+                      <option>PIX</option>
+                      <option>Transferência</option>
+                      <option>Cheque</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setEditingVenda(null)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  onClick={() => {
+                    setPendingEditVenda({ ...editingVenda, ...editVendaForm } as Venda);
+                    setShowDuplicarModal(true);
+                  }}
+                  className="btn-primary px-8"
+                >
+                  Salvar Alterações
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {(() => {
+        const semContrato = filteredSales.filter((v) => !v.contratoGerado);
+        const comContrato = filteredSales.filter((v) => v.contratoGerado);
+
+        const renderMobileCard = (venda: Venda) => {
+          const ci = getContratoInfo(venda);
+          const pi = getPagamentoInfo(venda);
+          return (
+            <div key={venda.id} className="bg-slate-50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="font-bold text-slate-800 truncate">{venda.clienteNome}</p>
+                  <p className="text-xs text-slate-500 truncate">{venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}</p>
+                </div>
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {/* Badge: Contrato */}
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 ${ci.color}`}>
+                    {ci.icon === "contrato" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm1-5C6.47 2 2 6.5 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2zm0 18a8 8 0 0 1-8-8 8 8 0 0 1 8-8 8 8 0 0 1 8 8 8 8 0 0 1-8 8z"/></svg>
+                    )}
+                    {ci.label}
+                  </span>
+                  {/* Badge: Pagamento */}
+                  <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 ${pi.color}`}>
+                    {pi.icon === "avista" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 14h16v2H4zm0-7h16v2H4z"/></svg>
+                    )}
+                    {pi.label}
+                  </span>
+                </div>
+              </div>
+              <p className="font-display font-bold text-primary-main text-lg">
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+              </p>
+              <div className="grid grid-cols-5 gap-2">
+                <button
+                  onClick={() => handleOpenGerarContratoForVenda(venda)}
+                  title="Ver contrato"
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${venda.contratoGerado ? "bg-white text-primary-main border-border-subtle hover:bg-primary-main hover:text-white" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                  <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
+                </button>
+                <button
+                  onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                  title="Gerar recibo"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all"
+                >
+                  <FileCheck size={20} />
+                  <span className="text-[9px] font-bold uppercase">Recibo</span>
+                </button>
+                <button
+                  onClick={() => copyResumoVenda(venda)}
+                  title="Copiar resumo"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                  <span className="text-[9px] font-bold uppercase">Copiar</span>
+                </button>
+                <button
+                  onClick={() => handleEditarContrato(venda)}
+                  title="Editar"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  <span className="text-[9px] font-bold uppercase">Editar</span>
+                </button>
+                <button
+                  onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                  title="Excluir"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  <span className="text-[9px] font-bold uppercase">Excluir</span>
+                </button>
+              </div>
+            </div>
+          );
+        };
+
+        const renderDesktopRow = (venda: Venda) => {
+          const ci = getContratoInfo(venda);
+          const pi = getPagamentoInfo(venda);
+          return (
+            <tr key={venda.id} className="group">
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-2xl transition-colors">
+                <div className="flex flex-col gap-1.5">
+                  {/* Contrato badge */}
+                  <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${ci.color}`}>
+                    {ci.icon === "contrato" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11 15h2v2h-2zm0-8h2v6h-2zm1-5C6.47 2 2 6.5 2 12a10 10 0 0 0 10 10 10 10 0 0 0 10-10A10 10 0 0 0 12 2zm0 18a8 8 0 0 1-8-8 8 8 0 0 1 8-8 8 8 0 0 1 8 8 8 8 0 0 1-8 8z"/></svg>
+                    )}
+                    {ci.label}
+                  </div>
+                  {/* Pagamento badge */}
+                  <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${pi.color}`}>
+                    {pi.icon === "avista" ? (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z"/></svg>
+                    ) : (
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M4 4h16v2H4zm0 14h16v2H4zm0-7h16v2H4z"/></svg>
+                    )}
+                    {pi.label}
+                  </div>
+                </div>
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-semibold text-slate-700">
+                {venda.clienteNome}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-slate-500">
+                {venda.empreendimentoNome} · Q{venda.quadra} L{venda.numeroLote}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
+                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+              </td>
+              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
+                <div className="flex justify-center gap-1.5">
+                  <button
+                    onClick={() => handleOpenGerarContratoForVenda(venda)}
+                    className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center gap-1.5 text-xs font-bold ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                    title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                    {venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}
+                  </button>
+                  <button
+                    onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                    className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
+                    title="Gerar recibo"
+                  >
+                    <FileCheck size={15} />
+                    Recibo
+                  </button>
+                  <button
+                    onClick={() => copyResumoVenda(venda)}
+                    className="p-2.5 bg-surface-card text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
+                    title="Copiar resumo"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                  </button>
+                  <button
+                    onClick={() => handleEditarContrato(venda)}
+                    className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                    title="Editar venda"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  </button>
+                  <button
+                    onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                    className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                    title="Excluir"
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  </button>
+                </div>
+              </td>
+            </tr>
+          );
+        };
+
+        const GroupTable = ({ rows }: { rows: Venda[] }) => (
+          <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
+            <table className="w-full text-left border-separate border-spacing-y-2">
+              <thead>
+                <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                  <th className="pb-3 px-4">Tipo</th>
+                  <th className="pb-3 px-4">Titular</th>
+                  <th className="pb-3 px-4">Loteamento</th>
+                  <th className="pb-3 px-4 text-right">Montante</th>
+                  <th className="pb-3 px-4 text-center">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="text-sm">
+                {rows.map((v) => renderDesktopRow(v))}
+              </tbody>
+            </table>
+          </div>
+        );
+
+        return (
+          <div className="space-y-6">
+            {filteredSales.length === 0 && (
+              <div className="card-premium py-16 text-center text-slate-300 italic font-medium">
+                {searchTerm ? `Nenhum resultado para "${searchTerm}"` : "Nenhuma venda cadastrada."}
+              </div>
+            )}
+
+            {semContrato.length > 0 && (
+              <div className="card-premium space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Clock size={14} className="text-amber-500 shrink-0" />
+                  <span className="text-xs font-black uppercase tracking-widest text-amber-600">Sem Contrato</span>
+                  <span className="ml-auto text-xs font-bold text-slate-400">{semContrato.length} registro{semContrato.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="sm:hidden space-y-3">{semContrato.map((v) => renderMobileCard(v))}</div>
+                <GroupTable rows={semContrato} />
+              </div>
+            )}
+
+            {comContrato.length > 0 && (
+              <div className="card-premium space-y-3">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <CheckCircle2 size={14} className="text-success-main shrink-0" />
+                  <span className="text-xs font-black uppercase tracking-widest text-success-main">Com Contrato</span>
+                  <span className="ml-auto text-xs font-bold text-slate-400">{comContrato.length} registro{comContrato.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="sm:hidden space-y-3">{comContrato.map((v) => renderMobileCard(v))}</div>
+                <GroupTable rows={comContrato} />
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      <AnimatePresence>
+        {selectedVenda && !showReciboModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 lg:p-8 bg-slate-900/40 backdrop-blur-md no-print">
+            <motion.div
+              initial={{ opacity: 0, y: 50 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 50 }}
+              className="bg-surface-card w-full max-w-3xl h-full lg:h-auto lg:max-h-[85vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-4 sm:p-6 border-b border-border-subtle bg-surface-card">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-start gap-3 min-w-0">
+                    <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast shrink-0">
+                      <FileText size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-display font-bold text-slate-800">Prévia do Contrato</h4>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">
+                          {selectedVenda.numeroContrato}
+                        </p>
+                        {(() => {
+                          const ci = getContratoInfo(selectedVenda);
+                          const pi = getPagamentoInfo(selectedVenda);
+                          return (
+                            <>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${ci.color}`}>{ci.label}</span>
+                              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${pi.color}`}>{pi.label}</span>
+                            </>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors"
+                  >
+                    <X size={22} />
+                  </button>
+                </div>
+                {/* Botões da visualização final: Voltar + DOCX + Recibo + Editar + OK */}
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    <ChevronLeft size={17} />
+                    Voltar
+                  </button>
+                  <button
+                    onClick={handleDownloadDocx}
+                    disabled={downloadingDocx}
+                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    title="Baixar DOCX do contrato"
+                  >
+                    {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
+                  </button>
+                  <button
+                    onClick={() => setShowReciboModal(true)}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                    title="Gerar recibo"
+                  >
+                    <FileCheck size={17} />
+                    Recibo
+                  </button>
+                  <button
+                    onClick={() => { if (selectedVenda) handleEditarContrato(selectedVenda); }}
+                    className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    <Pencil size={17} />
+                    Editar
+                  </button>
+                  <button
+                    onClick={() => setSelectedVenda(null)}
+                    className="btn-primary h-11 px-6 text-sm font-semibold flex items-center justify-center gap-2"
+                  >
+                    OK
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 lg:p-8 bg-slate-50/50 space-y-4">
+                {/* Client Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Nome</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.clienteNome}</p>
+                    </div>
+                    {client?.cpf && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">CPF</p>
+                        <p className="font-mono font-semibold text-slate-700">{client.cpf}</p>
+                      </div>
+                    )}
+                    {client?.rg && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">RG</p>
+                        <p className="font-mono font-semibold text-slate-700">{client.rg}</p>
+                      </div>
+                    )}
+                    {client?.estadoCivil && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Estado Civil</p>
+                        <p className="font-semibold text-slate-700">{client.estadoCivil}</p>
+                      </div>
+                    )}
+                    {client?.telefone1 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Telefone</p>
+                        <p className="font-semibold text-slate-700">{client.telefone1}</p>
+                      </div>
+                    )}
+                    {selectedVenda.comprador2?.nome && (
+                      <div className="sm:col-span-2 pt-2 border-t border-slate-100">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-1">2º Comprador</p>
+                        <p className="font-bold text-slate-800">{selectedVenda.comprador2.nome}</p>
+                        {selectedVenda.comprador2.cpf && <p className="font-mono text-sm text-slate-600">{selectedVenda.comprador2.cpf}</p>}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Property Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Imóvel</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Empreendimento</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.empreendimentoNome}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Quadra</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.quadra}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Lote</p>
+                      <p className="font-bold text-slate-800">{selectedVenda.numeroLote}</p>
+                    </div>
+                    {selectedVenda.rua && (
+                      <div className="col-span-2 sm:col-span-3">
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Logradouro</p>
+                        <p className="font-semibold text-slate-700">{selectedVenda.rua}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Financial Section */}
+                <div className="bg-white rounded-2xl p-5 space-y-3 shadow-sm border border-slate-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Financeiro</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Valor Total</p>
+                      <p className="font-bold text-primary-main text-lg">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote)}</p>
+                    </div>
+                    {selectedVenda.quantidadeParcelas > 0 && (
+                      <>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Entrada</p>
+                          <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorEntrada)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Saldo</p>
+                          <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
+                          <p className="font-semibold text-slate-700">{selectedVenda.dataVencimento ? new Date(selectedVenda.dataVencimento + "T12:00:00").toLocaleDateString("pt-BR") : "—"}</p>
+                        </div>
+                      </>
+                    )}
+                    {selectedVenda.quantidadeParcelas === 0 && (
+                      <div>
+                        <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Modalidade</p>
+                        <p className="font-bold text-success-main">À Vista</p>
+                      </div>
+                    )}
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Forma de Pagamento</p>
+                      <p className="font-semibold text-slate-700">{selectedVenda.formaPagamento || "—"}</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Data da venda — o corretor/vendedor da venda fica apenas no ranking e no resumo copiado */}
+                <div className="bg-white rounded-2xl p-4 shadow-sm border border-slate-100">
+                  <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Data da Venda</p>
+                  <p className="font-bold text-slate-800">{new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Gerar Recibo */}
+      <AnimatePresence>
+        {showReciboModal && selectedVenda && (
+          <div className="fixed inset-0 z-[110] flex items-center justify-center p-0 lg:p-8 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.97 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.97 }}
+              className="bg-white w-full max-w-3xl h-full lg:h-auto lg:max-h-[90vh] rounded-none lg:rounded-[32px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              <div className="p-4 sm:p-6 border-b border-slate-100">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2.5 bg-slate-900 rounded-xl text-white shrink-0">
+                      <FileCheck size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className="font-display font-bold text-slate-800">Gerar Recibo</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowReciboModal(false)} className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
+                    <X size={22} />
+                  </button>
+                </div>
+                <label className="mb-3 flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 cursor-pointer">
+                  <span>
+                    <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-700">Carimbo PAGO</span>
+                    <span className="block text-xs text-emerald-700/80">Marque para sair com carimbo e data no recibo.</span>
+                  </span>
+                  <input type="checkbox" checked={comCarimbo} onChange={(e) => setComCarimbo(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
+                </label>
+                <div className="flex gap-2 flex-wrap">
+                  <button
+                    onClick={handleDownloadImage}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {reciboDownloading === 'img' ? (
+                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
+                    ) : (
+                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>Imagem</>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleDownloadPdf}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    {reciboDownloading === 'pdf' ? (
+                      <><span className="animate-spin h-4 w-4 border-2 border-current border-t-transparent rounded-full" />Gerando...</>
+                    ) : (
+                      <><svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>PDF</>
+                    )}
+                  </button>
+                  <button
+                    onClick={() => { setShowReciboModal(false); if (selectedVenda) handleEditarContrato(selectedVenda); }}
+                    disabled={reciboDownloading !== null}
+                    className="btn-secondary flex-1 h-11 text-sm font-semibold flex items-center justify-center gap-2 disabled:opacity-60"
+                  >
+                    <Pencil size={17} />
+                    Editar
+                  </button>
+                </div>
+              </div>
+              <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
+                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto',position:'relative'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
+                  <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
+                    <div>
+                      <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
+                      <p className="text-xs font-bold text-slate-400 uppercase tracking-widest mt-1">Instrumento de Quitação de Valores</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Valor do Recibo</p>
+                      <p className="text-3xl font-bold bg-slate-900 text-white px-4 py-1 rounded-xl">
+                        {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                          selectedVenda.quantidadeParcelas === 0 ? selectedVenda.valorLote : selectedVenda.valorEntrada
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="space-y-8 text-lg leading-loose flex-1">
+                    <p className="text-justify">
+                      Recebemos de{" "}
+                      <span className="font-bold uppercase underline underline-offset-4">{selectedVenda.clienteNome}</span>
+                      , inscrito(a) no CPF nº{" "}
+                      <span className="font-bold">{client?.cpf || "___.___.___-__"}</span>
+                      , a importância supra de{" "}
+                      <span className="font-bold italic">
+                        ({new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                          selectedVenda.quantidadeParcelas === 0 ? selectedVenda.valorLote : selectedVenda.valorEntrada
+                        )})
+                      </span>
+                      , referente ao{" "}
+                      <span className="font-bold">
+                        {selectedVenda.quantidadeParcelas === 0
+                          ? "PAGAMENTO INTEGRAL À VISTA"
+                          : "SINAL E PRINCÍPIO DE PAGAMENTO (ENTRADA)"}
+                      </span>{" "}
+                      para aquisição do imóvel:
+                    </p>
+                    <div className="bg-slate-50 p-8 rounded-[32px] border-2 border-dashed border-slate-200 grid grid-cols-2 gap-6">
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Empreendimento</p>
+                        <p className="font-bold text-slate-800">{selectedVenda.empreendimentoNome}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Localização</p>
+                        <p className="font-bold text-slate-800">
+                          {(() => {
+                            const reciboDev2 = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+                            const snap2 = selectedVenda.contratoSnapshot;
+                            const comunidade2 = snap2?.empreendimento?.comunidade || reciboDev2?.comunidade || '';
+                            const cidade2 = snap2?.empreendimento?.cidade || reciboDev2?.cidade || 'Santarém';
+                            const estado2 = snap2?.empreendimento?.estado || reciboDev2?.estado || 'PA';
+                            return comunidade2 ? `${comunidade2} - ${cidade2}/${estado2}` : `${cidade2}/${estado2}`;
+                          })()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Quadra/Lote</p>
+                        <p className="font-bold text-slate-800">Q:{selectedVenda.quadra} / L:{selectedVenda.numeroLote}</p>
+                      </div>
+                      {selectedVenda.rua && (
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Logradouro</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.rua}</p>
+                        </div>
+                      )}
+                    </div>
+                    <p className="text-sm font-medium italic text-slate-500">
+                      Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
+                    </p>
+                  </div>
+                  <div className="pt-10 border-t border-slate-100 flex justify-between items-end">
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">
+                        Santarém/PA,{" "}
+                        {new Date(selectedVenda.dataVenda).toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" })}
+                      </p>
+                    </div>
+                    <div className="w-64 text-center">
+                      {userProfile?.assinaturaUrl && (
+                        <img src={userProfile.assinaturaUrl} alt="Assinatura" className="mx-auto max-h-24 max-w-[230px] object-contain -mb-2" />
+                      )}
+                      <div className="h-px bg-slate-900 mb-2" />
+                      <p className="text-[10px] font-bold uppercase text-slate-400">
+                        {userProfile?.creci ? "Corretor de Imóveis" : "Angariador/Captador"}
+                      </p>
+                      {userProfile?.nome ? (
+                        <>
+                          <p className="font-bold text-slate-900">{userProfile.nome}</p>
+                          {userProfile.creci && (
+                            <p className="text-[10px] font-bold text-slate-400 mt-0.5">CRECI: {userProfile.creci}</p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="font-bold text-slate-900">___________________________</p>
+                      )}
+                    </div>
+                  </div>
+                  {/* Carimbo PAGO — capturado junto com o recibo no canvas */}
+                  {comCarimbo && (
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '120px',
+                      right: '80px',
+                      transform: 'rotate(-20deg)',
+                      border: '8px solid #16a34a',
+                      borderRadius: '16px',
+                      padding: '12px 36px',
+                      color: '#16a34a',
+                      fontSize: '72px',
+                      fontWeight: 900,
+                      fontFamily: 'serif',
+                      opacity: 0.75,
+                      letterSpacing: '6px',
+                      pointerEvents: 'none',
+                      userSelect: 'none',
+                    }}>PAGO<div style={{ fontSize: '18px', letterSpacing: '1px', marginTop: '4px', fontFamily: 'Arial, sans-serif' }}>{new Date().toLocaleDateString('pt-BR')}</div></div>
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Gerar Contrato — Wizard Steps */}
+      <AnimatePresence>
+        {showGerarModal && selectedVenda && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-xl max-h-[90vh] rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              {/* Header com steps */}
+              <div className="p-6 border-b border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                      <FileDown size={20} />
+                    </div>
+                    <div>
+                      <h4 className="font-display font-bold text-slate-800">Gerar Contrato</h4>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        {gerarStep === 0 ? "Informações do Lote" : gerarStep === 1 ? "Proprietário / Vendedor" : "Prévia Final do Contrato"}
+                      </p>
+                    </div>
+                  </div>
+                  <button onClick={() => setShowGerarModal(false)} className="h-10 w-10 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 transition-colors">
+                    <X size={20} />
+                  </button>
+                </div>
+                {/* Steps indicator */}
+                <div className="flex items-center gap-2">
+                  {["Inf. do Lote", "Prop./Vendedor", "Prévia Final"].map((label, i) => (
+                    <div key={i} className="flex items-center gap-2 flex-1">
+                      <div className={`flex items-center gap-1.5 ${i <= gerarStep ? "text-primary-main" : "text-slate-300"}`}>
+                        <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold transition-all ${i < gerarStep ? "bg-primary-main text-white" : i === gerarStep ? "bg-primary-main/20 text-primary-main border-2 border-primary-main" : "bg-slate-100 text-slate-400"}`}>
+                          {i < gerarStep ? "✓" : i + 1}
+                        </div>
+                        <span className={`text-[10px] font-bold uppercase tracking-widest hidden sm:block ${i <= gerarStep ? "text-primary-main" : "text-slate-300"}`}>{label}</span>
+                      </div>
+                      {i < 2 && <div className={`flex-1 h-0.5 rounded-full ${i < gerarStep ? "bg-primary-main" : "bg-slate-100"}`} />}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+
+                {/* STEP 0: Terreno */}
+                {gerarStep === 0 && (
+                  <div className="space-y-4">
+                    {/* Info do lote (somente leitura) */}
+                    <div className="bg-primary-main/5 border border-primary-main/20 rounded-2xl p-4">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-primary-main mb-3">Dados da Venda</p>
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Empreendimento</p>
+                          <p className="font-bold text-slate-800 truncate">{gerarEmp.nome || selectedVenda.empreendimentoNome || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Quadra</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.quadra || "—"}</p>
+                        </div>
+                        <div>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Lote</p>
+                          <p className="font-bold text-slate-800">{selectedVenda.numeroLote || "—"}</p>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="label">Rua do Lote</label>
+                        <input className="input-field" value={gerarExtra.rua} onChange={(e) => setGerarExtra({ ...gerarExtra, rua: e.target.value })} placeholder="Nome da rua" />
+                      </div>
+                      <div>
+                        <label className="label">Forma de Pagamento</label>
+                        <select className="input-field" value={gerarExtra.formaPagamento} onChange={(e) => setGerarExtra({ ...gerarExtra, formaPagamento: e.target.value })}>
+                          {["Dinheiro", "Pix", "Boleto", "Cheque", "Financiamento Próprio", "Cartão"].map((o) => <option key={o}>{o}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="label">Frente (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaFrente} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFrente: e.target.value })} placeholder="Ex: 12" />
+                      </div>
+                      <div>
+                        <label className="label">Lateral Direita (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaLateralDir} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralDir: e.target.value })} placeholder="Ex: 30" />
+                      </div>
+                      <div>
+                        <label className="label">Lateral Esquerda (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaLateralEsq} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaLateralEsq: e.target.value })} placeholder="Ex: 30" />
+                      </div>
+                      <div>
+                        <label className="label">Fundos (m)</label>
+                        <input className="input-field" value={gerarExtra.medidaFundos} onChange={(e) => setGerarExtra({ ...gerarExtra, medidaFundos: e.target.value })} placeholder="Ex: 12" />
+                      </div>
+                      <div>
+                        <label className="label">Área Total (m²)</label>
+                        <input className="input-field" value={gerarExtra.areaTotal} onChange={(e) => setGerarExtra({ ...gerarExtra, areaTotal: e.target.value })} placeholder="Ex: 360" />
+                      </div>
+                    </div>
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Empreendimento</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome do Empreendimento</label>
+                          <input className="input-field" value={gerarEmp.nome} onChange={(e) => setGerarEmp({ ...gerarEmp, nome: textoMaiusculo(e.target.value) })} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Comunidade / Região</label>
+                          <input className="input-field" value={gerarEmp.comunidade} onChange={(e) => setGerarEmp({ ...gerarEmp, comunidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Cidade</label>
+                          <input className="input-field" value={gerarEmp.cidade} onChange={(e) => setGerarEmp({ ...gerarEmp, cidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado (UF)</label>
+                          <input className="input-field" maxLength={2} value={gerarEmp.estado} onChange={(e) => setGerarEmp({ ...gerarEmp, estado: e.target.value.toUpperCase() })} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 1: Vendedor */}
+                {gerarStep === 1 && (
+                  <div className="space-y-4">
+                    <div>
+                      <label className="label">Proprietário do Lote (Vendedor no Contrato)</label>
+                      {proprietarios.length > 0 ? (
+                        <>
+                          <select className="input-field font-semibold" value={gerarProprietarioId} onChange={(e) => handleSelectProprietario(e.target.value)}>
+                            <option value="">Selecionar proprietário...</option>
+                            {proprietarios.map((p) => (
+                              <option key={p.id} value={p.id}>{p.nome} — CPF {p.cpf}</option>
+                            ))}
+                          </select>
+                          {gerarProprietarioId && (
+                            <p className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl mt-1.5 flex items-center gap-1.5">
+                              <Check size={11} /> Dados preenchidos automaticamente do cadastro
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-xs text-amber-600 font-bold bg-amber-50 px-3 py-2 rounded-xl">Nenhum proprietário cadastrado. Cadastre na aba "Proprietários" primeiro.</p>
+                      )}
+                    </div>
+                    <div className="space-y-3 pt-2 border-t border-slate-100">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">Dados do Vendedor</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome Completo *</label>
+                          <input className="input-field" placeholder="Nome do vendedor" value={gerarVendedor.nome} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nome: textoMaiusculo(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">Gênero do Vendedor *</label>
+                          <select className="input-field" value={gerarVendedor.genero || ""} onChange={(e) => {
+                            const genero = e.target.value as "" | "M" | "F";
+                            setGerarVendedor({ ...gerarVendedor, genero, estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", genero || "M") });
+                          }}>
+                            <option value="">Selecionar...</option>
+                            <option value="M">Masculino</option>
+                            <option value="F">Feminino</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">Nacionalidade</label>
+                          <input className="input-field" value={gerarVendedor.nacionalidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, nacionalidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado Civil</label>
+                          <select className="input-field" value={gerarVendedor.estadoCivil} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estadoCivil: e.target.value })}>
+                            {(gerarVendedor.genero === "F" ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"] : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]).map((o) => <option key={o}>{o}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="label">RG</label>
+                          <input
+                            className={`input-field ${vendedorRgError ? "border-red-400 focus:ring-red-400" : gerarVendedor.rg.replace(/\s+/g, "").length >= 5 ? "border-green-400 focus:ring-green-400" : ""}`}
+                            placeholder="0000000"
+                            value={gerarVendedor.rg}
+                            onChange={(e) => {
+                              const v = maskRG(e.target.value);
+                              setGerarVendedor({ ...gerarVendedor, rg: v });
+                              const clean = v.replace(/\s+/g, "").trim();
+                              setVendedorRgError(clean.length > 0 && !validarRG(v) ? "RG inválido (mínimo 5 caracteres)" : null);
+                            }}
+                          />
+                          {vendedorRgError && <p className="mt-1 text-[11px] text-red-500 font-semibold">{vendedorRgError}</p>}
+                        </div>
+                        <div>
+                          <label className="label">CPF</label>
+                          <input
+                            className={`input-field font-mono ${vendedorCpfError ? "border-red-400 focus:ring-red-400" : cpfStatus(gerarVendedor.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                            placeholder="000.000.000-00"
+                            value={gerarVendedor.cpf}
+                            onChange={(e) => {
+                              const v = maskCPF(e.target.value);
+                              setGerarVendedor({ ...gerarVendedor, cpf: v });
+                              const raw = v.replace(/\D/g, "");
+                              setVendedorCpfError(raw.length > 0 && cpfStatus(v) === "invalid" ? "CPF inválido" : null);
+                            }}
+                          />
+                          {vendedorCpfError && <p className="mt-1 text-[11px] text-red-500 font-semibold">{vendedorCpfError}</p>}
+                        </div>
+                        <div>
+                          <label className="label">CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}</label>
+                          <input className="input-field" placeholder="00000-000" value={gerarVendedor.cep} onChange={(e) => { const val = maskCEP(e.target.value); setGerarVendedor({ ...gerarVendedor, cep: val }); if (val.replace(/\D/g, "").length === 8) fetchCepGerar(val); }} />
+                          <BuscarCEPPorRua
+                            estadoPadrao={gerarVendedor.estado || "PA"}
+                            cidadePadrao={gerarVendedor.cidade || ""}
+                            onSelect={(r) => setGerarVendedor((prev) => ({
+                              ...prev,
+                              cep: maskCEP(r.cep),
+                              endereco: r.logradouro || prev.endereco,
+                              bairro: r.bairro || prev.bairro,
+                              cidade: r.localidade || prev.cidade,
+                              estado: r.uf || prev.estado,
+                            }))}
+                          />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Endereço</label>
+                          <input className="input-field" value={gerarVendedor.endereco} onChange={(e) => setGerarVendedor({ ...gerarVendedor, endereco: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Número</label>
+                          <input className="input-field" value={gerarVendedor.numero} onChange={(e) => setGerarVendedor({ ...gerarVendedor, numero: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Bairro</label>
+                          <input className="input-field" value={gerarVendedor.bairro} onChange={(e) => setGerarVendedor({ ...gerarVendedor, bairro: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Cidade</label>
+                          <input className="input-field" value={gerarVendedor.cidade} onChange={(e) => setGerarVendedor({ ...gerarVendedor, cidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Estado (UF)</label>
+                          <input className="input-field" maxLength={2} value={gerarVendedor.estado} onChange={(e) => setGerarVendedor({ ...gerarVendedor, estado: e.target.value.toUpperCase() })} />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* STEP 2: Preview */}
+                {gerarStep === 2 && selectedVenda && (() => {
+                  const cliente = clients.find((c) => c.id === selectedVenda.clienteId);
+                  const dev = developments.find((d) => d.id === selectedVenda.empreendimentoId);
+                  const fmtCurrency = (v: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v || 0);
+                  return (
+                    <div className="space-y-4">
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Nome</span><p className="font-bold text-slate-800">{cliente?.nome || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">CPF</span><p className="font-mono text-slate-700">{cliente?.cpf || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Estado Civil</span><p className="text-slate-700">{cliente?.estadoCivil || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Profissão</span><p className="text-slate-700">{cliente?.profissao || "—"}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Terreno</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Empreendimento</span><p className="font-bold text-slate-800">{gerarEmp.nome || dev?.nome}</p></div>
+                          <div><span className="text-slate-500 text-xs">Lote / Quadra</span><p className="font-bold text-slate-800">Lote {selectedVenda.numeroLote} — Quadra {selectedVenda.quadra}</p></div>
+                          <div><span className="text-slate-500 text-xs">Rua</span><p className="text-slate-700">{gerarExtra.rua || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">Área Total</span><p className="text-slate-700">{gerarExtra.areaTotal ? `${gerarExtra.areaTotal} m²` : "—"}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Pagamento</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Valor do Lote</span><p className="font-bold text-primary-main">{fmtCurrency(selectedVenda.valorLote)}</p></div>
+                          {selectedVenda.quantidadeParcelas === 0
+                            ? <div><span className="text-slate-500 text-xs">Modalidade</span><p className="font-bold text-success-main">À Vista</p></div>
+                            : <>
+                              <div><span className="text-slate-500 text-xs">Entrada</span><p className="font-bold text-slate-800">{fmtCurrency(selectedVenda.valorEntrada)}</p></div>
+                              <div><span className="text-slate-500 text-xs">Parcelas</span><p className="text-slate-700">{selectedVenda.quantidadeParcelas}x de {fmtCurrency(selectedVenda.valorParcela)}</p></div>
+                              <div><span className="text-slate-500 text-xs">Vencimento</span><p className="text-slate-700">{selectedVenda.dataVencimento}</p></div>
+                            </>
+                          }
+                          <div><span className="text-slate-500 text-xs">Forma de Pagamento</span><p className="text-slate-700">{gerarExtra.formaPagamento}</p></div>
+                        </div>
+                      </div>
+                      <div className="bg-slate-50 rounded-2xl p-5 space-y-3 border border-slate-100">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Vendedor</p>
+                        <div className="grid grid-cols-2 gap-2 text-sm">
+                          <div><span className="text-slate-500 text-xs">Nome</span><p className="font-bold text-slate-800">{gerarVendedor.nome || "—"}</p></div>
+                          <div><span className="text-slate-500 text-xs">CPF</span><p className="font-mono text-slate-700">{gerarVendedor.cpf || "—"}</p></div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Footer com botões de navegação */}
+              {/* Footer: steps 0 e 1 → Voltar + Avançar; step 2 → Voltar + Editar + OK (PDF/DOCX só na view final) */}
+              <div className="p-4 sm:p-6 border-t border-slate-100 flex flex-col sm:flex-row gap-3">
+                <button
+                  onClick={() => gerarStep === 0 ? setShowGerarModal(false) : setGerarStep(gerarStep - 1)}
+                  className="btn-secondary h-11 sm:px-6 w-full sm:w-auto flex items-center justify-center gap-2"
+                >
+                  <ChevronLeft size={17} /> {gerarStep === 0 ? "Cancelar" : "Voltar"}
+                </button>
+
+                {gerarStep < 2 ? (
+                  <button
+                    onClick={() => {
+                      // No step 1 (vendedor): validar CPF antes de avançar
+                      if (gerarStep === 1) {
+                        if (!gerarVendedor.nome.trim()) { alert("Informe o nome do vendedor."); return; }
+                        if (!generoContratoValido(gerarVendedor)) { alert("Selecione o gênero do vendedor para gerar o contrato corretamente."); return; }
+                        const cpfRaw = gerarVendedor.cpf.replace(/\D/g, "");
+                        if (cpfRaw.length > 0 && cpfStatus(gerarVendedor.cpf) === "invalid") {
+                          setVendedorCpfError("CPF inválido. Verifique e tente novamente.");
+                          return;
+                        }
+                        const rgClean = gerarVendedor.rg.replace(/\s+/g, "").trim();
+                        if (rgClean.length > 0 && !validarRG(gerarVendedor.rg)) {
+                          setVendedorRgError("RG inválido (mínimo 5 caracteres).");
+                          return;
+                        }
+                        if (vendedorCpfError || vendedorRgError) return;
+                      }
+                      setGerarStep(gerarStep + 1);
+                    }}
+                    className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 font-semibold"
+                  >
+                    Avançar <ChevronRight size={17} />
+                  </button>
+                ) : (
+                  /* Step 2 (Preview): apenas Editar e OK — PDF/DOCX aparecem só na visualização final */
+                  <div className="flex gap-2 flex-1">
+                    <button
+                      onClick={() => setGerarStep(1)}
+                      className="btn-secondary h-11 px-4 flex items-center justify-center gap-2 text-sm font-semibold"
+                    >
+                      <Pencil size={17} /> Editar
+                    </button>
+                    <button
+                      onClick={() => {
+                        // Salvar snapshot, fechar wizard e abrir visualização final
+                        const clienteContrato = selectedVenda ? clients.find((c) => c.id === selectedVenda.clienteId) : null;
+                        if (!clienteContrato || !validarGenerosAntesDeGerar(gerarVendedor, clienteContrato)) return;
+                        if (selectedVenda) {
+                          const snapshot = {
+                            vendedor: gerarVendedor,
+                            empreendimento: gerarEmp,
+                            extra: gerarExtra,
+                            tipoContrato: tipoContrato,
+                            geradoEm: new Date().toISOString(),
+                          };
+                          onUpdateVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: snapshot });
+                          // PROBLEMA 6: Salvar vendedor como Proprietário (upsert por CPF)
+                          if (onSaveProprietario && gerarVendedor.nome.trim()) {
+                            const cpfLimpo = gerarVendedor.cpf.replace(/\D/g, "");
+                            const existenteProp = cpfLimpo
+                              ? proprietarios.find((p) => p.cpf.replace(/\D/g, "") === cpfLimpo)
+                              : null;
+                            onSaveProprietario(normalizarNomeObrigatorio({
+                              id: existenteProp?.id || `prop-${Date.now()}`,
+                              nome: gerarVendedor.nome,
+                              genero: gerarVendedor.genero || "M",
+                              nacionalidade: gerarVendedor.nacionalidade || "Brasileiro",
+                              estadoCivil: genderizeEstadoCivil(gerarVendedor.estadoCivil || "Solteiro", gerarVendedor.genero || "M"),
+                              rg: gerarVendedor.rg || "",
+                              cpf: gerarVendedor.cpf || "",
+                              endereco: gerarVendedor.endereco || "",
+                              numero: gerarVendedor.numero || "",
+                              bairro: gerarVendedor.bairro || "",
+                              cidade: gerarVendedor.cidade || "",
+                              estado: (gerarVendedor.estado || "").toUpperCase(),
+                              cep: gerarVendedor.cep || "",
+                            } as Proprietario));
+                          }
+                        }
+                        // Atualiza selectedVenda localmente para que a prévia final mostre os dados corretos
+                        if (selectedVenda) {
+                          setSelectedVenda({ ...selectedVenda, contratoGerado: true, contratoSnapshot: {
+                            vendedor: gerarVendedor,
+                            empreendimento: gerarEmp,
+                            extra: gerarExtra,
+                            tipoContrato: tipoContrato,
+                            geradoEm: new Date().toISOString(),
+                          }});
+                        }
+                        setShowGerarModal(false);
+                        // selectedVenda continua setado → prévia final abre automaticamente
+                      }}
+                      className="btn-primary h-11 flex-1 flex items-center justify-center gap-2 text-sm font-semibold"
+                    >
+                      <ChevronRight size={17} /> Finalizar Contrato
+                    </button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+      {DeleteModal}
+
+      {/* Modal: Mesclar / Duplicar / Cancelar */}
+      <AnimatePresence>
+        {/* Dialog: Escolha antes de editar contrato */}
+        {preEditVenda && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col gap-6"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-xl">
+                  <Pencil size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Editar Contrato</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    O lote pode estar marcado como vendido. Como deseja prosseguir?
+                  </p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    // Editar dados e gerar contrato: abre o wizard completo pré-preenchido
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    const dev = developments.find((d) => d.id === v.empreendimentoId);
+                    const snap = v.contratoSnapshot;
+                    setGerarProprietarioId("");
+                    setGerarVendedor(snap?.vendedor ?? emptyGerarVendedor);
+                    setGerarEmp(snap?.empreendimento ?? {
+                      nome: dev?.nome || "",
+                      comunidade: dev?.comunidade || "",
+                      cidade: dev?.cidade || "",
+                      estado: dev?.estado || "",
+                    });
+                    setGerarExtra(snap?.extra ?? {
+                      rua: v.rua || "",
+                      comunidade: dev?.comunidade || "",
+                      formaPagamento: v.formaPagamento || "Dinheiro",
+                      medidaFrente: v.medidaFrente || "",
+                      medidaLateralDir: v.medidaLateralDir || "",
+                      medidaLateralEsq: v.medidaLateralEsq || "",
+                      medidaFundos: v.medidaFundos || "",
+                      areaTotal: v.areaTotal || "",
+                    });
+                    setTipoContrato(snap?.tipoContrato ?? (v.quantidadeParcelas === 0 ? "avista" : "parcelado"));
+                    setSelectedVenda(v);
+                    setGerarStep(0);
+                    setTimeout(() => setShowGerarModal(true), 60);
+                  }}
+                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <FileDown size={17} /> Editar dados e gerar contrato
+                </button>
+                <button
+                  onClick={() => {
+                    // Mesclar: abre Nova Venda com editingEntry = venda original (edita dados da venda)
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    onEditVenda?.(v);
+                  }}
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Save size={17} /> Editar dados da venda (Nova Venda)
+                </button>
+                <button
+                  onClick={() => {
+                    // Duplicar: cria cópia da venda e abre Nova Venda para editar a cópia
+                    const v = preEditVenda;
+                    setPreEditVenda(null);
+                    const novoId = `venda-${Date.now()}`;
+                    const novoContrato = `CONT-${Date.now()}`;
+                    const copia: Venda = { ...v, id: novoId, numeroContrato: novoContrato };
+                    onSaveVenda(copia, clients.find(c => c.id === copia.clienteId) || { id: copia.clienteId, nome: copia.clienteNome, nacionalidade: "Brasileira", genero: "M", rg: "", cpf: "", estadoCivil: "Solteiro(a)", profissao: "", nascimento: "", cep: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", telefone1: "", dataCadastro: new Date().toISOString() });
+                    onEditVenda?.(copia);
+                  }}
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Copy size={17} /> Duplicar como nova venda
+                </button>
+                <button
+                  onClick={() => setPreEditVenda(null)}
+                  className="text-sm text-slate-400 hover:text-slate-600 font-semibold py-2 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+        {showDuplicarModal && pendingEditVenda && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-sm rounded-[28px] shadow-2xl p-8 flex flex-col gap-6"
+            >
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 bg-amber-100 rounded-xl">
+                  <FileText size={20} className="text-amber-600" />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Salvar alterações</h4>
+                  <p className="text-xs text-slate-500 mt-0.5">O que deseja fazer com este contrato?</p>
+                </div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button
+                  onClick={() => {
+                    onUpdateVenda(pendingEditVenda);
+                    setEditingVenda(null);
+                    setEditandoVendaOriginal(null);
+                    setShowDuplicarModal(false);
+                    setPendingEditVenda(null);
+                    setSelectedVenda(pendingEditVenda);
+                  }}
+                  className="btn-primary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Save size={17} /> Mesclar (substituir original)
+                </button>
+                <button
+                  onClick={() => {
+                    const novoId = `venda-${Date.now()}`;
+                    const novoContrato = `CONT-${Date.now()}`;
+                    const nova = { ...pendingEditVenda, id: novoId, numeroContrato: novoContrato };
+                    onUpdateVenda(nova);
+                    setEditingVenda(null);
+                    setEditandoVendaOriginal(null);
+                    setShowDuplicarModal(false);
+                    setPendingEditVenda(null);
+                    setSelectedVenda(nova);
+                  }}
+                  className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
+                >
+                  <Copy size={17} /> Duplicar como novo contrato
+                </button>
+                <button
+                  onClick={() => { setShowDuplicarModal(false); setPendingEditVenda(null); setEditandoVendaOriginal(null); }}
+                  className="text-sm text-slate-400 hover:text-slate-600 font-semibold py-2 transition-colors"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const ClientesSection = ({
+  clients,
+  sales,
+  onUpdateCliente,
+}: {
+  clients: Cliente[];
+  sales: Venda[];
+  onUpdateCliente: (c: Cliente) => void;
+}) => {
+  const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
+  const [editForm, setEditForm] = useState<Partial<Cliente>>({});
+  const [fieldErrors, setFieldErrors] = useState<{ cpf?: string; rg?: string }>({});
+
+  const openEdit = (c: Cliente) => {
+    setEditingCliente(c);
+    setEditForm({ ...c });
+    setFieldErrors({});
+  };
+
+  const handleBlurCPF = () => {
+    const cpf = editForm.cpf || "";
+    if (cpf && cpfStatus(cpf) === "invalid")
+      setFieldErrors((e) => ({ ...e, cpf: "CPF inválido" }));
+    else
+      setFieldErrors((e) => ({ ...e, cpf: undefined }));
+  };
+
+  const handleBlurRG = () => {
+    const rg = editForm.rg || "";
+    if (rg && rgStatus(rg) === "invalid")
+      setFieldErrors((e) => ({ ...e, rg: "RG inválido ou incompleto" }));
+    else
+      setFieldErrors((e) => ({ ...e, rg: undefined }));
+  };
+
+  const saveEdit = () => {
+    if (!editingCliente) return;
+    if (fieldErrors.cpf || fieldErrors.rg) return;
+    const updated: Cliente = normalizarNomeObrigatorio({ ...editingCliente, ...editForm, estado: (editForm.estado || "").toUpperCase() } as Cliente);
+    onUpdateCliente(updated);
+    setEditingCliente(null);
+  };
+
+  return (
+    <div className="space-y-8">
+      <div className="flex justify-between items-center px-2">
+        <h3 className="text-xl font-display font-bold text-slate-800 flex items-center gap-3">
+          <Users className="text-primary-main" />
+          Base de Clientes
+        </h3>
+        <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">
+          {clients.length} cadastrados
+        </p>
+      </div>
+
+      <div className="card-premium !p-2 sm:!p-6">
+        <div className="overflow-x-auto -mx-2 sm:mx-0">
+          <table className="w-full text-left border-separate border-spacing-y-1 sm:border-spacing-y-2">
+            <thead>
+              <tr className="text-[8px] sm:text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                <th className="pb-2 px-2 sm:px-4">Titular</th>
+                <th className="pb-2 px-2 sm:px-4 hidden sm:table-cell">Identificação</th>
+                <th className="pb-2 px-2 sm:px-4 hidden md:table-cell">Aniversário</th>
+                <th className="pb-2 px-2 sm:px-4">Contato</th>
+                <th className="pb-2 px-2 sm:px-4 text-right">Saldo</th>
+                <th className="pb-2 px-2 sm:px-4 text-center">Ações</th>
+              </tr>
+            </thead>
+            <tbody className="text-sm">
+              {clients.map((cliente) => {
+                const totalInvestido = sales
+                  .filter((v) => v.clienteId === cliente.id)
+                  .reduce((acc, v) => acc + v.valorLote, 0);
+                const nascFormatted = cliente.nascimento
+                  ? (() => { try { return new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); } catch { return cliente.nascimento; } })()
+                  : "—";
+                return (
+                  <tr key={cliente.id} className="group">
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors">
+                      <div className="font-bold text-slate-800 text-xs sm:text-sm truncate max-w-[80px] sm:max-w-none">
+                        {cliente.nome}
+                      </div>
+                      <div className="text-[7px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-tighter sm:tracking-normal">
+                        {cliente.estadoCivil}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-mono text-xs text-slate-500 hidden sm:table-cell">
+                      {cliente.cpf}
+                    </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-xs text-slate-500 hidden md:table-cell">
+                      {nascFormatted}
+                    </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors">
+                      <div className="text-[10px] sm:text-xs font-bold text-slate-600">
+                        {cliente.telefone1}
+                      </div>
+                    </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main text-xs sm:text-sm">
+                      {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(totalInvestido)}
+                    </td>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-xl sm:rounded-r-2xl transition-colors text-center">
+                      <button
+                        onClick={() => openEdit(cliente)}
+                        className="text-[10px] font-bold text-primary-main hover:underline px-2 py-1 rounded-lg hover:bg-primary-main/10 transition-colors"
+                      >
+                        Editar
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
+              {clients.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-16 text-center text-slate-300 italic font-medium">
+                    Nenhum cliente na base.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Modal de edição */}
+      {editingCliente && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+              <h3 className="font-display font-bold text-slate-800 text-lg">Editar Cliente</h3>
+              <button onClick={() => setEditingCliente(null)} className="text-slate-400 hover:text-slate-600 text-xl font-bold">✕</button>
+            </div>
+            <div className="p-6 space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {[
+                  { label: "Nome Completo", field: "nome" },
+                  { label: "Nacionalidade", field: "nacionalidade" },
+                  { label: "Telefone 1", field: "telefone1" },
+                  { label: "Telefone 2", field: "telefone2" },
+                  { label: "Endereço", field: "endereco" },
+                  { label: "Número", field: "numero" },
+                  { label: "Bairro", field: "bairro" },
+                  { label: "Cidade", field: "cidade" },
+                  { label: "Estado", field: "estado" },
+                  { label: "CEP", field: "cep" },
+                ].map(({ label, field }) => (
+                  <div key={field}>
+                    <label className="label">{label}</label>
+                    <input
+                      className="input-field"
+                      value={(editForm as any)[field] || ""}
+                      onChange={(e) => setEditForm({ ...editForm, [field]: e.target.value })}
+                    />
+                    {field === "cep" && (
+                      <BuscarCEPPorRua
+                        estadoPadrao={editForm.estado || "PA"}
+                        cidadePadrao={editForm.cidade || ""}
+                        onSelect={(r) => setEditForm((prev) => ({
+                          ...prev,
+                          cep: maskCEP(r.cep),
+                          endereco: r.logradouro || prev.endereco,
+                          bairro: r.bairro || prev.bairro,
+                          cidade: r.localidade || prev.cidade,
+                          estado: r.uf || prev.estado,
+                        }))}
+                      />
+                    )}
+                  </div>
+                ))}
+                <div>
+                  <label className="label">CPF</label>
+                  <input
+                    className={`input-field font-mono ${fieldErrors.cpf ? "border-red-400 focus:ring-red-400" : cpfStatus(editForm.cpf || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                    value={editForm.cpf || ""}
+                    onChange={(e) => {
+                      const masked = maskCPF(e.target.value);
+                      setEditForm({ ...editForm, cpf: masked });
+                      const st = cpfStatus(masked);
+                      setFieldErrors((err) => ({ ...err, cpf: st === "invalid" ? "CPF inválido" : undefined }));
+                    }}
+                    onBlur={handleBlurCPF}
+                    placeholder="000.000.000-00"
+                  />
+                  {fieldErrors.cpf && <p className="text-red-500 text-xs mt-1 font-medium">{fieldErrors.cpf}</p>}
+                </div>
+                <div>
+                  <label className="label">RG</label>
+                  <input
+                    className={`input-field font-mono ${fieldErrors.rg ? "border-red-400 focus:ring-red-400" : rgStatus(editForm.rg || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                    value={editForm.rg || ""}
+                    onChange={(e) => {
+                      const masked = maskRG(e.target.value);
+                      setEditForm({ ...editForm, rg: masked });
+                      const st = rgStatus(masked);
+                      setFieldErrors((err) => ({ ...err, rg: st === "invalid" ? "RG inválido ou incompleto" : undefined }));
+                    }}
+                    onBlur={handleBlurRG}
+                    placeholder="Ex: 12.345.678-9"
+                  />
+                  {fieldErrors.rg && <p className="text-red-500 text-xs mt-1 font-medium">{fieldErrors.rg}</p>}
+                </div>
+                <div>
+                  <label className="label">Aniversário (Data Nascimento)</label>
+                  <input
+                    type="date"
+                    className="input-field"
+                    value={(editForm as any).nascimento || ""}
+                    onChange={(e) => setEditForm({ ...editForm, nascimento: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="label">Gênero</label>
+                  <select
+                    className="input-field"
+                    value={editForm.genero || "M"}
+                    onChange={(e) => {
+                      const genero = e.target.value as "M" | "F" | "O";
+                      setEditForm({
+                        ...editForm,
+                        genero,
+                        estadoCivil: genderizeEstadoCivil(editForm.estadoCivil || "Solteiro", genero),
+                      });
+                    }}
+                  >
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                    <option value="O">Outro</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Estado Civil</label>
+                  <select
+                    className="input-field"
+                    value={genderizeEstadoCivil(editForm.estadoCivil || "Solteiro", editForm.genero || "M")}
+                    onChange={(e) => setEditForm({ ...editForm, estadoCivil: genderizeEstadoCivil(e.target.value, editForm.genero || "M") })}
+                  >
+                    {((editForm.genero || "M") === "F"
+                      ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"]
+                      : (editForm.genero || "M") === "O"
+                        ? ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"]
+                        : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]
+                    ).map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="p-6 border-t border-slate-100 flex gap-3 justify-end">
+              <button onClick={() => setEditingCliente(null)} className="btn-secondary px-6">Cancelar</button>
+              <button onClick={saveEdit} className="btn-primary px-6">Salvar</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AniversariosSection = ({
+  clients,
+  sales = [],
+  onViewContract,
+}: {
+  clients: Cliente[];
+  sales?: Venda[];
+  onViewContract?: (v: Venda) => void;
+}) => {
+  const today = new Date();
+  const currentMonth = today.getMonth();
+  const currentDay = today.getDate();
+  const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const MONTHS = [
+    "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+    "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+  ];
+  const MONTHS_SHORT = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
+
+  const byMonth: Cliente[][] = Array.from({ length: 12 }, (_, mi) =>
+    clients
+      .filter((c) => {
+        if (!c.nascimento) return false;
+        return new Date(c.nascimento).getMonth() === mi;
+      })
+      .sort((a, b) => new Date(a.nascimento).getDate() - new Date(b.nascimento).getDate())
+  );
+
+  const totalWithBirthday = clients.filter((c) => c.nascimento).length;
+
+  const isTodayBirthday = (c: Cliente) => {
+    if (!c.nascimento) return false;
+    const d = new Date(c.nascimento);
+    return d.getMonth() === currentMonth && d.getDate() === currentDay;
+  };
+
+  const getAge = (c: Cliente) => {
+    if (!c.nascimento) return null;
+    const d = new Date(c.nascimento);
+    return today.getFullYear() - d.getFullYear();
+  };
+
+  const waMsg = (c: Cliente, isBday: boolean) =>
+    `https://wa.me/55${(c.telefone1 || "").replace(/\D/g, "")}?text=${encodeURIComponent(
+      isBday
+        ? `Olá ${c.nome}, FELIZ ANIVERSÁRIO! 🎉 Que este dia seja especial. Muita saúde, paz e realizações!`
+        : `Olá ${c.nome}, tudo bem? Aqui é da equipe de vendas. Passando para desejar um Feliz Aniversário! 🎂`
+    )}`;
+
+  // Exclui rascunhos — apenas compras reais
+  const clientSales = selectedClient
+    ? sales.filter((s) => s.clienteId === selectedClient.id && s.status !== "rascunho")
+    : [];
+
+  const isAvista = (s: Venda) =>
+    !s.quantidadeParcelas || s.quantidadeParcelas === 0 || s.formaPagamento === "avista";
+
+  const copyPhone = (phone: string) => {
+    navigator.clipboard.writeText(phone.replace(/\D/g, ""));
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Client Detail Modal */}
+      <AnimatePresence>
+        {selectedClient && (
+          <div className="fixed inset-0 z-[150] flex items-end sm:items-center justify-center p-0 sm:p-6 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, y: 40 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 40 }}
+              className="bg-white w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+            >
+              {/* Modal Header */}
+              <div className={`p-6 ${isTodayBirthday(selectedClient) ? "bg-gradient-to-br from-amber-400 to-orange-500" : "bg-gradient-to-br from-slate-800 to-slate-900"} text-white`}>
+                <div className="flex justify-between items-start mb-4">
+                  <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center text-3xl font-black">
+                    {selectedClient.nome?.charAt(0).toUpperCase()}
+                  </div>
+                  <button
+                    onClick={() => setSelectedClient(null)}
+                    className="w-9 h-9 flex items-center justify-center rounded-xl bg-white/20 hover:bg-white/30 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+                <h3 className="text-xl font-display font-bold leading-tight">
+                  {isTodayBirthday(selectedClient) ? "🎂 " : ""}{selectedClient.nome}
+                </h3>
+                <div className="flex gap-3 mt-2 text-sm font-medium opacity-80 flex-wrap">
+                  {selectedClient.nascimento && (
+                    <span>{getAge(selectedClient)} anos · {new Date(selectedClient.nascimento).toLocaleDateString("pt-BR")}</span>
+                  )}
+                  {selectedClient.genero && (
+                    <span>{selectedClient.genero === "M" ? "Masculino" : "Feminino"}</span>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                {/* Contact */}
+                <div className="space-y-3">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Contato</p>
+                  {selectedClient.telefone1 && (
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                      <div>
+                        <p className="text-xs text-slate-400 font-medium">Telefone / WhatsApp</p>
+                        <p className="font-bold text-slate-800">{selectedClient.telefone1}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => copyPhone(selectedClient.telefone1)}
+                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors text-xs font-bold"
+                          title="Copiar número"
+                        >
+                          {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                        </button>
+                        <a
+                          href={waMsg(selectedClient, isTodayBirthday(selectedClient))}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
+                          title="Abrir WhatsApp"
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                  {selectedClient.telefone2 && (
+                    <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                      <div>
+                        <p className="text-xs text-slate-400 font-medium">Telefone 2</p>
+                        <p className="font-bold text-slate-800">{selectedClient.telefone2}</p>
+                      </div>
+                      <div className="flex gap-2 flex-shrink-0">
+                        <button
+                          onClick={() => copyPhone(selectedClient.telefone2 || "")}
+                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors"
+                        >
+                          <Copy size={16} />
+                        </button>
+                        <a
+                          href={`https://wa.me/55${(selectedClient.telefone2 || "").replace(/\D/g, "")}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
+                        >
+                          <MessageCircle size={16} />
+                        </a>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Personal info */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dados Pessoais</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {selectedClient.cpf && (
+                      <div className="p-3 bg-slate-50 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">CPF</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.cpf}</p>
+                      </div>
+                    )}
+                    {selectedClient.rg && (
+                      <div className="p-3 bg-slate-50 rounded-2xl">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">RG</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.rg}</p>
+                      </div>
+                    )}
+                    {selectedClient.profissao && (
+                      <div className="p-3 bg-slate-50 rounded-2xl col-span-2">
+                        <p className="text-[10px] text-slate-400 font-bold uppercase">Profissão</p>
+                        <p className="font-bold text-slate-800 text-sm">{selectedClient.profissao}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Purchases — clicáveis, sem badge de status */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Compras ({clientSales.length})
+                  </p>
+                  {clientSales.length === 0 ? (
+                    <p className="text-sm text-slate-400 italic p-3">Nenhuma compra registrada.</p>
+                  ) : (
+                    clientSales.map((s) => {
+                      const avista = isAvista(s);
+                      return (
+                        <button
+                          key={s.id}
+                          onClick={() => {
+                            setSelectedClient(null);
+                            onViewContract?.(s);
+                          }}
+                          className="w-full text-left p-3 bg-slate-50 hover:bg-primary-main/5 border border-transparent hover:border-primary-main/20 rounded-2xl flex justify-between items-start gap-3 transition-all group"
+                        >
+                          <div className="flex-1 min-w-0">
+                            <p className="font-bold text-slate-800 text-sm truncate">{s.empreendimentoNome}</p>
+                            <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                              Quadra {s.quadra} · Lote {s.numeroLote}
+                            </p>
+                            <span className={`inline-block mt-1.5 text-[9px] font-bold uppercase px-2 py-0.5 rounded-full ${avista ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                              {avista ? "À Vista" : `Parcelado ${s.quantidadeParcelas}x`}
+                            </span>
+                          </div>
+                          <div className="text-right flex-shrink-0 flex flex-col items-end gap-1.5">
+                            <p className="font-display font-bold text-primary-main text-sm">
+                              {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(s.valorLote)}
+                            </p>
+                            <ChevronRight size={14} className="text-slate-300 group-hover:text-primary-main transition-colors" />
+                          </div>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Header */}
+      <div className="flex items-center gap-4 px-1">
+        <div className="p-3 bg-chumbo-base/10 text-chumbo-base rounded-2xl">
+          <Cake size={24} className="stroke-[2.5]" />
+        </div>
+        <div>
+          <h3 className="text-xl font-display font-bold text-slate-800 tracking-tight">Calendário de Aniversariantes</h3>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">{totalWithBirthday} clientes com data de nascimento cadastrada</p>
+        </div>
+      </div>
+
+      {/* Year grid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {MONTHS.map((monthName, mi) => {
+          const isCurrentMonth = mi === currentMonth;
+          const people = byMonth[mi];
+          return (
+            <div
+              key={mi}
+              className={`rounded-[24px] border overflow-hidden transition-all ${
+                isCurrentMonth
+                  ? "border-chumbo-base/40 shadow-lg shadow-chumbo-base/10"
+                  : "border-slate-100 shadow-sm"
+              }`}
+            >
+              {/* Month header */}
+              <div className={`px-5 py-3.5 flex items-center justify-between ${
+                isCurrentMonth
+                  ? "bg-chumbo-base text-white"
+                  : "bg-slate-50 text-slate-600"
+              }`}>
+                <div className="flex items-center gap-2">
+                  {isCurrentMonth && <Cake size={15} className="opacity-80" />}
+                  <span className={`font-bold text-sm tracking-wide ${isCurrentMonth ? "text-white" : "text-slate-700"}`}>
+                    {monthName}
+                  </span>
+                  {isCurrentMonth && (
+                    <span className="text-[10px] font-bold bg-white/20 px-2 py-0.5 rounded-full uppercase tracking-widest">
+                      Atual
+                    </span>
+                  )}
+                </div>
+                <span className={`text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center ${
+                  isCurrentMonth
+                    ? "bg-white/20 text-white"
+                    : people.length > 0
+                    ? "bg-chumbo-base/10 text-chumbo-base"
+                    : "text-slate-300"
+                }`}>
+                  {people.length}
+                </span>
+              </div>
+
+              {/* People list */}
+              <div className="bg-white divide-y divide-slate-50">
+                {people.length === 0 ? (
+                  <p className="px-5 py-5 text-center text-[11px] text-slate-300 italic">
+                    Sem aniversariantes
+                  </p>
+                ) : (
+                  people.map((c) => {
+                    const d = new Date(c.nascimento);
+                    const isToday = isTodayBirthday(c);
+                    return (
+                      <div
+                        key={c.id}
+                        className={`flex items-center gap-3 px-4 py-3 group cursor-pointer ${
+                          isToday ? "bg-amber-50 hover:bg-amber-100" : "hover:bg-slate-50"
+                        }`}
+                        onClick={() => setSelectedClient(c)}
+                      >
+                        <div className={`w-9 h-9 rounded-xl flex flex-col items-center justify-center text-center leading-none flex-shrink-0 ${
+                          isToday
+                            ? "bg-amber-400 text-white shadow-md shadow-amber-200"
+                            : "bg-slate-100 text-slate-500"
+                        }`}>
+                          <span className="text-[8px] font-bold uppercase opacity-70">{MONTHS_SHORT[mi]}</span>
+                          <span className="text-sm font-bold leading-tight">{d.getDate()}</span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-bold truncate leading-tight ${isToday ? "text-amber-700" : "text-slate-700"}`}>
+                            {isToday && "🎂 "}{c.nome}
+                          </p>
+                          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+                            {getAge(c)} anos · {c.telefone1}
+                          </p>
+                        </div>
+                        <div className="flex gap-1.5 flex-shrink-0" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            onClick={() => copyPhone(c.telefone1 || "")}
+                            className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors opacity-0 group-hover:opacity-100"
+                            title="Copiar número"
+                          >
+                            <Copy size={13} />
+                          </button>
+                          <a
+                            href={waMsg(c, isToday)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className={`p-2 rounded-xl transition-all ${
+                              isToday
+                                ? "bg-success-main text-white shadow-md shadow-success-main/30"
+                                : "text-slate-300 hover:bg-success-main hover:text-white opacity-0 group-hover:opacity-100"
+                            }`}
+                            title="Enviar parabéns via WhatsApp"
+                          >
+                            <MessageCircle size={13} />
+                          </a>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+const ConfigSection = ({
+  config,
+  onSave,
+  developments,
+  clients,
+  sales,
+  onImport,
+}: {
+  config: AppConfig;
+  onSave: (c: AppConfig) => void;
+  developments: Empreendimento[];
+  clients: Cliente[];
+  sales: Venda[];
+  onImport: (data: { empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig }, mode: "replace" | "merge") => void;
+}) => {
+  const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
+  const [migrating, setMigrating] = useState(false);
+  const [migrateMsg, setMigrateMsg] = useState('');
+  const [showVendedorForm, setShowVendedorForm] = useState(false);
+  const [editingVendedor, setEditingVendedor] = useState<Vendedor | null>(null);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+
+  // Export/Import state
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const [importPreview, setImportPreview] = useState<{ empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig; exportedAt?: string; app?: string } | null>(null);
+  const [importError, setImportError] = useState('');
+  const [importMode, setImportMode] = useState<'replace' | 'merge'>('merge');
+  const [importing, setImporting] = useState(false);
+  const [importSuccess, setImportSuccess] = useState('');
+
+  const handleExport = () => {
+    const payload = {
+      version: "1.0",
+      app: "Rumo ao Milhão",
+      exportedAt: new Date().toISOString(),
+      empreendimentos: developments,
+      clientes: clients,
+      vendas: sales,
+      config,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+    a.href = url;
+    a.download = `rumo-ao-milhao-backup-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Export / Import only config (theme + vendedores + proprietarios)
+  const configImportRef = useRef<HTMLInputElement>(null);
+  const [configImportError, setConfigImportError] = useState('');
+  const [configImportSuccess, setConfigImportSuccess] = useState('');
+
+  const handleExportConfig = () => {
+    const payload = {
+      version: "1.0",
+      type: "config-only",
+      app: "Rumo ao Milhão",
+      exportedAt: new Date().toISOString(),
+      config,
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-');
+    a.href = url;
+    a.download = `rumo-configuracoes-${date}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportConfig = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setConfigImportError('');
+    setConfigImportSuccess('');
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        const cfg: AppConfig = data.type === 'config-only' ? data.config : data.config;
+        if (!cfg || typeof cfg !== 'object') {
+          setConfigImportError('Arquivo inválido: configurações não encontradas.');
+          return;
+        }
+        const merged: AppConfig = { ...config, ...cfg, vendedores: cfg.vendedores ?? config.vendedores };
+        onSave(merged);
+        setFormData({ ...formData, ...merged, vendedores: merged.vendedores || [] });
+        setConfigImportSuccess('Configurações importadas com sucesso!');
+      } catch {
+        setConfigImportError('Arquivo corrompido ou formato inválido.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setImportError('');
+    setImportSuccess('');
+    setImportPreview(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.name.endsWith('.json')) {
+      setImportError('Selecione um arquivo .json válido.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const data = JSON.parse(ev.target?.result as string);
+        if (!data.empreendimentos || !data.clientes || !data.vendas) {
+          setImportError('Arquivo inválido: não é um backup do Rumo ao Milhão.');
+          return;
+        }
+        setImportPreview(data);
+      } catch {
+        setImportError('Arquivo corrompido ou formato inválido.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
+  const handleConfirmImport = async () => {
+    if (!importPreview) return;
+    setImporting(true);
+    try {
+      await onImport({
+        empreendimentos: importPreview.empreendimentos,
+        clientes: importPreview.clientes,
+        vendas: importPreview.vendas,
+        config: importPreview.config || config,
+      }, importMode);
+      setImportSuccess(`Importação concluída com sucesso! ${importMode === 'replace' ? 'Todos os dados foram substituídos.' : 'Dados mesclados com os existentes.'}`);
+      setImportPreview(null);
+    } catch (err: any) {
+      setImportError('Erro ao importar: ' + (err?.message || 'Tente novamente.'));
+    } finally {
+      setImporting(false);
+    }
+  };
+  const emptyVendedor: Omit<Vendedor, "id"> = {
+    nome: "", nacionalidade: "Brasileiro", estadoCivil: "solteiro",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", cep: "",
+  };
+  const [vendedorForm, setVendedorForm] = useState<Omit<Vendedor, "id">>(emptyVendedor);
+  const vendedorFormRef = useRef<HTMLDivElement>(null);
+
+  const handleSaveVendedor = () => {
+    if (!vendedorForm.nome.trim()) { triggerShake(vendedorFormRef.current); return; }
+    let updated: Vendedor[];
+    if (editingVendedor) {
+      updated = (formData.vendedores || []).map((v) =>
+        v.id === editingVendedor.id ? normalizarNomeObrigatorio({ ...vendedorForm, estado: (vendedorForm.estado || "").toUpperCase(), id: editingVendedor.id } as any) : v
+      );
+    } else {
+      updated = [...(formData.vendedores || []), normalizarNomeObrigatorio({ ...vendedorForm, estado: (vendedorForm.estado || "").toUpperCase(), id: `vend-${Date.now()}` } as any)];
+    }
+    const newFormData = { ...formData, vendedores: updated };
+    setFormData(newFormData);
+    onSave(newFormData);
+    setShowVendedorForm(false);
+    setEditingVendedor(null);
+    setVendedorForm(emptyVendedor);
+  };
+
+  const handleDeleteVendedor = (id: string) => {
+    requestDelete("Remover este vendedor?", () => {
+      const updated = (formData.vendedores || []).filter((v) => v.id !== id);
+      const newFormData = { ...formData, vendedores: updated };
+      setFormData(newFormData);
+      onSave(newFormData);
+    });
+  };
+
+  const handleMigrate = async () => {
+    setMigrating(true);
+    setMigrateMsg('');
+    try {
+      const result = await dbService.migrateFromLocalStorage();
+      setMigrateMsg(result.msg);
+    } catch (e: any) {
+      setMigrateMsg('Erro durante a migração: ' + (e?.message || 'Tente novamente.'));
+    } finally {
+      setMigrating(false);
+    }
+  };
+
+  const themes: { id: AppTheme; label: string; color: string }[] = [
+    { id: "standard", label: "Padrão (Verde)", color: "bg-[#2d5016]" },
+    { id: "blue-gradient", label: "Degrade Azul", color: "bg-blue-600" },
+    { id: "dark", label: "Dark Mode", color: "bg-slate-900" },
+  ];
+
+  return (
+    <div className="max-w-3xl mx-auto space-y-8">
+      <div className="flex items-center gap-3 px-2">
+        <div className="p-3 bg-slate-900 text-white rounded-2xl">
+          <Settings size={24} />
+        </div>
+        <h3 className="text-xl font-display font-bold text-slate-800 tracking-tight">
+          Configurações Gerais
+        </h3>
+      </div>
+
+      <div className="card-premium space-y-8">
+        <div>
+          <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
+            <LayoutDashboard size={18} className="text-primary-main" />
+            Personalização de Tema
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {themes.map((theme) => (
+              <button
+                key={theme.id}
+                onClick={() => setFormData({ ...formData, theme: theme.id })}
+                className={`p-4 rounded-2xl border-2 transition-all text-left flex flex-col gap-3 ${
+                  formData.theme === theme.id
+                    ? "border-primary-main bg-primary-main/5"
+                    : "border-slate-100 bg-slate-50"
+                }`}
+              >
+                <div
+                  className={`w-10 h-10 rounded-xl ${theme.color} shadow-sm`}
+                />
+                <span
+                  className={`font-bold text-xs uppercase tracking-widest ${formData.theme === theme.id ? "text-primary-main" : "text-slate-400"}`}
+                >
+                  {theme.label}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="pt-4 flex justify-end">
+          <button
+            onClick={() => {
+              const normalizedConfig = {
+                ...formData,
+                vendedores: (formData.vendedores || []).map((v: any) => normalizarNomeObrigatorio({ ...v, estado: (v.estado || "").toUpperCase() })),
+                proprietarios: ((formData as any).proprietarios || []).map((p: any) => normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase() })),
+              };
+              setFormData(normalizedConfig);
+              onSave(normalizedConfig);
+              alert("Configurações salvas com sucesso!");
+            }}
+            className="btn-primary px-12"
+          >
+            Salvar Alterações
+          </button>
+        </div>
+      </div>
+
+      {/* Vendedores */}
+      
+      {/* Vendedores (Contratos) removido da tela de Configurações. O vendedor/corretor fica no Registro de Novas Vendas. */}
+
+      {/* Exportar / Importar apenas Configurações */}
+      <div className="card-premium space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-primary-main text-white rounded-xl">
+            <Settings size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-800">Exportar / Importar Configurações</h4>
+            <p className="text-xs text-slate-400 mt-0.5">Salve ou restaure apenas tema, vendedores e proprietários — sem mover seus dados</p>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-primary-main/5 border border-primary-main/20">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-primary-main/10 rounded-xl mt-0.5">
+              <Download size={16} className="text-primary-main" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-800 text-sm">Exportar Configurações</p>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Tema · {(formData.vendedores || []).length} vendedor(es) · {(config.proprietarios || []).length} proprietário(s)
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={handleExportConfig}
+            className="flex items-center gap-2 px-5 py-2.5 bg-primary-main hover:opacity-90 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
+          >
+            <Download size={15} /> Baixar .json
+          </button>
+        </div>
+
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div className="flex items-start gap-3">
+            <div className="p-2 bg-slate-200 rounded-xl mt-0.5">
+              <Upload size={16} className="text-slate-600" />
+            </div>
+            <div>
+              <p className="font-semibold text-slate-700 text-sm">Importar Configurações</p>
+              <p className="text-xs text-slate-400 mt-0.5">Selecione um arquivo .json exportado por este app</p>
+            </div>
+          </div>
+          <button
+            onClick={() => configImportRef.current?.click()}
+            className="flex items-center gap-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-sm font-semibold transition-all whitespace-nowrap"
+          >
+            <Upload size={15} /> Selecionar arquivo
+          </button>
+          <input ref={configImportRef} type="file" accept=".json" className="hidden" onChange={handleImportConfig} />
+        </div>
+
+        {configImportError && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-red-50 border border-red-100">
+            <AlertTriangle size={16} className="text-red-500 shrink-0" />
+            <p className="text-sm text-red-700 font-medium">{configImportError}</p>
+          </div>
+        )}
+        {configImportSuccess && (
+          <div className="flex items-center gap-3 p-4 rounded-2xl bg-green-50 border border-green-100">
+            <ShieldCheck size={16} className="text-green-600 shrink-0" />
+            <p className="text-sm text-green-700 font-semibold">{configImportSuccess}</p>
+          </div>
+        )}
+      </div>
+
+      {DeleteModal}
+    </div>
+  );
+};
+
+const CalculatorSection = () => {
+  const [data, setData] = useState({
+    valor: undefined as number | undefined,
+    entrada: undefined as number | undefined,
+    parcelas: undefined as number | undefined,
+    comissaoPercent: 5,
+    parcelaValue: undefined as number | undefined,
+  });
+
+  const handleCalcChange = (field: string, value: number) => {
+    let updated = { ...data, [field]: value };
+    if (field === "valor" || field === "entrada" || field === "parcelas") {
+      const v = field === "valor" ? value : data.valor || 0;
+      const e = field === "entrada" ? value : data.entrada || 0;
+      const p = field === "parcelas" ? value : data.parcelas || 1;
+      updated.parcelaValue = Number(((v - e) / (p || 1)).toFixed(2));
+    } else if (field === "parcelaValue") {
+      const pv = value;
+      const e = data.entrada || 0;
+      const p = data.parcelas || 1;
+      updated.valor = Number((pv * p + e).toFixed(2));
+    }
+    setData(updated);
+  };
+
+  const comissao = (data.valor || 0) * (data.comissaoPercent / 100);
+
+  return (
+    <div className="max-w-5xl mx-auto pb-32 lg:pb-0">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
+        <div className="lg:col-span-7 space-y-6">
+          <div className="card-premium bg-surface-card/50 backdrop-blur-sm">
+            <h3 className="text-xl font-display font-bold text-slate-800 mb-8 flex items-center gap-3">
+              <div className="p-2 bg-primary-main/10 text-primary-main rounded-xl">
+                <Calculator size={20} className="stroke-[2.5]" />
+              </div>
+              Simulador Inteligente
+            </h3>
+
+            <div className="space-y-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div className="sm:col-span-2">
+                  <label className="label font-bold text-primary-main">
+                    Valor Total do Lote (R$)
+                  </label>
+                  <input
+                    type="number"
+                    className="input-field border-primary-main/20 bg-primary-main/[0.02] text-2xl font-display font-bold text-primary-dark"
+                    value={data.valor ?? ""}
+                    onChange={(e) =>
+                      handleCalcChange(
+                        "valor",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Entrada (R$)</label>
+                  <input
+                    type="number"
+                    className="input-field font-bold text-lg"
+                    value={data.entrada ?? ""}
+                    onChange={(e) =>
+                      handleCalcChange(
+                        "entrada",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="label">Qtd. Parcelas</label>
+                  <input
+                    type="number"
+                    className="input-field font-bold text-lg"
+                    value={data.parcelas ?? ""}
+                    onChange={(e) =>
+                      handleCalcChange(
+                        "parcelas",
+                        e.target.value === "" ? 1 : Number(e.target.value),
+                      )
+                    }
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label font-bold text-chumbo-base opacity-70">
+                    Valor Desejado da Parcela (R$)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    className="input-field border-chumbo-base/20 bg-chumbo-base/[0.02] text-2xl font-display font-bold text-slate-800"
+                    value={data.parcelaValue ?? ""}
+                    onChange={(e) =>
+                      handleCalcChange(
+                        "parcelaValue",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      )
+                    }
+                  />
+                  <p className="text-[10px] text-slate-400 font-bold uppercase mt-2 ml-1 italic opacity-60">
+                    Alterar o valor da parcela recalcula o valor total
+                    automaticamente
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-6 border-t border-slate-100">
+                <label className="label">Percentual de Comissão (%)</label>
+                <div className="flex items-center gap-4">
+                  <input
+                    type="range"
+                    min="1"
+                    max="15"
+                    step="0.5"
+                    className="flex-1 accent-primary-main"
+                    value={data.comissaoPercent}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        comissaoPercent: Number(e.target.value),
+                      })
+                    }
+                  />
+                  <span className="w-16 text-center font-display font-bold text-primary-main bg-primary-main/10 py-2 rounded-xl">
+                    {data.comissaoPercent}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="lg:col-span-12 xl:col-span-5">
+          <div className="bg-slate-900 text-white rounded-3xl sm:rounded-[40px] p-6 sm:p-10 shadow-[0_30px_100px_-20px_rgba(15,23,42,0.3)] relative overflow-hidden group border border-white/5">
+            <div className="absolute top-0 right-0 w-64 h-64 bg-primary-light/10 rounded-full -mr-24 -mt-24 blur-3xl group-hover:bg-primary-light/20 transition-all duration-1000" />
+
+            <h3 className="text-[10px] font-extrabold uppercase tracking-[0.3em] text-primary-light opacity-60 mb-6 sm:mb-10">
+              Resumo da Proposta
+            </h3>
+
+            <div className="space-y-6 sm:space-y-8 relative">
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest opacity-60">
+                  Total do Lote
+                </p>
+                <p className="text-4xl font-display font-bold tracking-tight">
+                  {new Intl.NumberFormat("pt-BR", {
+                    style: "currency",
+                    currency: "BRL",
+                  }).format(data.valor || 0)}
+                </p>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 sm:gap-8">
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest opacity-60">
+                    Entrada
+                  </p>
+                  <p className="text-xl font-display font-bold text-primary-light">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(data.entrada || 0)}
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest opacity-60">
+                    Saldo
+                  </p>
+                  <p className="text-xl font-display font-bold text-white/90">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format((data.valor || 0) - (data.entrada || 0))}
+                  </p>
+                </div>
+              </div>
+
+              <div className="pt-6 sm:pt-10 border-t border-white/10">
+                <p className="text-[10px] font-extrabold uppercase text-primary-light/60 tracking-widest mb-3">
+                  Mensalidade Recomendada
+                </p>
+                <div className="flex items-baseline gap-3">
+                  <p className="text-3xl sm:text-6xl font-display font-bold text-white tracking-tighter drop-shadow-2xl">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(data.parcelaValue || 0)}
+                  </p>
+                  <span className="text-sm font-medium text-white/30">
+                    / mês
+                  </span>
+                </div>
+              </div>
+
+              <div className="mt-6 sm:mt-12 p-5 sm:p-8 bg-white/5 rounded-2xl sm:rounded-[32px] border border-white/10 backdrop-blur-md shadow-inner">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-[10px] font-bold text-primary-light uppercase tracking-widest leading-none mb-1">
+                      Estimativa de Ganhos
+                    </p>
+                    <p className="text-xs font-medium text-white/40 italic">
+                      Comissão fixa de {data.comissaoPercent}%
+                    </p>
+                  </div>
+                  <p className="text-3xl font-display font-bold text-white">
+                    {new Intl.NumberFormat("pt-BR", {
+                      style: "currency",
+                      currency: "BRL",
+                    }).format(comissao)}
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button
+            onClick={() => window.print()}
+            className="w-full mt-6 btn-ghost !border-slate-200 !text-slate-400 hover:!text-slate-600 group"
+          >
+            <Printer
+              size={18}
+              className="group-hover:scale-110 transition-transform"
+            />
+            <span>Gerar Espelho da Proposta</span>
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// --- Proprietarios Section ---
+
+const ProprietariosSection = ({
+  config,
+  onSave,
+}: {
+  config: AppConfig;
+  onSave: (c: AppConfig) => void;
+}) => {
+  const proprietarios = config.proprietarios || [];
+  const emptyProp: Omit<Proprietario, "id"> = {
+    nome: "", genero: "M", nacionalidade: "brasileiro", estadoCivil: "Solteiro",
+    rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "Santarém", estado: "PA", cep: "",
+  };
+  const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [form, setForm] = useState<Omit<Proprietario, "id">>(emptyProp);
+  const [cpfErr, setCpfErr] = useState<string | null>(null);
+  const [fetchingCep, setFetchingCep] = useState(false);
+  const propFormRef = useRef<HTMLDivElement>(null);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+
+  const buscarCEPProp = async (cep: string) => {
+    const clean = cep.replace(/\D/g, "");
+    if (clean.length !== 8) return;
+    setFetchingCep(true);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data = await res.json();
+      if (!data.erro) {
+        setForm((prev) => ({
+          ...prev,
+          endereco: data.logradouro || prev.endereco,
+          bairro: data.bairro || prev.bairro,
+          cidade: data.localidade || prev.cidade,
+          estado: data.uf || prev.estado,
+        }));
+      }
+    } catch {}
+    setFetchingCep(false);
+  };
+
+  const handleSave = () => {
+    if (!form.nome.trim()) {
+      setCpfErr("Informe o nome do proprietário.");
+      triggerShake(propFormRef.current);
+      return;
+    }
+    // Validar CPF matematicamente se preenchido
+    const cpfRaw = form.cpf.replace(/\D/g, "");
+    if (cpfRaw.length > 0) {
+      if (cpfRaw.length !== 11) {
+        setCpfErr("CPF deve ter 11 dígitos.");
+        triggerShake(propFormRef.current);
+        return;
+      }
+      if (!validarCPF(form.cpf)) {
+        setCpfErr("CPF inválido — verifique os dígitos.");
+        triggerShake(propFormRef.current);
+        return;
+      }
+    }
+    // Validar RG minimamente se preenchido
+    const rgClean = form.rg.replace(/\s+/g, "").trim();
+    if (rgClean.length > 0 && !validarRG(form.rg)) {
+      setCpfErr("RG inválido (mínimo 5 caracteres, apenas letras e números).");
+      triggerShake(propFormRef.current);
+      return;
+    }
+    // Verificar duplicidade por CPF (exceto na edição do mesmo registro)
+    if (cpfRaw.length === 11) {
+      const duplicado = proprietarios.find(
+        (p) => p.cpf.replace(/\D/g, "") === cpfRaw && p.id !== editingId
+      );
+      if (duplicado) {
+        setCpfErr(`CPF já cadastrado para: ${duplicado.nome}`);
+        triggerShake(propFormRef.current);
+        return;
+      }
+    }
+    setCpfErr(null);
+    let updated: Proprietario[];
+    if (editingId) {
+      updated = proprietarios.map((p) => p.id === editingId ? normalizarNomeObrigatorio({ ...form, estado: (form.estado || "").toUpperCase(), id: editingId } as any) : p);
+    } else {
+      updated = [...proprietarios, normalizarNomeObrigatorio({ ...form, estado: (form.estado || "").toUpperCase(), id: `prop-${Date.now()}` } as any)];
+    }
+    onSave({ ...config, proprietarios: updated });
+    setShowForm(false);
+    setEditingId(null);
+    setForm(emptyProp);
+  };
+
+  const handleEdit = (p: Proprietario) => {
+    setEditingId(p.id);
+    setForm({ nome: p.nome, genero: (p as any).genero || "M", nacionalidade: p.nacionalidade, estadoCivil: genderizeEstadoCivil(p.estadoCivil || "Solteiro", (p as any).genero || "M"), rg: p.rg, cpf: p.cpf, endereco: p.endereco, numero: p.numero, bairro: p.bairro, cidade: p.cidade, estado: p.estado, cep: p.cep } as any);
+    setShowForm(true);
+  };
+
+  const handleDelete = (id: string) => {
+    requestDelete("Remover este proprietário?", () => {
+      onSave({ ...config, proprietarios: proprietarios.filter((p) => p.id !== id) });
+    });
+  };
+
+  return (
+    <div className="space-y-8 max-w-4xl mx-auto">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div className="flex items-center gap-3">
+          <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast shadow-lg shadow-primary-main/20">
+            <UserCheck size={24} />
+          </div>
+          <div>
+            <h3 className="text-xl font-display font-bold text-slate-800">Proprietários</h3>
+            <p className="text-sm text-slate-400 font-medium">Donos dos empreendimentos — aparecem como VENDEDOR nos contratos</p>
+          </div>
+        </div>
+        <button
+          className="btn-primary flex-none"
+          onClick={() => { setEditingId(null); setForm(emptyProp); setCpfErr(null); setShowForm(true); }}
+        >
+          <Plus size={18} /> Novo Proprietário
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {showForm && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="overflow-hidden"
+          >
+            <div ref={propFormRef} className="card-premium space-y-6 bg-slate-50/50">
+              <h4 className="font-bold text-slate-800 text-base">{editingId ? "Editar Proprietário" : "Novo Proprietário"}</h4>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2">
+                  <label className="label">Nome Completo *</label>
+                  <input className="input-field" placeholder="Nome Completo" value={form.nome} onChange={(e) => setForm({ ...form, nome: textoMaiusculo(e.target.value) })} />
+                </div>
+                <div>
+                  <label className="label">Gênero / Tratamento *</label>
+                  <select
+                    className="input-field"
+                    value={(form as any).genero || "M"}
+                    onChange={(e) => {
+                      const genero = e.target.value as "M" | "F";
+                      setForm({
+                        ...form,
+                        genero,
+                        nacionalidade: genero === "F" ? "brasileira" : "brasileiro",
+                        estadoCivil: genderizeEstadoCivil(form.estadoCivil || "Solteiro", genero),
+                      } as any);
+                    }}
+                  >
+                    <option value="M">Masculino</option>
+                    <option value="F">Feminino</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Nacionalidade</label>
+                  <input className="input-field" value={form.nacionalidade} onChange={(e) => setForm({ ...form, nacionalidade: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Estado Civil</label>
+                  <select className="input-field" value={genderizeEstadoCivil(form.estadoCivil || "Solteiro", (form as any).genero || "M")} onChange={(e) => setForm({ ...form, estadoCivil: genderizeEstadoCivil(e.target.value, (form as any).genero || "M") })}>
+                    {(((form as any).genero || "M") === "F" ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"] : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]).map((o) => <option key={o}>{o}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">RG</label>
+                  <input className="input-field" placeholder="Ex: 3215776" value={form.rg} onChange={(e) => setForm({ ...form, rg: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">CPF *</label>
+                  <input
+                    className={`input-field ${cpfErr ? "border-red-400 focus:ring-red-300" : ""}`}
+                    placeholder="000.000.000-00"
+                    value={form.cpf}
+                    onChange={(e) => {
+                      const masked = maskCPF(e.target.value);
+                      setForm({ ...form, cpf: masked });
+                      const st = cpfStatus(masked);
+                      setCpfErr(st === "invalid" ? "CPF inválido — verifique os dígitos." : null);
+                    }}
+                  />
+                  {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="label">Endereço (Tipo + Nome)</label>
+                  <input className="input-field" placeholder="Ex: Travessa Maranhão" value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Número</label>
+                  <input className="input-field" placeholder="Ex: 353" value={form.numero} onChange={(e) => setForm({ ...form, numero: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Bairro</label>
+                  <input className="input-field" placeholder="Ex: Aeroporto Velho" value={form.bairro} onChange={(e) => setForm({ ...form, bairro: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Cidade</label>
+                  <input className="input-field" value={form.cidade} onChange={(e) => setForm({ ...form, cidade: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Estado (UF)</label>
+                  <input className="input-field" maxLength={2} value={form.estado} onChange={(e) => setForm({ ...form, estado: e.target.value.toUpperCase() })} />
+                </div>
+                <div>
+                  <label className="label">
+                    CEP {fetchingCep && <span className="text-[9px] text-primary-main font-bold ml-1">buscando...</span>}
+                  </label>
+                  <input
+                    className="input-field"
+                    placeholder="00000-000"
+                    value={form.cep}
+                    onChange={(e) => {
+                      const val = maskCEP(e.target.value);
+                      setForm({ ...form, cep: val });
+                      if (val.replace(/\D/g, "").length === 8) buscarCEPProp(val);
+                    }}
+                  />
+                  <BuscarCEPPorRua
+                    estadoPadrao={form.estado || "PA"}
+                    cidadePadrao={form.cidade || ""}
+                    onSelect={(r) => setForm((prev) => ({
+                      ...prev,
+                      cep: maskCEP(r.cep),
+                      endereco: r.logradouro || prev.endereco,
+                      bairro: r.bairro || prev.bairro,
+                      cidade: r.localidade || prev.cidade,
+                      estado: r.uf || prev.estado,
+                    }))}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 justify-end pt-2">
+                <button className="btn-ghost h-10 px-6" onClick={() => { setShowForm(false); setEditingId(null); setForm(emptyProp); setCpfErr(null); }}>Cancelar</button>
+                <button className="btn-primary h-10 px-10" onClick={handleSave}>Salvar Proprietário</button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {proprietarios.length === 0 && !showForm && (
+        <div className="py-20 text-center flex flex-col items-center gap-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
+          <div className="p-4 bg-surface-card rounded-full text-slate-300 shadow-sm">
+            <UserCheck size={48} strokeWidth={1} />
+          </div>
+          <div>
+            <p className="text-slate-600 font-bold">Nenhum proprietário cadastrado</p>
+            <p className="text-slate-400 text-sm mt-1">Proprietários são os donos dos terrenos e aparecem como VENDEDOR nos contratos.</p>
+          </div>
+          <button onClick={() => setShowForm(true)} className="btn-ghost text-sm font-bold px-8 mt-2">
+            Cadastrar Primeiro Proprietário
+          </button>
+        </div>
+      )}
+
+      <div className="space-y-4">
+        {proprietarios.map((p) => (
+          <motion.div
+            key={p.id}
+            layout
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="card-premium flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4"
+          >
+            <div className="flex items-center gap-4 flex-1">
+              <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl flex-none">
+                <UserCheck size={22} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-slate-800 text-base">{p.nome}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {p.estadoCivil} · CPF {p.cpf} · RG {p.rg}
+                </p>
+                <p className="text-xs text-slate-400">
+                  {p.endereco}, nº {p.numero} · {p.bairro} · {p.cidade}/{p.estado} · CEP {p.cep}
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-none">
+              <button
+                className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-500 transition-colors"
+                onClick={() => handleEdit(p)}
+              >
+                <Pencil size={16} />
+              </button>
+              <button
+                className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-red-50 text-red-400 transition-colors"
+                onClick={() => handleDelete(p.id)}
+              >
+                <Trash2 size={16} />
+              </button>
+            </div>
+          </motion.div>
+        ))}
+      </div>
+      {DeleteModal}
+    </div>
+  );
+};
+
+// --- Usuários Section (admin only) ---
+
+const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; userId?: string; userEmail?: string }) => {
+  const SECTION_LABELS: Record<string, string> = {
+    dashboard: "Dashboard",
+    vendas: "Nova Venda",
+    empreendimentos: "Empreendimentos",
+    proprietarios: "Proprietários",
+    contratos: "Contratos",
+    clientes: "Clientes",
+    aniversarios: "Aniversários",
+    calculadora: "Calculadora",
+    config: "Configurações",
+    usuarios: "Usuários",
+    editar_mapas: "Editar mapas",
+  };
+
+  const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","editar_mapas"];
+
+  const [users, setUsers] = useState<{ id: string; email: string; isAdmin: boolean; createdAt: string; permissions: Record<string, boolean>; profile: { nome?: string; creci?: string; telefone?: string; assinaturaUrl?: string; senhaVisivel?: string } }[]>([]);
+
+  // Profile state
+  const [profile, setProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
+  const [profileLoading, setProfileLoading] = useState(true);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMsg, setProfileMsg] = useState<{ type: "ok" | "err"; text: string } | null>(null);
+
+  useEffect(() => {
+    const loadProfile = async () => {
+      try {
+        const res = await authFetch("/api/auth/profile");
+        if (res.ok) {
+          const data = await res.json();
+          setProfile({ nome: data.nome || "", creci: data.creci || "", telefone: data.telefone || "", assinaturaUrl: data.assinaturaUrl || data.assinaturaBase64 || "" });
+        }
+      } catch {}
+      setProfileLoading(false);
+    };
+    loadProfile();
+  }, []);
+
+  const readImageAsDataUrl = (file: File): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
+
+  const handleSignatureUpload = async (file: File | undefined, target: "me" | "edit") => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/jpg", "image/webp"].includes(file.type)) {
+      alert("Use uma imagem PNG, JPG ou WEBP para a assinatura. PNG com fundo transparente é o ideal.");
+      return;
+    }
+    const dataUrl = await readImageAsDataUrl(file);
+    if (target === "me") setProfile((prev) => ({ ...prev, assinaturaUrl: dataUrl }));
+    else setEditProfileData((prev) => ({ ...prev, assinaturaUrl: dataUrl }));
+  };
+
+  const handleSaveProfile = async () => {
+    setProfileSaving(true);
+    setProfileMsg(null);
+    try {
+      const res = await authFetch("/api/auth/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ nome: profile.nome, creci: profile.creci, telefone: profile.telefone, assinaturaUrl: profile.assinaturaUrl }),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar");
+      setProfileMsg({ type: "ok", text: "Perfil salvo com sucesso!" });
+    } catch {
+      setProfileMsg({ type: "err", text: "Erro ao salvar perfil. Tente novamente." });
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+  const [loading, setLoading] = useState(true);
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [newNome, setNewNome] = useState("");
+  const [newCreci, setNewCreci] = useState("");
+  const [newTelefone, setNewTelefone] = useState("");
+  const [creating, setCreating] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [editingPermUser, setEditingPermUser] = useState<string | null>(null);
+  const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
+  const [savingPerms, setSavingPerms] = useState(false);
+  const [editingProfileUser, setEditingProfileUser] = useState<string | null>(null);
+  const [editProfileData, setEditProfileData] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
+  const [savingUserProfile, setSavingUserProfile] = useState(false);
+  const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
+
+  const loadUsers = async () => {
+    setLoading(true);
+    try {
+      const res = await authFetch("/api/admin/users");
+      if (res.ok) setUsers(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadUsers(); }, []);
+
+  const handleCreate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCreating(true);
+    setError("");
+    setSuccess("");
+    try {
+      const res = await authFetch("/api/admin/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: newEmail, password: newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao criar usuário.");
+      // Salvar permissões padrão para o novo usuário
+      const defaultPerms: Record<string, boolean> = {
+        dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+        contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, usuarios: false, editar_mapas: false,
+      };
+      await authFetch(`/api/admin/users/${data.id}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: defaultPerms }),
+      });
+      // Salvar perfil (nome, CRECI, telefone) se informado
+      if (newNome.trim() || newCreci.trim() || newTelefone.trim()) {
+        await authFetch(`/api/admin/users/${data.id}/profile`, {
+          method: "PATCH",
+          body: JSON.stringify({ nome: newNome, creci: newCreci, telefone: newTelefone }),
+        });
+      }
+      setSuccess(`Usuário ${newEmail} criado com sucesso!`);
+      setNewEmail("");
+      setNewPassword("");
+      setNewNome("");
+      setNewCreci("");
+      setNewTelefone("");
+      await loadUsers();
+    } catch (err: any) {
+      setError(err.message);
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const handleOpenEditProfile = (u: typeof users[0]) => {
+    setEditProfileData({ nome: u.profile?.nome || "", creci: u.profile?.creci || "", telefone: u.profile?.telefone || "", assinaturaUrl: u.profile?.assinaturaUrl || "" });
+    setEditingProfileUser(editingProfileUser === u.id ? null : u.id);
+    setEditingPermUser(null);
+  };
+
+  const handleSaveUserProfile = async () => {
+    if (!editingProfileUser) return;
+    setSavingUserProfile(true);
+    try {
+      const res = await authFetch(`/api/admin/users/${editingProfileUser}/profile`, {
+        method: "PATCH",
+        body: JSON.stringify(editProfileData),
+      });
+      if (!res.ok) throw new Error("Erro ao salvar");
+      await loadUsers();
+      setEditingProfileUser(null);
+    } catch (err: any) {
+      alert(err.message || "Erro ao salvar perfil.");
+    } finally {
+      setSavingUserProfile(false);
+    }
+  };
+
+  const handleResetPassword = async (id: string, email: string) => {
+    const novaSenha = window.prompt(`Digite uma nova senha temporária para ${email}:`);
+    if (!novaSenha) return;
+    if (novaSenha.length < 6) { alert("A senha precisa ter pelo menos 6 caracteres."); return; }
+    try {
+      const res = await authFetch(`/api/admin/users/${id}/password`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: novaSenha }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Endpoint de redefinição de senha não disponível.");
+      }
+      alert(`Senha temporária definida para ${email}. Copie e envie ao usuário: ${novaSenha}`);
+    } catch (err: any) {
+      alert(err.message || "Não foi possível redefinir a senha por este arquivo. Verifique a rota /api/admin/users/:id/password no backend.");
+    }
+  };
+
+  const handleDelete = async (id: string, email: string) => {
+    requestDelete(`Excluir o usuário ${email}? Esta ação não pode ser desfeita.`, async () => {
+      try {
+        const res = await authFetch(`/api/admin/users/${id}`, { method: "DELETE" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error);
+        await loadUsers();
+      } catch (err: any) {
+        alert(err.message);
+      }
+    });
+  };
+
+  const handleOpenPerms = (u: typeof users[0]) => {
+    const defaults: Record<string, boolean> = {
+      dashboard: true, vendas: true, empreendimentos: false, proprietarios: false,
+      contratos: true, clientes: true, aniversarios: true, calculadora: true, config: false, editar_mapas: false,
+    };
+    // Se o usuário já tem permissões salvas, usa elas; senão usa os defaults
+    const saved = u.permissions && Object.keys(u.permissions).length > 0 ? u.permissions : defaults;
+    setPendingPerms(saved);
+    setEditingPermUser(u.id);
+  };
+
+  const handleSavePerms = async () => {
+    if (!editingPermUser) return;
+    setSavingPerms(true);
+    try {
+      const res = await authFetch(`/api/admin/users/${editingPermUser}/permissions`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ permissions: pendingPerms }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      await loadUsers();
+      setEditingPermUser(null);
+    } catch (err: any) {
+      alert(err.message);
+    } finally {
+      setSavingPerms(false);
+    }
+  };
+
+  return (
+    <div className="space-y-8 max-w-3xl mx-auto">
+
+      {/* Meu Perfil — visible to all users */}
+      <div className="card-premium space-y-6">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-slate-900 text-white rounded-xl">
+            <User size={18} />
+          </div>
+          <div>
+            <h4 className="font-bold text-slate-800">Meu Perfil</h4>
+            <p className="text-xs text-slate-400 mt-0.5">{userEmail}</p>
+          </div>
+        </div>
+
+        {profileLoading ? (
+          <p className="text-slate-400 text-sm">Carregando...</p>
+        ) : (
+          <div className="space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label className="label">Nome Completo (aparece nos recibos)</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: Rafael Tavares Matos"
+                  value={profile.nome}
+                  onChange={(e) => setProfile({ ...profile, nome: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">CRECI</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: 13919"
+                  value={profile.creci}
+                  onChange={(e) => setProfile({ ...profile, creci: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="label">Telefone / WhatsApp</label>
+                <input
+                  className="input-field"
+                  placeholder="Ex: 93992332012"
+                  value={profile.telefone}
+                  onChange={(e) => setProfile({ ...profile, telefone: maskPhone(e.target.value) })}
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">Assinatura do Corretor (PNG/JPG)</label>
+                <input
+                  type="file"
+                  accept="image/png,image/jpeg,image/webp"
+                  className="input-field"
+                  onChange={(e) => handleSignatureUpload(e.target.files?.[0], "me")}
+                />
+                {profile.assinaturaUrl && (
+                  <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Prévia da assinatura</p>
+                    <img src={profile.assinaturaUrl} alt="Assinatura" className="max-h-20 object-contain" />
+                    <button type="button" onClick={() => setProfile({ ...profile, assinaturaUrl: "" })} className="mt-2 text-[10px] font-black uppercase text-red-500">Remover assinatura</button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {profileMsg && (
+              <div className={`flex items-center gap-2 p-3 rounded-xl text-sm font-semibold ${profileMsg.type === "ok" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-600"}`}>
+                {profileMsg.type === "ok" ? <ShieldCheck size={15} /> : <AlertTriangle size={15} />}
+                {profileMsg.text}
+              </div>
+            )}
+
+            <div className="flex justify-end">
+              <button
+                onClick={handleSaveProfile}
+                disabled={profileSaving}
+                className="btn-primary px-10 disabled:opacity-50"
+              >
+                {profileSaving ? <><RefreshCw size={14} className="animate-spin" /> Salvando...</> : <><Check size={14} /> Salvar Perfil</>}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Admin-only section */}
+      {isAdmin && (
+      <>
+      {/* Create user card */}
+      <div className="bg-surface-card rounded-3xl p-5 sm:p-8 shadow-sm border border-border-subtle">
+        <h2 className="text-lg font-bold text-primary-main mb-6 uppercase tracking-widest text-[11px]">
+          Criar Novo Usuário
+        </h2>
+        <form onSubmit={handleCreate} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">E-mail</label>
+              <input
+                type="email"
+                required
+                value={newEmail}
+                onChange={(e) => setNewEmail(e.target.value)}
+                placeholder="corretor@email.com"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Senha (mín. 6 caracteres)</label>
+              <input
+                type="password"
+                required
+                minLength={6}
+                value={newPassword}
+                onChange={(e) => setNewPassword(e.target.value)}
+                placeholder="••••••••"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Nome Completo</label>
+              <input
+                type="text"
+                value={newNome}
+                onChange={(e) => setNewNome(e.target.value)}
+                placeholder="Ex: João da Silva"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">CRECI <span className="normal-case text-slate-300">(opcional)</span></label>
+              <input
+                type="text"
+                value={newCreci}
+                onChange={(e) => setNewCreci(e.target.value)}
+                placeholder="Ex: 13919"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Telefone / WhatsApp <span className="normal-case text-slate-300">(opcional)</span></label>
+              <input
+                type="text"
+                value={newTelefone}
+                onChange={(e) => setNewTelefone(maskPhone(e.target.value))}
+                placeholder="Ex: (93) 99999-9999"
+                className="w-full h-12 px-4 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 focus:border-primary-main outline-none transition-all"
+              />
+            </div>
+          </div>
+          {error && <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">{error}</p>}
+          {success && <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-widest">{success}</p>}
+          <button
+            type="submit"
+            disabled={creating}
+            className="h-12 px-8 bg-primary-main text-primary-contrast rounded-xl text-[11px] font-black uppercase tracking-widest hover:opacity-90 transition-all disabled:opacity-50"
+          >
+            {creating ? "Criando..." : "Criar Usuário"}
+          </button>
+        </form>
+      </div>
+
+      {/* User list */}
+      <div className="bg-surface-card rounded-3xl p-5 sm:p-8 shadow-sm border border-border-subtle space-y-4">
+        <h2 className="text-[11px] font-black uppercase tracking-widest text-slate-400">
+          Usuários Cadastrados
+        </h2>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-[11px] font-bold text-amber-800 leading-relaxed">
+          Por segurança, o app não consegue mostrar a senha antiga quando ela é salva criptografada no servidor. O administrador deve usar “Redefinir senha” para criar uma nova senha temporária quando precisar recuperar acesso.
+        </div>
+        {loading ? (
+          <p className="text-slate-400 text-sm">Carregando...</p>
+        ) : (
+          <div className="space-y-3">
+            {users.map((u) => (
+              <div key={u.id} className="rounded-2xl border border-border-subtle overflow-hidden">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 p-4 bg-surface-bg">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-bold text-slate-700 truncate">{u.email}</p>
+                    <p className="text-[10px] text-slate-400 mt-0.5 uppercase tracking-widest">
+                      {u.isAdmin ? "Administrador" : "Corretor"} · criado em {new Date(u.createdAt).toLocaleDateString("pt-BR")}
+                    </p>
+                    {(u.profile?.nome || u.profile?.creci) && (
+                      <p className="text-[10px] text-primary-main mt-0.5 font-bold">
+                        {u.profile?.nome}{u.profile?.creci ? ` · CRECI ${u.profile.creci}` : ""}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      onClick={() => handleOpenEditProfile(u)}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingProfileUser === u.id ? "bg-slate-800 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-800 hover:text-white"}`}
+                      title="Editar nome, CRECI, telefone e assinatura"
+                    >
+                      <User size={12} />
+                      Perfil
+                    </button>
+                    <button
+                      onClick={() => handleResetPassword(u.id, u.email)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-amber-50 text-amber-700 hover:bg-amber-100 transition-all"
+                      title="Definir nova senha temporária"
+                    >
+                      <ShieldCheck size={12} />
+                      Redefinir senha
+                    </button>
+                    {!u.isAdmin && (
+                      <>
+                        <button
+                          onClick={() => editingPermUser === u.id ? setEditingPermUser(null) : handleOpenPerms(u)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${editingPermUser === u.id ? "bg-primary-main text-white" : "bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-white"}`}
+                        >
+                          <Settings size={12} />
+                          Permissões
+                        </button>
+                        <button
+                          onClick={() => handleDelete(u.id, u.email)}
+                          className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                          title="Excluir usuário"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    )}
+                    {u.isAdmin && (
+                      <span className="text-[10px] font-black px-3 py-1.5 bg-amber-50 text-amber-600 rounded-xl uppercase tracking-widest">
+                        Acesso Total
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Profile edit panel */}
+                <AnimatePresence>
+                  {editingProfileUser === u.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 border-t border-border-subtle bg-white space-y-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Perfil de <span className="text-slate-700">{u.email.split("@")[0]}</span> — aparece nos recibos
+                        </p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Nome Completo</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: João da Silva"
+                              value={editProfileData.nome}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, nome: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">CRECI</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: 13919"
+                              value={editProfileData.creci}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, creci: e.target.value })}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Telefone</label>
+                            <input
+                              className="w-full h-10 px-3 rounded-xl border border-border-subtle bg-surface-bg text-sm font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              placeholder="Ex: (93) 99999-9999"
+                              value={editProfileData.telefone}
+                              onChange={(e) => setEditProfileData({ ...editProfileData, telefone: maskPhone(e.target.value) })}
+                            />
+                          </div>
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1 block">Assinatura no Recibo</label>
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              className="w-full h-10 px-3 py-2 rounded-xl border border-border-subtle bg-surface-bg text-xs font-medium focus:ring-2 focus:ring-primary-main/30 outline-none transition-all"
+                              onChange={(e) => handleSignatureUpload(e.target.files?.[0], "edit")}
+                            />
+                            {editProfileData.assinaturaUrl && (
+                              <div className="mt-3 p-3 rounded-2xl bg-slate-50 border border-slate-200">
+                                <img src={editProfileData.assinaturaUrl} alt="Assinatura" className="max-h-20 object-contain" />
+                                <button type="button" onClick={() => setEditProfileData({ ...editProfileData, assinaturaUrl: "" })} className="mt-2 text-[10px] font-black uppercase text-red-500">Remover assinatura</button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex justify-end gap-3 pt-1">
+                          <button onClick={() => setEditingProfileUser(null)} className="btn-secondary px-5 py-2 text-xs">Cancelar</button>
+                          <button
+                            onClick={handleSaveUserProfile}
+                            disabled={savingUserProfile}
+                            className="btn-primary px-6 py-2 text-xs flex items-center gap-2"
+                          >
+                            {savingUserProfile ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                            Salvar Perfil
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
+                {/* Permissions panel */}
+                <AnimatePresence>
+                  {editingPermUser === u.id && (
+                    <motion.div
+                      initial={{ height: 0, opacity: 0 }}
+                      animate={{ height: "auto", opacity: 1 }}
+                      exit={{ height: 0, opacity: 0 }}
+                      className="overflow-hidden"
+                    >
+                      <div className="p-5 border-t border-border-subtle bg-white space-y-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                          Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                          {ALL_SECTIONS_LIST.map((sec) => {
+                            const enabled = pendingPerms[sec] ?? false;
+                            return (
+                              <button
+                                key={sec}
+                                type="button"
+                                onClick={() => setPendingPerms(prev => ({ ...prev, [sec]: !enabled }))}
+                                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${enabled ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"}`}
+                              >
+                                <div className={`w-4 h-4 rounded flex items-center justify-center flex-none transition-all ${enabled ? "bg-primary-main text-white" : "border-2 border-slate-300"}`}>
+                                  {enabled && <Check size={10} />}
+                                </div>
+                                {SECTION_LABELS[sec]}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div className="flex justify-end gap-3 pt-1">
+                          <button onClick={() => setEditingPermUser(null)} className="btn-secondary px-5 py-2 text-xs">Cancelar</button>
+                          <button
+                            onClick={handleSavePerms}
+                            disabled={savingPerms}
+                            className="btn-primary px-6 py-2 text-xs flex items-center gap-2"
+                          >
+                            {savingPerms ? <RefreshCw size={12} className="animate-spin" /> : <Check size={12} />}
+                            Salvar Permissões
+                          </button>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {DeleteModal}
+      </>
+      )}
+    </div>
+  );
+};
+
+// --- Histórico de Exclusões ---
+
+const LIXEIRA_KEY = "lotes_lixeira_vendas";
+
+function loadLixeira(): VendaExcluida[] {
+  try {
+    const raw = localStorage.getItem(LIXEIRA_KEY);
+    if (!raw) return [];
+    const items: VendaExcluida[] = JSON.parse(raw);
+    // Filtrar expirados (> 30 dias)
+    const agora = new Date();
+    return items.filter((item) => new Date(item.expiresAt) > agora);
+  } catch {
+    return [];
+  }
+}
+
+function saveLixeira(items: VendaExcluida[]): void {
+  try {
+    localStorage.setItem(LIXEIRA_KEY, JSON.stringify(items));
+  } catch {
+    console.error("Erro ao salvar lixeira");
+  }
+}
+
+const HistoricoExclusoesSection = ({
+  vendasExcluidas,
+  onRestore,
+}: {
+  vendasExcluidas: VendaExcluida[];
+  onRestore: (item: VendaExcluida) => void;
+}) => {
+  const [search, setSearch] = useState("");
+
+  const diasRestantes = (expiresAt: string) => {
+    const diff = new Date(expiresAt).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  const tipoLabel = (venda: Venda) => {
+    if (venda.quantidadeParcelas && venda.quantidadeParcelas > 0) return "Parcelado";
+    return "À Vista";
+  };
+
+  const filtered = vendasExcluidas.filter((item) => {
+    const q = search.toLowerCase();
+    return (
+      !q ||
+      (item.venda.clienteNome || "").toLowerCase().includes(q) ||
+      (item.venda.empreendimentoNome || "").toLowerCase().includes(q) ||
+      (item.venda.quadra || "").toLowerCase().includes(q) ||
+      (item.venda.numeroLote || "").toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+        <div className="relative flex-1">
+          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Buscar por comprador, empreendimento ou lote..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-9 pr-4 py-2.5 border border-border-subtle rounded-xl bg-surface-card text-sm focus:outline-none focus:ring-2 focus:ring-primary-main/30"
+          />
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-24 gap-4 text-slate-400">
+          <Trash2 size={48} className="opacity-30" />
+          <p className="text-lg font-semibold">Nenhuma venda excluída</p>
+          <p className="text-sm text-center max-w-xs">
+            Vendas excluídas aparecem aqui por 30 dias e podem ser restauradas.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {filtered.map((item) => {
+            const dias = diasRestantes(item.expiresAt);
+            const tipo = tipoLabel(item.venda);
+            const isAvista = tipo === "À Vista";
+            return (
+              <div
+                key={item.venda.id + item.dataExclusao}
+                className="bg-surface-card border border-border-subtle rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center gap-4"
+              >
+                <div className="flex-1 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-slate-800 text-sm">
+                      {item.venda.clienteNome || "—"}
+                    </span>
+                    <span className={`px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase ${isAvista ? "bg-emerald-100 text-emerald-700" : "bg-blue-100 text-blue-700"}`}>
+                      {tipo}
+                    </span>
+                    {dias <= 7 && (
+                      <span className="px-2 py-0.5 rounded-lg text-[10px] font-bold uppercase bg-red-100 text-red-600">
+                        Expira em {dias}d
+                      </span>
+                    )}
+                  </div>
+                  <div className="text-xs text-slate-500">
+                    {item.venda.empreendimentoNome || "—"} · Quadra {item.venda.quadra} · Lote {item.venda.numeroLote}
+                  </div>
+                  <div className="text-xs text-slate-400">
+                    Excluído em {new Date(item.dataExclusao).toLocaleDateString("pt-BR")} · Restaurável por mais {dias} dia{dias !== 1 ? "s" : ""}
+                  </div>
+                </div>
+                <button
+                  onClick={() => onRestore(item)}
+                  className="flex items-center gap-2 px-4 py-2 bg-primary-main text-primary-contrast rounded-xl text-xs font-bold hover:opacity-90 transition-all self-end sm:self-auto whitespace-nowrap"
+                >
+                  <ArrowLeft size={14} />
+                  Restaurar
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// --- Main App ---
+
+export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
+  const [section, setSection] = useState<Section>("dashboard");
+  const [developments, setDevelopments] = useState<Empreendimento[]>([]);
+  const [clients, setClients] = useState<Cliente[]>([]);
+  const [sales, setSales] = useState<Venda[]>([]);
+  const [vendasExcluidas, setVendasExcluidas] = useState<VendaExcluida[]>(() => loadLixeira());
+  const [config, setConfig] = useState<AppConfig>({
+    theme: "standard",
+    vendedores: [],
+  });
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
+  const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl?: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
+  const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
+
+  useEffect(() => {
+    const refreshOnlineState = () => {
+      setIsOnline(navigator.onLine);
+      setOfflineDraftCount(readOfflineVendaDrafts().length);
+    };
+    window.addEventListener("online", refreshOnlineState);
+    window.addEventListener("offline", refreshOnlineState);
+    window.addEventListener("storage", refreshOnlineState);
+    window.addEventListener("offline-drafts-updated", refreshOnlineState);
+    refreshOnlineState();
+    return () => {
+      window.removeEventListener("online", refreshOnlineState);
+      window.removeEventListener("offline", refreshOnlineState);
+      window.removeEventListener("storage", refreshOnlineState);
+      window.removeEventListener("offline-drafts-updated", refreshOnlineState);
+    };
+  }, []);
+
+  useEffect(() => {
+    let viewport = document.querySelector('meta[name="viewport"]') as HTMLMetaElement | null;
+    if (!viewport) {
+      viewport = document.createElement("meta");
+      viewport.name = "viewport";
+      document.head.appendChild(viewport);
+    }
+    viewport.content = "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover";
+
+    const styleId = "mobile-responsive-fit-fix";
+    let style = document.getElementById(styleId) as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
+      style.id = styleId;
+      document.head.appendChild(style);
+    }
+    style.textContent = `
+      html, body, #root { width: 100%; max-width: 100%; overflow-x: hidden; }
+      * { box-sizing: border-box; min-width: 0; }
+      img, video, canvas, svg { max-width: 100%; }
+      input, select, textarea, button { max-width: 100%; }
+      .card-premium, .input-field { max-width: 100%; }
+      @media (max-width: 768px) {
+        body { overflow-x: hidden; }
+        main, section, article, form, .page, .container, .tab-content { width: 100%; max-width: 100%; overflow-x: hidden; }
+        table { max-width: 100%; }
+        .table-wrapper, .overflow-x-auto { max-width: 100%; -webkit-overflow-scrolling: touch; }
+        input, select, textarea { font-size: 16px; }
+        .grid { min-width: 0; }
+        .break-mobile, p, span { overflow-wrap: anywhere; }
+        .map-marker-label, .map-marker-label * { white-space: nowrap; overflow-wrap: normal; word-break: normal; }
+      }
+    `;
+  }, []);
+
+  useEffect(() => {
+    authFetch("/api/auth/profile")
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d) setUserProfile({ nome: d.nome || "", creci: d.creci || "", telefone: d.telefone || "", assinaturaUrl: d.assinaturaUrl || d.assinaturaBase64 || "" }); })
+      .catch(() => {});
+  }, []);
+
+  const toggleDesktop = () => {
+    const next = !forceDesktop;
+    setForceDesktop(next);
+    localStorage.setItem('force-desktop', String(next));
+  };
+  const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
+  const [prefilledSale, setPrefilledSale] = useState<
+    Partial<Venda> | undefined
+  >(undefined);
+  const [editingVendaEntry, setEditingVendaEntry] = useState<{
+    venda: Venda;
+    cliente: Cliente | null;
+  } | null>(null);
+
+  useEffect(() => {
+    let subDevs: { unsubscribe: () => void } | null = null;
+    let subClientes: { unsubscribe: () => void } | null = null;
+    let subVendas: { unsubscribe: () => void } | null = null;
+
+    const load = async () => {
+      try {
+        const results = await Promise.allSettled([
+          dbService.getEmpreendimentos(),
+          dbService.getClientes(),
+          dbService.getVendas(),
+          dbService.getAppConfig(),
+        ]);
+
+        if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+        else console.error('Erro empreendimentos:', results[0].reason);
+
+        if (results[1].status === 'fulfilled') setClients(results[1].value);
+        else console.error('Erro clientes:', results[1].reason);
+
+        if (results[2].status === 'fulfilled') setSales(results[2].value);
+        else console.error('Erro vendas:', results[2].reason);
+
+        if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        else console.error('Erro config:', results[3].reason);
+
+        const anyFailed = results.some(r => r.status === 'rejected');
+        if (anyFailed) {
+          const firstErr = results.find(r => r.status === 'rejected') as PromiseRejectedResult;
+          console.error('Erro ao carregar dados:', JSON.stringify(firstErr.reason));
+        }
+
+        setIsLoaded(true);
+
+        subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
+        subClientes = dbService.subscribeToClientes((d) => setClients(d));
+        subVendas = dbService.subscribeToVendas((d) => setSales(d));
+      } catch (e: unknown) {
+        console.error('Erro ao carregar dados:', e);
+        alert('Erro crítico ao carregar dados:\n' + JSON.stringify(e));
+        setIsLoaded(true);
+      }
+    };
+    load();
+
+    // Recarrega dados quando a janela/aba volta ao foco — garante sincronização
+    // entre navegadores, abas e celular sem precisar de WebSocket.
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        Promise.allSettled([
+          dbService.getEmpreendimentos(),
+          dbService.getClientes(),
+          dbService.getVendas(),
+          dbService.getAppConfig(),
+        ]).then((results) => {
+          if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+          if (results[1].status === 'fulfilled') setClients(results[1].value);
+          if (results[2].status === 'fulfilled') setSales(results[2].value);
+          if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        }).catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      subDevs?.unsubscribe();
+      subClientes?.unsubscribe();
+      subVendas?.unsubscribe();
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", config.theme);
+  }, [config.theme]);
+
+  const saveDev = (newDev: Empreendimento) => {
+    if (!isLoaded) return;
+    const devRecalculado = recalcularEstatisticasEmpreendimento(newDev, sales);
+    const exists = developments.some((d) => d.id === newDev.id);
+    const updated = exists
+      ? developments.map((d) => (d.id === newDev.id ? devRecalculado : d))
+      : [...developments, devRecalculado];
+    setDevelopments(updated);
+    // Upsert atômico: salva apenas este empreendimento
+    dbService.upsertEmpreendimento(devRecalculado).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
+  };
+
+  const deleteDev = (id: string) => {
+    const updated = developments.filter((d) => d.id !== id);
+    setDevelopments(updated);
+    dbService.deleteEmpreendimento(id).catch((e) => alert('Erro ao deletar empreendimento:\n' + JSON.stringify(e)));
+  };
+
+  const saveSale = (newSale: Venda, newClient: Cliente) => {
+    if (!isLoaded) return newSale;
+    if (!isOnline) {
+      addOfflineVendaDraft({
+        clientData: { ...newClient },
+        saleData: { ...newSale, status: "rascunho" },
+        observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
+      });
+      localStorage.setItem('venda_rascunho', JSON.stringify({
+        clientData: newClient,
+        saleData: { ...newSale, status: "rascunho" },
+      }));
+      alert("Você está offline. A venda foi salva somente como rascunho local. Conclua quando a internet voltar e o lote for validado.");
+      return { ...newSale, status: "rascunho" };
+    }
+    let updatedClients = [...clients];
+    const existingClientIndex = clients.findIndex(
+      (c) => c.cpf === newClient.cpf,
+    );
+    if (existingClientIndex === -1) {
+      newClient = normalizarNomeObrigatorio({ ...newClient, estado: (newClient.estado || "").toUpperCase() });
+      updatedClients.push(newClient);
+      setClients(updatedClients);
+      // Upsert atômico: salva apenas este cliente sem tocar nos outros
+      dbService.upsertCliente(newClient).catch((e) => {
+        console.error('Erro ao salvar cliente:', e);
+        alert('Erro ao salvar cliente no banco. Verifique a conexão.\n' + String(e?.message || e));
+      });
+    } else {
+      const existingClient = clients[existingClientIndex];
+      const mergedClient: Cliente = normalizarNomeObrigatorio({
+        ...existingClient,
+        ...newClient,
+        estado: (newClient.estado || existingClient.estado || "").toUpperCase(),
+        id: existingClient.id,
+        dataCadastro: existingClient.dataCadastro || newClient.dataCadastro,
+        genero: (newClient.genero || existingClient.genero || "") as any,
+        estadoCivil: newClient.estadoCivil || existingClient.estadoCivil,
+      } as Cliente);
+      updatedClients = updatedClients.map((c, idx) => idx === existingClientIndex ? mergedClient : c);
+      setClients(updatedClients);
+      dbService.upsertCliente(mergedClient).catch((e) => {
+        console.error('Erro ao atualizar cliente:', e);
+        alert('Erro ao atualizar cliente no banco. Verifique a conexão.\n' + String(e?.message || e));
+      });
+      newSale.clienteId = mergedClient.id;
+      newSale.clienteNome = mergedClient.nome;
+    }
+
+    const updatedSales = [newSale, ...sales];
+    setSales(updatedSales);
+    // Upsert atômico: salva apenas esta venda sem sobrescrever as outras
+    dbService.upsertVenda(newSale).catch((e) => {
+      console.error('Erro ao salvar venda:', e);
+      alert('Erro ao salvar venda no banco. Verifique a conexão.\n' + String(e?.message || e));
+    });
+
+    const updatedDevs = developments.map((d) => {
+      if (d.id === newSale.empreendimentoId) {
+        return addOrUpdateSoldLotFromSale(d, newSale, updatedSales);
+      }
+      return d;
+    });
+    setDevelopments(updatedDevs);
+    // Upsert atômico apenas do empreendimento afetado
+    const devAfetado = updatedDevs.find((d) => d.id === newSale.empreendimentoId);
+    if (devAfetado) dbService.upsertEmpreendimento(devAfetado).catch(console.error);
+
+    return newSale;
+  };
+
+  const persistEmpreendimentoAtualizado = (devAtualizado: Empreendimento) => {
+    dbService.upsertEmpreendimento(devAtualizado).catch(console.error);
+  };
+
+  const updateLoteStatus = (
+    empreendimentoId: string,
+    quadra: string,
+    lote: string,
+    novoStatus: "disponivel" | "reservado" | "indisponivel" | "vendido",
+    options: Record<string, any> = {},
+  ): Empreendimento | null => {
+    let devAtualizado: Empreendimento | null = null;
+    const vendasReferencia = options.vendasReferencia || sales;
+    const updated = developments.map((d) => {
+      if (d.id !== empreendimentoId) return d;
+      devAtualizado = updateLoteStatusInEmpreendimento(d, vendasReferencia, quadra, lote, novoStatus, options);
+      return devAtualizado;
+    });
+    setDevelopments(updated);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
+    return devAtualizado;
+  };
+
+  const updateLotesInfo = (
+    id: string,
+    info: Record<string, any>,
+  ) => {
+    let devAtualizado: Empreendimento | null = null;
+    const updated = developments.map((d) => {
+      if (d.id !== id) return d;
+      devAtualizado = applyLotesInfoPatchToEmpreendimento(d, info, sales);
+      return devAtualizado;
+    });
+    setDevelopments(updated);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
+  };
+
+  const deleteLot = (devId: string, key: string) => {
+    let devAtualizado: Empreendimento | null = null;
+    const updated = developments.map((d) => {
+      if (d.id !== devId) return d;
+      devAtualizado = deleteLotFromEmpreendimento(d, key, sales);
+      return devAtualizado;
+    });
+    setDevelopments(updated);
+    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
+  };
+
+  const saveAppConfig = (newConfig: AppConfig) => {
+    setConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
+  };
+
+  const handleImport = async (
+    data: { empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig },
+    mode: "replace" | "merge"
+  ) => {
+    let finalDevs: Empreendimento[];
+    let finalClients: Cliente[];
+    let finalSales: Venda[];
+    let finalConfig: AppConfig;
+
+    if (mode === "replace") {
+      finalDevs = data.empreendimentos;
+      finalClients = data.clientes;
+      finalSales = data.vendas;
+      finalConfig = data.config;
+    } else {
+      const devMap = new Map(developments.map((d) => [d.id, d]));
+      data.empreendimentos.forEach((d) => devMap.set(d.id, d));
+      finalDevs = Array.from(devMap.values());
+
+      const clientMap = new Map(clients.map((c) => [c.id, c]));
+      data.clientes.forEach((c) => clientMap.set(c.id, c));
+      finalClients = Array.from(clientMap.values());
+
+      const saleMap = new Map(sales.map((s) => [s.id, s]));
+      data.vendas.forEach((s) => saleMap.set(s.id, s));
+      finalSales = Array.from(saleMap.values());
+
+      finalConfig = { ...config, ...data.config, vendedores: data.config?.vendedores ?? config.vendedores };
+    }
+
+    await Promise.all([
+      dbService.saveEmpreendimentos(finalDevs),
+      dbService.saveClientes(finalClients),
+      dbService.saveVendas(finalSales),
+      dbService.saveAppConfig(finalConfig),
+    ]);
+
+    setDevelopments(finalDevs);
+    setClients(finalClients);
+    setSales(finalSales);
+    setConfig(finalConfig);
+  };
+
+  const [contractInitialMode, setContractInitialMode] = React.useState<'recibo' | undefined>(undefined);
+
+  const handleGoToContracts = (v: Venda) => {
+    setSection("contratos");
+    setContractToOpen(v);
+    setContractInitialMode(undefined);
+  };
+
+  const handleGoToContractsRecibo = (v: Venda) => {
+    setSection("contratos");
+    setContractToOpen(v);
+    setContractInitialMode('recibo');
+  };
+
+  const handleUpdateProprietario = (p: Proprietario) => {
+    const updated = (config.proprietarios || []).map((x) => x.id === p.id ? p : x);
+    const newConfig = { ...config, proprietarios: updated };
+    setConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
+  };
+
+  // Salva vendedor como proprietário (upsert por CPF — evita duplicidade)
+  const handleSaveProprietario = (p: Proprietario) => {
+    const lista = config.proprietarios || [];
+    const cpfLimpo = p.cpf.replace(/\D/g, "");
+    const existente = cpfLimpo
+      ? lista.find((x) => x.cpf.replace(/\D/g, "") === cpfLimpo)
+      : null;
+    let updated: Proprietario[];
+    if (existente) {
+      // Já existe — atualiza preservando o id original
+      updated = lista.map((x) =>
+        x.cpf.replace(/\D/g, "") === cpfLimpo ? normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase(), id: x.id } as any) : x
+      );
+    } else {
+      updated = [...lista, normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase() } as any)];
+    }
+    const newConfig = { ...config, proprietarios: updated };
+    setConfig(newConfig);
+    dbService.saveAppConfig(newConfig).catch(console.error);
+  };
+
+  const handleStartSale = (data: Partial<Venda>) => {
+    setPrefilledSale(data);
+    setEditingVendaEntry(null);
+    setSection("vendas");
+  };
+
+  const handleEditVenda = (venda: Venda) => {
+    const cliente = clients.find((c) => c.id === venda.clienteId) || null;
+    setEditingVendaEntry({ venda, cliente });
+    setPrefilledSale(undefined);
+    setSection("vendas");
+  };
+
+  const handleUpdateVendaFull = (updatedVenda: Venda, updatedCliente: Cliente) => {
+    const updatedSales = sales.map((s) =>
+      s.id === updatedVenda.id ? updatedVenda : s
+    );
+    setSales(updatedSales);
+    dbService.upsertVenda(updatedVenda).catch(console.error);
+    const updatedClients = clients.map((c) =>
+      c.id === updatedCliente.id ? updatedCliente : c
+    );
+    setClients(updatedClients);
+    dbService.upsertCliente(updatedCliente).catch(console.error);
+    setEditingVendaEntry(null);
+  };
+
+  const handleMergeClients = (masterId: string, duplicateIds: string[]) => {
+    const updatedSales = sales.map((s) =>
+      duplicateIds.includes(s.clienteId)
+        ? { ...s, clienteId: masterId, clienteNome: clients.find(c => c.id === masterId)?.nome || s.clienteNome }
+        : s
+    );
+    setSales(updatedSales);
+    // Upsert apenas das vendas que tiveram clienteId alterado
+    updatedSales
+      .filter((s) => {
+        const orig = sales.find((o) => o.id === s.id);
+        return orig && orig.clienteId !== s.clienteId;
+      })
+      .forEach((s) => dbService.upsertVenda(s).catch(console.error));
+    // Remove clientes duplicados via bulk save (operação de limpeza intencional)
+    const updatedClients = clients.filter((c) => !duplicateIds.includes(c.id));
+    setClients(updatedClients);
+    dbService.saveClientes(updatedClients).catch(console.error);
+  };
+
+  const updateVendaStatus = (
+    vendaId: string,
+    newStatus: "pendente" | "pago" | "cancelado",
+  ) => {
+    const updated = sales.map((s) =>
+      s.id === vendaId ? { ...s, status: newStatus } : s,
+    );
+    setSales(updated);
+    const vendaAtualizada = updated.find((s) => s.id === vendaId);
+    if (vendaAtualizada) dbService.upsertVenda(vendaAtualizada).catch(console.error);
+    if (contractToOpen && contractToOpen.id === vendaId) {
+      setContractToOpen({ ...contractToOpen, status: newStatus });
+    }
+  };
+
+  const deleteVenda = (id: string) => {
+    const venda = sales.find((s) => s.id === id);
+    if (!venda) return;
+
+    const dev = developments.find((d) => d.id === venda.empreendimentoId);
+    const lotInfoKey = venda.quadra && venda.numeroLote ? getLotInfoKey(venda.quadra, venda.numeroLote) : "";
+    const lotInfo = lotInfoKey ? (dev?.lotesInfo || {})[lotInfoKey] : null;
+    const contratoComLoteVendido = !!(
+      dev &&
+      venda.quadra &&
+      venda.numeroLote &&
+      (lotInfo?.status === "vendido" || findVendaAtivaDoLote(sales, dev.id, venda.quadra, venda.numeroLote))
+    );
+
+    let liberarLote = false;
+    if (contratoComLoteVendido) {
+      const continuar = window.confirm(
+        `Este contrato está vinculado a um lote vendido.\n\n` +
+        `Cliente: ${venda.clienteNome || "Cliente não informado"}\n` +
+        `Empreendimento: ${venda.empreendimentoNome || dev?.nome || "Não informado"}\n` +
+        `Quadra: ${venda.quadra}\n` +
+        `Lote: ${venda.numeroLote}\n\n` +
+        `Deseja continuar?`,
+      );
+      if (!continuar) return;
+
+      liberarLote = window.confirm(
+        `Escolha a ação para o lote ${venda.quadra}-${venda.numeroLote}:\n\n` +
+        `OK = Excluir contrato e liberar lote, mantendo histórico.\n` +
+        `Cancelar = Excluir apenas o contrato e manter lote vendido.`,
+      );
+    }
+
+    const updated = sales.filter((s) => s.id !== id);
+
+    if (liberarLote && dev && venda.quadra && venda.numeroLote) {
+      updateLoteStatus(dev.id, venda.quadra, venda.numeroLote, "disponivel", {
+        venda,
+        origem: "exclusao_contrato",
+        vendasReferencia: updated,
+      });
+    }
+
+    // Mover para lixeira em vez de excluir permanentemente
+    const agora = new Date();
+    const expiresAt = new Date(agora.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const novaExclusao: VendaExcluida = {
+      venda,
+      dataExclusao: agora.toISOString(),
+      expiresAt: expiresAt.toISOString(),
+    };
+    const novaLixeira = [...vendasExcluidas.filter((e) => e.venda.id !== id), novaExclusao];
+    setVendasExcluidas(novaLixeira);
+    saveLixeira(novaLixeira);
+
+    setSales(updated);
+    dbService.deleteVendaById(id).catch((e) => {
+      console.error('Erro ao excluir venda:', e);
+      alert('Erro ao excluir venda no banco.\n' + String(e?.message || e));
+    });
+  };
+
+  const restoreVenda = (item: VendaExcluida) => {
+    // Restaurar: re-inserir no estado de sales e no backend
+    const venda = item.venda;
+    setSales((prev) => {
+      if (prev.find((s) => s.id === venda.id)) return prev;
+      return [...prev, venda];
+    });
+    dbService.upsertVenda(venda).catch((e) => {
+      console.error('Erro ao restaurar venda:', e);
+      alert('Erro ao restaurar venda no banco.\n' + String(e?.message || e));
+    });
+    // Remover da lixeira
+    const novaLixeira = vendasExcluidas.filter((e) => e.venda.id !== venda.id);
+    setVendasExcluidas(novaLixeira);
+    saveLixeira(novaLixeira);
+  };
+
+  const updateVenda = (venda: Venda) => {
+    const updated = sales.map((s) => (s.id === venda.id ? venda : s));
+    setSales(updated);
+    dbService.upsertVenda(venda).catch(console.error);
+  };
+
+  const renderSection = () => {
+    switch (section) {
+      case "dashboard":
+        return (
+          <DashboardSection
+            sales={sales}
+            developments={developments}
+            clients={clients}
+            onNavigate={(s) => setSection(s)}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+          />
+        );
+      case "empreendimentos":
+        return (
+          <EmpreendimentosSection
+            developments={developments}
+            sales={sales}
+            clients={clients}
+            onSave={saveDev}
+            onDelete={deleteDev}
+            onUpdateLotesInfo={updateLotesInfo}
+            onDeleteLot={deleteLot}
+            onStartSale={handleStartSale}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+            onReleaseSoldLot={(vendaId) => updateVendaStatus(vendaId, "cancelado")}
+            proprietarios={config.proprietarios || []}
+            canEditMap={!!isAdmin || userPermissions?.editar_mapas === true}
+          />
+        );
+      case "proprietarios":
+        return <ProprietariosSection config={config} onSave={saveAppConfig} />;
+      case "vendas":
+        return (
+          <VendasSection
+            developments={developments}
+            sales={sales}
+            onSaveVenda={saveSale}
+            onGoToContracts={handleGoToContracts}
+            onGoToContractsRecibo={handleGoToContractsRecibo}
+            initialSaleData={prefilledSale}
+            onSaveDev={saveDev}
+            vendedores={config.vendedores || []}
+            clients={clients}
+            editingEntry={editingVendaEntry}
+            onUpdateVendaFull={handleUpdateVendaFull}
+            onMergeClients={handleMergeClients}
+            isOnline={isOnline}
+          />
+        );
+      case "contratos":
+        return (
+          <ContratosSection
+            sales={sales}
+            clients={clients}
+            developments={developments}
+            initialVenda={contractToOpen}
+            onUpdateStatus={updateVendaStatus}
+            onSaveVenda={saveSale}
+            onDeleteVenda={deleteVenda}
+            onUpdateVenda={updateVenda}
+            vendedores={config.vendedores || []}
+            proprietarios={config.proprietarios || []}
+            initialMode={contractInitialMode}
+            onUpdateProprietario={handleUpdateProprietario}
+            onSaveProprietario={handleSaveProprietario}
+            onEditVenda={handleEditVenda}
+            onNovoContrato={() => { setEditingVendaEntry(null); setSection("vendas"); }}
+            onClearInitialVenda={() => setContractToOpen(null)}
+            userProfile={userProfile}
+          />
+        );
+      case "clientes":
+        return (
+          <ClientesSection
+            clients={clients}
+            sales={sales}
+            onUpdateCliente={(updated) => {
+              const updatedList = clients.map((c) =>
+                c.id === updated.id ? updated : c
+              );
+              setClients(updatedList);
+              dbService.upsertCliente(updated).catch(console.error);
+            }}
+          />
+        );
+      case "aniversarios":
+        return (
+          <AniversariosSection
+            clients={clients}
+            sales={sales}
+            onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+          />
+        );
+      case "calculadora":
+        return <CalculatorSection />;
+      case "config":
+        return (
+          <ConfigSection
+            config={config}
+            onSave={saveAppConfig}
+            developments={developments}
+            clients={clients}
+            sales={sales}
+            onImport={handleImport}
+          />
+        );
+      case "usuarios":
+        return (
+          <UsuariosSection
+            isAdmin={isAdmin}
+            userId={userId}
+            userEmail={userEmail}
+          />
+        );
+      case "historico":
+        return (
+          <HistoricoExclusoesSection
+            vendasExcluidas={vendasExcluidas}
+            onRestore={restoreVenda}
+          />
+        );
+      default:
+        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
+    }
+  };
+
+  const getTitle = () => {
+    const titles: Record<Section, string> = {
+      dashboard: "Dashboard Geral",
+      empreendimentos: "Empreendimentos",
+      proprietarios: "Proprietários",
+      vendas: "Registro de Novas Vendas",
+      contratos: "Contratos e Documentação",
+      clientes: "Gestão de Clientes",
+      aniversarios: "Calendário de Aniversariantes",
+      calculadora: "Simulador de Vendas",
+      config: "Configurações do Sistema",
+      usuarios: "Gerenciar Usuários",
+      historico: "Histórico de Exclusões",
+    };
+    return titles[section];
+  };
+
+  return (
+    <div className="min-h-screen bg-surface-bg flex w-full max-w-full overflow-x-hidden">
+      <Sidebar
+        currentSection={section}
+        setSection={(s) => {
+          // Só navega se tiver permissão
+          if (userPermissions && !userPermissions[s] && !isAdmin) return;
+          setSection(s);
+        }}
+        isOpen={isSidebarOpen}
+        setIsOpen={setIsSidebarOpen}
+        onLogout={onLogout}
+        isAdmin={isAdmin}
+        forceDesktop={forceDesktop}
+        onToggleDesktop={toggleDesktop}
+        userPermissions={userPermissions}
+        userEmail={userEmail}
+      />
+
+      <main className={`flex-1 min-w-0 w-full max-w-full overflow-x-hidden ${forceDesktop ? "ml-72" : "lg:ml-72"} p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"} no-print transition-all duration-300`}>
+        <Header
+          title={getTitle()}
+          toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
+          forceDesktop={forceDesktop}
+          onGoDashboard={() => setSection("dashboard")}
+        />
+
+        <div className="w-full max-w-7xl mx-auto mb-4 space-y-2">
+          {!isOnline && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-800 flex items-start gap-3 shadow-sm">
+              <AlertTriangle size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest">Você está offline</p>
+                <p className="text-sm font-semibold">
+                  Os dados exibidos são da última sincronização. Você pode navegar, consultar empreendimentos, mapas e lotes. Vendas só podem ser concluídas quando a internet voltar.
+                </p>
+              </div>
+            </div>
+          )}
+          {isOnline && offlineDraftCount > 0 && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-blue-800 flex items-start gap-3 shadow-sm">
+              <Clock size={18} className="mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-black uppercase tracking-widest">Rascunhos offline pendentes</p>
+                <p className="text-sm font-semibold">
+                  Existem {offlineDraftCount} rascunho(s) local(is). Abra o rascunho, valide o lote com internet e conclua a venda somente se ainda estiver disponível.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        <AnimatePresence mode="wait">
+          <motion.div
+            key={section}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -20 }}
+            transition={{ duration: 0.3, ease: "easeOut" }}
+            className="w-full max-w-7xl mx-auto min-w-0"
+          >
+            {!isLoaded ? (
+              <div className="flex flex-col items-center justify-center py-32 gap-4">
+                <div className="w-8 h-8 border-4 border-primary-main border-t-transparent rounded-full animate-spin" />
+                <p className="text-slate-500 text-sm font-medium">Carregando dados do servidor...</p>
+              </div>
+            ) : renderSection()}
+          </motion.div>
+        </AnimatePresence>
+      </main>
+
+      {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} />}
+      {section !== "vendas" && !forceDesktop && <FAB setSection={setSection} />}
+
+      {/* Hidden print area for contracts */}
+      <div className="hidden print-only w-full h-full bg-white">
+        {/* The contract modal content is handled separately but we can replicate standard print view if needed */}
+        {/* For this applet, window.print on the modal is effective since it's the only visible thing */}
+      </div>
+    </div>
+  );
+}
+
