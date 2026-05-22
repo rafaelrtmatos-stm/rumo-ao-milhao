@@ -1453,6 +1453,8 @@ const Sidebar = ({
   userEmail?: string;
 }) => {
   const allMenuItems = [
+    { id: "inicio", label: "Início", icon: Home },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: FileText },
     { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
@@ -1674,9 +1676,10 @@ const BottomNav = ({
   setSection: (s: Section) => void;
 }) => {
   const items = [
-    { id: "dashboard", label: "Dashboard", icon: Home },
+    { id: "inicio", label: "Início", icon: Home },
+    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
+    { id: "vendas", label: "Venda", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: FileText },
-    { id: "clientes", label: "Clientes", icon: Users },
     { id: "empreendimentos", label: "Mapa", icon: MapPin },
   ];
 
@@ -4246,23 +4249,35 @@ const LotDashboard = ({
             )}
             </div>
             {!isEditingMap && (
-              <button
-                type="button"
-                onClick={() => {
-                  setMapFullscreen(true);
-                  setMapActive(true);
-                  setMapZoom(1);
-                  setMapPan({ x: 0, y: 0 });
-                  try {
-                    const lockPromise = (screen as any).orientation?.lock?.("landscape");
-                    lockPromise?.catch?.(() => undefined);
-                  } catch {}
-                  scheduleMapScaleUpdate(true);
-                }}
-                className="mt-3 w-full rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
-              >
-                Ver em tela cheia
-              </button>
+              <div className="flex gap-2 mt-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapFullscreen(true);
+                    setMapActive(true);
+                    setMapZoom(1);
+                    setMapPan({ x: 0, y: 0 });
+                    try {
+                      const lockPromise = (screen as any).orientation?.lock?.("landscape");
+                      lockPromise?.catch?.(() => undefined);
+                    } catch {}
+                    scheduleMapScaleUpdate(true);
+                  }}
+                  className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
+                >
+                  ⛶ Tela cheia
+                </button>
+                {mapaImagem && (
+                  <>
+                    <button onClick={baixarMapaInterativoImagem} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar imagem">
+                      <FileDown size={16} />
+                    </button>
+                    <button onClick={baixarMapaInterativoPdf} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar PDF">
+                      <FileText size={16} />
+                    </button>
+                  </>
+                )}
+              </div>
             )}
           </div>
 
@@ -4530,13 +4545,7 @@ const LotDashboard = ({
           </div>
         </div>
 
-        {/* BOTÕES IMAGEM / PDF — sempre embaixo do mapa */}
-        {mapaImagem && !isEditingMap && (
-          <div className="grid grid-cols-2 gap-2 max-w-xs">
-            <button onClick={baixarMapaInterativoImagem} className="btn-secondary w-full flex items-center justify-center gap-2"><FileDown size={14} />Imagem</button>
-            <button onClick={baixarMapaInterativoPdf} className="btn-secondary w-full flex items-center justify-center gap-2"><FileText size={14} />PDF</button>
-          </div>
-        )}
+
 
         {/* FORMULÁRIO NOVO MARCADOR — flutuante e arrastável sobre o mapa */}
         <AnimatePresence>
@@ -15026,6 +15035,49 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
         subClientes = dbService.subscribeToClientes((d) => setClients(d));
         subVendas = dbService.subscribeToVendas((d) => setSales(d));
+
+        // Geocoding automático em background: empreendimentos com link Maps mas sem lat/lng
+        if (results[0].status === 'fulfilled') {
+          const devs = results[0].value as Empreendimento[];
+          const semCoords = devs.filter((d: any) => {
+            const semLatLng = !d.lat || !d.lng || d.lat === 0;
+            const temLink = getEmpreendimentoMapsUrl(d);
+            const temCidade = d.cidade?.trim();
+            return semLatLng && (temLink || temCidade);
+          });
+          // Geocodificar em sequência (throttled para não sobrecarregar Nominatim)
+          const geocodificar = async () => {
+            for (const d of semCoords) {
+              try {
+                const mapsUrl = getEmpreendimentoMapsUrl(d);
+                let lat: number | undefined, lng: number | undefined;
+                // Tentar extrair do link do Maps
+                if (mapsUrl) {
+                  const patterns = [/@(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/, /ll=(-?\d+\.\d+),(-?\d+\.\d+)/];
+                  for (const pat of patterns) {
+                    const m = mapsUrl.match(pat);
+                    if (m) { lat = parseFloat(m[1]); lng = parseFloat(m[2]); break; }
+                  }
+                }
+                // Fallback: Nominatim por cidade
+                if (!lat && d.cidade) {
+                  const q = [d.cidade, d.estado, 'Brasil'].filter(Boolean).join(', ');
+                  const r = await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1`);
+                  const data: any[] = await r.json();
+                  if (data?.[0]) { lat = parseFloat(data[0].lat); lng = parseFloat(data[0].lon); }
+                  await new Promise(res => setTimeout(res, 1100)); // Respeitar rate limit Nominatim
+                }
+                if (lat && lng) {
+                  const updated = { ...d, lat, lng } as Empreendimento;
+                  const recalc = recalcularEstatisticasEmpreendimento(updated, []);
+                  setDevelopments(prev => prev.map(p => p.id === recalc.id ? recalc : p));
+                  dbService.upsertEmpreendimento(recalc).catch(() => {});
+                }
+              } catch {}
+            }
+          };
+          if (semCoords.length > 0) void geocodificar();
+        }
       } catch (e: unknown) {
         console.error('Erro ao carregar dados:', e);
         alert('Erro crítico ao carregar dados:\n' + JSON.stringify(e));
@@ -15463,6 +15515,39 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   const renderSection = () => {
     switch (section) {
+      case "inicio":
+        return (
+          <div className="p-6 sm:p-10 max-w-2xl mx-auto space-y-6">
+            <div className="text-center space-y-2">
+              <h1 className="text-3xl font-display font-bold text-primary-main italic">Rumo ao Milhão</h1>
+              <p className="text-slate-400 text-sm">Bem-vindo ao sistema imobiliário</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              {[
+                { label: "Dashboard", icon: "📊", section: "dashboard" },
+                { label: "Nova Venda", icon: "🛒", section: "vendas" },
+                { label: "Empreendimentos", icon: "🏗", section: "empreendimentos" },
+                { label: "Contratos", icon: "📄", section: "contratos" },
+                { label: "Clientes", icon: "👥", section: "clientes" },
+                { label: "Calculadora", icon: "🔢", section: "calculadora" },
+              ].map(item => (
+                <button key={item.section} onClick={() => setSection(item.section as Section)}
+                  className="card-premium p-5 flex flex-col items-center gap-3 hover:shadow-xl transition-all active:scale-95">
+                  <span className="text-3xl">{item.icon}</span>
+                  <span className="text-sm font-black text-slate-700">{item.label}</span>
+                </button>
+              ))}
+            </div>
+            <div className="card-premium p-4 space-y-3">
+              <p className="text-xs font-black uppercase tracking-widest text-slate-400">Resumo rápido</p>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center"><p className="text-2xl font-black text-primary-main">{sales.filter(s => s.status !== "cancelado").length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Vendas</p></div>
+                <div className="text-center"><p className="text-2xl font-black text-primary-main">{clients.length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Clientes</p></div>
+                <div className="text-center"><p className="text-2xl font-black text-primary-main">{developments.length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Empreend.</p></div>
+              </div>
+            </div>
+          </div>
+        );
       case "dashboard":
         return (
           <DashboardSection

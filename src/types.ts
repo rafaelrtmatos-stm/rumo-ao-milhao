@@ -1,4 +1,5 @@
 export type Section =
+  | "inicio"
   | "dashboard"
   | "vendas"
   | "empreendimentos"

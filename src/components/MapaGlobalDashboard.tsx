@@ -271,9 +271,31 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         </div>
 
         {/* Contador */}
-        <div className="absolute bottom-3 left-3 z-[1000] bg-white rounded-xl px-3 py-1.5 text-[11px] font-bold text-slate-600 shadow-md">
-          {devsFiltrados.length} empreendimento{devsFiltrados.length !== 1 ? "s" : ""} no mapa
-          {semCoordenadas > 0 && <span className="text-slate-400 ml-1">· {semCoordenadas} sem localização</span>}
+        <div className="absolute bottom-3 left-3 z-[1000] flex gap-2 items-center">
+          <div className="bg-white rounded-xl px-3 py-1.5 text-[11px] font-bold text-slate-600 shadow-md">
+            {devsFiltrados.length} empreendimento{devsFiltrados.length !== 1 ? "s" : ""} no mapa
+            {semCoordenadas > 0 && <span className="text-slate-400 ml-1">· {semCoordenadas} sem localização</span>}
+          </div>
+          <button
+            onClick={() => {
+              if (!leafletMapRef.current) return;
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  leafletMapRef.current!.setView([pos.coords.latitude, pos.coords.longitude], 13, { animate: true });
+                  import("leaflet").then(L => {
+                    L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
+                      radius: 10, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.7, weight: 3,
+                    }).addTo(leafletMapRef.current!).bindPopup("Você está aqui").openPopup();
+                  });
+                },
+                () => alert("Não foi possível obter sua localização.")
+              );
+            }}
+            className="bg-white rounded-xl px-3 py-1.5 text-[11px] font-bold text-blue-600 shadow-md hover:bg-blue-50"
+            title="Centralizar na minha localização"
+          >
+            📍 Minha localização
+          </button>
         </div>
 
         {/* Camadas */}
