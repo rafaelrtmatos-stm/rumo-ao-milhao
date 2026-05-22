@@ -1466,9 +1466,22 @@ const Sidebar = ({
   ];
 
   // Filtra itens de menu por permissão (admin sempre vê tudo)
-  const mainMenuItems = isAdmin
-    ? allMenuItems
-    : allMenuItems.filter((item) => userPermissions?.[item.id] !== false);
+  // Aplicar ordem customizada (admin) e ocultar abas
+  const orderedItems = (() => {
+    const hidden = (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('hiddenMenuItems') || '[]') : []) as string[];
+    const order = (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('menuOrder') || '[]') : []) as string[];
+    let items = isAdmin ? allMenuItems : allMenuItems.filter(item => userPermissions?.[item.id] !== false);
+    // Remover ocultos
+    items = items.filter(item => !hidden.includes(item.id));
+    // Aplicar ordem
+    if (order.length > 0) {
+      const sorted = [...order.map(id => items.find(i => i.id === id)).filter(Boolean) as typeof items,
+        ...items.filter(i => !order.includes(i.id))];
+      return sorted;
+    }
+    return items;
+  })();
+  const mainMenuItems = orderedItems;
 
   const configItem = { id: "config", label: "Configurações", icon: Settings };
   const showConfig = isAdmin || userPermissions?.["config"] !== false;
@@ -13526,6 +13539,65 @@ const ConfigSection = ({
       </div>
 
       <div className="card-premium space-y-8">
+
+        {/* ORDEM DAS ABAS — apenas admin */}
+        {isAdmin && (
+          <div>
+            <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-2">
+              <Settings size={18} className="text-primary-main" />
+              Ordem e visibilidade das abas
+            </h4>
+            <p className="text-xs text-slate-400 mb-4">Clique nas setas para reordenar. Clique no olho para mostrar/ocultar.</p>
+            <div className="space-y-2">
+              {(() => {
+                const allItems = [
+                  { id: "inicio", label: "Início" },
+                  { id: "dashboard", label: "Dashboard" },
+                  { id: "vendas", label: "Nova Venda" },
+                  { id: "contratos", label: "Contratos" },
+                  { id: "empreendimentos", label: "Empreendimentos" },
+                  { id: "clientes", label: "Clientes" },
+                  { id: "aniversarios", label: "Aniversários" },
+                  { id: "proprietarios", label: "Proprietários" },
+                  { id: "usuarios", label: "Usuários" },
+                  { id: "calculadora", label: "Calculadora" },
+                ];
+                const order = menuOrder.length > 0 ? menuOrder : allItems.map(i => i.id);
+                const sorted = [...order.map(id => allItems.find(i => i.id === id)).filter(Boolean),
+                  ...allItems.filter(i => !order.includes(i.id))];
+                return sorted.map((item, idx) => item && (
+                  <div key={item.id} className={`flex items-center gap-2 p-3 rounded-xl border transition-all ${hiddenMenuItems.includes(item.id) ? 'opacity-40 bg-slate-50 border-slate-100' : 'bg-white border-slate-200'}`}>
+                    <span className="flex-1 text-sm font-semibold text-slate-700">{item.label}</span>
+                    <button disabled={idx === 0} onClick={() => {
+                      const newOrder = [...sorted.map(i => i!.id)];
+                      [newOrder[idx-1], newOrder[idx]] = [newOrder[idx], newOrder[idx-1]];
+                      setMenuOrder(newOrder);
+                      localStorage.setItem('menuOrder', JSON.stringify(newOrder));
+                    }} className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 text-xs disabled:opacity-20 hover:bg-slate-200">↑</button>
+                    <button disabled={idx === sorted.length-1} onClick={() => {
+                      const newOrder = [...sorted.map(i => i!.id)];
+                      [newOrder[idx], newOrder[idx+1]] = [newOrder[idx+1], newOrder[idx]];
+                      setMenuOrder(newOrder);
+                      localStorage.setItem('menuOrder', JSON.stringify(newOrder));
+                    }} className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 text-xs disabled:opacity-20 hover:bg-slate-200">↓</button>
+                    <button onClick={() => {
+                      const next = hiddenMenuItems.includes(item!.id)
+                        ? hiddenMenuItems.filter(x => x !== item!.id)
+                        : [...hiddenMenuItems, item!.id];
+                      setHiddenMenuItems(next);
+                      localStorage.setItem('hiddenMenuItems', JSON.stringify(next));
+                    }} className="w-7 h-7 rounded-lg bg-slate-100 text-slate-500 text-xs hover:bg-slate-200" title={hiddenMenuItems.includes(item.id) ? "Mostrar" : "Ocultar"}>
+                      {hiddenMenuItems.includes(item.id) ? "👁" : "🙈"}
+                    </button>
+                  </div>
+                ));
+              })()}
+            </div>
+            <button onClick={() => { setMenuOrder([]); setHiddenMenuItems([]); localStorage.removeItem('menuOrder'); localStorage.removeItem('hiddenMenuItems'); }}
+              className="mt-3 text-xs text-slate-400 hover:text-slate-600 underline">Restaurar padrão</button>
+          </div>
+        )}
+
         <div>
           <h4 className="font-bold text-slate-800 mb-4 flex items-center gap-2">
             <LayoutDashboard size={18} className="text-primary-main" />
