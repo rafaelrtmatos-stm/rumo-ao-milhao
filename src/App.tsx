@@ -5286,12 +5286,6 @@ const EmpreendimentosSection = ({
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(true);
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
-  const [menuOrder, setMenuOrder] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('menuOrder') || 'null') || []; } catch { return []; }
-  });
-  const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>(() => {
-    try { return JSON.parse(localStorage.getItem('hiddenMenuItems') || 'null') || []; } catch { return []; }
-  });
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
@@ -14998,6 +14992,12 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isLoaded, setIsLoaded] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
+  const [menuOrder, setMenuOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('menuOrder') || 'null') || []; } catch { return []; }
+  });
+  const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('hiddenMenuItems') || 'null') || []; } catch { return []; }
+  });
   const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl?: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
