@@ -4192,7 +4192,7 @@ const LotDashboard = ({
           </div>
 
           {/* PAINEL LATERAL FLUTUANTE */}
-          <div className={"absolute top-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 " + (painelRecolhido ? "w-10" : "w-[280px]")}>
+          <div className={`absolute top-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${painelRecolhido ? "w-10" : "w-[280px]"}`}>
             {/* Botao recolher */}
             <button
               type="button"
@@ -4200,9 +4200,9 @@ const LotDashboard = ({
               className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50"
               title={painelRecolhido ? "Expandir painel" : "Recolher painel"}
             >
-              {painelRecolhido ? "◀" : "▶"}
+              {painelRecolhido ? "⊲" : "⊳"}
             </button>
-            {!painelRecolhido && <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-0.5">
+            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-0.5" style={{display: painelRecolhido ? "none" : "flex", flexDirection: "column"}}>
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
@@ -4664,7 +4664,6 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
-          </div>}
           </div>
         {mapFullscreen && (
           <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
