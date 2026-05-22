@@ -2526,47 +2526,51 @@ const LotDashboard = ({
     scheduleMapScaleUpdate(true);
   };
 
-  const fitMapToScreen = () => {
-    // Calcular zoom ideal: encaixa toda a imagem no viewport
-    // - Retrato (altura > largura): encaixa pela altura
-    // - Paisagem (largura > altura): encaixa pelas laterais
+  const fitMapToScreen = (attempt = 0) => {
     requestAnimationFrame(() => {
       const viewport = mapViewportRef.current;
       const img = mapImageRef.current;
+
+      // Se imagem ou viewport nao estao prontos, tentar de novo (max 8 tentativas)
       if (!viewport || !img || !img.naturalWidth || !img.naturalHeight) {
-        setMapZoom(1);
-        setMapPan({ x: 0, y: 0 });
-        scheduleMapScaleUpdate(true);
+        if (attempt < 8) setTimeout(() => fitMapToScreen(attempt + 1), 80);
+        else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
         return;
       }
 
-      const vpW = viewport.clientWidth || viewport.getBoundingClientRect().width;
-      const vpH = viewport.clientHeight || viewport.getBoundingClientRect().height;
+      const vpRect = viewport.getBoundingClientRect();
+      const vpW = vpRect.width;
+      const vpH = vpRect.height;
+
+      // Viewport sem altura ainda (container nao renderizou) — tentar de novo
+      if (vpW <= 0 || vpH <= 0) {
+        if (attempt < 8) setTimeout(() => fitMapToScreen(attempt + 1), 80);
+        else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
+        return;
+      }
+
       const imgW = img.naturalWidth;
       const imgH = img.naturalHeight;
 
-      if (vpW <= 0 || vpH <= 0) {
-        setMapZoom(1);
-        setMapPan({ x: 0, y: 0 });
-        scheduleMapScaleUpdate(true);
-        return;
-      }
-
-      // Zoom 1 = imagem renderizada na largura CSS do container (w-full)
-      // imgLayoutW = largura real em px que a imagem ocupa no zoom 1
-      const imgLayoutW = img.offsetWidth || vpW;
+      // imgLayoutW: largura natural da imagem no zoom 1 = largura do viewport
+      const imgLayoutW = vpW;
       const imgLayoutH = imgLayoutW * (imgH / imgW);
 
-      // Calcular zoom para encaixar toda a imagem no viewport
-      const zoomByWidth  = vpW / imgLayoutW;   // encaixa horizontalmente
-      const zoomByHeight = vpH / imgLayoutH;   // encaixa verticalmente
-
-      // Usar o menor zoom para garantir que a imagem inteira aparece
+      // Zoom para encaixar pela largura vs altura — usar o menor para ver o mapa inteiro
+      const zoomByWidth  = vpW / imgLayoutW;   // sempre 1
+      const zoomByHeight = vpH / imgLayoutH;   // < 1 se mapa for alto (retrato)
       const fitZoom = Math.min(zoomByWidth, zoomByHeight);
-      const safeZoom = Math.max(0.1, Math.min(10, fitZoom));
+      const safeZoom = Math.max(0.05, Math.min(10, fitZoom));
+
+      // Com transformOrigin "0 0", centralizar manualmente
+      // A imagem escalada tem: largura = imgLayoutW * safeZoom, altura = imgLayoutH * safeZoom
+      const scaledW = imgLayoutW * safeZoom;
+      const scaledH = imgLayoutH * safeZoom;
+      const panX = (vpW - scaledW) / 2;
+      const panY = (vpH - scaledH) / 2;
 
       setMapZoom(safeZoom);
-      setMapPan({ x: 0, y: 0 });
+      setMapPan({ x: panX > 0 ? panX : 0, y: panY > 0 ? panY : 0 });
       scheduleMapScaleUpdate(false);
     });
   };
@@ -4204,7 +4208,7 @@ const LotDashboard = ({
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
               className={`relative bg-white rounded-2xl overflow-hidden select-none w-full h-full ${mapActive ? "ring-2 ring-blue-500" : ""}`}
-              style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
+              style={{ touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
             <div
               ref={mapContainerRef}
@@ -4249,7 +4253,7 @@ const LotDashboard = ({
                 }
               }}
               className={`relative bg-white w-full select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "top center", willChange: "transform" }}
+              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", willChange: "transform" }}
             >
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
