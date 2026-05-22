@@ -135,6 +135,8 @@ export interface Empreendimento {
   ruasFaixas?: any[];
   lotesPorQuadra?: Record<string, { inicio?: number; fim?: number; especificos?: string }>;
   lotesInfo?: Record<string, any>;
+  lat?: number;
+  lng?: number;
   mapaImagemUrl?: string;
   mapaImagemBase64?: string;
   mapaPontos?: MapaPonto[];

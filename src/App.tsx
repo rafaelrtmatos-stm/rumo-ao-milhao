@@ -98,6 +98,7 @@ import { dbService, setCurrentUser } from "./dbService";
 import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
+import MapaGlobalDashboard from "./components/MapaGlobalDashboard";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
 
@@ -5159,6 +5160,7 @@ const EmpreendimentosSection = ({
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [devSearch, setDevSearch] = useState("");
+  const [showMapaGlobal, setShowMapaGlobal] = useState(false);
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
@@ -5498,6 +5500,14 @@ const EmpreendimentosSection = ({
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
           <button
+            onClick={() => setShowMapaGlobal(v => !v)}
+            className={`btn-secondary flex-1 sm:flex-none flex items-center gap-2 ${showMapaGlobal ? "bg-slate-900 text-white border-slate-900" : ""}`}
+          >
+            <MapPin size={16} />
+            <span className="hidden sm:inline">{showMapaGlobal ? "Fechar mapa" : "Mapa global"}</span>
+            <span className="sm:hidden">Mapa</span>
+          </button>
+          <button
             onClick={() => {
               if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
               else openAddForm();
@@ -5509,6 +5519,26 @@ const EmpreendimentosSection = ({
           </button>
         </div>
       </div>
+
+      {/* MAPA GLOBAL */}
+      {showMapaGlobal && (
+        <div className="card-premium overflow-hidden" style={{ height: 520 }}>
+          <MapaGlobalDashboard
+            empreendimentos={developments}
+            sales={sales}
+            onAbrirEmpreendimento={(id) => {
+              setShowMapaGlobal(false);
+              const dev = developments.find(d => d.id === id);
+              if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); }
+            }}
+            onVerMapa={(id) => {
+              setShowMapaGlobal(false);
+              const dev = developments.find(d => d.id === id);
+              if (dev && onStartSale) onStartSale({ empreendimentoId: id } as any);
+            }}
+          />
+        </div>
+      )}
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
@@ -5589,6 +5619,38 @@ const EmpreendimentosSection = ({
                   }
                   placeholder="0"
                 />
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="label">Localização no mapa (Latitude / Longitude)</label>
+                <div className="flex gap-2">
+                  <input
+                    className="input-field flex-1"
+                    type="number"
+                    step="any"
+                    value={(formData as any).lat ?? ""}
+                    onChange={(e) => setFormData({ ...formData, lat: e.target.value ? Number(e.target.value) : undefined } as any)}
+                    placeholder="Ex: -3.7172"
+                  />
+                  <input
+                    className="input-field flex-1"
+                    type="number"
+                    step="any"
+                    value={(formData as any).lng ?? ""}
+                    onChange={(e) => setFormData({ ...formData, lng: e.target.value ? Number(e.target.value) : undefined } as any)}
+                    placeholder="Ex: -55.0185"
+                  />
+                  <a
+                    href={`https://www.google.com/maps${(formData as any).lat && (formData as any).lng ? `/@${(formData as any).lat},${(formData as any).lng},15z` : ""}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 whitespace-nowrap"
+                    title="Abrir Google Maps para pegar coordenadas"
+                  >
+                    📍 Maps
+                  </a>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Necessário para aparecer no mapa global do dashboard. Abra o Google Maps, clique direito no local e copie as coordenadas.</p>
               </div>
 
               <div>
