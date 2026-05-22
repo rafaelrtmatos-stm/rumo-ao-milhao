@@ -2535,9 +2535,10 @@ const LotDashboard = ({
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
-    // Suporta pan: modo mover OU Ctrl pressionado
+    // Suporta pan: modo mover OU Ctrl pressionado — funciona em visualização, edição e tela cheia
     const isCtrlDown = e.ctrlKey || isCtrlPanning;
-    if (!isEditingMap || (mapEditTool !== "mover" && !isCtrlDown)) return;
+    if (!isCtrlDown && isEditingMap && mapEditTool !== "mover") return;
+    if (!isCtrlDown && !isEditingMap) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
@@ -4032,7 +4033,7 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning && isEditingMap ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
             >
               {(localDev as any).mapaPdfOriginalBase64 ? (
