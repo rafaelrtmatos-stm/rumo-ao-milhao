@@ -104,6 +104,21 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
 
       leafletMapRef.current = map;
       setMapReady(true);
+
+      // Centralizar automaticamente após inicialização
+      setTimeout(() => {
+        const devs = empreendimentos.filter(d => d.lat && d.lng && d.lat !== 0);
+        if (devs.length === 1) {
+          // 1 empreendimento: zoom de ~2km (nível 14)
+          map.setView([devs[0].lat!, devs[0].lng!], 14, { animate: false });
+        } else if (devs.length > 1) {
+          // Múltiplos: ajustar para mostrar todos
+          import("leaflet").then(L2 => {
+            const bounds = L2.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
+            map.fitBounds(bounds, { padding: [40, 40], maxZoom: 14, animate: false });
+          });
+        }
+      }, 200);
     });
 
     return () => {

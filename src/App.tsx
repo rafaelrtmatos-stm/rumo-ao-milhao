@@ -99,6 +99,7 @@ import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 import MapaGlobalDashboard from "./components/MapaGlobalDashboard";
+import PickLocationMap from "./components/PickLocationMap";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
 
@@ -6097,10 +6098,15 @@ const EmpreendimentosSection = ({
                   </p>
                 ) : (
                   <div className="mt-1 space-y-1">
-                    <p className="text-[10px] text-slate-400">Cole o link do Google Maps. Para links encurtados (goo.gl), as coordenadas são extraídas automaticamente.</p>
-                    <p className="text-[10px] text-amber-500 font-bold">💡 Aceita: link do Maps, coordenadas DMS (2°26'50.1"S 54°48'18.1"W) ou decimais (-2.4472, -54.8050)</p>
+                    <p className="text-[10px] text-slate-400">Cole o link do Maps, coordenadas DMS (2°26'50.1"S 54°48'18.1"W) ou decimais. Ou clique no mapa abaixo.</p>
                   </div>
                 )}
+                {/* MINI MAPA PARA CLICAR E DEFINIR LOCALIZAÇÃO */}
+                <PickLocationMap
+                  lat={(formData as any).lat ?? null}
+                  lng={(formData as any).lng ?? null}
+                  onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
+                />
               </div>
 
               <div>
