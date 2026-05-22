@@ -4098,7 +4098,7 @@ const LotDashboard = ({
         )}
         <div className="flex flex-col lg:relative lg:block lg:h-[calc(100vh-200px)] h-auto gap-0">
           {/* CANVAS DO MAPA */}
-          <div className="relative bg-slate-100 rounded-2xl border border-slate-200 h-[70vw] min-h-[300px] lg:absolute lg:inset-0 lg:h-auto" style={{overflow: mapZoom > 1 ? "visible" : "hidden"}}>
+          <div className="relative bg-slate-100 rounded-2xl border border-slate-200 overflow-hidden lg:absolute lg:inset-0 lg:h-auto" style={{height: window.innerWidth < 1024 ? `${Math.max(300, Math.round(Math.min(window.innerWidth * 0.9, 600) * (mapZoom > 1 ? Math.min(mapZoom, 2) : 1)))}px` : undefined}}>
             {mapHighResLoading && (
               <div className="absolute top-2 left-2 z-10 bg-black/50 text-white text-[10px] px-2 py-1 rounded-lg">
                 Carregando alta resolução...
@@ -4987,17 +4987,17 @@ const LotDashboard = ({
         </div>
 
         {/* ABAS */}
-        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row gap-3 sm:items-center sm:justify-between">
-          <div className="flex gap-2 flex-wrap">
+        <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
+          <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl w-full">
             {mapaImagem && (
               <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
-                className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "mapa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
-                Mapa interativo
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                🗺 Mapa
               </button>
             )}
             <button onClick={() => setMode("quadradinhos")}
-              className={`px-4 py-2 rounded-xl text-xs font-black uppercase ${mode === "quadradinhos" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}>
-              Quadradinhos/lotes atuais
+              className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+              ⊞ Lotes
             </button>
           </div>
         </div>
