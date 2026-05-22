@@ -9133,32 +9133,59 @@ VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
                     }}
                   />
                 </div>
-                <div>
-                  <label className="label">Corretor / Vendedor</label>
-                  {vendedores.length > 0 ? (
-                    <select
-                      className="input-field font-semibold"
-                      value={saleData.vendedorId || ""}
-                      onChange={(e) => {
-                        const v = vendedores.find(x => x.id === e.target.value);
-                        setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
-                      }}
-                    >
-                      <option value="">Selecionar vendedor...</option>
-                      {vendedores.map((v) => (
-                        <option key={v.id} value={v.id}>{v.nome}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      className="input-field font-semibold"
-                      placeholder="Nome do corretor/vendedor"
-                      value={saleData.vendedor || ""}
-                      onChange={(e) => setSaleData({ ...saleData, vendedor: textoMaiusculo(e.target.value), vendedorId: "" })}
-                    />
-                  )}
-                  <p className="mt-1 text-[10px] text-slate-400 font-bold">
-                    Fica salvo já no Registro de Nova Venda e será usado no resumo, ranking, contrato e recibo quando aplicável.
+                <div className="space-y-3">
+                  <div>
+                    <label className="label">Corretor / Vendedor 1</label>
+                    {vendedores.length > 0 ? (
+                      <select
+                        className="input-field font-semibold"
+                        value={saleData.vendedorId || ""}
+                        onChange={(e) => {
+                          const v = vendedores.find(x => x.id === e.target.value);
+                          setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
+                        }}
+                      >
+                        <option value="">Selecionar vendedor...</option>
+                        {vendedores.map((v) => (
+                          <option key={v.id} value={v.id}>{v.nome}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="input-field font-semibold"
+                        placeholder="Nome do corretor/vendedor"
+                        value={saleData.vendedor || ""}
+                        onChange={(e) => setSaleData({ ...saleData, vendedor: textoMaiusculo(e.target.value), vendedorId: "" })}
+                      />
+                    )}
+                  </div>
+                  <div>
+                    <label className="label text-slate-400">Corretor / Vendedor 2 <span className="font-normal text-slate-300">(opcional)</span></label>
+                    {vendedores.length > 0 ? (
+                      <select
+                        className="input-field font-semibold"
+                        value={(saleData as any).vendedorId2 || ""}
+                        onChange={(e) => {
+                          const v = vendedores.find(x => x.id === e.target.value);
+                          setSaleData({ ...saleData, vendedorId2: e.target.value, vendedor2: textoMaiusculo(v?.nome || "") } as any);
+                        }}
+                      >
+                        <option value="">Nenhum segundo vendedor</option>
+                        {vendedores.map((v) => (
+                          <option key={v.id} value={v.id}>{v.nome}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        className="input-field font-semibold"
+                        placeholder="Nome do segundo corretor (opcional)"
+                        value={(saleData as any).vendedor2 || ""}
+                        onChange={(e) => setSaleData({ ...saleData, vendedor2: textoMaiusculo(e.target.value), vendedorId2: "" } as any)}
+                      />
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    Fica salvo no registro e será usado no contrato e recibo quando aplicável.
                   </p>
                 </div>
                 <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
@@ -10491,7 +10518,7 @@ VALOR TOTAL: ${brl(venda.valorLote)}
 ENTRADA: ${brl(venda.valorEntrada)}
 QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}
 DATA DE VENCIMENTO: ${diaVenc}
-VENDEDOR: ${venda.vendedor}`;
+VENDEDOR: ${venda.vendedor}${(venda as any).vendedor2 ? "\nVENDEDOR 2: " + (venda as any).vendedor2 : ""}`;
 
     navigator.clipboard.writeText(summary).catch(() => {
       // fallback
@@ -11123,23 +11150,43 @@ VENDEDOR: ${venda.vendedor}`;
                       {developments.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                     </select>
                   </div>
-                  <div>
-                    <label className="label">Vendedor</label>
-                    {vendedores.length > 0 ? (
-                      <select
-                        className="input-field"
-                        value={editVendaForm.vendedorId || ""}
-                        onChange={(e) => {
-                          const v = vendedores.find(x => x.id === e.target.value);
-                          setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
-                        }}
-                      >
-                        <option value="">Selecionar...</option>
-                        {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
-                      </select>
-                    ) : (
-                      <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: textoMaiusculo(e.target.value) })} />
-                    )}
+                  <div className="space-y-3">
+                    <div>
+                      <label className="label">Vendedor 1</label>
+                      {vendedores.length > 0 ? (
+                        <select
+                          className="input-field"
+                          value={editVendaForm.vendedorId || ""}
+                          onChange={(e) => {
+                            const v = vendedores.find(x => x.id === e.target.value);
+                            setEditVendaForm({ ...editVendaForm, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
+                          }}
+                        >
+                          <option value="">Selecionar...</option>
+                          {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                        </select>
+                      ) : (
+                        <input className="input-field" value={editVendaForm.vendedor || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor: textoMaiusculo(e.target.value) })} />
+                      )}
+                    </div>
+                    <div>
+                      <label className="label text-slate-400">Vendedor 2 <span className="font-normal text-slate-300">(opcional)</span></label>
+                      {vendedores.length > 0 ? (
+                        <select
+                          className="input-field"
+                          value={(editVendaForm as any).vendedorId2 || ""}
+                          onChange={(e) => {
+                            const v = vendedores.find(x => x.id === e.target.value);
+                            setEditVendaForm({ ...editVendaForm, vendedorId2: e.target.value, vendedor2: textoMaiusculo(v?.nome || "") } as any);
+                          }}
+                        >
+                          <option value="">Nenhum segundo vendedor</option>
+                          {vendedores.map(v => <option key={v.id} value={v.id}>{v.nome}</option>)}
+                        </select>
+                      ) : (
+                        <input className="input-field" placeholder="Segundo vendedor (opcional)" value={(editVendaForm as any).vendedor2 || ""} onChange={(e) => setEditVendaForm({ ...editVendaForm, vendedor2: textoMaiusculo(e.target.value) } as any)} />
+                      )}
+                    </div>
                   </div>
                   <div>
                     <label className="label">Quadra</label>
