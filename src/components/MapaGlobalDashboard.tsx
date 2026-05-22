@@ -324,6 +324,28 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         ))}
       </div>
 
+      {/* CENTRALIZAR TODOS EMPREENDIMENTOS */}
+      <button
+        onClick={() => {
+          if (!leafletRef.current) return;
+          const devs = devsComLoc;
+          if (devs.length === 0) return;
+          import("leaflet").then(L => {
+            if (!leafletRef.current) return;
+            if (devs.length === 1) {
+              leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 14, { animate: true, duration: 0.8 });
+            } else {
+              const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
+              leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+            }
+          });
+        }}
+        className="absolute bottom-12 left-3 z-[1000] bg-white/95 text-slate-700 rounded-xl px-3 py-2 text-[11px] font-black shadow-lg border border-slate-200 hover:bg-white flex items-center gap-1.5"
+        title="Centralizar todos os empreendimentos"
+      >
+        ⊡ Centralizar
+      </button>
+
       {/* MINHA LOCALIZAÇÃO */}
       <button
         onClick={() => {

@@ -5800,7 +5800,7 @@ const EmpreendimentosSection = ({
                 onVerMapa={(id) => {
                   setShowMapaGlobal(false);
                   const dev = developments.find(d => d.id === id);
-                  if (dev && onStartSale) onStartSale({ empreendimentoId: id } as any);
+                  if (dev) setSelectedDevForMap(dev);
                 }}
               />
             )}
