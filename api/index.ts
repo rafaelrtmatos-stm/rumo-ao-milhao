@@ -1098,30 +1098,54 @@ app.post("/api/resolve-maps-url", isAuthenticated, async (req: any, res: any) =>
       if (m) return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: url });
     }
 
-    // Link encurtado: seguir redirect para obter a URL real
-    const response = await fetch(url, {
-      method: "GET",
-      redirect: "follow",
-      headers: { "User-Agent": "Mozilla/5.0" },
-      signal: AbortSignal.timeout(8000),
-    });
+    // Link encurtado: seguir redirect com diferentes user agents
+    const userAgents = [
+      "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148 Safari/604.1",
+      "Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+      "GoogleMapsLocator/1.0",
+    ];
 
-    const finalUrl = response.url;
+    let finalUrl = url;
+    let html = "";
 
-    for (const pat of patterns) {
-      const m = finalUrl.match(pat);
-      if (m) return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: finalUrl });
+    for (const ua of userAgents) {
+      try {
+        const response = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          headers: { "User-Agent": ua, "Accept-Language": "pt-BR,pt;q=0.9" },
+          signal: AbortSignal.timeout(8000),
+        });
+        finalUrl = response.url;
+        html = await response.text().catch(() => "");
+
+        // Tentar na URL final primeiro
+        for (const pat of patterns) {
+          const m = finalUrl.match(pat);
+          if (m) return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: finalUrl });
+        }
+
+        // Tentar no HTML
+        const htmlPatterns = [
+          /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+          /center=(-?\d+\.\d+),(-?\d+\.\d+)/,
+          /"lat":(-?\d+\.\d+),"lng":(-?\d+\.\d+)/,
+          /\["",(-?\d+\.\d+),(-?\d+\.\d+)\]/,
+          /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+          /place\/[^@]+@(-?\d+\.\d+),(-?\d+\.\d+)/,
+        ];
+        for (const pat of htmlPatterns) {
+          const m = html.match(pat);
+          if (m && Math.abs(parseFloat(m[1])) <= 90 && Math.abs(parseFloat(m[2])) <= 180) {
+            return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: finalUrl });
+          }
+        }
+
+        if (finalUrl !== url) break; // Conseguiu redirecionar, parar de tentar
+      } catch {}
     }
 
-    // Tentar extrair do HTML da página
-    const html = await response.text();
-    const metaMatch = html.match(/center=(-?\d+\.\d+),(-?\d+\.\d+)/) ||
-                      html.match(/"lat":(-?\d+\.\d+),"lng":(-?\d+\.\d+)/);
-    if (metaMatch) {
-      return res.json({ lat: parseFloat(metaMatch[1]), lng: parseFloat(metaMatch[2]), resolvedUrl: finalUrl });
-    }
-
-    return res.json({ resolvedUrl: finalUrl, lat: null, lng: null });
+    return res.json({ resolvedUrl: finalUrl, lat: null, lng: null, hint: "Link encurtado não pôde ser resolvido. Cole as coordenadas diretamente." });
   } catch (err: any) {
     res.status(500).json({ error: String(err?.message || err) });
   }

@@ -5784,21 +5784,73 @@ const EmpreendimentosSection = ({
                     onChange={(e) => {
                       const val = e.target.value.trim();
                       setFormData({ ...formData, googleMapsUrl: val, mapaLocalizacaoUrl: val } as any);
-                      // Extrair lat/lng direto se o link já tiver coordenadas
+                    }}
+                    onBlur={async (e) => {
+                      const val = e.target.value.trim();
+                      if (!val) return;
+                      // 1. Tentar extrair coords direto da URL (links longos)
                       const patterns = [
                         /@(-?\d+\.\d+),(-?\d+\.\d+)/,
                         /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
                         /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
                         /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-                        /(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/,
+                        /place\/[^@]+@(-?\d+\.\d+),(-?\d+\.\d+)/,
+                        /maps\/(-?\d+\.\d+),(-?\d+\.\d+)/,
                       ];
                       for (const pat of patterns) {
                         const m = val.match(pat);
                         if (m) {
-                          setFormData((prev: any) => ({ ...prev, googleMapsUrl: val, mapaLocalizacaoUrl: val, lat: parseFloat(m[1]), lng: parseFloat(m[2]) }));
+                          setFormData((prev: any) => ({ ...prev, lat: parseFloat(m[1]), lng: parseFloat(m[2]) }));
                           return;
                         }
                       }
+                      // 2. Link encurtado: tentar via servidor
+                      try {
+                        const token = localStorage.getItem('token');
+                        const res = await fetch('/api/resolve-maps-url', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                          body: JSON.stringify({ url: val }),
+                        });
+                        const data = await res.json();
+                        if (data?.lat && data?.lng) {
+                          setFormData((prev: any) => ({ ...prev, lat: data.lat, lng: data.lng }));
+                        }
+                      } catch {}
+                    }}
+                    onPaste={async (e) => {
+                      // Ao colar, aguarda o valor ser inserido e tenta extrair
+                      setTimeout(async () => {
+                        const val = (e.target as HTMLInputElement).value.trim();
+                        if (!val) return;
+                        const patterns = [
+                          /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+                          /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+                          /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+                          /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+                          /place\/[^@]+@(-?\d+\.\d+),(-?\d+\.\d+)/,
+                        ];
+                        for (const pat of patterns) {
+                          const m = val.match(pat);
+                          if (m) {
+                            setFormData((prev: any) => ({ ...prev, lat: parseFloat(m[1]), lng: parseFloat(m[2]) }));
+                            return;
+                          }
+                        }
+                        // Link encurtado: resolver via servidor
+                        try {
+                          const token = localStorage.getItem('token');
+                          const res = await fetch('/api/resolve-maps-url', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+                            body: JSON.stringify({ url: val }),
+                          });
+                          const data = await res.json();
+                          if (data?.lat && data?.lng) {
+                            setFormData((prev: any) => ({ ...prev, lat: data.lat, lng: data.lng }));
+                          }
+                        } catch {}
+                      }, 100);
                     }}
                   />
                   {((formData as any).googleMapsUrl || (formData as any).mapaLocalizacaoUrl) && (
@@ -5813,9 +5865,14 @@ const EmpreendimentosSection = ({
                   )}
                 </div>
                 {(formData as any).lat && (formData as any).lng ? (
-                  <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Coordenadas detectadas — aparecerá no mapa global</p>
+                  <p className="text-[10px] text-emerald-600 font-bold mt-1">
+                    ✓ Coordenadas: {Number((formData as any).lat).toFixed(5)}, {Number((formData as any).lng).toFixed(5)} — aparecerá no mapa global
+                  </p>
                 ) : (
-                  <p className="text-[10px] text-slate-400 mt-1">Cole o link do Google Maps do empreendimento. As coordenadas serão extraídas automaticamente.</p>
+                  <div className="mt-1 space-y-1">
+                    <p className="text-[10px] text-slate-400">Cole o link do Google Maps. Para links encurtados (goo.gl), as coordenadas são extraídas automaticamente.</p>
+                    <p className="text-[10px] text-amber-500 font-bold">💡 Dica: para garantir precisão, abra o Maps, clique direito no local exato → copie as coordenadas (-3.xxxx, -55.xxxx) e cole aqui.</p>
+                  </div>
                 )}
               </div>
 
