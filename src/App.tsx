@@ -4063,8 +4063,8 @@ const LotDashboard = ({
             const x = marcadorPonto1.xPercent + (marcadorPonto2Preview.xPercent - marcadorPonto1.xPercent) * t;
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
-              <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
-                style={{ left: `${x}%`, top: `${y}%`, width: `${Math.round(ballSize.size / mapZoom)}px`, height: `${Math.round(ballSize.size / mapZoom)}px`, fontSize: `${Math.round(ballSize.font / mapZoom)}px` }}>
+              <div key={loteLabel} className="absolute rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, transformOrigin: "center center" }}>
                 {loteLabel}
               </div>
             );
@@ -4236,8 +4236,8 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${Math.round(ballSize.size / mapZoom)}px`, height: `${Math.round(ballSize.size / mapZoom)}px`, fontSize: `${Math.round(ballSize.font / mapZoom)}px`, borderWidth: `${Math.max(1, Math.round(getBallBorderWidth(ballSize.size) / mapZoom))}px`, pointerEvents: "auto" }}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, transformOrigin: "center center", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4844,14 +4844,16 @@ const LotDashboard = ({
                         setSelectedPoint({ ...ponto, venda });
                       }}
                       title={`Q${ponto.quadra} L${ponto.lote}`}
-                      className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} border-white shadow-lg cursor-pointer z-10`}
+                      className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} border-white shadow-lg cursor-pointer z-10`}
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
-                        width: `${Math.round(ballSize.size / mapZoom)}px`,
-                        height: `${Math.round(ballSize.size / mapZoom)}px`,
-                        fontSize: `${Math.round(ballSize.font / mapZoom)}px`,
-                        borderWidth: `${Math.max(1, Math.round(getBallBorderWidth(ballSize.size) / mapZoom))}px`,
+                        width: `${ballSize.size}px`,
+                        height: `${ballSize.size}px`,
+                        fontSize: `${ballSize.font}px`,
+                        borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
+                        transform: `translate(-50%,-50%) scale(${1/mapZoom})`,
+                        transformOrigin: "center center",
                         pointerEvents: "auto",
                       }}
                     />
@@ -5282,7 +5284,7 @@ const EmpreendimentosSection = ({
   const [formData, setFormData] = useState<Partial<Empreendimento>>(emptyForm);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [devSearch, setDevSearch] = useState("");
-  const [showMapaGlobal, setShowMapaGlobal] = useState(false);
+  const [showMapaGlobal, setShowMapaGlobal] = useState(true);
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [menuOrder, setMenuOrder] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('menuOrder') || 'null') || []; } catch { return []; }
@@ -5290,7 +5292,7 @@ const EmpreendimentosSection = ({
   const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem('hiddenMenuItems') || 'null') || []; } catch { return []; }
   });
-  const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
+  const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
