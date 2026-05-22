@@ -15225,16 +15225,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       let found = false;
       // Helper: salva apenas as coords (sem imagem base64 para evitar 413)
       const salvarApenasCoordenadas = (lat: number, lng: number) => {
-        const semImagem = { ...devRecalculado, lat, lng,
-          mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined,
-          mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined,
-          mapaPdfOriginalBase64: undefined };
-        const recalc = recalcularEstatisticasEmpreendimento(semImagem as any, sales);
-        setDevelopments(prev => prev.map(d => d.id === recalc.id ? { ...d, lat, lng } : d));
-        // Salvar via endpoint de mapa (não inclui imagem)
+        setDevelopments(prev => prev.map(d => d.id === devRecalculado.id ? { ...d, lat, lng } : d));
+        const token = localStorage.getItem('token');
         fetch(`/api/empreendimentos/${devRecalculado.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ ...devRecalculado, lat, lng, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
         }).catch(() => {});
       };
@@ -15247,15 +15242,31 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           break;
         }
       }
+
       if (!found) {
-        const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
-        if (query.trim()) {
-          fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
-            .then(r => r.json())
-            .then((results: any[]) => {
-              if (results?.[0]?.lat) salvarApenasCoordenadas(parseFloat(results[0].lat), parseFloat(results[0].lon));
-            }).catch(() => {});
-        }
+        // Link encurtado (goo.gl, maps.app.goo.gl): resolver no servidor
+        const token = localStorage.getItem('token');
+        fetch('/api/resolve-maps-url', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+          body: JSON.stringify({ url: mapsLink }),
+        })
+          .then(r => r.json())
+          .then((data: any) => {
+            if (data?.lat && data?.lng) {
+              salvarApenasCoordenadas(data.lat, data.lng);
+            } else {
+              // Fallback: Nominatim pela cidade
+              const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
+              if (query.trim()) {
+                fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+                  .then(r => r.json())
+                  .then((results: any[]) => {
+                    if (results?.[0]?.lat) salvarApenasCoordenadas(parseFloat(results[0].lat), parseFloat(results[0].lon));
+                  }).catch(() => {});
+              }
+            }
+          }).catch(() => {});
       }
     } else if (semCoordenadas && devRecalculado.cidade?.trim()) {
       const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");

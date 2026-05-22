@@ -281,14 +281,22 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
               if (!leafletMapRef.current) return;
               navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                  leafletMapRef.current!.setView([pos.coords.latitude, pos.coords.longitude], 13, { animate: true });
+                  leafletMapRef.current!.setView([pos.coords.latitude, pos.coords.longitude], 15, { animate: true });
                   import("leaflet").then(L => {
                     L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
-                      radius: 10, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.7, weight: 3,
-                    }).addTo(leafletMapRef.current!).bindPopup("Você está aqui").openPopup();
+                      radius: 10, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.8, weight: 3,
+                    }).addTo(leafletMapRef.current!).bindPopup("📍 Você está aqui").openPopup();
                   });
                 },
-                () => alert("Não foi possível obter sua localização.")
+                (err) => {
+                  const msgs: Record<number, string> = {
+                    1: "Permissão negada. Habilite a localização nas configurações do navegador.",
+                    2: "Localização indisponível. Verifique o GPS.",
+                    3: "Tempo esgotado. Tente novamente.",
+                  };
+                  alert(msgs[err.code] || "Não foi possível obter sua localização.");
+                },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
               );
             }}
             className="bg-white rounded-xl px-3 py-1.5 text-[11px] font-bold text-blue-600 shadow-md hover:bg-blue-50"
@@ -308,22 +316,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
           ))}
         </div>
 
-        {/* Minha localização */}
-        <button
-          onClick={() => {
-            if (!leafletMapRef.current) return;
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                leafletMapRef.current!.setView([pos.coords.latitude, pos.coords.longitude], 13, { animate: true });
-              },
-              () => alert("Não foi possível obter sua localização.")
-            );
-          }}
-          className="absolute bottom-3 left-3 z-[1000] bg-white text-slate-700 rounded-xl px-3 py-1.5 text-[11px] font-black shadow-md border border-slate-200 hover:bg-slate-50"
-          title="Minha localização"
-        >
-          📍 Minha localização
-        </button>
+
 
         {/* Botão painel */}
         <button

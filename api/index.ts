@@ -1078,4 +1078,53 @@ app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, re
   }
 });
 
+// Resolver link encurtado do Google Maps e extrair coordenadas
+app.post("/api/resolve-maps-url", isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { url } = req.body;
+    if (!url) return res.status(400).json({ error: "URL não fornecida." });
+
+    // Tentar extrair coords direto da URL antes de fazer fetch
+    const patterns = [
+      /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+      /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+      /place\/[^/]+\/@(-?\d+\.\d+),(-?\d+\.\d+)/,
+    ];
+
+    for (const pat of patterns) {
+      const m = url.match(pat);
+      if (m) return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: url });
+    }
+
+    // Link encurtado: seguir redirect para obter a URL real
+    const response = await fetch(url, {
+      method: "GET",
+      redirect: "follow",
+      headers: { "User-Agent": "Mozilla/5.0" },
+      signal: AbortSignal.timeout(8000),
+    });
+
+    const finalUrl = response.url;
+
+    for (const pat of patterns) {
+      const m = finalUrl.match(pat);
+      if (m) return res.json({ lat: parseFloat(m[1]), lng: parseFloat(m[2]), resolvedUrl: finalUrl });
+    }
+
+    // Tentar extrair do HTML da página
+    const html = await response.text();
+    const metaMatch = html.match(/center=(-?\d+\.\d+),(-?\d+\.\d+)/) ||
+                      html.match(/"lat":(-?\d+\.\d+),"lng":(-?\d+\.\d+)/);
+    if (metaMatch) {
+      return res.json({ lat: parseFloat(metaMatch[1]), lng: parseFloat(metaMatch[2]), resolvedUrl: finalUrl });
+    }
+
+    return res.json({ resolvedUrl: finalUrl, lat: null, lng: null });
+  } catch (err: any) {
+    res.status(500).json({ error: String(err?.message || err) });
+  }
+});
+
 export default app;
