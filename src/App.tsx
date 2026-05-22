@@ -15002,6 +15002,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     vendedores: [],
   });
   const [isLoaded, setIsLoaded] = useState(false);
+  const [loadProgress, setLoadProgress] = useState(0);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [forceDesktop, setForceDesktop] = useState(() => localStorage.getItem('force-desktop') === 'true');
   const [menuOrder, setMenuOrder] = useState<string[]>(() => {
@@ -15095,12 +15096,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
     const load = async () => {
       try {
-        const results = await Promise.allSettled([
-          dbService.getEmpreendimentos(),
-          dbService.getClientes(),
-          dbService.getVendas(),
-          dbService.getAppConfig(),
+        setLoadProgress(10);
+        // Carregar em sequência para mostrar progresso real
+        const [r0, r1, r2, r3] = await Promise.allSettled([
+          dbService.getEmpreendimentos().then(v => { setLoadProgress(35); return v; }),
+          dbService.getClientes().then(v => { setLoadProgress(60); return v; }),
+          dbService.getVendas().then(v => { setLoadProgress(80); return v; }),
+          dbService.getAppConfig().then(v => { setLoadProgress(95); return v; }),
         ]);
+        const results = [r0, r1, r2, r3];
 
         if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
         else console.error('Erro empreendimentos:', results[0].reason);
@@ -15120,6 +15124,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           console.error('Erro ao carregar dados:', JSON.stringify(firstErr.reason));
         }
 
+        setLoadProgress(100);
+        setTimeout(() => setLoadProgress(0), 600);
         setIsLoaded(true);
 
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
@@ -15829,6 +15835,20 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   return (
     <div className="min-h-screen bg-surface-bg flex w-full max-w-full overflow-x-hidden">
+      {/* BARRA DE PROGRESSO GLOBAL — topo da tela */}
+      {loadProgress > 0 && loadProgress < 100 && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-slate-200">
+          <div
+            className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-300 ease-out rounded-r-full"
+            style={{ width: `${loadProgress}%` }}
+          />
+        </div>
+      )}
+      {loadProgress === 100 && (
+        <div className="fixed top-0 left-0 right-0 z-[9999] h-1">
+          <div className="h-full bg-emerald-400 w-full animate-pulse rounded-r-full" />
+        </div>
+      )}
       <Sidebar
         currentSection={section}
         setSection={(s) => {
@@ -15890,9 +15910,28 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             className="w-full max-w-7xl mx-auto min-w-0"
           >
             {!isLoaded ? (
-              <div className="flex flex-col items-center justify-center py-32 gap-4">
-                <div className="w-8 h-8 border-4 border-primary-main border-t-transparent rounded-full animate-spin" />
-                <p className="text-slate-500 text-sm font-medium">Carregando dados do servidor...</p>
+              <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
+                {/* Logo / branding */}
+                <div className="text-center space-y-1 mb-2">
+                  <h1 className="text-2xl font-display font-bold text-primary-main italic">Rumo ao Milhão</h1>
+                  <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">Sistema Imobiliário</p>
+                </div>
+                {/* Barra de progresso */}
+                <div className="w-56 space-y-3">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500 ease-out"
+                      style={{ width: `${Math.max(loadProgress, 5)}%` }}
+                    />
+                  </div>
+                  <p className="text-center text-xs text-slate-400 font-medium">
+                    {loadProgress < 35 ? "Carregando empreendimentos..." :
+                     loadProgress < 60 ? "Carregando clientes..." :
+                     loadProgress < 80 ? "Carregando vendas..." :
+                     loadProgress < 95 ? "Carregando configurações..." :
+                     "Finalizando..."}
+                  </p>
+                </div>
               </div>
             ) : renderSection()}
           </motion.div>
