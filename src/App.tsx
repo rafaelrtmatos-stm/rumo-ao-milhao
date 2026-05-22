@@ -5831,21 +5831,6 @@ const EmpreendimentosSection = ({
                 />
               </div>
 
-              <div>
-                <label className="label">Link da Localização no Google Maps</label>
-                <div className="relative">
-                  <MapPin size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-primary-main" />
-                  <input
-                    className="input-field pl-10"
-                    value={(formData as any).mapaLocalizacaoUrl || ""}
-                    onChange={(e) =>
-                      setFormData({ ...formData, mapaLocalizacaoUrl: e.target.value } as any)
-                    }
-                    placeholder="Cole aqui o link do Google Maps"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-400 mt-1">Esse link será usado no botão “Ir no Google Maps”.</p>
-              </div>
               <div className="md:col-span-2 space-y-4">
                 <div>
                   <label className="label">Quadras Disponíveis</label>
