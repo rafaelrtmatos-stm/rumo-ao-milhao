@@ -1078,7 +1078,3 @@ app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, re
 
 
 export default app;
-
-// Handler para Vercel Serverless Functions (Express como função serverless)
-module.exports = app;
-module.exports.default = app;
