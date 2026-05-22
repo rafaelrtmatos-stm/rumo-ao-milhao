@@ -2433,6 +2433,19 @@ const LotDashboard = ({
     }
   }, [dev]);
 
+  // Preload: gerar alta resolucao automaticamente em background ao abrir o mapa
+  useEffect(() => {
+    const pdfOriginal = (localDev as any).mapaPdfOriginalBase64;
+    const jaTemAlta = (localDev as any).mapaImagemHighResBase64;
+    if (pdfOriginal && !jaTemAlta && !mapHighResLoading) {
+      // Aguarda 1.5s para nao competir com o render inicial
+      const timer = setTimeout(() => {
+        void requestHighResolutionMap();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [localDev.id]);
+
   useEffect(() => {
     if (!canEditMap) setMapAction("visualizar");
   }, [canEditMap]);
@@ -2508,13 +2521,17 @@ const LotDashboard = ({
   // Imagem media: gerada sob demanda na faixa de zoom intermediario
   const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemOriginal;
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
-  const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
-  const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
-  // Zoom baixo (<=1.4): imagem leve | Zoom medio: original | Zoom alto: alta resolucao
-  const deveUsarOriginal = mapZoom > MED_RES_ZOOM_THRESHOLD;
-  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta
-    : deveUsarMapaMedia ? mapaImagemMedia
-    : deveUsarOriginal ? mapaImagemOriginal
+  // Para imagens (nao PDF): original ja e alta resolucao, usar como fallback no zoom alto
+  const mapaImagemAltaEfetiva = mapaImagemAlta || mapaImagemOriginal;
+  const deveUsarMapaAlta = mapZoom > HIGH_RES_ZOOM_THRESHOLD;
+  const deveUsarMapaMedia = !deveUsarMapaAlta && mapZoom > MED_RES_ZOOM_THRESHOLD;
+  // Selecao por nivel: leve → original → media → alta (sempre com fallback)
+  const mapaImagem = deveUsarMapaAlta
+    ? (mapaImagemAltaEfetiva || mapaImagemMedia || mapaImagemOriginal)
+    : deveUsarMapaMedia
+    ? (mapaImagemMedia || mapaImagemOriginal)
+    : mapZoom > 1
+    ? mapaImagemOriginal
     : mapaImagemLeve;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
