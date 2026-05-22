@@ -4305,14 +4305,6 @@ const LotDashboard = ({
                 </div>
               )}
             </div>
-            {/* Botões de zoom visíveis em todos os modos: visualização, edição e tela cheia */}
-            {mapaImagem && (
-              <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); fitMapToScreen(); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-lg" title="Encaixar na tela">⊡</button>
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
-              </div>
-            )}
             </div>
           </div>
 
@@ -5238,8 +5230,17 @@ const LotDashboard = ({
                 <div className="w-12 h-1 rounded-full bg-slate-300 group-hover:bg-slate-500 transition-colors" />
               </div>
             </div>
-            {/* BOTÕES FIXOS EMBAIXO DO MAPA */}
+            {/* BOTÕES FIXOS EMBAIXO DO MAPA — sempre visíveis mesmo com resize */}
             <div className="flex-shrink-0 flex gap-2 p-3 sm:p-4 bg-white border-t border-slate-100">
+              {/* Zoom + / Fit / Zoom - */}
+              <div className="flex gap-1">
+                <button type="button" onClick={() => zoomMapBy(0.25)}
+                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-xl hover:bg-slate-200 flex items-center justify-center">+</button>
+                <button type="button" onClick={() => fitMapToScreen()}
+                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-lg hover:bg-slate-200 flex items-center justify-center" title="Encaixar na tela">⊡</button>
+                <button type="button" onClick={() => zoomMapBy(-0.25)}
+                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-xl hover:bg-slate-200 flex items-center justify-center">−</button>
+              </div>
               <button
                 type="button"
                 onClick={() => {
