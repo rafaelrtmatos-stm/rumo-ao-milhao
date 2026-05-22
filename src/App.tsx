@@ -5422,6 +5422,10 @@ const EmpreendimentosSection = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(true);
+  const [globalMapHeight, setGlobalMapHeight] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('globalMapHeight') || '0') || 480; } catch { return 480; }
+  });
+  const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
   const devFormRef = useRef<HTMLFormElement>(null);
@@ -5787,7 +5791,10 @@ const EmpreendimentosSection = ({
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
-          <div className="card-premium overflow-hidden flex flex-col" style={{ height: 540 }}>
+          <div
+            className="card-premium overflow-hidden flex flex-col relative"
+            style={{ height: globalMapHeight }}
+          >
             {comCoord.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
                 <div className="text-4xl">🗺️</div>
@@ -5820,6 +5827,54 @@ const EmpreendimentosSection = ({
                 }}
               />
             )}
+            {/* HANDLE DE RESIZE */}
+            <div
+              className="absolute bottom-0 left-0 right-0 h-5 flex items-center justify-center cursor-ns-resize z-[1001] group select-none"
+              style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.08))" }}
+              onMouseDown={(e) => {
+                e.preventDefault();
+                const startH = globalMapHeight;
+                globalMapResizeRef.current = { dragging: true, startY: e.clientY, startH };
+                const onMove = (ev: MouseEvent) => {
+                  if (!globalMapResizeRef.current.dragging) return;
+                  const delta = ev.clientY - globalMapResizeRef.current.startY;
+                  const newH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
+                  setGlobalMapHeight(newH);
+                };
+                const onUp = (ev: MouseEvent) => {
+                  globalMapResizeRef.current.dragging = false;
+                  window.removeEventListener('mousemove', onMove);
+                  window.removeEventListener('mouseup', onUp);
+                  const delta = ev.clientY - globalMapResizeRef.current.startY;
+                  const finalH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
+                  localStorage.setItem('globalMapHeight', String(Math.round(finalH)));
+                };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+              }}
+              onTouchStart={(e) => {
+                const startH = globalMapHeight;
+                globalMapResizeRef.current = { dragging: true, startY: e.touches[0].clientY, startH };
+                const onMove = (ev: TouchEvent) => {
+                  if (!globalMapResizeRef.current.dragging) return;
+                  const delta = ev.touches[0].clientY - globalMapResizeRef.current.startY;
+                  const newH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
+                  setGlobalMapHeight(newH);
+                };
+                const onEnd = (ev: TouchEvent) => {
+                  globalMapResizeRef.current.dragging = false;
+                  const delta = (ev.changedTouches[0]?.clientY ?? globalMapResizeRef.current.startY) - globalMapResizeRef.current.startY;
+                  const finalH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
+                  localStorage.setItem('globalMapHeight', String(Math.round(finalH)));
+                  window.removeEventListener('touchmove', onMove);
+                  window.removeEventListener('touchend', onEnd);
+                };
+                window.addEventListener('touchmove', onMove, { passive: true });
+                window.addEventListener('touchend', onEnd);
+              }}
+            >
+              <div className="w-10 h-1 rounded-full bg-white/60 group-hover:bg-white/90 transition-all shadow" />
+            </div>
           </div>
         );
       })()}
