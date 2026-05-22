@@ -1,8 +1,10 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
-    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
 }
 
 import AdmZip from "adm-zip";
@@ -325,6 +327,13 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   if (corretorXml) {
     xml = xml.replace("<w:sectPr", corretorXml + "<w:sectPr");
   }
+
+  // ── Corrigir "simplesmente de VENDEDOR/COMPRADOR" fragmentado ────────────
+  xml = rep(xml, "simplesmente de VENDEDOR", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmente de VENDEDORA", `simplesmente ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmente de COMPRADOR", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmente de COMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = corrigirEspacosSimplesmente(xml);
 
   // ── Reempacotar ───────────────────────────────────────────────────────────
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
