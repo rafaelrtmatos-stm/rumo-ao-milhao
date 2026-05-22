@@ -3954,9 +3954,9 @@ const LotDashboard = ({
             Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
           </div>
         )}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 lg:items-start lg:h-[calc(100vh-220px)]">
           {/* CANVAS DO MAPA */}
-          <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200">
+          <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200 lg:sticky lg:top-0">
             {!isEditingMap && (
               <div className="px-2 pb-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Modo visualização</p>
@@ -4116,7 +4116,7 @@ const LotDashboard = ({
           </div>
 
           {/* PAINEL LATERAL */}
-          <div className="space-y-3">
+          <div className="space-y-3 lg:overflow-y-auto lg:max-h-[calc(100vh-220px)] lg:pr-1">
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
@@ -4871,7 +4871,7 @@ const LotDashboard = ({
         </div>
 
         {/* CONTEÚDO */}
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
+        <div className={`flex-1 p-4 sm:p-6 relative ${mode === "mapa" && mapaImagem ? "overflow-hidden" : "overflow-y-auto"}`}>
           {mode === "mapa" && mapaImagem ? renderMapa() : renderQuadradinhos()}
           <AnimatePresence>
             {selectedPoint && renderSelectedPointModal()}
