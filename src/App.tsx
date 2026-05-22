@@ -5762,10 +5762,12 @@ const EmpreendimentosSection = ({
       </div>
 
       {/* MAPA GLOBAL */}
-      {showMapaGlobal && (() => {
+      {/* Mapa global sempre montado (display:none quando fechado) — Leaflet não reinicializa */}
+      {isLoaded && (() => {
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
+        <div style={{ display: showMapaGlobal ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
             style={{ height: globalMapHeight }}
@@ -5851,6 +5853,7 @@ const EmpreendimentosSection = ({
               <div className="w-10 h-1 rounded-full bg-white/60 group-hover:bg-white/90 transition-all shadow" />
             </div>
           </div>
+        </div>
         );
       })()}
 
