@@ -2306,7 +2306,6 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
-  const [mapImageLoading, setMapImageLoading] = useState(false);
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
   const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
@@ -2485,11 +2484,6 @@ const LotDashboard = ({
   const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
   const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
   const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : deveUsarMapaMedia ? mapaImagemMedia : mapaImagemLeve;
-
-  useEffect(() => {
-    if (mapaImagem) setMapImageLoading(true);
-    else setMapImageLoading(false);
-  }, [mapaImagem]);
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -3996,11 +3990,6 @@ const LotDashboard = ({
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
               style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
-              {mapImageLoading && (
-                <div className="absolute top-0 left-0 right-0 z-50 h-1 bg-blue-100 overflow-hidden rounded-t-2xl">
-                  <div className="h-full bg-blue-500" style={{ width: "40%", animation: "loading-bar 1.2s ease-in-out infinite" }} />
-                </div>
-              )}
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
@@ -4049,7 +4038,7 @@ const LotDashboard = ({
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : (
-                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setMapImageLoading(false); }} onError={() => setMapImageLoading(false)} />
+                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
               )}
 
               {/* Preview bolinhas + linha para multi-lote */}
@@ -4637,7 +4626,7 @@ const LotDashboard = ({
                 {(localDev as any).mapaPdfOriginalBase64 ? (
                   <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
                 ) : (
-                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setMapImageLoading(false); }} onError={() => setMapImageLoading(false)} />
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
                 )}
 
                 {mapaPontos.map((ponto) => {
