@@ -4073,28 +4073,12 @@ const LotDashboard = ({
             Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
           </div>
         )}
-        <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-0 lg:h-[calc(100vh-200px)] h-[80vh]">
+        <div className="flex flex-col lg:relative lg:block lg:h-[calc(100vh-200px)] h-auto gap-0">
           {/* CANVAS DO MAPA */}
-          <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 h-full">
-            {!isEditingMap && (
-              <div className="px-2 pb-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Modo visualização</p>
-                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
-              </div>
-            )}
-            {(mapHighResLoading || ((localDev as any).mapaPdfOriginalBase64 && !deveUsarMapaAlta && !mapHighResLoading)) && (
-              <div className="mb-2 px-2 text-[10px] font-bold text-slate-500 flex items-center justify-between gap-2">
-                <span>
-                  {mapHighResLoading
-                    ? "Gerando mapa em média e alta resolução..."
-                    : mapZoom <= 1
-                    ? "Prévia leve ativa. Use + ou scroll para aproximar e carregar mais nitidez."
-                    : mapZoom <= MED_RES_ZOOM_THRESHOLD
-                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução leve. Aproxime mais para nitidez média.`
-                    : mapZoom <= HIGH_RES_ZOOM_THRESHOLD
-                    ? `Zoom ${Math.round(mapZoom * 100)}% — resolução média. Aproxime mais para alta resolução.`
-                    : `Zoom ${Math.round(mapZoom * 100)}% — alta resolução ativa.`}
-                </span>
+          <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 h-[55vw] min-h-[280px] lg:absolute lg:inset-0 lg:h-auto">
+            {mapHighResLoading && (
+              <div className="absolute top-2 left-2 z-10 bg-black/50 text-white text-[10px] px-2 py-1 rounded-lg">
+                Carregando alta resolução...
               </div>
             )}
             <div
@@ -4233,22 +4217,20 @@ const LotDashboard = ({
           </div>
 
           {/* PAINEL LATERAL FLUTUANTE */}
-          <div className={`absolute top-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 ${painelRecolhido ? "w-10" : "w-[280px]"}`}>
+          <div className={`lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 mt-2 lg:mt-0 ${painelRecolhido ? "lg:w-10" : "w-full lg:w-[280px]"}`}>
             {/* Botao recolher */}
             <button
               type="button"
               onClick={() => setPainelRecolhido(r => !r)}
-              className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50"
+              className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex"
               title={painelRecolhido ? "Expandir painel" : "Recolher painel"}
             >
               {painelRecolhido ? "⊲" : "⊳"}
             </button>
-            <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-0.5" style={{display: painelRecolhido ? "none" : "flex", flexDirection: "column"}}>
+            <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
-                <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
                 {getEmpreendimentoMapsUrl(localDev) && (
                   <button
                     type="button"
