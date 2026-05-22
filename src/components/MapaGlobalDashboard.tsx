@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import type { Empreendimento, Venda } from "../types";
 
 interface Props {
@@ -51,6 +51,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const [mapZoom, setMapZoom] = useState(5);
   const [painelAberto, setPainelAberto] = useState(true);
   const [mapReady, setMapReady] = useState(false);
+  const [camada, setCamada] = useState<'ruas'|'satelite'|'hibrido'>('ruas');
+  const tileLayerRef = useRef<any>(null);
 
   // Empreendimentos com coordenadas válidas
   const devsComLoc = useMemo(() =>
@@ -92,13 +94,13 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         attributionControl: false,
       });
 
-      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-        maxZoom: 19,
-      }).addTo(map);
-
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
       map.on("zoomend", () => setMapZoom(map.getZoom()));
+
+      // Camada inicial
+      const tile = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+      tileLayerRef.current = tile;
 
       leafletMapRef.current = map;
       setMapReady(true);
@@ -209,6 +211,26 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
     });
   }, [mapReady, devsFiltrados, mapZoom, sales]);
 
+  // Trocar camada do mapa
+  useEffect(() => {
+    if (!mapReady || !leafletMapRef.current || !tileLayerRef.current) return;
+    import("leaflet").then(L => {
+      if (tileLayerRef.current) {
+        tileLayerRef.current.remove();
+      }
+      const urls: Record<string, string> = {
+        ruas: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+        satelite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+        hibrido: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      };
+      tileLayerRef.current = L.tileLayer(urls[camada], { maxZoom: 19 }).addTo(leafletMapRef.current!);
+      // Overlay de ruas para modo híbrido
+      if (camada === 'hibrido') {
+        L.tileLayer("https://stamen-tiles.a.ssl.fastly.net/toner-hybrid/{z}/{x}/{y}.png", { maxZoom: 19, opacity: 0.5 }).addTo(leafletMapRef.current!);
+      }
+    });
+  }, [camada, mapReady]);
+
   // Centralizar ao buscar
   function centralizarEm(dev: Empreendimento) {
     if (!leafletMapRef.current || dev.lat == null || dev.lng == null) return;
@@ -252,6 +274,16 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         <div className="absolute bottom-3 left-3 z-[1000] bg-white rounded-xl px-3 py-1.5 text-[11px] font-bold text-slate-600 shadow-md">
           {devsFiltrados.length} empreendimento{devsFiltrados.length !== 1 ? "s" : ""} no mapa
           {semCoordenadas > 0 && <span className="text-slate-400 ml-1">· {semCoordenadas} sem localização</span>}
+        </div>
+
+        {/* Camadas */}
+        <div className="absolute bottom-12 right-3 z-[1000] flex flex-col gap-1">
+          {([['ruas','🗺 Ruas'],['satelite','🛰 Satélite'],['hibrido','🌍 Híbrido']] as [typeof camada, string][]).map(([id, label]) => (
+            <button key={id} onClick={() => setCamada(id)}
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow-md transition-all ${camada === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
+              {label}
+            </button>
+          ))}
         </div>
 
         {/* Botão painel */}

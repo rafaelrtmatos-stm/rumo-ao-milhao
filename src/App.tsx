@@ -3635,6 +3635,32 @@ const LotDashboard = ({
 
   const commitDrag = () => {
     if (!draggingId) return;
+    // Verificar se a bolinha arrastada é extremidade de fileira — redistribuir automaticamente
+    const currentPontos = (localDev as any).mapaPontos ?? [];
+    const pontoDragado = currentPontos.find((p: any) => p.id === draggingId);
+    if (pontoDragado?.linhaSeqId) {
+      const fileira = currentPontos
+        .filter((p: any) => p.linhaSeqId === pontoDragado.linhaSeqId)
+        .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0);
+      const isFirst = fileira.length > 2 && fileira[0].id === draggingId;
+      const isLast = fileira.length > 2 && fileira[fileira.length - 1].id === draggingId;
+      if (isFirst || isLast) {
+        // Redistribuir: interpolar entre primeiro e último
+        const primeiro = fileira[0];
+        const ultimo = fileira[fileira.length - 1];
+        const novos = fileira.map((p: any, i: number) => {
+          const t = i / (fileira.length - 1);
+          return { ...p, xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
+            yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t };
+        });
+        const sem = currentPontos.filter((p: any) => p.linhaSeqId !== pontoDragado.linhaSeqId);
+        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...sem, ...novos] } as any, sales);
+        persistDev(nextDev);
+        setDraggingId(null);
+        setDragStart(null);
+        return;
+      }
+    }
     persistDev(localDev);
     setDraggingId(null);
     setDragStart(null);
@@ -4336,6 +4362,28 @@ const LotDashboard = ({
                       </button>
                     )}
                     {ctrlSelectedIds.size > 0 && (
+                      <button onClick={() => {
+                        // Clonar bolinhas selecionadas com offset de +2%
+                        const currentPontos = (localDev as any).mapaPontos ?? [];
+                        const selecionados = currentPontos.filter((p: any) => ctrlSelectedIds.has(p.id));
+                        if (selecionados.length === 0) return;
+                        const clones = selecionados.map((p: any) => ({
+                          ...p,
+                          id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                          xPercent: Math.min(99, p.xPercent + 2),
+                          yPercent: Math.min(99, p.yPercent + 2),
+                        }));
+                        const novosPontos = [...currentPontos, ...clones];
+                        pushUndo(currentPontos, `Clonar ${clones.length} bolinha(s)`);
+                        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
+                        persistDev(nextDev);
+                        // Selecionar os clones
+                        setCtrlSelectedIds(new Set(clones.map((c: any) => c.id)));
+                      }} className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-blue-100 text-blue-800 hover:bg-blue-200">
+                        ⧉ Clonar selecionadas
+                      </button>
+                    )}
+                    {ctrlSelectedIds.size > 0 && (
                       <button onClick={() => setCtrlSelectedIds(new Set())} className="btn-secondary w-full text-[10px]">Limpar seleção</button>
                     )}
                   </div>
@@ -4803,6 +4851,26 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // MODAL DETALHES DA BOLINHA (visualização)
   // ──────────────────────────────────────────────
+  // Redistribuir fileira: move primeiro e último, recalcula os do meio
+  const redistribuirFileira = (groupId: string, novoInicio: {xPercent: number; yPercent: number}, novoFim: {xPercent: number; yPercent: number}) => {
+    const currentPontos = (localDev as any).mapaPontos ?? [];
+    const fileira = currentPontos.filter((p: any) => p.linhaSeqId === groupId)
+      .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, { numeric: true }) ?? 0);
+    if (fileira.length < 2) return;
+    pushUndo(currentPontos, `Redistribuir fileira`);
+    const novos = fileira.map((p: any, i: number) => {
+      const t = i / (fileira.length - 1);
+      return {
+        ...p,
+        xPercent: novoInicio.xPercent + (novoFim.xPercent - novoInicio.xPercent) * t,
+        yPercent: novoInicio.yPercent + (novoFim.yPercent - novoInicio.yPercent) * t,
+      };
+    });
+    const sem = currentPontos.filter((p: any) => p.linhaSeqId !== groupId);
+    const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...sem, ...novos] } as any, sales);
+    persistDev(nextDev);
+  };
+
   const renderSelectedPointModal = () => {
     if (!selectedPoint) return null;
     const ponto = selectedPoint;
@@ -4897,12 +4965,45 @@ const LotDashboard = ({
             )}
 
             {/* Editar/excluir — apenas no modo edição */}
-            {isEditingMap && (
-              <>
-                <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
-                <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
-              </>
-            )}
+            {isEditingMap && (() => {
+              const currentPontos = (localDev as any).mapaPontos ?? [];
+              const fileira = ponto.linhaSeqId ? currentPontos.filter((p: any) => p.linhaSeqId === ponto.linhaSeqId)
+                .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0) : [];
+              const isFirst = fileira.length > 0 && fileira[0].id === ponto.id;
+              const isLast = fileira.length > 0 && fileira[fileira.length - 1].id === ponto.id;
+              return (
+                <>
+                  <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
+                  {/* Fileira: clonar quadra inteira */}
+                  {fileira.length > 1 && (
+                    <button className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-violet-100 text-violet-800 hover:bg-violet-200"
+                      onClick={() => {
+                        const offset = 3;
+                        const clones = fileira.map((p: any) => ({
+                          ...p,
+                          id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                          linhaSeqId: `seq-clone-${Date.now()}`,
+                          xPercent: Math.min(99, p.xPercent + offset),
+                          yPercent: Math.min(99, p.yPercent + offset),
+                        }));
+                        pushUndo(currentPontos, `Clonar fileira Q${ponto.quadra}`);
+                        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...currentPontos, ...clones] } as any, sales);
+                        persistDev(nextDev);
+                        setSelectedPoint(null);
+                      }}>
+                      ⧉ Clonar fileira inteira ({fileira.length} lotes)
+                    </button>
+                  )}
+                  {/* Fileira: mover extremidade redistribui automaticamente */}
+                  {fileira.length > 2 && (isFirst || isLast) && (
+                    <p className="text-[10px] text-violet-600 font-bold text-center bg-violet-50 rounded-lg px-2 py-1">
+                      {isFirst ? "⬆ Mova este ponto — os do meio se redistribuem automaticamente" : "⬇ Mova este ponto — os do meio se redistribuem automaticamente"}
+                    </p>
+                  )}
+                  <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
+                </>
+              );
+            })()}
 
             <button className="btn-secondary w-full" onClick={() => setSelectedPoint(null)}>Fechar</button>
           </div>
@@ -5161,6 +5262,7 @@ const EmpreendimentosSection = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(false);
+  const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
@@ -5645,6 +5747,30 @@ const EmpreendimentosSection = ({
 
               <div className="md:col-span-2">
                 <label className="label">Localização no mapa (Latitude / Longitude)</label>
+                {/* Campo para colar link do Google Maps */}
+                <input
+                  className="input-field mb-2 text-xs"
+                  placeholder="Cole aqui o link do Google Maps para extrair coordenadas automaticamente"
+                  onPaste={(e) => {
+                    const text = e.clipboardData.getData('text');
+                    // Tenta extrair lat/lng do link do Google Maps
+                    const patterns = [
+                      /@(-?\d+\.\d+),(-?\d+\.\d+)/,          // /@lat,lng
+                      /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,        // ?q=lat,lng
+                      /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,         // ll=lat,lng
+                      /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,       // !3d!4d (embed)
+                      /(-?\d{1,3}\.\d{4,}),\s*(-?\d{1,3}\.\d{4,})/, // lat, lng direto
+                    ];
+                    for (const pat of patterns) {
+                      const m = text.match(pat);
+                      if (m) {
+                        e.preventDefault();
+                        setFormData({ ...formData, lat: parseFloat(m[1]), lng: parseFloat(m[2]) } as any);
+                        return;
+                      }
+                    }
+                  }}
+                />
                 <div className="flex gap-2">
                   <input
                     className="input-field flex-1"
@@ -5652,7 +5778,7 @@ const EmpreendimentosSection = ({
                     step="any"
                     value={(formData as any).lat ?? ""}
                     onChange={(e) => setFormData({ ...formData, lat: e.target.value ? Number(e.target.value) : undefined } as any)}
-                    placeholder="Ex: -3.7172"
+                    placeholder="Latitude  Ex: -3.7172"
                   />
                   <input
                     className="input-field flex-1"
@@ -5660,7 +5786,7 @@ const EmpreendimentosSection = ({
                     step="any"
                     value={(formData as any).lng ?? ""}
                     onChange={(e) => setFormData({ ...formData, lng: e.target.value ? Number(e.target.value) : undefined } as any)}
-                    placeholder="Ex: -55.0185"
+                    placeholder="Longitude  Ex: -55.0185"
                   />
                   <a
                     href={`https://www.google.com/maps${(formData as any).lat && (formData as any).lng ? `/@${(formData as any).lat},${(formData as any).lng},15z` : ""}`}
@@ -5984,13 +6110,19 @@ const EmpreendimentosSection = ({
         )}
       </AnimatePresence>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+      {/* Toggle grade/lista */}
+      <div className="flex justify-end gap-1 mb-2">
+        <button onClick={() => setDevViewMode('grade')} className={`p-2 rounded-xl text-xs font-bold border transition-all ${devViewMode==='grade' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`} title="Grade">⊞</button>
+        <button onClick={() => setDevViewMode('lista')} className={`p-2 rounded-xl text-xs font-bold border transition-all ${devViewMode==='lista' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`} title="Lista">☰</button>
+      </div>
+
+      <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-3"}>
         {filteredDevelopments.map((dev) => (
           <motion.div
             layout
             key={dev.id}
-            whileHover={{ scale: 1.01, translateY: -4 }}
-            className="card-premium flex flex-col group relative overflow-hidden"
+            whileHover={{ scale: 1.01, translateY: devViewMode==='grade' ? -4 : 0 }}
+            className={devViewMode==='grade' ? "card-premium flex flex-col group relative overflow-hidden" : "card-premium flex flex-row items-center gap-4 group relative overflow-hidden py-3 px-4"}
           >
 
             <div className="mb-6 flex items-center gap-4">
