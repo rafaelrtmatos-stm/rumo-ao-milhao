@@ -5107,20 +5107,11 @@ const LotDashboard = ({
               <p className="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:block">Mapa e lotes do empreendimento</p>
             </div>
           </div>
-          {/* Ações do header — compactas no mobile */}
+          {/* Ações do header */}
           <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {getEmpreendimentoMapsUrl(localDev) && (
-              <button
-                onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
-                className="flex px-2 sm:px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 hover:bg-emerald-100 border border-emerald-200"
-                title="Abrir localização no Google Maps"
-              >
-                <MapPin size={12} /><span className="hidden sm:inline">Google Maps</span><span className="sm:hidden">Maps</span>
-              </button>
-            )}
             {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
-              <button onClick={entrarEdicao} className="flex px-2 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2">
-                <MapPin size={12} /><span className="hidden sm:inline">Editar mapa</span><span className="sm:hidden">Editar</span>
+              <button onClick={entrarEdicao} className="flex px-3 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2">
+                <MapPin size={12} />Editar mapa
               </button>
             )}
             {canEditMap && !mapaImagem && (
