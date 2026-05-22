@@ -2308,6 +2308,16 @@ const LotDashboard = ({
   const [mapFullscreen, setMapFullscreen] = useState(false);
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
+
+  // Undo/Redo inteligente por grupos de acao
+  const [mapUndoStack, setMapUndoStack] = useState<{ pontos: any[]; label: string }[]>([]);
+  const [mapRedoStack, setMapRedoStack] = useState<{ pontos: any[]; label: string }[]>([]);
+
+  // Painel lateral recolhivel
+  const [painelRecolhido, setPainelRecolhido] = useState(false);
+
+  // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
+  const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
   const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
   const HIGH_RES_ZOOM_THRESHOLD = 2.5;  // zoom > 2.5 → imagem alta resolução
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
@@ -2329,6 +2339,9 @@ const LotDashboard = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") setIsCtrlPanning(true);
+      // Undo/Redo por grupo
+      if (e.ctrlKey && e.key === "z") { e.preventDefault(); aplicarUndo(); }
+      if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) { e.preventDefault(); aplicarRedo(); }
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === "Control") {
@@ -3301,6 +3314,7 @@ const LotDashboard = ({
       lotesInfo: { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo },
       mapaPontos: nextPontos,
     } as Empreendimento, sales);
+    if (!raw.moveExisting) pushUndo((localDev as any).mapaPontos ?? [], `Bolinha Q${raw.quadra} L${raw.lote}`);
     persistDev(nextDev);
     if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
     // Sync com Gerenciador de Lotes
@@ -3370,6 +3384,7 @@ const LotDashboard = ({
       if (!existingPoint) newIds.push(id);
     });
     const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    pushUndo((localDev as any).mapaPontos ?? [], `Sequencia Q${form.quadra} L${form.loteInicial}-${form.loteFinal}`);
     persistDev(finalDev);
     setLastSessionPointIds((prev) => [...prev, ...newIds]);
   };
@@ -3835,6 +3850,66 @@ const LotDashboard = ({
     setMapPan({ x: 0, y: 0 });
   };
 
+  // Registra acao no historico de undo (agrupa por label)
+  const pushUndo = (pontos: any[], label: string) => {
+    setMapUndoStack(prev => [...prev.slice(-49), { pontos, label }]);
+    setMapRedoStack([]);
+  };
+
+  const aplicarUndo = () => {
+    setMapUndoStack(prev => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      const currentPontos = (localDev as any).mapaPontos ?? [];
+      setMapRedoStack(r => [...r, { pontos: currentPontos, label: last.label }]);
+      const nextDev = { ...localDev, mapaPontos: last.pontos } as any;
+      setLocalDev(nextDev);
+      return prev.slice(0, -1);
+    });
+  };
+
+  const aplicarRedo = () => {
+    setMapRedoStack(prev => {
+      if (!prev.length) return prev;
+      const last = prev[prev.length - 1];
+      const currentPontos = (localDev as any).mapaPontos ?? [];
+      setMapUndoStack(s => [...s, { pontos: currentPontos, label: last.label }]);
+      const nextDev = { ...localDev, mapaPontos: last.pontos } as any;
+      setLocalDev(nextDev);
+      return prev.slice(0, -1);
+    });
+  };
+
+  // Cancelar: descarta alteracoes e volta ao estado salvo
+  const cancelarEdicaoMapa = () => {
+    setLocalDev(dev);
+    setMapUndoStack([]);
+    setMapRedoStack([]);
+    setMapPendingPontos(null);
+    setDraggingId(null);
+    setDragStart(null);
+    setSelectedPoint(null);
+    setMarcadorFase('idle');
+    setMarcadorPonto1(null);
+    setMarcadorPonto2Preview(null);
+    setMarcadorForm({ quadra: '', lote: '', status: 'sistema', observacao: '' });
+    setMassaSelIds(new Set());
+    setCtrlSelectedIds(new Set());
+    setLastSessionPointIds([]);
+    setMapAction('visualizar');
+  };
+
+  // Aplicar: salva parcialmente sem sair da edicao
+  const aplicarEdicaoMapa = () => {
+    persistDev({
+      ...localDev,
+      mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
+    } as any);
+    setMapUndoStack([]);
+    setMapRedoStack([]);
+    setMapPendingPontos(null);
+  };
+
   const entrarEdicao = () => {
     setMapAction("editar");
     setMarcadorFase("idle");
@@ -3955,9 +4030,9 @@ const LotDashboard = ({
             Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
           </div>
         )}
-        <div className="grid grid-cols-1 lg:grid-cols-[1fr_300px] gap-4 lg:items-start lg:h-[calc(100vh-220px)]">
+        <div className="relative grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-0 lg:h-[calc(100vh-200px)] h-[80vh]">
           {/* CANVAS DO MAPA */}
-          <div className="bg-slate-100 rounded-3xl p-2 overflow-hidden border border-slate-200 lg:sticky lg:top-0">
+          <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 h-full">
             {!isEditingMap && (
               <div className="px-2 pb-2">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Modo visualização</p>
@@ -4116,8 +4191,18 @@ const LotDashboard = ({
             )}
           </div>
 
-          {/* PAINEL LATERAL */}
-          <div className="space-y-3 lg:overflow-y-auto lg:max-h-[calc(100vh-220px)] lg:pr-1">
+          {/* PAINEL LATERAL FLUTUANTE */}
+          <div className={"absolute top-3 right-3 z-20 flex flex-col gap-2 transition-all duration-300 " + (painelRecolhido ? "w-10" : "w-[280px]")}>
+            {/* Botao recolher */}
+            <button
+              type="button"
+              onClick={() => setPainelRecolhido(r => !r)}
+              className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 flex items-center justify-center text-slate-600 hover:bg-slate-50"
+              title={painelRecolhido ? "Expandir painel" : "Recolher painel"}
+            >
+              {painelRecolhido ? "◀" : "▶"}
+            </button>
+            {!painelRecolhido && <div className="space-y-2 overflow-y-auto max-h-[calc(100vh-180px)] pr-0.5">
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && (
               <div className="card-premium p-4 space-y-3">
@@ -4294,8 +4379,9 @@ const LotDashboard = ({
                   } as Empreendimento);
                 }} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-blue-500 text-white">Aplicar</button>
 
-                {/* Salvar / sair da edição */}
-                <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white">Salvar / OK</button>
+                {/* Cancelar / Aplicar / Salvar */}
+                <button onClick={cancelarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-slate-200 text-slate-600 hover:bg-slate-300">Cancelar</button>
+                <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-500">Salvar / OK</button>
               </div>
             )}
 
@@ -4578,6 +4664,8 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+          </div>}
+          </div>
         {mapFullscreen && (
           <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
             <div className="absolute top-3 left-3 right-3 z-[10000] flex items-center justify-between gap-2">
