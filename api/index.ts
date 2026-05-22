@@ -1076,9 +1076,4 @@ app.post("/api/contrato/avista-padrao-pdf", isAuthenticated, async (req: any, re
   }
 });
 
-
 export default app;
--e 
-// Handler para Vercel Serverless
-module.exports = app;
-module.exports.default = app;
