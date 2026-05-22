@@ -4248,37 +4248,36 @@ const LotDashboard = ({
               </div>
             )}
             </div>
-            {!isEditingMap && (
-              <div className="flex gap-2 mt-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMapFullscreen(true);
-                    setMapActive(true);
-                    setMapZoom(1);
-                    setMapPan({ x: 0, y: 0 });
-                    try {
-                      const lockPromise = (screen as any).orientation?.lock?.("landscape");
-                      lockPromise?.catch?.(() => undefined);
-                    } catch {}
-                    scheduleMapScaleUpdate(true);
-                  }}
-                  className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
-                >
-                  ⛶ Tela cheia
-                </button>
-                {mapaImagem && (
-                  <>
-                    <button onClick={baixarMapaInterativoImagem} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar imagem">
-                      <FileDown size={16} />
-                    </button>
-                    <button onClick={baixarMapaInterativoPdf} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar PDF">
-                      <FileText size={16} />
-                    </button>
-                  </>
-                )}
-              </div>
-            )}
+            {/* Botões sempre visíveis — tela cheia e download */}
+            <div className="flex gap-2 mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(true);
+                  setMapActive(true);
+                  setMapZoom(1);
+                  setMapPan({ x: 0, y: 0 });
+                  try {
+                    const lockPromise = (screen as any).orientation?.lock?.("landscape");
+                    lockPromise?.catch?.(() => undefined);
+                  } catch {}
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-[11px] font-black uppercase tracking-widest hover:bg-slate-800"
+              >
+                ⛶ Tela cheia
+              </button>
+              {mapaImagem && (
+                <>
+                  <button onClick={baixarMapaInterativoImagem} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar imagem">
+                    <FileDown size={16} />
+                  </button>
+                  <button onClick={baixarMapaInterativoPdf} className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-700 text-[11px] font-black hover:bg-slate-200" title="Baixar PDF">
+                    <FileText size={16} />
+                  </button>
+                </>
+              )}
+            </div>
           </div>
 
           {/* PAINEL LATERAL FLUTUANTE */}
@@ -5272,6 +5271,12 @@ const EmpreendimentosSection = ({
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(false);
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
+  const [menuOrder, setMenuOrder] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('menuOrder') || 'null') || []; } catch { return []; }
+  });
+  const [hiddenMenuItems, setHiddenMenuItems] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem('hiddenMenuItems') || 'null') || []; } catch { return []; }
+  });
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("recentes");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
@@ -15128,26 +15133,60 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     // Upsert atômico: salva apenas este empreendimento
     dbService.upsertEmpreendimento(devRecalculado).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
 
-    // Geocoding automático: se não tem coordenadas mas tem cidade, busca via Nominatim
+    // Extrai coordenadas de link do Google Maps se disponível
+    const mapsLink = getEmpreendimentoMapsUrl(devRecalculado);
     const semCoordenadas = !devRecalculado.lat || !devRecalculado.lng || devRecalculado.lat === 0;
-    const temCidade = devRecalculado.cidade?.trim();
-    if (semCoordenadas && temCidade) {
+
+    if (semCoordenadas && mapsLink) {
+      // Tentar extrair lat/lng direto da URL
+      const patterns = [
+        /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+        /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+        /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+        /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+        /(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/,
+      ];
+      let found = false;
+      for (const pat of patterns) {
+        const m = mapsLink.match(pat);
+        if (m) {
+          const withCoords = { ...devRecalculado, lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
+          const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
+          setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
+          dbService.upsertEmpreendimento(recalc).catch(() => {});
+          found = true;
+          break;
+        }
+      }
+      // Se URL encurtada (maps.app.goo.gl) ou sem coords, resolve via Nominatim
+      if (!found) {
+        const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
+        if (query.trim()) {
+          fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+            .then(r => r.json())
+            .then((results: any[]) => {
+              if (results?.[0]?.lat) {
+                const withCoords = { ...devRecalculado, lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
+                const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
+                setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
+                dbService.upsertEmpreendimento(recalc).catch(() => {});
+              }
+            }).catch(() => {});
+        }
+      }
+    } else if (semCoordenadas && devRecalculado.cidade?.trim()) {
+      // Sem link: geocoding por cidade
       const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
       fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
         .then(r => r.json())
         .then((results: any[]) => {
-          if (results?.[0]?.lat && results?.[0]?.lon) {
-            const withCoords = {
-              ...devRecalculado,
-              lat: parseFloat(results[0].lat),
-              lng: parseFloat(results[0].lon),
-            };
+          if (results?.[0]?.lat) {
+            const withCoords = { ...devRecalculado, lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
             const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
             setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
             dbService.upsertEmpreendimento(recalc).catch(() => {});
           }
-        })
-        .catch(() => {}); // silencioso — coordenadas são opcionais
+        }).catch(() => {});
     }
   };
 
