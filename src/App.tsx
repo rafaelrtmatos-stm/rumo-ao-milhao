@@ -15414,7 +15414,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             const semLatLng = !d.lat || !d.lng || d.lat === 0;
             const temLink = getEmpreendimentoMapsUrl(d);
             const temCidade = d.cidade?.trim();
-            return semLatLng && (temLink || temCidade);
+            // Incluir: sem coords OU com link mas coordenadas ainda não resolvidas via servidor
+            return (semLatLng || (temLink && !(d as any).coordsResolvidas)) && (temLink || temCidade);
           });
           // Geocodificar em sequência (throttled para não sobrecarregar Nominatim)
           const geocodificar = async () => {
@@ -15424,10 +15425,24 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 let lat: number | undefined, lng: number | undefined;
                 // Tentar extrair do link do Maps
                 if (mapsUrl) {
+                  // Padrões de URL longa
                   const patterns = [/@(-?\d+\.\d+),(-?\d+\.\d+)/, /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/, /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/, /ll=(-?\d+\.\d+),(-?\d+\.\d+)/];
                   for (const pat of patterns) {
                     const m = mapsUrl.match(pat);
                     if (m) { lat = parseFloat(m[1]); lng = parseFloat(m[2]); break; }
+                  }
+                  // Link encurtado (goo.gl): resolver via servidor
+                  if (!lat && (mapsUrl.includes('goo.gl') || mapsUrl.includes('maps.app'))) {
+                    try {
+                      const token = localStorage.getItem('token');
+                      const r = await fetch('/api/resolve-maps-url', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+                        body: JSON.stringify({ url: mapsUrl }),
+                      });
+                      const data = await r.json();
+                      if (data?.lat && data?.lng) { lat = data.lat; lng = data.lng; }
+                    } catch {}
                   }
                 }
                 // Fallback: Nominatim por cidade
@@ -15439,10 +15454,16 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                   await new Promise(res => setTimeout(res, 1100)); // Respeitar rate limit Nominatim
                 }
                 if (lat && lng) {
-                  const updated = { ...d, lat, lng } as Empreendimento;
+                  const updated = { ...d, lat, lng, coordsResolvidas: true } as any;
                   const recalc = recalcularEstatisticasEmpreendimento(updated, []);
-                  setDevelopments(prev => prev.map(p => p.id === recalc.id ? recalc : p));
-                  dbService.upsertEmpreendimento(recalc).catch(() => {});
+                  setDevelopments(prev => prev.map(p => p.id === recalc.id ? { ...recalc, coordsResolvidas: true } as any : p));
+                  // Salvar apenas lat/lng sem imagem (evita 413)
+                  const token = localStorage.getItem('token');
+                  fetch('/api/empreendimentos/' + d.id, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
+                    body: JSON.stringify({ ...d, lat, lng, coordsResolvidas: true, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
+                  }).catch(() => {});
                 }
               } catch {}
             }
