@@ -2322,6 +2322,10 @@ const LotDashboard = ({
   const [displayedMapScale, setDisplayedMapScale] = useState(1);
   const [mapAspectRatio, setMapAspectRatio] = useState(1.414);
   const [mapFullscreen, setMapFullscreen] = useState(false);
+  const [mapaWindowHeight, setMapaWindowHeight] = useState<number>(() => {
+    try { return parseInt(localStorage.getItem('mapaWindowHeight') || '0') || 0; } catch { return 0; }
+  });
+  const mapaResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
 
@@ -4131,7 +4135,7 @@ const LotDashboard = ({
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
     return (
-        <div className="h-full flex flex-col">
+        <div className="h-full flex flex-col" data-mapa-container="true">
         {/* Aviso lotes sem bolinha */}
         {isEditingMap && lotesConfigSemBolinha > 0 && (
           <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
@@ -5066,9 +5070,37 @@ const LotDashboard = ({
               </button>
             )}
             {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
-              <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
-                <MapPin size={13} />Editar mapa
-              </button>
+              <div className="flex gap-2">
+                <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
+                  <MapPin size={13} />Editar mapa
+                </button>
+                {/* Botão de localização — define lat/lng do empreendimento clicando no mapa */}
+                {canEditMap && (
+                  <button
+                    onClick={() => {
+                      navigator.geolocation.getCurrentPosition(
+                        (pos) => {
+                          const lat = pos.coords.latitude;
+                          const lng = pos.coords.longitude;
+                          // Salvar coords no localDev e persistir
+                          const nextDev = { ...localDev, lat, lng } as any;
+                          persistDev(nextDev);
+                          alert(`✓ Localização salva: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
+                        },
+                        (err) => {
+                          const msgs: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."};
+                          alert("Localização: " + (msgs[err.code] || err.message));
+                        },
+                        { enableHighAccuracy: true, timeout: 10000 }
+                      );
+                    }}
+                    className="flex px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase items-center gap-1.5 hover:bg-blue-500"
+                    title="Usar minha localização GPS como posição do empreendimento"
+                  >
+                    <MapPin size={13} />📍 Minha posição
+                  </button>
+                )}
+              </div>
             )}
             {canEditMap && !mapaImagem && (
               <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
@@ -5099,9 +5131,62 @@ const LotDashboard = ({
         {/* CONTEÚDO */}
         {mode === "mapa" && mapaImagem ? (
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-            {/* MAPA — ocupa todo espaço disponível */}
-            <div className="flex-1 min-h-0 relative">
+            {/* MAPA — altura ajustável pelo usuário */}
+            <div
+              className="relative min-h-0 flex-shrink-0"
+              style={{ height: mapaWindowHeight > 0 ? `${mapaWindowHeight}px` : undefined, flex: mapaWindowHeight > 0 ? 'none' : '1' }}
+            >
               {renderMapa()}
+              {/* HANDLE DE RESIZE — arrastar para ajustar altura */}
+              <div
+                className="absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize z-30 group select-none"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startH = e.currentTarget.parentElement!.getBoundingClientRect().height;
+                  mapaResizeRef.current = { dragging: true, startY: e.clientY, startH };
+                  const onMove = (ev: MouseEvent) => {
+                    if (!mapaResizeRef.current.dragging) return;
+                    const delta = ev.clientY - mapaResizeRef.current.startY;
+                    const newH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
+                    setMapaWindowHeight(newH);
+                  };
+                  const onUp = (upEv: MouseEvent) => {
+                    mapaResizeRef.current.dragging = false;
+                    window.removeEventListener('mousemove', onMove);
+                    window.removeEventListener('mouseup', onUp);
+                    // Calcular e salvar altura final
+                    const delta = upEv.clientY - mapaResizeRef.current.startY;
+                    const finalH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
+                    setMapaWindowHeight(finalH);
+                    localStorage.setItem('mapaWindowHeight', String(Math.round(finalH)));
+                  };
+                  window.addEventListener('mousemove', onMove);
+                  window.addEventListener('mouseup', onUp);
+                }}
+                onTouchStart={(e) => {
+                  const startH = e.currentTarget.parentElement!.getBoundingClientRect().height;
+                  mapaResizeRef.current = { dragging: true, startY: e.touches[0].clientY, startH };
+                  const onMove = (ev: TouchEvent) => {
+                    if (!mapaResizeRef.current.dragging) return;
+                    const delta = ev.touches[0].clientY - mapaResizeRef.current.startY;
+                    const newH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
+                    setMapaWindowHeight(newH);
+                  };
+                  const onEnd = () => {
+                    mapaResizeRef.current.dragging = false;
+                    const el = document.querySelector('[data-mapa-container]') as HTMLElement;
+                    if (el) {
+                      localStorage.setItem('mapaWindowHeight', String(Math.round(el.getBoundingClientRect().height)));
+                    }
+                    window.removeEventListener('touchmove', onMove);
+                    window.removeEventListener('touchend', onEnd);
+                  };
+                  window.addEventListener('touchmove', onMove, { passive: true });
+                  window.addEventListener('touchend', onEnd);
+                }}
+              >
+                <div className="w-12 h-1 rounded-full bg-slate-300 group-hover:bg-slate-500 transition-colors" />
+              </div>
             </div>
             {/* BOTÕES FIXOS EMBAIXO DO MAPA */}
             <div className="flex-shrink-0 flex gap-2 p-3 sm:p-4 bg-white border-t border-slate-100">
