@@ -5521,24 +5521,46 @@ const EmpreendimentosSection = ({
       </div>
 
       {/* MAPA GLOBAL */}
-      {showMapaGlobal && (
-        <div className="card-premium overflow-hidden" style={{ height: 520 }}>
-          <MapaGlobalDashboard
-            empreendimentos={developments}
-            sales={sales}
-            onAbrirEmpreendimento={(id) => {
-              setShowMapaGlobal(false);
-              const dev = developments.find(d => d.id === id);
-              if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); }
-            }}
-            onVerMapa={(id) => {
-              setShowMapaGlobal(false);
-              const dev = developments.find(d => d.id === id);
-              if (dev && onStartSale) onStartSale({ empreendimentoId: id } as any);
-            }}
-          />
-        </div>
-      )}
+      {showMapaGlobal && (() => {
+        const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
+        const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
+        return (
+          <div className="card-premium overflow-hidden flex flex-col" style={{ height: 540 }}>
+            {comCoord.length === 0 && (
+              <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
+                <div className="text-4xl">🗺️</div>
+                <h3 className="font-black text-slate-900">Nenhum empreendimento com localização</h3>
+                <p className="text-sm text-slate-500 max-w-xs">
+                  {semCoord.length > 0
+                    ? `Seus ${semCoord.length} empreendimento(s) ainda não têm coordenadas. Edite cada um e salve — as coordenadas serão detectadas automaticamente pela cidade.`
+                    : "Cadastre empreendimentos para vê-los no mapa."}
+                </p>
+                {semCoord.length > 0 && (
+                  <p className="text-xs text-slate-400 bg-slate-50 rounded-xl px-4 py-2">
+                    💡 Dica: basta salvar novamente qualquer empreendimento que já tenha cidade cadastrada.
+                  </p>
+                )}
+              </div>
+            )}
+            {comCoord.length > 0 && (
+              <MapaGlobalDashboard
+                empreendimentos={developments}
+                sales={sales}
+                onAbrirEmpreendimento={(id) => {
+                  setShowMapaGlobal(false);
+                  const dev = developments.find(d => d.id === id);
+                  if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); }
+                }}
+                onVerMapa={(id) => {
+                  setShowMapaGlobal(false);
+                  const dev = developments.find(d => d.id === id);
+                  if (dev && onStartSale) onStartSale({ empreendimentoId: id } as any);
+                }}
+              />
+            )}
+          </div>
+        );
+      })()}
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
@@ -14921,6 +14943,28 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     setDevelopments(updated);
     // Upsert atômico: salva apenas este empreendimento
     dbService.upsertEmpreendimento(devRecalculado).catch((e) => alert('Erro ao salvar empreendimento:\n' + JSON.stringify(e)));
+
+    // Geocoding automático: se não tem coordenadas mas tem cidade, busca via Nominatim
+    const semCoordenadas = !devRecalculado.lat || !devRecalculado.lng || devRecalculado.lat === 0;
+    const temCidade = devRecalculado.cidade?.trim();
+    if (semCoordenadas && temCidade) {
+      const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
+      fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
+        .then(r => r.json())
+        .then((results: any[]) => {
+          if (results?.[0]?.lat && results?.[0]?.lon) {
+            const withCoords = {
+              ...devRecalculado,
+              lat: parseFloat(results[0].lat),
+              lng: parseFloat(results[0].lon),
+            };
+            const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
+            setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
+            dbService.upsertEmpreendimento(recalc).catch(() => {});
+          }
+        })
+        .catch(() => {}); // silencioso — coordenadas são opcionais
+    }
   };
 
   const deleteDev = (id: string) => {
