@@ -13337,6 +13337,11 @@ const ConfigSection = ({
   clients,
   sales,
   onImport,
+  isAdmin,
+  menuOrder,
+  setMenuOrder,
+  hiddenMenuItems,
+  setHiddenMenuItems,
 }: {
   config: AppConfig;
   onSave: (c: AppConfig) => void;
@@ -13344,6 +13349,11 @@ const ConfigSection = ({
   clients: Cliente[];
   sales: Venda[];
   onImport: (data: { empreendimentos: Empreendimento[]; clientes: Cliente[]; vendas: Venda[]; config: AppConfig }, mode: "replace" | "merge") => void;
+  isAdmin?: boolean;
+  menuOrder: string[];
+  setMenuOrder: (o: string[]) => void;
+  hiddenMenuItems: string[];
+  setHiddenMenuItems: (h: string[]) => void;
 }) => {
   const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
   const [migrating, setMigrating] = useState(false);
@@ -15219,44 +15229,53 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         /(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/,
       ];
       let found = false;
+      // Helper: salva apenas as coords (sem imagem base64 para evitar 413)
+      const salvarApenasCoordenadas = (lat: number, lng: number) => {
+        const semImagem = { ...devRecalculado, lat, lng,
+          mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined,
+          mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined,
+          mapaPdfOriginalBase64: undefined };
+        const recalc = recalcularEstatisticasEmpreendimento(semImagem as any, sales);
+        setDevelopments(prev => prev.map(d => d.id === recalc.id ? { ...d, lat, lng } : d));
+        // Salvar via endpoint de mapa (não inclui imagem)
+        fetch(`/api/empreendimentos/${devRecalculado.id}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
+          body: JSON.stringify({ ...devRecalculado, lat, lng, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
+        }).catch(() => {});
+      };
+
       for (const pat of patterns) {
         const m = mapsLink.match(pat);
         if (m) {
-          const withCoords = { ...devRecalculado, lat: parseFloat(m[1]), lng: parseFloat(m[2]) };
-          const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
-          setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
-          dbService.upsertEmpreendimento(recalc).catch(() => {});
+          salvarApenasCoordenadas(parseFloat(m[1]), parseFloat(m[2]));
           found = true;
           break;
         }
       }
-      // Se URL encurtada (maps.app.goo.gl) ou sem coords, resolve via Nominatim
       if (!found) {
         const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
         if (query.trim()) {
           fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
             .then(r => r.json())
             .then((results: any[]) => {
-              if (results?.[0]?.lat) {
-                const withCoords = { ...devRecalculado, lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
-                const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
-                setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
-                dbService.upsertEmpreendimento(recalc).catch(() => {});
-              }
+              if (results?.[0]?.lat) salvarApenasCoordenadas(parseFloat(results[0].lat), parseFloat(results[0].lon));
             }).catch(() => {});
         }
       }
     } else if (semCoordenadas && devRecalculado.cidade?.trim()) {
-      // Sem link: geocoding por cidade
       const query = [devRecalculado.cidade, devRecalculado.estado, "Brasil"].filter(Boolean).join(", ");
       fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`)
         .then(r => r.json())
         .then((results: any[]) => {
           if (results?.[0]?.lat) {
-            const withCoords = { ...devRecalculado, lat: parseFloat(results[0].lat), lng: parseFloat(results[0].lon) };
-            const recalc = recalcularEstatisticasEmpreendimento(withCoords, sales);
-            setDevelopments(prev => prev.map(d => d.id === recalc.id ? recalc : d));
-            dbService.upsertEmpreendimento(recalc).catch(() => {});
+            const lat = parseFloat(results[0].lat), lng = parseFloat(results[0].lon);
+            setDevelopments(prev => prev.map(d => d.id === devRecalculado.id ? { ...d, lat, lng } : d));
+            fetch(`/api/empreendimentos/${devRecalculado.id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
+              body: JSON.stringify({ ...devRecalculado, lat, lng, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
+            }).catch(() => {});
           }
         }).catch(() => {});
     }
@@ -15761,6 +15780,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             clients={clients}
             sales={sales}
             onImport={handleImport}
+            isAdmin={isAdmin}
+            menuOrder={menuOrder}
+            setMenuOrder={(o) => { setMenuOrder(o); localStorage.setItem('menuOrder', JSON.stringify(o)); }}
+            hiddenMenuItems={hiddenMenuItems}
+            setHiddenMenuItems={(h) => { setHiddenMenuItems(h); localStorage.setItem('hiddenMenuItems', JSON.stringify(h)); }}
           />
         );
       case "usuarios":
