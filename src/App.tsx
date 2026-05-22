@@ -3155,13 +3155,10 @@ const LotDashboard = ({
   };
 
   const getBallPixelSize = () => {
-    // O slider define o tamanho base. A visualização recalcula pela escala real do mapa.
+    // Tamanho FIXO em pixels na tela — nao varia com zoom nem com tamanho do container.
+    // O slider (markerSizePercent) e o unico controle de tamanho.
     const base = getBallBasePixelSize();
-    const scale = getDisplayedMapScale();
-    return {
-      size: Math.max(5, Math.min(base.size, Math.round(base.size * scale))),
-      font: Math.max(5, Math.min(base.font, Math.round(base.font * scale))),
-    };
+    return { size: base.size, font: base.font };
   };
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
@@ -3997,7 +3994,7 @@ const LotDashboard = ({
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
               <div key={loteLabel} className="absolute -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
-                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px` }}>
+                style={{ left: `${x}%`, top: `${y}%`, width: `${Math.round(ballSize.size / mapZoom)}px`, height: `${Math.round(ballSize.size / mapZoom)}px`, fontSize: `${Math.round(ballSize.font / mapZoom)}px` }}>
                 {loteLabel}
               </div>
             );
@@ -4028,7 +4025,7 @@ const LotDashboard = ({
             {displayLots.length === 0 ? (
               <div className="p-4 rounded-2xl bg-slate-50 text-sm text-slate-400 font-medium">Nenhum lote cadastrado nesta quadra.</div>
             ) : (
-              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              <div className="grid grid-cols-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
                 {displayLots.map((l) => {
                   const soldData = vendaDoLote(q, l);
                   const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
@@ -4171,7 +4168,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${Math.round(ballSize.size / mapZoom)}px`, height: `${Math.round(ballSize.size / mapZoom)}px`, fontSize: `${Math.round(ballSize.font / mapZoom)}px`, borderWidth: `${Math.max(1, Math.round(getBallBorderWidth(ballSize.size) / mapZoom))}px`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4755,10 +4752,10 @@ const LotDashboard = ({
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
-                        width: `${ballSize.size}px`,
-                        height: `${ballSize.size}px`,
-                        fontSize: `${ballSize.font}px`,
-                        borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
+                        width: `${Math.round(ballSize.size / mapZoom)}px`,
+                        height: `${Math.round(ballSize.size / mapZoom)}px`,
+                        fontSize: `${Math.round(ballSize.font / mapZoom)}px`,
+                        borderWidth: `${Math.max(1, Math.round(getBallBorderWidth(ballSize.size) / mapZoom))}px`,
                         pointerEvents: "auto",
                       }}
                     />
