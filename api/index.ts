@@ -78,3 +78,4 @@ app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) 
     res.status(500).json({ error: e?.message || "Failed to update mapa imagem" });
   }
 });
+// trigger redeploy Fri May 22 05:20:56 UTC 2026
