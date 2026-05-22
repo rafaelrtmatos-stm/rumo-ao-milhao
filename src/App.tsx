@@ -100,6 +100,7 @@ import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 import MapaGlobalDashboard from "./components/MapaGlobalDashboard";
 import PickLocationMap from "./components/PickLocationMap";
+import LoadingScreen from "./components/LoadingScreen";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
 
@@ -15369,6 +15370,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     let subClientes: { unsubscribe: () => void } | null = null;
     let subVendas: { unsubscribe: () => void } | null = null;
 
+    const loadStartTime = Date.now();
     const load = async () => {
       try {
         setLoadProgress(10);
@@ -15400,8 +15402,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         }
 
         setLoadProgress(100);
-        setTimeout(() => setLoadProgress(0), 600);
-        setIsLoaded(true);
+        // Aguarda a animação de contagem (5.5s) antes de mostrar o app
+        const elapsed = Date.now() - loadStartTime;
+        const minDuration = 5500;
+        const wait = Math.max(0, minDuration - elapsed);
+        setTimeout(() => {
+          setLoadProgress(0);
+          setIsLoaded(true);
+        }, wait + 300);
 
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
         subClientes = dbService.subscribeToClientes((d) => setClients(d));
@@ -16303,33 +16311,23 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             className="w-full max-w-7xl mx-auto min-w-0"
           >
             {!isLoaded ? (
-              <div className="flex flex-col items-center justify-center min-h-[60vh] gap-6">
-                {/* Logo / branding */}
-                <div className="text-center space-y-1 mb-2">
-                  <h1 className="text-2xl font-display font-bold text-primary-main italic">Rumo ao Milhão</h1>
-                  <p className="text-xs text-slate-400 font-medium uppercase tracking-widest">Sistema Imobiliário</p>
-                </div>
-                {/* Barra de progresso */}
-                <div className="w-56 space-y-3">
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all duration-500 ease-out"
-                      style={{ width: `${Math.max(loadProgress, 5)}%` }}
-                    />
-                  </div>
-                  <p className="text-center text-xs text-slate-400 font-medium">
-                    {loadProgress < 35 ? "Carregando empreendimentos..." :
-                     loadProgress < 60 ? "Carregando clientes..." :
-                     loadProgress < 80 ? "Carregando vendas..." :
-                     loadProgress < 95 ? "Carregando configurações..." :
-                     "Finalizando..."}
-                  </p>
-                </div>
-              </div>
+              <LoadingScreen progress={loadProgress} />
             ) : renderSection()}
           </motion.div>
         </AnimatePresence>
       </main>
+
+      {/* PRÉ-CARREGAMENTO DO MAPA GLOBAL — invisível, já inicializa o Leaflet */}
+      {isLoaded && section !== "empreendimentos" && (
+        <div style={{ position: "fixed", width: 1, height: 1, opacity: 0, pointerEvents: "none", zIndex: -1, overflow: "hidden" }}>
+          <MapaGlobalDashboard
+            empreendimentos={developments}
+            sales={sales}
+            onAbrirEmpreendimento={() => {}}
+            onVerMapa={() => {}}
+          />
+        </div>
+      )}
 
       {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} />}
       {section !== "vendas" && !forceDesktop && <FAB setSection={setSection} />}
