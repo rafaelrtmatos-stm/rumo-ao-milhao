@@ -2521,18 +2521,21 @@ const LotDashboard = ({
   // Imagem media: gerada sob demanda na faixa de zoom intermediario
   const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemOriginal;
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
-  // Para imagens (nao PDF): original ja e alta resolucao, usar como fallback no zoom alto
-  const mapaImagemAltaEfetiva = mapaImagemAlta || mapaImagemOriginal;
-  const deveUsarMapaAlta = mapZoom > HIGH_RES_ZOOM_THRESHOLD;
-  const deveUsarMapaMedia = !deveUsarMapaAlta && mapZoom > MED_RES_ZOOM_THRESHOLD;
-  // Selecao por nivel: leve → original → media → alta (sempre com fallback)
-  const mapaImagem = deveUsarMapaAlta
-    ? (mapaImagemAltaEfetiva || mapaImagemMedia || mapaImagemOriginal)
-    : deveUsarMapaMedia
-    ? (mapaImagemMedia || mapaImagemOriginal)
-    : mapZoom > 1
-    ? mapaImagemOriginal
-    : mapaImagemLeve;
+  // Para imagens (nao PDF): original ja e a melhor resolucao disponivel
+  // REGRA: mapaImagem NUNCA pode ser string vazia — sempre cai para original
+  const mapaImagem = (() => {
+    // PDF: nao usa mapaImagem (usa canvas direto), retorna qualquer string nao vazia
+    if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
+    // Imagem: sempre tem o original como base
+    if (!mapaImagemOriginal) return "";
+    // Zoom alto: tenta alta res, senao usa original (NAO fica branco)
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) return mapaImagemAlta || mapaImagemOriginal;
+    // Zoom medio: tenta media res, senao usa original
+    if (mapZoom > MED_RES_ZOOM_THRESHOLD) return (localDev as any).mapaImagemMedResBase64 || mapaImagemOriginal;
+    // Zoom baixo: usa leve se disponivel, senao original
+    if (mapZoom <= 1) return mapaImagemLeveBase64 || mapaImagemOriginal;
+    return mapaImagemOriginal;
+  })();
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
