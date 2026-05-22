@@ -5773,59 +5773,48 @@ const EmpreendimentosSection = ({
               </div>
 
               <div className="md:col-span-2">
-                <label className="label">Localização no mapa (Latitude / Longitude)</label>
-                {/* Campo para colar link do Google Maps */}
-                <input
-                  className="input-field mb-2 text-xs"
-                  placeholder="Cole aqui o link do Google Maps para extrair coordenadas automaticamente"
-                  onPaste={(e) => {
-                    const text = e.clipboardData.getData('text');
-                    // Tenta extrair lat/lng do link do Google Maps
-                    const patterns = [
-                      /@(-?\d+\.\d+),(-?\d+\.\d+)/,          // /@lat,lng
-                      /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,        // ?q=lat,lng
-                      /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,         // ll=lat,lng
-                      /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,       // !3d!4d (embed)
-                      /(-?\d{1,3}\.\d{4,}),\s*(-?\d{1,3}\.\d{4,})/, // lat, lng direto
-                    ];
-                    for (const pat of patterns) {
-                      const m = text.match(pat);
-                      if (m) {
-                        e.preventDefault();
-                        setFormData({ ...formData, lat: parseFloat(m[1]), lng: parseFloat(m[2]) } as any);
-                        return;
-                      }
-                    }
-                  }}
-                />
+                <label className="label">Link do Google Maps</label>
                 <div className="flex gap-2">
                   <input
                     className="input-field flex-1"
-                    type="number"
-                    step="any"
-                    value={(formData as any).lat ?? ""}
-                    onChange={(e) => setFormData({ ...formData, lat: e.target.value ? Number(e.target.value) : undefined } as any)}
-                    placeholder="Latitude  Ex: -3.7172"
+                    placeholder="Cole o link do Google Maps  Ex: https://maps.app.goo.gl/..."
+                    value={(formData as any).googleMapsUrl || (formData as any).mapaLocalizacaoUrl || ""}
+                    onChange={(e) => {
+                      const val = e.target.value.trim();
+                      setFormData({ ...formData, googleMapsUrl: val, mapaLocalizacaoUrl: val } as any);
+                      // Extrair lat/lng direto se o link já tiver coordenadas
+                      const patterns = [
+                        /@(-?\d+\.\d+),(-?\d+\.\d+)/,
+                        /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
+                        /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
+                        /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
+                        /(-?\d{1,3}\.\d{5,}),(-?\d{1,3}\.\d{5,})/,
+                      ];
+                      for (const pat of patterns) {
+                        const m = val.match(pat);
+                        if (m) {
+                          setFormData((prev: any) => ({ ...prev, googleMapsUrl: val, mapaLocalizacaoUrl: val, lat: parseFloat(m[1]), lng: parseFloat(m[2]) }));
+                          return;
+                        }
+                      }
+                    }}
                   />
-                  <input
-                    className="input-field flex-1"
-                    type="number"
-                    step="any"
-                    value={(formData as any).lng ?? ""}
-                    onChange={(e) => setFormData({ ...formData, lng: e.target.value ? Number(e.target.value) : undefined } as any)}
-                    placeholder="Longitude  Ex: -55.0185"
-                  />
-                  <a
-                    href={`https://www.google.com/maps${(formData as any).lat && (formData as any).lng ? `/@${(formData as any).lat},${(formData as any).lng},15z` : ""}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-center px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 whitespace-nowrap"
-                    title="Abrir Google Maps para pegar coordenadas"
-                  >
-                    📍 Maps
-                  </a>
+                  {((formData as any).googleMapsUrl || (formData as any).mapaLocalizacaoUrl) && (
+                    <a
+                      href={(formData as any).googleMapsUrl || (formData as any).mapaLocalizacaoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex items-center px-3 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-xs font-bold hover:bg-emerald-100 whitespace-nowrap border border-emerald-200"
+                    >
+                      📍 Abrir
+                    </a>
+                  )}
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">Necessário para aparecer no mapa global do dashboard. Abra o Google Maps, clique direito no local e copie as coordenadas.</p>
+                {(formData as any).lat && (formData as any).lng ? (
+                  <p className="text-[10px] text-emerald-600 font-bold mt-1">✓ Coordenadas detectadas — aparecerá no mapa global</p>
+                ) : (
+                  <p className="text-[10px] text-slate-400 mt-1">Cole o link do Google Maps do empreendimento. As coordenadas serão extraídas automaticamente.</p>
+                )}
               </div>
 
               <div>
