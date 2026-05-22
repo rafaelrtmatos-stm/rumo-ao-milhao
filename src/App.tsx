@@ -2422,6 +2422,15 @@ const LotDashboard = ({
     if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
+    // Gerar imagem leve para imagens antigas que nao tem mapaImagemLeveBase64
+    const original = (dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || "";
+    if (original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
+      gerarImagemLeve(original, 800, 0.3).then((leve) => {
+        if (leve && leve !== original) {
+          persistDev({ ...dev, mapaImagemLeveBase64: leve } as any);
+        }
+      });
+    }
   }, [dev]);
 
   useEffect(() => {
@@ -2490,13 +2499,23 @@ const LotDashboard = ({
 
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
-  const mapaImagemLeve = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
-  // Imagem média: gerada sob demanda na faixa de zoom intermediário
-  const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemLeve;
+  const mapaImagemOriginal = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  // Imagem leve: versao comprimida gerada no upload (30% qualidade, 800px)
+  // Se nao existir ainda (imagens antigas), usa a original como fallback
+  const mapaImagemLeveBase64 = (localDev as any).mapaImagemLeveBase64 || "";
+  // No zoom baixo usa leve (se disponivel), no zoom alto usa original
+  const mapaImagemLeve = mapaImagemLeveBase64 || mapaImagemOriginal;
+  // Imagem media: gerada sob demanda na faixa de zoom intermediario
+  const mapaImagemMedia = (localDev as any).mapaImagemMedResBase64 || mapaImagemOriginal;
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
   const deveUsarMapaAlta = Boolean(mapaImagemAlta && mapZoom > HIGH_RES_ZOOM_THRESHOLD);
   const deveUsarMapaMedia = !deveUsarMapaAlta && Boolean(mapaImagemAlta || (localDev as any).mapaPdfOriginalBase64) && mapZoom > MED_RES_ZOOM_THRESHOLD;
-  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta : deveUsarMapaMedia ? mapaImagemMedia : mapaImagemLeve;
+  // Zoom baixo (<=1.4): imagem leve | Zoom medio: original | Zoom alto: alta resolucao
+  const deveUsarOriginal = mapZoom > MED_RES_ZOOM_THRESHOLD;
+  const mapaImagem = deveUsarMapaAlta ? mapaImagemAlta
+    : deveUsarMapaMedia ? mapaImagemMedia
+    : deveUsarOriginal ? mapaImagemOriginal
+    : mapaImagemLeve;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -2682,6 +2701,26 @@ const LotDashboard = ({
     const bytes = new Uint8Array(binary.length);
     for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
     return bytes.buffer;
+  };
+
+  // Gera versao comprimida da imagem para uso no zoom baixo (carregamento rapido)
+  const gerarImagemLeve = (dataUrl: string, maxWidth = 800, quality = 0.3): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.floor(img.width * scale);
+        canvas.height = Math.floor(img.height * scale);
+        const ctx = canvas.getContext("2d")!;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "medium";
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/webp", quality));
+      };
+      img.onerror = () => resolve(dataUrl); // fallback: usa original
+      img.src = dataUrl;
+    });
   };
 
   const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number) => {
@@ -3079,10 +3118,14 @@ const LotDashboard = ({
       return;
     }
     const reader = new FileReader();
-    reader.onload = () => {
+    reader.onload = async () => {
+      const original = String(reader.result || "");
+      // Gera versao leve (30% qualidade, max 800px) para zoom baixo
+      const leve = await gerarImagemLeve(original, 800, 0.3);
       persistDev({
         ...localDev,
-        mapaImagemBase64: String(reader.result || ""),
+        mapaImagemBase64: original,
+        mapaImagemLeveBase64: leve,
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
