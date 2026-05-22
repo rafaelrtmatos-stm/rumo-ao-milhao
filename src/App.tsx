@@ -3223,8 +3223,13 @@ const LotDashboard = ({
         if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
         ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
         const baseSize = getBallBasePixelSize().size;
-        const exportScale = Math.max(canvas.width / 1000, 0.1);
-        const radius = Math.max((baseSize * exportScale) / 2, 3);
+        // Calcula o raio proporcional: bolinha tem tamanho fixo em px na tela
+        // Para o export, converte o tamanho visual para proporção da imagem
+        const containerCssWidth = mapContainerRef.current?.offsetWidth || mapImageRef.current?.offsetWidth || 1000;
+        // quantos % da largura do container a bolinha ocupa na tela
+        const ballFraction = baseSize / containerCssWidth;
+        // aplica essa fração sobre a largura real da imagem
+        const radius = Math.max((canvas.width * ballFraction) / 2, 3);
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
