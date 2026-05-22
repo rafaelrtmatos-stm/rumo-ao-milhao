@@ -3249,10 +3249,15 @@ const LotDashboard = ({
   };
 
   const getBallPixelSize = () => {
-    // Tamanho FIXO em pixels na tela — nao varia com zoom nem com tamanho do container.
-    // O slider (markerSizePercent) e o unico controle de tamanho.
-    const base = getBallBasePixelSize();
-    return { size: base.size, font: base.font };
+    // Tamanho baseado na LARGURA DO MAPA — proporcional ao conteúdo, não à tela.
+    // Assim a bolinha mantém o mesmo tamanho visual independente do zoom ou device.
+    const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+    // Referência: largura do container do mapa em px no zoom 1
+    const mapW = mapContainerRef.current?.offsetWidth || mapImageRef.current?.offsetWidth || 600;
+    // Bolinha = 2.8% da largura do mapa * slider (100% = padrão)
+    const size = Math.round(mapW * 0.028 * pct);
+    const safeSz = Math.max(8, Math.min(60, size));
+    return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)) };
   };
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
@@ -5094,65 +5099,37 @@ const LotDashboard = ({
       <motion.div initial={{ scale: 0.96, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl max-h-[94vh] rounded-[28px] shadow-2xl relative overflow-hidden flex flex-col">
 
         {/* HEADER */}
-        <div className="p-5 sm:p-7 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-4">
-          <div className="flex items-center gap-4 min-w-0">
-            <div className="p-3 bg-primary-main text-white rounded-2xl"><MapPin size={22} /></div>
+        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-3">
+          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
+            <div className="w-9 h-9 sm:w-11 sm:h-11 bg-primary-main text-white rounded-xl sm:rounded-2xl flex items-center justify-center flex-shrink-0"><MapPin size={18} /></div>
             <div className="min-w-0">
-              <h3 className="text-lg sm:text-xl font-display font-bold text-slate-800 truncate">{localDev.nome}</h3>
-              <p className="text-sm text-slate-400 font-medium">Mapa e lotes do empreendimento</p>
+              <h3 className="text-sm sm:text-lg font-display font-bold text-slate-800 truncate leading-tight">{localDev.nome}</h3>
+              <p className="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:block">Mapa e lotes do empreendimento</p>
             </div>
           </div>
-          {/* Botão Editar mapa — somente no canto superior direito, apenas para admin */}
-          <div className="flex items-center gap-3 flex-wrap justify-end">
+          {/* Ações do header — compactas no mobile */}
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             {getEmpreendimentoMapsUrl(localDev) && (
               <button
                 onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
-                className="flex px-4 py-2 bg-primary-main/10 text-primary-main rounded-xl text-xs font-black uppercase items-center gap-2 hover:bg-primary-main hover:text-primary-contrast transition-colors"
+                className="flex px-2 sm:px-3 py-2 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 hover:bg-emerald-100 border border-emerald-200"
                 title="Abrir localização no Google Maps"
               >
-                <MapPin size={13} />Google Maps
+                <MapPin size={12} /><span className="hidden sm:inline">Google Maps</span><span className="sm:hidden">Maps</span>
               </button>
             )}
             {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
-              <div className="flex gap-2">
-                <button onClick={entrarEdicao} className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2">
-                  <MapPin size={13} />Editar mapa
-                </button>
-                {/* Botão de localização — define lat/lng do empreendimento clicando no mapa */}
-                {canEditMap && (
-                  <button
-                    onClick={() => {
-                      navigator.geolocation.getCurrentPosition(
-                        (pos) => {
-                          const lat = pos.coords.latitude;
-                          const lng = pos.coords.longitude;
-                          // Salvar coords no localDev e persistir
-                          const nextDev = { ...localDev, lat, lng } as any;
-                          persistDev(nextDev);
-                          alert(`✓ Localização salva: ${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-                        },
-                        (err) => {
-                          const msgs: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."};
-                          alert("Localização: " + (msgs[err.code] || err.message));
-                        },
-                        { enableHighAccuracy: true, timeout: 10000 }
-                      );
-                    }}
-                    className="flex px-3 py-2 bg-blue-600 text-white rounded-xl text-xs font-black uppercase items-center gap-1.5 hover:bg-blue-500"
-                    title="Usar minha localização GPS como posição do empreendimento"
-                  >
-                    <MapPin size={13} />📍 Minha posição
-                  </button>
-                )}
-              </div>
+              <button onClick={entrarEdicao} className="flex px-2 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2">
+                <MapPin size={12} /><span className="hidden sm:inline">Editar mapa</span><span className="sm:hidden">Editar</span>
+              </button>
             )}
             {canEditMap && !mapaImagem && (
-              <label className="flex px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase items-center gap-2 cursor-pointer hover:bg-primary-main transition-colors">
-                <Upload size={13} />Carregar mapa
+              <label className="flex px-2 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2 cursor-pointer hover:bg-primary-main transition-colors">
+                <Upload size={12} /><span className="hidden sm:inline">Carregar mapa</span><span className="sm:hidden">Upload</span>
                 <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
               </label>
             )}
-            <button onClick={onClose} className="p-3 hover:bg-slate-100 rounded-2xl text-slate-400"><X size={22} /></button>
+            <button onClick={onClose} className="p-2 sm:p-3 hover:bg-slate-100 rounded-xl sm:rounded-2xl text-slate-400"><X size={20} /></button>
           </div>
         </div>
 
