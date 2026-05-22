@@ -5864,7 +5864,7 @@ const EmpreendimentosSection = ({
                 <div className="flex gap-2">
                   <input
                     className="input-field flex-1"
-                    placeholder="Cole o link do Google Maps  Ex: https://maps.app.goo.gl/..."
+                    placeholder="Cole link do Maps, coordenadas DMS ou decimais (-2.447, -54.805)"
                     value={(formData as any).googleMapsUrl || (formData as any).mapaLocalizacaoUrl || ""}
                     onChange={(e) => {
                       const val = e.target.value.trim();
@@ -5873,6 +5873,26 @@ const EmpreendimentosSection = ({
                     onBlur={async (e) => {
                       const val = e.target.value.trim();
                       if (!val) return;
+
+                      // 0. Verificar se é formato DMS: 2°26'50.1"S 54°48'18.1"W
+                      const dmsPattern = /(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([NSns])[,\s]+(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([EWew])/;
+                      const dmsMatch = val.replace(/['']/g, "'").replace(/[""]/g, '"').match(dmsPattern);
+                      if (dmsMatch) {
+                        const [,gLat,mLat,sLat,dirLat,gLng,mLng,sLng,dirLng] = dmsMatch;
+                        const lat = (parseFloat(gLat) + parseFloat(mLat)/60 + parseFloat(sLat)/3600) * (/[Ss]/.test(dirLat) ? -1 : 1);
+                        const lng = (parseFloat(gLng) + parseFloat(mLng)/60 + parseFloat(sLng)/3600) * (/[Ww]/.test(dirLng) ? -1 : 1);
+                        setFormData((prev: any) => ({ ...prev, lat, lng }));
+                        return;
+                      }
+
+                      // 0b. Formato decimal direto: -2.4472, -54.8050
+                      const decimalPattern = /^(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)$/;
+                      const decMatch = val.match(decimalPattern);
+                      if (decMatch) {
+                        setFormData((prev: any) => ({ ...prev, lat: parseFloat(decMatch[1]), lng: parseFloat(decMatch[2]) }));
+                        return;
+                      }
+
                       // 1. Tentar extrair coords direto da URL (links longos)
                       const patterns = [
                         /@(-?\d+\.\d+),(-?\d+\.\d+)/,
@@ -5908,6 +5928,22 @@ const EmpreendimentosSection = ({
                       setTimeout(async () => {
                         const val = (e.target as HTMLInputElement).value.trim();
                         if (!val) return;
+                        // DMS no paste
+                        const dmsP = /(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([NSns])[,\s]+(\d+)[°º]\s*(\d+)['′]\s*([\d.]+)["″]?\s*([EWew])/;
+                        const dmsM = val.replace(/['']/g, "'").replace(/[""]/g, '"').match(dmsP);
+                        if (dmsM) {
+                          const [,gLat,mLat,sLat,dirLat,gLng,mLng,sLng,dirLng] = dmsM;
+                          const lat = (parseFloat(gLat) + parseFloat(mLat)/60 + parseFloat(sLat)/3600) * (/[Ss]/.test(dirLat) ? -1 : 1);
+                          const lng = (parseFloat(gLng) + parseFloat(mLng)/60 + parseFloat(sLng)/3600) * (/[Ww]/.test(dirLng) ? -1 : 1);
+                          setFormData((prev: any) => ({ ...prev, lat, lng }));
+                          return;
+                        }
+                        // Decimal direto
+                        const decM = val.match(/^(-?\d+\.\d+)[,\s]+(-?\d+\.\d+)$/);
+                        if (decM) {
+                          setFormData((prev: any) => ({ ...prev, lat: parseFloat(decM[1]), lng: parseFloat(decM[2]) }));
+                          return;
+                        }
                         const patterns = [
                           /@(-?\d+\.\d+),(-?\d+\.\d+)/,
                           /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
@@ -5956,7 +5992,7 @@ const EmpreendimentosSection = ({
                 ) : (
                   <div className="mt-1 space-y-1">
                     <p className="text-[10px] text-slate-400">Cole o link do Google Maps. Para links encurtados (goo.gl), as coordenadas são extraídas automaticamente.</p>
-                    <p className="text-[10px] text-amber-500 font-bold">💡 Dica: para garantir precisão, abra o Maps, clique direito no local exato → copie as coordenadas (-3.xxxx, -55.xxxx) e cole aqui.</p>
+                    <p className="text-[10px] text-amber-500 font-bold">💡 Aceita: link do Maps, coordenadas DMS (2°26'50.1"S 54°48'18.1"W) ou decimais (-2.4472, -54.8050)</p>
                   </div>
                 )}
               </div>
