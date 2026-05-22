@@ -4054,15 +4054,14 @@ const LotDashboard = ({
                       key={l}
                       title={extraLot ? `Lote a mais: Quadra ${q} / Lote ${l}${soldData ? " - possui contrato/venda vinculada" : " - verificar cadastro"}` : undefined}
                       onClick={() => { if (soldData) setSelectedLotSale(soldData); }}
-                      className={`group relative p-4 rounded-2xl border aspect-square flex flex-col items-center justify-center transition-all ${extraLot ? "bg-black border-black text-white cursor-pointer hover:bg-slate-900" : unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}
+                      className={`group relative p-1 rounded-xl border aspect-square flex flex-col items-center justify-center transition-all ${extraLot ? "bg-black border-black text-white cursor-pointer hover:bg-slate-900" : unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}
                     >
-                      <span className="text-[10px] font-bold uppercase tracking-widest opacity-50 mb-1">Lote</span>
-                      <span className="text-lg font-display font-bold leading-none">{l}</span>
-                      <div className={`mt-2 p-1 rounded-full text-[8px] font-bold uppercase tracking-widest ${extraLot ? "bg-white/20 text-white" : unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>
-                        {extraLot ? "A mais" : unavailable ? "Indisp." : reserved ? "Reserva" : "Disp."}
+                      <span className="text-[7px] font-bold uppercase tracking-wider opacity-40 leading-none">Lote</span>
+                      <span className="text-sm font-display font-bold leading-none mt-0.5">{l}</span>
+                      <div className={`mt-1 px-1 rounded-full text-[6px] font-bold uppercase tracking-wider leading-tight py-0.5 ${extraLot ? "bg-white/20 text-white" : unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>
+                        {extraLot ? "+" : unavailable ? "IND" : reserved ? "RES" : "DIS"}
                       </div>
-                      {extraLot && <div className="mt-1 text-[7px] font-black uppercase tracking-widest text-white/80">Verificar</div>}
-                      {!extraLot && !unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-bold text-[10px] uppercase tracking-widest">Vender</button>}
+                      {!extraLot && !unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-xl transition-all font-bold text-[9px] uppercase tracking-widest">Vender</button>}
                     </div>
                   );
                 })}
