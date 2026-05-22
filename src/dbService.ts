@@ -1,13 +1,9 @@
 /**
  * dbService.ts — online-first com fallback offline
  *
- * Quando há internet:
- *   - leitura vai direto para a API (authFetch, com token)
- *   - resultado é salvo no IndexedDB como cache
- *
- * Quando offline:
- *   - leitura vem do IndexedDB local
- *   - escrita vai para IndexedDB + fila de sync
+ * Correção 413: mapaImagemBase64 é enviado em rota separada
+ * PUT /api/empreendimentos/:id       → dados sem a imagem base64
+ * PUT /api/empreendimentos/:id/mapa  → apenas { mapaImagemBase64 }
  */
 
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
@@ -58,30 +54,41 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
   if (navigator.onLine) {
     try {
       const items = await apiGet<Empreendimento[]>('/api/empreendimentos');
-      // Atualiza cache local (sem sobrescrever pendentes)
       const now = Date.now();
       for (const item of items) {
         const local = await db.empreendimentos.get(item.id);
         if (!local || local.syncStatus === 'synced') {
-          await db.empreendimentos.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
+          // Preserva mapaImagemBase64 do cache local, pois o GET da lista não retorna a imagem
+          const base64 = (local?.data as any)?.mapaImagemBase64;
+          const merged = base64 ? { ...item, mapaImagemBase64: base64 } : item;
+          await db.empreendimentos.put({ id: item.id, data: merged, syncStatus: 'synced', updatedAt: now });
         }
       }
-      return items;
+      // Retorna com imagem do cache local
+      const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
+      return records.map(r => r.data);
     } catch (err) {
       console.warn('[db] getEmpreendimentos API falhou, usando cache:', err);
     }
   }
-  // Fallback offline
   const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
   return records.map(r => r.data);
 }
 
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
   if (navigator.onLine) {
-    await apiPost('/api/empreendimentos', items);
+    // Salva metadados (sem base64)
+    const itemsSemImagem = items.map(stripBase64);
+    await apiPost('/api/empreendimentos', itemsSemImagem);
     const now = Date.now();
     for (const item of items) {
       await db.empreendimentos.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
+      // Envia imagem separadamente se existir
+      if ((item as any).mapaImagemBase64) {
+        await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
+          mapaImagemBase64: (item as any).mapaImagemBase64,
+        }).catch(e => console.warn('[db] upload mapa imagem falhou:', e));
+      }
     }
     return;
   }
@@ -98,7 +105,16 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
 
   if (navigator.onLine) {
     try {
-      await apiPut(`/api/empreendimentos/${item.id}`, item);
+      // 1) Envia metadados sem a imagem base64 (evita 413)
+      await apiPut(`/api/empreendimentos/${item.id}`, stripBase64(item));
+
+      // 2) Envia imagem separadamente se existir
+      if ((item as any).mapaImagemBase64) {
+        await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
+          mapaImagemBase64: (item as any).mapaImagemBase64,
+        });
+      }
+
       await db.empreendimentos.update(item.id, { syncStatus: 'synced' });
       return;
     } catch (err) {
@@ -121,6 +137,13 @@ async function deleteEmpreendimento(id: string): Promise<void> {
   }
   await enqueue('empreendimento', 'delete', id);
   processSyncQueue();
+}
+
+// Remove mapaImagemBase64 antes de enviar ao servidor principal
+// O campo pode ter vários MB e estoura o limite de 4.5MB do Vercel
+function stripBase64(item: Empreendimento): Empreendimento {
+  const { mapaImagemBase64, ...rest } = item as any;
+  return rest as Empreendimento;
 }
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
