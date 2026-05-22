@@ -2270,7 +2270,7 @@ const LotDashboard = ({
   const [marcadorFase, setMarcadorFase] = useState<"idle" | "formulario" | "aguardando_segundo">("idle");
   const [marcadorPonto1, setMarcadorPonto1] = useState<{ xPercent: number; yPercent: number } | null>(null);
   const [marcadorPonto2Preview, setMarcadorPonto2Preview] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "disponivel" as MapaLoteStatus | "sistema", observacao: "" });
+  const [marcadorForm, setMarcadorForm] = useState({ quadra: "", lote: "", status: "sistema" as MapaLoteStatus | "sistema", observacao: "" });
   const [lotScriptText, setLotScriptText] = useState("");
   const [lotScriptMsg, setLotScriptMsg] = useState("");
 
@@ -2288,7 +2288,7 @@ const LotDashboard = ({
   // Sequencia 2 pontos: mantida internamente para compatibilidade com criarBolinhasSequencia
   const [seqFase, setSeqFase] = useState<"aguardando_primeiro" | "formulario" | "aguardando_segundo">("aguardando_primeiro");
   const [seqPrimeiroClique, setSeqPrimeiroClique] = useState<{ xPercent: number; yPercent: number } | null>(null);
-  const [seqForm, setSeqForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "disponivel" as MapaLoteStatus, observacao: "" });
+  const [seqForm, setSeqForm] = useState({ quadra: "", loteInicial: "", loteFinal: "", status: "sistema" as MapaLoteStatus | "sistema", observacao: "" });
   const [seqPreview, setSeqPreview] = useState<{ xPercent: number; yPercent: number } | null>(null);
 
   // Arrastar bolinhas no modo edição
@@ -3437,7 +3437,7 @@ const LotDashboard = ({
       if (marcadorFase === "idle") {
         // Abre formulário no ponto clicado
         setMarcadorPonto1({ xPercent, yPercent });
-        setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+        setMarcadorForm({ quadra: "", lote: "", status: "sistema", observacao: "" });
         // Posicionar card à direita do clique, centralizado verticalmente na viewport
         const CARD_WIDTH = 288; // w-72 = 288px
         const CARD_HEIGHT = 340; // altura estimada do card
@@ -3820,7 +3820,7 @@ const LotDashboard = ({
     setMarcadorFase("idle");
     setMarcadorPonto1(null);
     setMarcadorPonto2Preview(null);
-    setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+    setMarcadorForm({ quadra: "", lote: "", status: "sistema", observacao: "" });
     setSeqFase("aguardando_primeiro");
     setSeqPrimeiroClique(null);
     setSeqPreview(null);
@@ -4549,7 +4549,7 @@ const LotDashboard = ({
                           setMarcadorFase("idle");
                           setMarcadorPonto1(null);
                           setMarcadorPanelPos(null);
-                          setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+                          setMarcadorForm({ quadra: "", lote: "", status: "sistema", observacao: "" });
                         }
                       } else {
                         // Múltiplos lotes → vai para 2º ponto para definir posição final da linha
@@ -4569,7 +4569,7 @@ const LotDashboard = ({
                       setMarcadorPonto1(null);
                       setMarcadorPonto2Preview(null);
                       setMarcadorPanelPos(null);
-                      setMarcadorForm({ quadra: "", lote: "", status: "disponivel", observacao: "" });
+                      setMarcadorForm({ quadra: "", lote: "", status: "sistema", observacao: "" });
                     }} className="btn-secondary">Cancelar</button>
                   </div>
                 </div>
