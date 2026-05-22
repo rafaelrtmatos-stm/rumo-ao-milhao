@@ -51,7 +51,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const [mapZoom, setMapZoom] = useState(5);
   const [painelAberto, setPainelAberto] = useState(true);
   const [mapReady, setMapReady] = useState(false);
-  const [camada, setCamada] = useState<'ruas'|'satelite'|'hibrido'>('ruas');
+  const [camada, setCamada] = useState<'ruas'|'carto'|'satelite'|'hibrido'>('carto');
   const tileLayerRef = useRef<any>(null);
 
   // Empreendimentos com coordenadas válidas
@@ -99,7 +99,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       map.on("zoomend", () => setMapZoom(map.getZoom()));
 
       // Camada inicial
-      const tile = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19 }).addTo(map);
+      const tile = L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", { maxZoom: 19, subdomains: "abcd" }).addTo(map);
       tileLayerRef.current = tile;
 
       leafletMapRef.current = map;
@@ -218,15 +218,37 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       if (tileLayerRef.current) {
         tileLayerRef.current.remove();
       }
-      const urls: Record<string, string> = {
-        ruas: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
-        satelite: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        hibrido: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      // Camadas de mapa de alta qualidade
+      const configs: Record<string, { url: string; options?: any; overlay?: { url: string; options?: any } }> = {
+        ruas: {
+          // OpenStreetMap padrão — mais atualizado
+          url: "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+          options: { maxZoom: 19, attribution: "© OpenStreetMap" }
+        },
+        carto: {
+          // CartoDB Positron — visual limpo e moderno, ótimo para dashboard
+          url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+          options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB" }
+        },
+        satelite: {
+          // Esri World Imagery — satélite de alta qualidade, gratuito
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          options: { maxZoom: 18, attribution: "© Esri" }
+        },
+        hibrido: {
+          // Satélite Esri + rótulos de ruas OpenStreetMap
+          url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+          options: { maxZoom: 18, attribution: "© Esri" },
+          overlay: {
+            url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager_only_labels/{z}/{x}/{y}{r}.png",
+            options: { maxZoom: 19, subdomains: "abcd", opacity: 0.9 }
+          }
+        },
       };
-      tileLayerRef.current = L.tileLayer(urls[camada], { maxZoom: 19 }).addTo(leafletMapRef.current!);
-      // Overlay de ruas para modo híbrido
-      if (camada === 'hibrido') {
-        L.tileLayer("https://stamen-tiles.a.ssl.fastly.net/toner-hybrid/{z}/{x}/{y}.png", { maxZoom: 19, opacity: 0.5 }).addTo(leafletMapRef.current!);
+      const cfg = configs[camada] || configs.carto;
+      tileLayerRef.current = L.tileLayer(cfg.url, cfg.options || {}).addTo(leafletMapRef.current!);
+      if (cfg.overlay) {
+        L.tileLayer(cfg.overlay.url, cfg.overlay.options || {}).addTo(leafletMapRef.current!);
       }
     });
   }, [camada, mapReady]);
@@ -308,7 +330,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
 
         {/* Camadas */}
         <div className="absolute bottom-12 right-3 z-[1000] flex flex-col gap-1">
-          {([['ruas','🗺 Ruas'],['satelite','🛰 Satélite'],['hibrido','🌍 Híbrido']] as [typeof camada, string][]).map(([id, label]) => (
+          {([['carto','🗺 Moderno'],['ruas','🗺 Ruas'],['satelite','🛰 Satélite'],['hibrido','🌍 Híbrido']] as [typeof camada, string][]).map(([id, label]) => (
             <button key={id} onClick={() => setCamada(id)}
               className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow-md transition-all ${camada === id ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}>
               {label}
