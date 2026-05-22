@@ -7431,7 +7431,7 @@ VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
 ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
 QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
 DATA DE VENCIMENTO: ${diaVenc}
-VENDEDOR: ${(lastSavedVenda.vendedor || "").toUpperCase()}`;
+VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2 || "")].filter(Boolean).map(v => v.toUpperCase()).join("/ ")}`;
 
     navigator.clipboard.writeText(summary);
     alert("Resumo copiado para a área de transferência!");
@@ -10500,6 +10500,7 @@ const ContratosSection = ({
       .map((p) => fmtPhone(p as string));
     const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
 
+    const vendedorLabel = [venda.vendedor, (venda as any).vendedor2].filter(Boolean).join("/ ");
     const summary = `CADASTRO DO COMPRADOR
 NOME: ${(cliente?.nome || venda.clienteNome || "").toUpperCase()}
 RG: ${(cliente?.rg || "").toUpperCase()}
@@ -10509,6 +10510,8 @@ DATA DE ANIVERSÁRIO: ${fmtNasc(cliente?.nascimento || "")}
 ENDEREÇO: ${(cliente?.endereco || "").toUpperCase()}
 Nº: ${cliente?.numero || ""}
 BAIRRO: ${(cliente?.bairro || "").toUpperCase()}
+CIDADE: ${(cliente?.cidade || "").toUpperCase()}
+ESTADO: ${(cliente?.estado || "").toUpperCase()}
 CEP: ${cliente?.cep || ""}
 ${phoneLabel}
 LOTE: ${venda.numeroLote}
@@ -10518,7 +10521,7 @@ VALOR TOTAL: ${brl(venda.valorLote)}
 ENTRADA: ${brl(venda.valorEntrada)}
 QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}
 DATA DE VENCIMENTO: ${diaVenc}
-VENDEDOR: ${venda.vendedor}${(venda as any).vendedor2 ? "\nVENDEDOR 2: " + (venda as any).vendedor2 : ""}`;
+VENDEDOR: ${vendedorLabel}`;
 
     navigator.clipboard.writeText(summary).catch(() => {
       // fallback
