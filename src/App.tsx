@@ -2527,9 +2527,48 @@ const LotDashboard = ({
   };
 
   const fitMapToScreen = () => {
-    setMapZoom(1);
-    setMapPan({ x: 0, y: 0 });
-    scheduleMapScaleUpdate(true);
+    // Calcular zoom ideal: encaixa toda a imagem no viewport
+    // - Retrato (altura > largura): encaixa pela altura
+    // - Paisagem (largura > altura): encaixa pelas laterais
+    requestAnimationFrame(() => {
+      const viewport = mapViewportRef.current;
+      const img = mapImageRef.current;
+      if (!viewport || !img || !img.naturalWidth || !img.naturalHeight) {
+        setMapZoom(1);
+        setMapPan({ x: 0, y: 0 });
+        scheduleMapScaleUpdate(true);
+        return;
+      }
+
+      const vpW = viewport.clientWidth || viewport.getBoundingClientRect().width;
+      const vpH = viewport.clientHeight || viewport.getBoundingClientRect().height;
+      const imgW = img.naturalWidth;
+      const imgH = img.naturalHeight;
+
+      if (vpW <= 0 || vpH <= 0) {
+        setMapZoom(1);
+        setMapPan({ x: 0, y: 0 });
+        scheduleMapScaleUpdate(true);
+        return;
+      }
+
+      // Zoom 1 = imagem renderizada na largura CSS do container (w-full)
+      // imgLayoutW = largura real em px que a imagem ocupa no zoom 1
+      const imgLayoutW = img.offsetWidth || vpW;
+      const imgLayoutH = imgLayoutW * (imgH / imgW);
+
+      // Calcular zoom para encaixar toda a imagem no viewport
+      const zoomByWidth  = vpW / imgLayoutW;   // encaixa horizontalmente
+      const zoomByHeight = vpH / imgLayoutH;   // encaixa verticalmente
+
+      // Usar o menor zoom para garantir que a imagem inteira aparece
+      const fitZoom = Math.min(zoomByWidth, zoomByHeight);
+      const safeZoom = Math.max(0.1, Math.min(10, fitZoom));
+
+      setMapZoom(safeZoom);
+      setMapPan({ x: 0, y: 0 });
+      scheduleMapScaleUpdate(false);
+    });
   };
 
   const isEditingMap = canEditMap && mapAction !== "visualizar";
@@ -2983,6 +3022,13 @@ const LotDashboard = ({
       window.removeEventListener("orientationchange", handleOrientationChange);
     };
   }, [mapaImagem, mode, mapFullscreen, mapZoom]);
+
+  // Encaixar mapa ao abrir no modo visualização
+  useEffect(() => {
+    if (mode === "mapa" && mapaImagem && mapAction === "visualizar") {
+      setTimeout(fitMapToScreen, 100);
+    }
+  }, [mode, mapaImagem]);
 
   const quadras = getQuadraList(localDev);
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
@@ -4208,7 +4254,7 @@ const LotDashboard = ({
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : (
-                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
               )}
 
               {/* Preview bolinhas + linha para multi-lote */}
@@ -4259,7 +4305,7 @@ const LotDashboard = ({
             {mapaImagem && (
               <div className="absolute bottom-3 right-3 z-30 flex flex-col gap-2">
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">+</button>
-                {mapZoom > 1 && <button type="button" onClick={(ev) => { ev.stopPropagation(); resetMapZoom(); }} className="w-8 h-8 mx-auto rounded-xl bg-slate-100 text-slate-600 shadow border border-slate-200 font-black text-[10px]">1:1</button>}
+                <button type="button" onClick={(ev) => { ev.stopPropagation(); fitMapToScreen(); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-lg" title="Encaixar na tela">⊡</button>
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-11 h-11 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-xl">−</button>
               </div>
             )}
@@ -4801,7 +4847,7 @@ const LotDashboard = ({
                 {(localDev as any).mapaPdfOriginalBase64 ? (
                   <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
                 ) : (
-                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={updateDisplayedMapScale} />
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
                 )}
 
                 {mapaPontos.map((ponto) => {
