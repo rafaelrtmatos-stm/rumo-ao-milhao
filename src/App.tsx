@@ -6387,13 +6387,71 @@ const EmpreendimentosSection = ({
         <button onClick={() => setDevViewMode('lista')} className={`p-2 rounded-xl text-xs font-bold border transition-all ${devViewMode==='lista' ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-400 border-slate-200 hover:border-slate-400'}`} title="Lista">☰</button>
       </div>
 
-      <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "flex flex-col gap-3"}>
+      {/* MODO LISTA — card compacto de uma linha */}
+      {devViewMode === 'lista' && (
+        <div className="flex flex-col gap-1.5">
+          {filteredDevelopments.map((dev) => {
+            const disponiveis = Math.max(0, (recalcularEstatisticasEmpreendimento(dev, sales).lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos)));
+            const pct = dev.totalLotes > 0 ? Math.round((dev.lotesVendidos / dev.totalLotes) * 100) : 0;
+            const temMaps = !!getEmpreendimentoMapsUrl(dev);
+            return (
+              <div key={dev.id} className="bg-white border border-slate-200 rounded-2xl px-3 py-2.5 flex items-center gap-2 hover:border-slate-300 hover:shadow-sm transition-all min-w-0">
+                {/* Ícone */}
+                <div className="w-8 h-8 rounded-xl bg-primary-main/10 flex items-center justify-center flex-shrink-0">
+                  <Building2 size={15} className="text-primary-main" />
+                </div>
+                {/* Nome + cidade */}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-black text-slate-800 truncate leading-tight">{dev.nome}</p>
+                  <p className="text-[10px] text-slate-400 truncate">{[dev.cidade, dev.estado].filter(Boolean).join(', ')}</p>
+                </div>
+                {/* Stats inline */}
+                <div className="flex items-center gap-1.5 flex-shrink-0 text-[11px] font-black">
+                  <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-lg">{disponiveis}</span>
+                  <span className="text-slate-300">/</span>
+                  <span className="text-slate-500">{dev.totalLotes}</span>
+                  <span className="text-slate-300 ml-0.5">•</span>
+                  <span className="text-slate-400">{pct}%</span>
+                </div>
+                {/* Botões — uma linha, sem quebra */}
+                <div className="flex items-center gap-1 flex-shrink-0">
+                  <button onClick={() => setSelectedDevForMap(dev)}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-primary-main transition-colors">
+                    <MapPin size={11} /><span>Mapa</span>
+                  </button>
+                  {temMaps && (
+                    <button onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                      className="flex items-center gap-1 px-2 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-emerald-600 hover:text-white transition-colors">
+                      <MapPin size={11} /><span className="hidden sm:inline">Maps</span>
+                    </button>
+                  )}
+                  <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-slate-200 transition-colors">
+                    <Settings size={11} /><span className="hidden sm:inline">Lotes</span>
+                  </button>
+                  <button onClick={() => openEditForm(dev)}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-blue-500 hover:text-white transition-colors">
+                    <Pencil size={11} /><span className="hidden sm:inline">Editar</span>
+                  </button>
+                  <button onClick={() => requestDelete(`Excluir "${dev.nome}"?`, () => onDelete(dev.id))}
+                    className="flex items-center gap-1 px-2 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-red-500 hover:text-white transition-colors">
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* MODO GRADE — cards completos */}
+      <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "hidden"}>
         {filteredDevelopments.map((dev) => (
           <motion.div
             layout
             key={dev.id}
-            whileHover={{ scale: 1.01, translateY: devViewMode==='grade' ? -4 : 0 }}
-            className={devViewMode==='grade' ? "card-premium flex flex-col group relative overflow-hidden" : "card-premium flex flex-row items-center gap-4 group relative overflow-hidden py-3 px-4"}
+            whileHover={{ scale: 1.01, translateY: -4 }}
+            className="card-premium flex flex-col group relative overflow-hidden"
           >
 
             <div className="mb-6 flex items-center gap-4">
