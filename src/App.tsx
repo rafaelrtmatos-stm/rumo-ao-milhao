@@ -15943,33 +15943,119 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       case "inicio":
         return (
           <div className="p-6 sm:p-10 max-w-2xl mx-auto space-y-6">
-            <div className="text-center space-y-2">
-              <h1 className="text-3xl font-display font-bold text-primary-main italic">Rumo ao Milhão</h1>
-              <p className="text-slate-400 text-sm">Bem-vindo ao sistema imobiliário</p>
+            {/* Logo */}
+            <div className="text-center space-y-3">
+              <div className="flex justify-center">
+                <div className="w-20 h-20 rounded-3xl bg-[#1a4a1a] flex items-center justify-center shadow-xl">
+                  <img src="/icon-192x192.png" alt="RA1M" className="w-14 h-14 rounded-2xl" />
+                </div>
+              </div>
+              <h1 className="text-3xl font-display font-bold text-[#1a4a1a] italic">Rumo ao Milhão</h1>
+              <p className="text-slate-400 text-sm">Sistema Imobiliário</p>
             </div>
-            <div className="grid grid-cols-2 gap-4">
+
+            {/* Botões principais */}
+            <div className="grid grid-cols-3 gap-3">
               {[
-                { label: "Dashboard", icon: "📊", section: "dashboard" },
-                { label: "Nova Venda", icon: "🛒", section: "vendas" },
-                { label: "Empreendimentos", icon: "🏗", section: "empreendimentos" },
-                { label: "Contratos", icon: "📄", section: "contratos" },
-                { label: "Clientes", icon: "👥", section: "clientes" },
-                { label: "Calculadora", icon: "🔢", section: "calculadora" },
+                {
+                  label: "Dashboard", section: "dashboard",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <rect x="4" y="4" width="18" height="18" rx="4" fill="white" fillOpacity=".95"/>
+                      <rect x="26" y="4" width="18" height="8" rx="4" fill="white" fillOpacity=".7"/>
+                      <rect x="26" y="16" width="18" height="6" rx="3" fill="white" fillOpacity=".5"/>
+                      <rect x="4" y="26" width="8" height="18" rx="4" fill="white" fillOpacity=".6"/>
+                      <rect x="16" y="32" width="8" height="12" rx="4" fill="white" fillOpacity=".8"/>
+                      <rect x="28" y="26" width="8" height="18" rx="4" fill="white" fillOpacity=".95"/>
+                      <rect x="40" y="30" width="4" height="14" rx="2" fill="white" fillOpacity=".5"/>
+                    </svg>
+                  )
+                },
+                {
+                  label: "Nova Venda", section: "vendas",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <circle cx="18" cy="38" r="4" fill="white" fillOpacity=".9"/>
+                      <circle cx="36" cy="38" r="4" fill="white" fillOpacity=".9"/>
+                      <path d="M4 6h5l6 22h22l4-14H14" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="38" cy="12" r="7" fill="white" fillOpacity=".95"/>
+                      <path d="M38 9v6M35 12h6" stroke="#1a4a1a" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                  )
+                },
+                {
+                  label: "Mapa", section: "empreendimentos",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <path d="M16 6L6 10v30l10-4 16 4 10-4V6L42 10 26 6z" stroke="white" strokeWidth="2.5" strokeLinejoin="round" fill="white" fillOpacity=".15"/>
+                      <path d="M16 6v30M32 10v30" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                      <circle cx="32" cy="20" r="6" fill="white" fillOpacity=".95"/>
+                      <circle cx="32" cy="20" r="2.5" fill="#1a4a1a"/>
+                      <path d="M32 26c0 0-6 7-6 12" stroke="white" strokeWidth="2.5" strokeLinecap="round" fillOpacity=".5"/>
+                    </svg>
+                  )
+                },
+                {
+                  label: "Contratos", section: "contratos",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <rect x="8" y="4" width="28" height="36" rx="4" fill="white" fillOpacity=".2" stroke="white" strokeWidth="2.5"/>
+                      <rect x="12" y="24" width="16" height="2.5" rx="1.25" fill="white" fillOpacity=".9"/>
+                      <rect x="12" y="30" width="12" height="2.5" rx="1.25" fill="white" fillOpacity=".6"/>
+                      <path d="M30 36l4 4 8-9" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+                      <path d="M12 14h8M12 19h14" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                    </svg>
+                  )
+                },
+                {
+                  label: "Clientes", section: "clientes",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <circle cx="20" cy="14" r="8" fill="white" fillOpacity=".95"/>
+                      <path d="M4 40c0-8.837 7.163-14 16-14s16 5.163 16 14" stroke="white" strokeWidth="3" strokeLinecap="round"/>
+                      <circle cx="36" cy="18" r="5" fill="white" fillOpacity=".6"/>
+                      <path d="M28 38c0-5 3.6-8.5 8-9.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" fillOpacity=".5"/>
+                    </svg>
+                  )
+                },
+                {
+                  label: "Calculadora", section: "calculadora",
+                  icon: (
+                    <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
+                      <rect x="8" y="4" width="32" height="40" rx="6" fill="white" fillOpacity=".2" stroke="white" strokeWidth="2.5"/>
+                      <rect x="12" y="8" width="24" height="10" rx="3" fill="white" fillOpacity=".9"/>
+                      <circle cx="16" cy="28" r="3" fill="white" fillOpacity=".8"/>
+                      <circle cx="24" cy="28" r="3" fill="white" fillOpacity=".8"/>
+                      <circle cx="32" cy="28" r="3" fill="white" fillOpacity=".8"/>
+                      <circle cx="16" cy="38" r="3" fill="white" fillOpacity=".8"/>
+                      <circle cx="24" cy="38" r="3" fill="white" fillOpacity=".8"/>
+                      <rect x="29" y="35" width="6" height="6" rx="3" fill="white" fillOpacity=".95"/>
+                    </svg>
+                  )
+                },
               ].map(item => (
-                <button key={item.section} onClick={() => setSection(item.section as Section)}
-                  className="card-premium p-5 flex flex-col items-center gap-3 hover:shadow-xl transition-all active:scale-95">
-                  <span className="text-3xl">{item.icon}</span>
-                  <span className="text-sm font-black text-slate-700">{item.label}</span>
+                <button key={item.section} onClick={() => { setSection(item.section as Section); try { localStorage.setItem('lastSection', item.section); } catch {} }}
+                  className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-[#1a4a1a] hover:bg-[#245424] active:scale-95 transition-all shadow-lg group">
+                  <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center group-hover:bg-white/15 transition-colors">
+                    {item.icon}
+                  </div>
+                  <span className="text-xs font-black text-white tracking-wide">{item.label}</span>
                 </button>
               ))}
             </div>
-            <div className="card-premium p-4 space-y-3">
-              <p className="text-xs font-black uppercase tracking-widest text-slate-400">Resumo rápido</p>
-              <div className="grid grid-cols-3 gap-3">
-                <div className="text-center"><p className="text-2xl font-black text-primary-main">{sales.filter(s => s.status !== "cancelado").length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Vendas</p></div>
-                <div className="text-center"><p className="text-2xl font-black text-primary-main">{clients.length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Clientes</p></div>
-                <div className="text-center"><p className="text-2xl font-black text-primary-main">{developments.length}</p><p className="text-[10px] text-slate-400 uppercase font-bold">Empreend.</p></div>
-              </div>
+
+            {/* Resumo */}
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { value: sales.filter(s => s.status !== "cancelado").length, label: "Vendas", color: "text-[#1a4a1a]" },
+                { value: clients.length, label: "Clientes", color: "text-[#1a4a1a]" },
+                { value: developments.length, label: "Empreend.", color: "text-[#1a4a1a]" },
+              ].map(stat => (
+                <div key={stat.label} className="card-premium p-4 text-center">
+                  <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                  <p className="text-[10px] text-slate-400 uppercase font-bold mt-0.5">{stat.label}</p>
+                </div>
+              ))}
             </div>
           </div>
         );
