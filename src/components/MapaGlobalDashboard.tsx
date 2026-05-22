@@ -70,6 +70,10 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const [mapReady, setMapReady] = useState(false);
   const [camada, setCamada] = useState<Camada>("satelite");
 
+  // Ref sempre atualizado com empreendimentos atuais (evita closure stale)
+  const empreendimentosRef = useRef(empreendimentos);
+  useEffect(() => { empreendimentosRef.current = empreendimentos; }, [empreendimentos]);
+
   const devsComLoc = useMemo(() =>
     empreendimentos.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
     [empreendimentos]
@@ -114,16 +118,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       leafletRef.current = map;
       setMapReady(true);
 
-      // Centralizar nos empreendimentos
-      setTimeout(() => {
-        const devs = empreendimentos.filter(d => d.lat && d.lng && d.lat !== 0);
-        if (devs.length === 1) {
-          map.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1.2 });
-        } else if (devs.length > 1) {
-          const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
-          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: true });
-        }
-      }, 300);
+      // Centralização feita no useEffect separado abaixo
     });
 
     return () => {
@@ -131,6 +126,25 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
     };
   }, []);
+
+  // Centralizar quando empreendimentos carregarem (resolve closure stale)
+  const centradoRef = useRef(false);
+  useEffect(() => {
+    if (!mapReady || !leafletRef.current) return;
+    const devs = empreendimentos.filter(d => d.lat && d.lng && d.lat !== 0);
+    if (devs.length === 0) return;
+    if (centradoRef.current) return; // Só centraliza uma vez
+    centradoRef.current = true;
+    import("leaflet").then(L => {
+      if (!leafletRef.current) return;
+      if (devs.length === 1) {
+        leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1.2 });
+      } else {
+        const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
+        leafletRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: true });
+      }
+    });
+  }, [mapReady, empreendimentos]);
 
   // Trocar camada
   useEffect(() => {

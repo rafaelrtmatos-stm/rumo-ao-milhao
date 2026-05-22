@@ -16343,17 +16343,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         </AnimatePresence>
       </main>
 
-      {/* PRÉ-CARREGAMENTO DO MAPA GLOBAL — invisível, já inicializa o Leaflet */}
-      {isLoaded && section !== "empreendimentos" && (
-        <div style={{ position: "fixed", width: 1, height: 1, opacity: 0, pointerEvents: "none", zIndex: -1, overflow: "hidden" }}>
-          <MapaGlobalDashboard
-            empreendimentos={developments}
-            sales={sales}
-            onAbrirEmpreendimento={() => {}}
-            onVerMapa={() => {}}
-          />
-        </div>
-      )}
+
 
       {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} />}
       {section !== "vendas" && !forceDesktop && <FAB setSection={setSection} />}
