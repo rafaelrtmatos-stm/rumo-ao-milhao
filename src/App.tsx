@@ -4061,8 +4061,6 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
-              onWheel={handleMapWheel}
-              onWheelCapture={handleMapWheel}
               className={`relative mx-auto bg-white rounded-2xl overflow-hidden select-none ${mapActive ? "ring-2 ring-blue-500" : ""}`}
               style={{ maxWidth: "1000px", touchAction: mapaImagem ? "none" : "auto", overscrollBehavior: "contain" }}
             >
@@ -4694,8 +4692,6 @@ const LotDashboard = ({
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
-              onWheel={handleMapWheel}
-              onWheelCapture={handleMapWheel}
               className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
