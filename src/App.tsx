@@ -2468,13 +2468,15 @@ const LotDashboard = ({
   };
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
+    if (zoom <= 1) return { x: 0, y: 0 };
     const viewport = mapViewportRef.current?.getBoundingClientRect();
     const content = mapContainerRef.current?.getBoundingClientRect();
-    if (!viewport || !content || zoom <= 1) return { x: 0, y: 0 };
-    const baseWidth = content.width / zoom;
-    const baseHeight = content.height / zoom;
-    const maxX = Math.max(0, (baseWidth * zoom - viewport.width) / 2);
-    const maxY = Math.max(0, (baseHeight * zoom - viewport.height) / 2);
+    // Se dimensoes nao disponiveis ainda (mobile primeiro render), mantem pan atual
+    if (!viewport || !content || viewport.width === 0 || content.width === 0) return pan;
+    const scaledW = content.width * zoom;
+    const scaledH = content.height * zoom;
+    const maxX = Math.max(0, (scaledW - viewport.width) / 2);
+    const maxY = Math.max(0, (scaledH - viewport.height) / 2);
     return {
       x: Math.max(-maxX, Math.min(maxX, pan.x)),
       y: Math.max(-maxY, Math.min(maxY, pan.y)),
@@ -4091,7 +4093,7 @@ const LotDashboard = ({
         )}
         <div className="flex flex-col lg:relative lg:block lg:h-[calc(100vh-200px)] h-auto gap-0">
           {/* CANVAS DO MAPA */}
-          <div className="relative bg-slate-100 rounded-2xl overflow-hidden border border-slate-200 h-[55vw] min-h-[280px] lg:absolute lg:inset-0 lg:h-auto">
+          <div className="relative bg-slate-100 rounded-2xl border border-slate-200 h-[70vw] min-h-[300px] lg:absolute lg:inset-0 lg:h-auto" style={{overflow: mapZoom > 1 ? "visible" : "hidden"}}>
             {mapHighResLoading && (
               <div className="absolute top-2 left-2 z-10 bg-black/50 text-white text-[10px] px-2 py-1 rounded-lg">
                 Carregando alta resolução...
@@ -4149,8 +4151,8 @@ const LotDashboard = ({
                   setDraggingPanel(false);
                 }
               }}
-              className={`relative bg-white min-w-[320px] select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
-              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "center center", willChange: "transform" }}
+              className={`relative bg-white w-full select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
+              style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "top center", willChange: "transform" }}
             >
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
