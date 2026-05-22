@@ -5763,7 +5763,7 @@ const EmpreendimentosSection = ({
 
       {/* MAPA GLOBAL */}
       {/* Mapa global sempre montado (display:none quando fechado) — Leaflet não reinicializa */}
-      {isLoaded && (() => {
+      {(() => {
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
