@@ -11944,6 +11944,13 @@ VENDEDOR: ${vendedorLabel}`;
                     )}
                     {ci.label}
                   </span>
+                  {/* Data/hora da venda */}
+                  {venda.dataVenda && (
+                    <span className="text-[9px] text-slate-400 font-semibold text-right leading-tight">
+                      {new Date(venda.dataVenda).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' })}
+                      {venda.createdAt ? (' ' + new Date(venda.createdAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })) : ''}
+                    </span>
+                  )}
                   {/* Badge: Pagamento */}
                   <span className={`text-[10px] font-bold uppercase tracking-widest px-2.5 py-1 rounded-lg inline-flex items-center gap-1.5 ${pi.color}`}>
                     {pi.icon === "avista" ? (
@@ -12027,6 +12034,14 @@ VENDEDOR: ${vendedorLabel}`;
                     )}
                     {ci.label}
                   </div>
+                  {/* Data/hora da venda */}
+                  {venda.dataVenda && (
+                    <div className="text-[9px] text-slate-400 font-semibold flex items-center gap-1">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L11 13V7h1.5v5.25l4.5 2.67-1.01 1.58z"/></svg>
+                      {new Date(venda.dataVenda).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' })}
+                      {venda.createdAt ? (' ' + new Date(venda.createdAt).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })) : ''}
+                    </div>
+                  )}
                   {/* Pagamento badge */}
                   <div className={`px-2 py-1 rounded-lg text-[10px] font-bold uppercase tracking-widest inline-flex items-center gap-1.5 ${pi.color}`}>
                     {pi.icon === "avista" ? (
