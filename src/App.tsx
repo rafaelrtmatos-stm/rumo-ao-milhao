@@ -11935,6 +11935,13 @@ VENDEDOR: ${vendedorLabel}`;
                     )}
                     {pi.label}
                   </span>
+                  {/* Data/hora do contrato */}
+                  {venda.contratoGerado && (venda as any).contratoSnapshot?.geradoEm && (
+                    <span className="text-[9px] text-slate-400 font-semibold text-right leading-tight">
+                      {new Date((venda as any).contratoSnapshot.geradoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' })}
+                      {' '}{new Date((venda as any).contratoSnapshot.geradoEm).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+                    </span>
+                  )}
                 </div>
               </div>
               <p className="font-display font-bold text-primary-main text-lg">
@@ -12011,6 +12018,14 @@ VENDEDOR: ${vendedorLabel}`;
                     )}
                     {pi.label}
                   </div>
+                  {/* Data/hora geração do contrato */}
+                  {venda.contratoGerado && (venda as any).contratoSnapshot?.geradoEm && (
+                    <div className="text-[9px] text-slate-400 font-semibold flex items-center gap-1 mt-0.5">
+                      <svg width="9" height="9" viewBox="0 0 24 24" fill="currentColor"><path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zm4.24 16L11 13V7h1.5v5.25l4.5 2.67-1.01 1.58z"/></svg>
+                      {new Date((venda as any).contratoSnapshot.geradoEm).toLocaleDateString('pt-BR', { day:'2-digit', month:'2-digit', year:'2-digit' })}
+                      {' '}{new Date((venda as any).contratoSnapshot.geradoEm).toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' })}
+                    </div>
+                  )}
                 </div>
               </td>
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-semibold text-slate-700">
