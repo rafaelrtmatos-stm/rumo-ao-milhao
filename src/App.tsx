@@ -2494,23 +2494,28 @@ const LotDashboard = ({
   };
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
-    if (zoom <= 1) return { x: 0, y: 0 };
-    // Usar offsetWidth/offsetHeight (layout, sem transform) para evitar oscilação durante zoom
+    // Com transformOrigin "0 0":
+    // pan = posição do canto superior esquerdo da imagem no viewport
+    // pan=0 → imagem começa no canto top-left do viewport
+    // Para centralizar: pan = (vpW - imgW*zoom) / 2
     const viewport = mapViewportRef.current;
-    const content = mapContainerRef.current;
-    if (!viewport || !content) return pan;
+    const img = mapImageRef.current;
+    if (!viewport || !img) return pan;
     const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
     const vpH = viewport.offsetHeight || viewport.clientHeight || 0;
-    const imgW = mapImageRef.current?.offsetWidth || content.offsetWidth || 0;
-    const imgH = mapImageRef.current?.offsetHeight || content.offsetHeight || 0;
+    const imgW = img.offsetWidth || 0;
+    const imgH = img.offsetHeight || 0;
     if (vpW === 0 || imgW === 0) return pan;
     const scaledW = imgW * zoom;
     const scaledH = imgH * zoom;
-    const maxX = Math.max(0, (scaledW - vpW) / 2);
-    const maxY = Math.max(0, (scaledH - vpH) / 2);
+    // Limites: imagem não pode sair do viewport além de metade
+    const minX = Math.min(0, vpW - scaledW);
+    const minY = Math.min(0, vpH - scaledH);
+    const maxX = Math.max(0, vpW - scaledW);
+    const maxY = Math.max(0, vpH - scaledH);
     return {
-      x: Math.max(-maxX, Math.min(maxX, pan.x)),
-      y: Math.max(-maxY, Math.min(maxY, pan.y)),
+      x: Math.max(minX, Math.min(maxX, pan.x)),
+      y: Math.max(minY, Math.min(maxY, pan.y)),
     };
   };
 
@@ -2528,33 +2533,25 @@ const LotDashboard = ({
       void requestHighResolutionMap();
     }
 
-    // Usar refs para leitura imediata (sem closure stale do React)
     const oldZoom = mapZoomRef.current;
     const prevPan = mapPanRef.current;
 
     let newPan: { x: number; y: number };
+
     if (focalX === undefined || focalY === undefined) {
-      // Sem ponto focal: clamp simples
       newPan = clampMapPan(prevPan, clamped);
     } else {
-      // Com ponto focal: manter o ponto fixo na tela
-      const viewport = mapViewportRef.current;
-      const vpW = viewport?.offsetWidth || window.innerWidth;
-      const vpH = viewport?.offsetHeight || window.innerHeight;
-      const centerX = vpW / 2;
-      const centerY = vpH / 2;
-      const dx = focalX - centerX;
-      const dy = focalY - centerY;
+      // transformOrigin "0 0": pan é o offset do canto superior esquerdo da imagem
+      // focalX/focalY são relativos ao viewport (0,0 = canto superior esquerdo do viewport)
+      // Fórmula: newPan = focal - (focal - oldPan) * (newZoom / oldZoom)
       const ratio = oldZoom > 0 ? clamped / oldZoom : 1;
-      const newPanX = dx - (dx - prevPan.x) * ratio;
-      const newPanY = dy - (dy - prevPan.y) * ratio;
+      const newPanX = focalX - (focalX - prevPan.x) * ratio;
+      const newPanY = focalY - (focalY - prevPan.y) * ratio;
       newPan = clampMapPan({ x: newPanX, y: newPanY }, clamped);
     }
 
-    // Atualizar refs ANTES do setState para que o próximo frame já leia valores corretos
     mapZoomRef.current = clamped;
     mapPanRef.current = newPan;
-
     setMapZoom(clamped);
     setMapPan(newPan);
   };
@@ -2598,25 +2595,26 @@ const LotDashboard = ({
       const imgW = img.naturalWidth;
       const imgH = img.naturalHeight;
 
-      // imgLayoutW: largura natural da imagem no zoom 1 = largura do viewport
-      const imgLayoutW = vpW;
+      // Largura CSS da imagem no zoom=1
+      const imgLayoutW = img.offsetWidth || vpW;
       const imgLayoutH = imgLayoutW * (imgH / imgW);
 
-      // Zoom para encaixar pela largura vs altura — usar o menor para ver o mapa inteiro
-      const zoomByWidth  = vpW / imgLayoutW;   // sempre 1
-      const zoomByHeight = vpH / imgLayoutH;   // < 1 se mapa for alto (retrato)
+      // Zoom para encaixar inteiro na tela
+      const zoomByWidth  = vpW / imgLayoutW;
+      const zoomByHeight = vpH / imgLayoutH;
       const fitZoom = Math.min(zoomByWidth, zoomByHeight);
       const safeZoom = Math.max(0.05, Math.min(10, fitZoom));
 
-      // Com transformOrigin "0 0", centralizar manualmente
-      // A imagem escalada tem: largura = imgLayoutW * safeZoom, altura = imgLayoutH * safeZoom
+      // Com transformOrigin "0 0": centralizar via pan
       const scaledW = imgLayoutW * safeZoom;
       const scaledH = imgLayoutH * safeZoom;
       const panX = (vpW - scaledW) / 2;
       const panY = (vpH - scaledH) / 2;
 
+      mapZoomRef.current = safeZoom;
+      mapPanRef.current = { x: panX, y: panY };
       setMapZoom(safeZoom);
-      setMapPan({ x: panX > 0 ? panX : 0, y: panY > 0 ? panY : 0 });
+      setMapPan({ x: panX, y: panY });
       scheduleMapScaleUpdate(false);
     });
   };
@@ -4942,8 +4940,8 @@ const LotDashboard = ({
                   width: fullscreenMapWidth,
                   maxWidth: "100vw",
                   maxHeight: "100dvh",
-                  transform: `translate(calc(-50% + ${mapPan.x}px), calc(-50% + ${mapPan.y}px)) scale(${mapZoom})`,
-                  transformOrigin: "center center",
+                  transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
+                  transformOrigin: "0 0",
                   willChange: "transform",
                 }}
               >
@@ -5305,7 +5303,7 @@ const LotDashboard = ({
               <div className="flex gap-2 px-3 pt-2.5 pb-1">
                 <button
                   type="button"
-                  onClick={() => { setMapFullscreen(true); setMapActive(true); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; scheduleMapScaleUpdate(true); }}
+                  onClick={() => { setMapFullscreen(true); setMapActive(true); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; setTimeout(fitMapToScreen, 100); }}
                   className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-xs font-black uppercase flex items-center justify-center gap-1.5 hover:bg-slate-700 active:scale-95 transition-all"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
