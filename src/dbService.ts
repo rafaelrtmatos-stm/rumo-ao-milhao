@@ -151,7 +151,14 @@ async function deleteEmpreendimento(id: string): Promise<void> {
 }
 
 function stripBase64(item: Empreendimento): Empreendimento {
-  const { mapaImagemBase64, ...rest } = item as any;
+  const {
+    mapaImagemBase64,
+    mapaImagemLeveBase64,
+    mapaImagemMedResBase64,
+    mapaImagemHighResBase64,
+    mapaPdfOriginalBase64,
+    ...rest
+  } = item as any;
   return rest as Empreendimento;
 }
 
