@@ -9991,36 +9991,62 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <button type="button" className="btn-ghost w-full" onClick={() => {
-                  const key = 'venda_rascunho';
-                  localStorage.setItem(key, JSON.stringify({ clientData, saleData }));
-                  setHasDraft(true);
-                  alert('Rascunho salvo!');
-                }}>
-                  <FileText size={18} />
-                  <span>Salvar Rascunho</span>
-                </button>
-                {hasDraft && (
-                  <button type="button" className="btn-ghost w-full border-amber-300 text-amber-700 hover:bg-amber-50" onClick={() => {
-                    const key = 'venda_rascunho';
-                    const saved = localStorage.getItem(key);
-                    if (!saved) return;
-                    const { clientData: cd, saleData: sd } = JSON.parse(saved);
-                    if (cd) setClientData((prev) => ({ ...prev, ...cd }));
-                    if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
-                  }}>
-                    <FileText size={18} />
-                    <span>Restaurar</span>
+              {/* AÇÕES FINAIS — Cancelar sempre requer confirmação */}
+              <div className="flex flex-col gap-3">
+                {/* Linha principal: Cancelar + Vender */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const temDados = clientData.nome || saleData.empreendimentoId || saleData.numeroLote;
+                      if (temDados) {
+                        if (!window.confirm('Tem certeza que quer cancelar? Os dados preenchidos serão perdidos.')) return;
+                      }
+                      // Resetar formulário
+                      setClientData({ nome: '', cpf: '', rg: '', email: '', telefone: '', endereco: '', cidade: '', estado: '', profissao: '', estadoCivil: '' } as any);
+                      setSaleData({ empreendimentoId: '', numeroLote: '', quadra: '', valorLote: 0, vendedor: '', vendedorId: '' } as any);
+                      setInvalidSaleFields({});
+                    }}
+                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-black text-sm hover:bg-red-50 hover:text-red-600 active:scale-95 transition-all border border-slate-200"
+                  >
+                    <X size={16} />
+                    Cancelar
                   </button>
-                )}
-                <button
-                  type="submit"
-                  className={`btn-primary w-full shadow-lg shadow-primary-main/20 ${hasDraft ? '' : 'sm:col-span-2'}`}
-                >
-                  <ShoppingCart size={18} />
-                  <span>{!isOnline ? 'Salvar rascunho offline' : (editingEntry ? 'Salvar Alterações' : 'Finalizar Venda')}</span>
-                </button>
+                  <button
+                    type="submit"
+                    className="flex-1 btn-primary shadow-lg shadow-primary-main/20 active:scale-95 transition-all"
+                  >
+                    <ShoppingCart size={18} />
+                    <span>{!isOnline ? 'Salvar rascunho offline' : (editingEntry ? 'Salvar Alterações' : 'Finalizar Venda')}</span>
+                  </button>
+                </div>
+                {/* Linha secundária: Rascunho + Restaurar */}
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => {
+                      localStorage.setItem('venda_rascunho', JSON.stringify({ clientData, saleData }));
+                      setHasDraft(true);
+                      alert('Rascunho salvo!');
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-50 text-slate-500 font-bold text-xs border border-slate-200 hover:bg-slate-100 active:scale-95 transition-all">
+                    <FileText size={14} />
+                    Salvar rascunho
+                  </button>
+                  {hasDraft && (
+                    <button type="button"
+                      onClick={() => {
+                        const saved = localStorage.getItem('venda_rascunho');
+                        if (!saved) return;
+                        const { clientData: cd, saleData: sd } = JSON.parse(saved);
+                        if (cd) setClientData((prev) => ({ ...prev, ...cd }));
+                        if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-50 text-amber-700 font-bold text-xs border border-amber-200 hover:bg-amber-100 active:scale-95 transition-all">
+                      <FileText size={14} />
+                      Restaurar rascunho
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           </div>
