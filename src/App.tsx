@@ -10916,12 +10916,12 @@ const ContratosSection = ({
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
       <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
+      ${reciboObservacao ? `
+      <div style="margin:32px 0;padding:24px 28px;background:#f0fdf4;border:2px solid #16a34a;border-radius:16px;">
+        <p style="font-size:11px;font-weight:900;color:#15803d;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px 0;">📋 Observações</p>
+        <p style="font-size:16px;color:#1e293b;line-height:1.7;margin:0;font-weight:600;">${reciboObservacao}</p>
+      </div>` : ''}
       <div class="rodape">
-        ${reciboObservacao ? `
-        <div style="margin-bottom:24px;padding:16px;background:#f8fafc;border-left:4px solid #0f172a;border-radius:8px;">
-          <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Observação</p>
-          <p style="font-size:13px;color:#0f172a;line-height:1.5;">${reciboObservacao}</p>
-        </div>` : ''}
         <div>
           <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
         </div>
@@ -12541,6 +12541,12 @@ VENDEDOR: ${vendedorLabel}`;
                     <p className="text-sm font-medium italic text-slate-500">
                       Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
                     </p>
+                    {reciboObservacao && (
+                      <div className="mt-6 p-5 bg-emerald-50 border-2 border-emerald-500 rounded-2xl">
+                        <p style={{fontSize:'9px',fontWeight:900,textTransform:'uppercase',letterSpacing:'2px',color:'#15803d',marginBottom:'8px'}}>📋 Observações</p>
+                        <p className="text-sm font-semibold text-slate-800 leading-relaxed">{reciboObservacao}</p>
+                      </div>
+                    )}
                   </div>
                   <div className="pt-10 border-t border-slate-100 flex justify-between items-end">
                     <div>
@@ -12550,13 +12556,7 @@ VENDEDOR: ${vendedorLabel}`;
                       </p>
                     </div>
                     <div className="w-64 text-center">
-                      {reciboObservacao && (
-                      <div className="mb-6 p-4 bg-slate-50 border-l-4 border-slate-800 rounded-lg">
-                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Observação</p>
-                        <p className="text-[11px] text-slate-800 leading-relaxed">{reciboObservacao}</p>
-                      </div>
-                    )}
-                    {userProfile?.assinaturaUrl && (
+                      {userProfile?.assinaturaUrl && (
                         <img src={userProfile.assinaturaUrl} alt="Assinatura" className="mx-auto max-h-24 max-w-[230px] object-contain -mb-2" />
                       )}
                       <div className="h-px bg-slate-900 mb-2" />
