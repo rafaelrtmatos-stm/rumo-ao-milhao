@@ -2515,21 +2515,43 @@ const LotDashboard = ({
   // Manter ref sincronizado com state
   useEffect(() => { mapZoomRef.current = mapZoom; }, [mapZoom]);
 
-  const setMapZoomSafely = (nextZoom: number) => {
+  // Zoom para um ponto específico da tela (cursor ou centro do pinch)
+  // focalX/focalY = coordenadas do ponto focal em px relativas ao viewport
+  const setMapZoomAtPoint = (nextZoom: number, focalX?: number, focalY?: number) => {
     const clamped = Math.max(1, Math.min(10, nextZoom));
-    // Se há PDF original, renderiza direto (qualidade vetorial infinita)
     if ((localDev as any).mapaPdfOriginalBase64) {
       schedulePdfRender(clamped);
     } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
       void requestHighResolutionMap();
     }
     setMapZoom(clamped);
-    setMapPan((prev) => clampMapPan(prev, clamped));
+    setMapPan((prevPan) => {
+      // Se não tem ponto focal, clamp simples (ex: botões +/-)
+      if (focalX === undefined || focalY === undefined) {
+        return clampMapPan(prevPan, clamped);
+      }
+      const oldZoom = mapZoomRef.current;
+      // Centro do viewport
+      const viewport = mapViewportRef.current;
+      const vpW = viewport?.offsetWidth || window.innerWidth;
+      const vpH = viewport?.offsetHeight || window.innerHeight;
+      const centerX = vpW / 2;
+      const centerY = vpH / 2;
+      // Offset do ponto focal em relação ao centro
+      const dx = focalX - centerX;
+      const dy = focalY - centerY;
+      // Novo pan para manter o ponto focal fixo na tela
+      const newPanX = dx - (dx - prevPan.x) * (clamped / oldZoom);
+      const newPanY = dy - (dy - prevPan.y) * (clamped / oldZoom);
+      return clampMapPan({ x: newPanX, y: newPanY }, clamped);
+    });
   };
+
+  const setMapZoomSafely = (nextZoom: number) => setMapZoomAtPoint(nextZoom);
 
   const zoomMapBy = (delta: number) => {
     setMapActive(true);
-    setMapZoomSafely(mapZoom + delta);
+    setMapZoomSafely(mapZoomRef.current + delta);
   };
 
   const resetMapZoom = () => {
@@ -2646,7 +2668,12 @@ const LotDashboard = ({
         zoomingRef.current = false;
         void requestHighResolutionMap();
       }, 400);
-      setMapZoomSafely(mapZoomRef.current + clampedDelta);
+      // Zoom para o ponto do cursor
+      const viewport = mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const focalX = rect ? ev.clientX - rect.left : ev.clientX;
+      const focalY = rect ? ev.clientY - rect.top : ev.clientY;
+      setMapZoomAtPoint(mapZoomRef.current + clampedDelta, focalX, focalY);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
 
@@ -2734,19 +2761,21 @@ const LotDashboard = ({
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      // Pinch: usar delta suavizado para evitar jitter
       const rawZoom = gesture.startZoom * (distance / Math.max(1, gesture.startDistance));
       const nextZoom = Math.max(1, Math.min(10, rawZoom));
       zoomingRef.current = true;
       clearTimeout((window as any).__zoomEndTimer);
       (window as any).__zoomEndTimer = setTimeout(() => { zoomingRef.current = false; }, 300);
-      if ((localDev as any).mapaPdfOriginalBase64) {
-        schedulePdfRender(nextZoom);
-      } else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) {
-        void requestHighResolutionMap();
-      }
-      setMapZoom(nextZoom);
-      setMapPan((prev) => clampMapPan(prev, nextZoom));
+      // Centro dos dois dedos = ponto focal do pinch
+      const viewport = mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const focalX = rect ? midX - rect.left : midX;
+      const focalY = rect ? midY - rect.top : midY;
+      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
+      else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+      setMapZoomAtPoint(nextZoom, focalX, focalY);
       return;
     }
     if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
@@ -5275,17 +5304,48 @@ const LotDashboard = ({
                   <span>PDF</span>
                 </button>
               </div>
-              {/* Linha 2: zoom */}
+              {/* Linha 2: slider de zoom estilo volume TV */}
               <div className="flex items-center gap-2 px-3 pb-2.5">
-                <button type="button" onClick={() => zoomMapBy(-0.5)}
-                  className="w-11 h-10 rounded-xl bg-slate-100 text-slate-700 font-black text-2xl hover:bg-slate-200 flex items-center justify-center active:scale-95">−</button>
-                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-slate-400 rounded-full transition-all duration-200" style={{ width: `${Math.min(100, ((mapZoom - 1) / 9) * 100)}%` }} />
-                </div>
+                {/* Ícone zoom out */}
                 <button type="button" onClick={() => fitMapToScreen()}
-                  className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-sm font-black hover:bg-slate-200 flex items-center justify-center active:scale-95" title="Encaixar">⊡</button>
-                <button type="button" onClick={() => zoomMapBy(0.5)}
-                  className="w-11 h-10 rounded-xl bg-slate-900 text-white font-black text-2xl hover:bg-slate-700 flex items-center justify-center active:scale-95">+</button>
+                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 flex items-center justify-center text-xs font-black flex-shrink-0" title="Encaixar">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
+                {/* SLIDER DE ZOOM — arrastável, acompanha pinch */}
+                <div className="flex-1 relative h-8 flex items-center group cursor-pointer"
+                  onPointerDown={(e) => {
+                    e.preventDefault();
+                    const track = e.currentTarget;
+                    const updateZoom = (clientX: number) => {
+                      const rect = track.getBoundingClientRect();
+                      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+                      const newZoom = 1 + pct * 9; // 1x a 10x
+                      setMapZoomSafely(newZoom);
+                    };
+                    updateZoom(e.clientX);
+                    const onMove = (ev: PointerEvent) => updateZoom(ev.clientX);
+                    const onUp = () => {
+                      window.removeEventListener('pointermove', onMove);
+                      window.removeEventListener('pointerup', onUp);
+                    };
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', onUp);
+                  }}
+                >
+                  {/* Track fundo */}
+                  <div className="w-full h-1.5 bg-slate-200 rounded-full" />
+                  {/* Track preenchido */}
+                  <div className="absolute left-0 h-1.5 bg-slate-700 rounded-full pointer-events-none transition-none"
+                    style={{ width: `${Math.min(100, ((mapZoom - 1) / 9) * 100)}%` }} />
+                  {/* Thumb — bolinha arrastável */}
+                  <div className="absolute h-5 w-5 bg-slate-900 rounded-full shadow-lg pointer-events-none border-2 border-white transition-none"
+                    style={{ left: `calc(${Math.min(100, ((mapZoom - 1) / 9) * 100)}% - 10px)` }} />
+                </div>
+                {/* Ícone zoom in */}
+                <button type="button" onClick={() => zoomMapBy(2)}
+                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 flex items-center justify-center flex-shrink-0">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </button>
               </div>
             </div>
             <AnimatePresence>
