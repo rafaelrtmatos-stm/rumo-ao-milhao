@@ -2339,6 +2339,7 @@ const LotDashboard = ({
 
   // Painel lateral recolhivel
   const [painelRecolhido, setPainelRecolhido] = useState(false);
+  const [mapUploadProgress, setMapUploadProgress] = useState(0); // 0=idle, 1-99=loading, 100=done
 
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
@@ -3269,16 +3270,18 @@ const LotDashboard = ({
       alert("Use imagem PNG, JPG, WEBP ou arquivo PDF.");
       return;
     }
+    setMapUploadProgress(10);
     if (isPDF) {
       const reader = new FileReader();
       reader.onload = async () => {
         try {
+          setMapUploadProgress(40);
           const originalBuffer = reader.result as ArrayBuffer;
           const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
-          // Prévia leve para o mapa abrir rápido no card.
-          // A versão em alta resolução será gerada sob demanda ao editar, abrir tela cheia ou dar zoom.
+          setMapUploadProgress(70);
           const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
           const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
+          setMapUploadProgress(90);
           persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
@@ -3291,18 +3294,23 @@ const LotDashboard = ({
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
+          setMapUploadProgress(100);
+          setTimeout(() => setMapUploadProgress(0), 2000);
         } catch (err) {
+          setMapUploadProgress(0);
           alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
         }
       };
+      reader.onprogress = (e) => { if (e.lengthComputable) setMapUploadProgress(10 + Math.round((e.loaded/e.total)*25)); };
       reader.readAsArrayBuffer(file);
       return;
     }
     const reader = new FileReader();
     reader.onload = async () => {
+      setMapUploadProgress(50);
       const original = String(reader.result || "");
-      // Gera versao leve (30% qualidade, max 800px) para zoom baixo
       const leve = await gerarImagemLeve(original, 800, 0.3);
+      setMapUploadProgress(85);
       persistDev({
         ...localDev,
         mapaImagemBase64: original,
@@ -3316,7 +3324,10 @@ const LotDashboard = ({
         mapaMarkerReferenceWidth: 1000,
       } as Empreendimento);
       setMode("mapa");
+      setMapUploadProgress(100);
+      setTimeout(() => setMapUploadProgress(0), 2000);
     };
+    reader.onprogress = (e) => { if (e.lengthComputable) setMapUploadProgress(10 + Math.round((e.loaded/e.total)*35)); };
     reader.readAsDataURL(file);
   };
 
@@ -4425,6 +4436,40 @@ const LotDashboard = ({
             </div>
           </div>
 
+          {/* BARRA FIXA DE EDIÇÃO NO TOPO */}
+          {isEditingMap && (
+            <div className="flex-shrink-0 bg-white border-b border-slate-100 px-3 py-2 flex items-center gap-2 z-30">
+              <button
+                onClick={cancelarEdicaoMapa}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all"
+              >
+                <X size={14} /> Cancelar
+              </button>
+              <div className="flex-1 min-w-0">
+                {mapUploadProgress > 0 && mapUploadProgress < 100 ? (
+                  <div className="space-y-0.5">
+                    <p className="text-[10px] font-black text-slate-500 uppercase">Carregando mapa...</p>
+                    <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${mapUploadProgress}%` }} />
+                    </div>
+                  </div>
+                ) : mapUploadProgress === 100 ? (
+                  <p className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-1">✓ Mapa carregado!</p>
+                ) : (
+                  <p className="text-[10px] font-bold text-slate-400 truncate">Editando: {localDev.nome}</p>
+                )}
+              </div>
+              <button
+                onClick={salvarEdicaoMapa}
+                disabled={mapUploadProgress > 0 && mapUploadProgress < 100}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Salvar
+              </button>
+            </div>
+          )}
+
           {/* PAINEL LATERAL FLUTUANTE */}
           <div className={`lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
             {/* Botao recolher */}
@@ -4574,68 +4619,10 @@ const LotDashboard = ({
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
 
-                {/* Script ChatGPT / importação por texto */}
-                <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-2">
-                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700">Adicionar por texto</p>
-                  <p className="text-[10px] text-emerald-700/80">
-                    Padrão: <strong>Q1:1D,2I,3R.</strong> D=disponível, I=indisponível, R=reservado.
-                  </p>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      type="button"
-                      onClick={copyScriptForChatGPT}
-                      className="py-2 rounded-xl text-[10px] font-black uppercase bg-white text-emerald-800 border border-emerald-200 hover:bg-emerald-100 flex items-center justify-center gap-1"
-                    >
-                      <Copy size={12} />Copiar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        try {
-                          const text = await navigator.clipboard.readText();
-                          setLotScriptText(text);
-                          setLotScriptMsg("Colado! Clique Importar para aplicar.");
-                        } catch {
-                          setLotScriptMsg("Falha ao ler clipboard. Cole manualmente.");
-                        }
-                      }}
-                      className="py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-700 flex items-center justify-center gap-1"
-                    >
-                      <ClipboardPaste size={12} />Colar
-                    </button>
-                  </div>
-                  {lotScriptText ? (
-                    <textarea
-                      className="input-field min-h-[80px] text-[11px] font-mono leading-relaxed"
-                      value={lotScriptText}
-                      onChange={(e) => setLotScriptText(e.target.value)}
-                      placeholder={"Cole aqui o script recebido. Ex:\nQ1:1D,2I,3R.\nQ2:1I,2D,3R."}
-                    />
-                  ) : null}
-                  <button
-                    type="button"
-                    disabled={!lotScriptText.trim()}
-                    onClick={importScriptFromChatGPT}
-                    className={`w-full py-2 rounded-xl text-[10px] font-black uppercase transition-colors ${lotScriptText.trim() ? "bg-emerald-700 text-white hover:bg-emerald-800" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
-                  >
-                    Importar Script
-                  </button>
-                  {lotScriptMsg && <p className="text-[10px] font-bold text-emerald-800 bg-white/70 p-2 rounded-xl">{lotScriptMsg}</p>}
-                </div>
-
-                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0} className="btn-secondary w-full disabled:opacity-40">Desfazer último</button>
-
-                {/* Alt 5: Aplicar — salva sem sair da edição */}
-                <button onClick={() => {
-                  persistDev({
-                    ...localDev,
-                    mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
-                  } as Empreendimento);
-                }} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-blue-500 text-white">Aplicar</button>
-
-                {/* Cancelar / Aplicar / Salvar */}
-                <button onClick={cancelarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-slate-200 text-slate-600 hover:bg-slate-300">Cancelar</button>
-                <button onClick={salvarEdicaoMapa} className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-emerald-600 text-white hover:bg-emerald-500">Salvar / OK</button>
+                <button onClick={desfazerUltimoPonto} disabled={lastSessionPointIds.length === 0}
+                  className="btn-secondary w-full disabled:opacity-40 active:scale-95 transition-all">
+                  Desfazer último
+                </button>
               </div>
             )}
 
