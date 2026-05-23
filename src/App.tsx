@@ -10136,6 +10136,7 @@ const ContratosSection = ({
     initialVenda || null,
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
+  const [reciboObservacao, setReciboObservacao] = useState("");
   const [comCarimbo, setComCarimbo] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
@@ -10916,6 +10917,11 @@ const ContratosSection = ({
       </div>
       <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
       <div class="rodape">
+        ${reciboObservacao ? `
+        <div style="margin-bottom:24px;padding:16px;background:#f8fafc;border-left:4px solid #0f172a;border-radius:8px;">
+          <p style="font-size:10px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;">Observação</p>
+          <p style="font-size:13px;color:#0f172a;line-height:1.5;">${reciboObservacao}</p>
+        </div>` : ''}
         <div>
           <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
         </div>
@@ -12413,7 +12419,7 @@ VENDEDOR: ${vendedorLabel}`;
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest truncate">{selectedVenda.clienteNome} — {selectedVenda.empreendimentoNome}</p>
                     </div>
                   </div>
-                  <button onClick={() => setShowReciboModal(false)} className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
+                  <button onClick={() => { setShowReciboModal(false); setReciboObservacao(""); }} className="h-10 w-10 shrink-0 flex items-center justify-center text-slate-400 hover:bg-slate-100 rounded-xl transition-colors">
                     <X size={22} />
                   </button>
                 </div>
@@ -12424,6 +12430,16 @@ VENDEDOR: ${vendedorLabel}`;
                   </span>
                   <input type="checkbox" checked={comCarimbo} onChange={(e) => setComCarimbo(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
                 </label>
+                <div className="mb-3">
+                  <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Observação no recibo <span className="font-normal text-slate-400">(opcional)</span></label>
+                  <textarea
+                    value={reciboObservacao}
+                    onChange={(e) => setReciboObservacao(e.target.value)}
+                    placeholder="Ex: Pago via Pix. Restam 2 parcelas. Documento entregue."
+                    rows={2}
+                    className="input-field text-sm resize-none"
+                  />
+                </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={handleDownloadImage}
@@ -12534,7 +12550,13 @@ VENDEDOR: ${vendedorLabel}`;
                       </p>
                     </div>
                     <div className="w-64 text-center">
-                      {userProfile?.assinaturaUrl && (
+                      {reciboObservacao && (
+                      <div className="mb-6 p-4 bg-slate-50 border-l-4 border-slate-800 rounded-lg">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">Observação</p>
+                        <p className="text-[11px] text-slate-800 leading-relaxed">{reciboObservacao}</p>
+                      </div>
+                    )}
+                    {userProfile?.assinaturaUrl && (
                         <img src={userProfile.assinaturaUrl} alt="Assinatura" className="mx-auto max-h-24 max-w-[230px] object-contain -mb-2" />
                       )}
                       <div className="h-px bg-slate-900 mb-2" />
@@ -13965,6 +13987,64 @@ const ConfigSection = ({
       </div>
 
       <div className="card-premium space-y-8">
+
+        {/* CHAVE PIX */}
+        <div>
+          <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.94 11a8.994 8.994 0 0 0-7.94-7.94M3.06 13A9 9 0 0 0 13 20.94M3.06 11A9 9 0 0 1 11 3.06"/><path d="m9 9 5.7 5.7M9 15l5.7-5.7"/></svg>
+            Chave Pix
+          </h4>
+          <p className="text-xs text-slate-400 mb-3">Usada para gerar QR Code de pagamento no recibo e nas vendas.</p>
+          <div className="space-y-3">
+            <div>
+              <label className="label">Tipo de chave</label>
+              <select
+                className="input-field"
+                value={formData.pixTipo || "cpf"}
+                onChange={(e) => setFormData({ ...formData, pixTipo: e.target.value })}
+              >
+                <option value="cpf">CPF</option>
+                <option value="cnpj">CNPJ</option>
+                <option value="email">E-mail</option>
+                <option value="telefone">Telefone</option>
+                <option value="aleatoria">Chave aleatória</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Chave Pix</label>
+              <input
+                className="input-field font-mono"
+                placeholder="Digite sua chave Pix"
+                value={formData.pixChave || ""}
+                onChange={(e) => setFormData({ ...formData, pixChave: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">Nome do recebedor (aparece no QR)</label>
+              <input
+                className="input-field"
+                placeholder="Nome que aparece ao escanear"
+                value={formData.pixNome || ""}
+                onChange={(e) => setFormData({ ...formData, pixNome: e.target.value })}
+              />
+            </div>
+            <div>
+              <label className="label">Cidade</label>
+              <input
+                className="input-field"
+                placeholder="Cidade do recebedor"
+                value={formData.pixCidade || ""}
+                onChange={(e) => setFormData({ ...formData, pixCidade: e.target.value })}
+              />
+            </div>
+            {formData.pixChave && (
+              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-1">✓ Chave cadastrada</p>
+                <p className="text-xs font-mono text-emerald-800">{formData.pixChave}</p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* ORDEM DAS ABAS — apenas admin */}
         {isAdmin && (
