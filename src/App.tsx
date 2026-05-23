@@ -4583,8 +4583,8 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* BARRA FIXA DE EDIÇÃO NO TOPO */}
-          {isEditingMap && (
+          {/* BARRA FIXA DE EDIÇÃO NO TOPO — só desktop */}
+          {isEditingMap && !isMobile && (
             <div className="flex-shrink-0 bg-white border-b border-slate-100 px-3 py-2 flex items-center gap-2 z-30">
               <button
                 onClick={cancelarEdicaoMapa}
@@ -4617,8 +4617,8 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* PAINEL LATERAL FLUTUANTE */}
-          <div className={`lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
+          {/* PAINEL LATERAL FLUTUANTE — só desktop */}
+          <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
             {/* Botao recolher */}
             <button
               type="button"
@@ -5375,7 +5375,7 @@ const LotDashboard = ({
   const statsIndisponiveis2 = recalcStats.lotesVendidos ?? localDev.lotesVendidos ?? 0;
 
   // ── LAYOUT MOBILE ──────────────────────────────────────────────────────────
-  if (isMobile && mode === "mapa" && mapaImagem) {
+  if (isMobile && (mode === "mapa" || isEditingMap) && mapaImagem) {
     const quadraList = getQuadraList(localDev);
     const [quadraAberta, setQuadraAberta] = (useState as any)(() => quadraList[0] || "");
     const getLotesQuadra = (q: string) => getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
