@@ -4586,36 +4586,7 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* BALÃO FLUTUANTE — aviso lotes sem bolinha, fixo no topo */}
-          {isEditingMap && !isMobile && lotesConfigSemBolinha > 0 && (
-            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 w-auto max-w-[90%]"
-              style={{ pointerEvents: 'auto' }}>
-              <div className="bg-amber-500 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-start gap-3"
-                style={{ boxShadow: '0 8px 32px rgba(245,158,11,0.4)' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                <div className="min-w-0">
-                  <p className="text-xs font-black text-white mb-1.5">
-                    {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
-                  </p>
-                  <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
-                    {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
-                      <span key={`${quadra}-${lote}`}
-                        className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30">
-                        Q{quadra}:{lote}
-                      </span>
-                    ))}
-                    {lotesConfigSemBolinhaList.length > 60 && (
-                      <span className="text-[10px] font-bold text-white/80 self-center">+{lotesConfigSemBolinhaList.length - 60} mais...</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-              {/* Seta apontando para baixo */}
-              <div className="flex justify-center">
-                <div className="w-3 h-3 bg-amber-500 rotate-45 -mt-1.5" />
-              </div>
-            </div>
-          )}
+
 
           {/* BARRA FIXA DE EDIÇÃO NO TOPO — só desktop */}
           {isEditingMap && !isMobile && (
@@ -5879,6 +5850,34 @@ const LotDashboard = ({
 
   return (
     <>
+    {/* BARRA FIXA TOPO — aviso de lotes sem bolinha, aparece sobre tudo */}
+    {isEditingMap && !isMobile && lotesConfigSemBolinha > 0 && (
+      <div className="fixed top-0 left-0 right-0 z-[9999] bg-amber-500 shadow-lg"
+        style={{ boxShadow: '0 4px 24px rgba(245,158,11,0.5)' }}>
+        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-start gap-3">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5">
+            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+          </svg>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-black text-white mb-1">
+              {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
+            </p>
+            <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+              {lotesConfigSemBolinhaList.slice(0, 80).map(({ quadra, lote }) => (
+                <span key={`${quadra}-${lote}`}
+                  className="text-[9px] font-black px-1.5 py-0.5 bg-white/25 text-white rounded border border-white/40 whitespace-nowrap">
+                  Q{quadra}:{lote}
+                </span>
+              ))}
+              {lotesConfigSemBolinhaList.length > 80 && (
+                <span className="text-[9px] text-white/80 font-bold self-center">+{lotesConfigSemBolinhaList.length - 80} mais</span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 lg:p-6">
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" />
 
