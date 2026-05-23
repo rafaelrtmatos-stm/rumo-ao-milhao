@@ -2778,7 +2778,7 @@ const LotDashboard = ({
         gesture.startZoom * (distance / Math.max(1, gesture.startDistance))
       ));
 
-      // Centro atual dos dois dedos relativo ao viewport
+      // Centro dos dois dedos relativo ao viewport
       const viewport = mapViewportRef.current;
       const rect = viewport?.getBoundingClientRect();
       const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
@@ -2788,12 +2788,18 @@ const LotDashboard = ({
 
       zoomingRef.current = true;
       clearTimeout((window as any).__zoomEndTimer);
-      (window as any).__zoomEndTimer = setTimeout(() => { zoomingRef.current = false; }, 300);
+      (window as any).__zoomEndTimer = setTimeout(() => {
+        zoomingRef.current = false;
+        // Carregar alta resolução só quando parar o pinch
+        if (!((localDev as any).mapaPdfOriginalBase64)) void requestHighResolutionMap();
+      }, 400);
 
-      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
-      else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
-
-      setMapZoomAtPoint(nextZoom, focalX, focalY);
+      // Usar rAF para não bloquear o thread principal durante pinch
+      cancelAnimationFrame((window as any).__pinchRaf);
+      (window as any).__pinchRaf = requestAnimationFrame(() => {
+        if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
+        setMapZoomAtPoint(nextZoom, focalX, focalY);
+      });
       return;
     }
 
@@ -2807,7 +2813,9 @@ const LotDashboard = ({
       };
       const clamped = clampMapPan(nextPan, mapZoomRef.current);
       mapPanRef.current = clamped;
-      setMapPan(clamped);
+      // rAF para pan também — mais fluido
+      cancelAnimationFrame((window as any).__panRaf);
+      (window as any).__panRaf = requestAnimationFrame(() => setMapPan(clamped));
     }
   };
 
@@ -5302,7 +5310,7 @@ const LotDashboard = ({
               <div className="flex gap-2 px-3 pt-2.5 pb-1">
                 <button
                   type="button"
-                  onClick={() => { setMapFullscreen(true); setMapActive(true); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; setTimeout(fitMapToScreen, 100); }}
+                  onClick={() => { setMapFullscreen(true); setMapActive(true); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; setTimeout(() => fitMapToScreen(0), 200); }}
                   className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-xs font-black uppercase flex items-center justify-center gap-1.5 hover:bg-slate-700 active:scale-95 transition-all"
                 >
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
@@ -9172,22 +9180,24 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
               <label className="label">Estado Civil</label>
               <select
                 className="input-field font-semibold"
-                value={clientData.estadoCivil}
+                value={genderizeEstadoCivil(clientData.estadoCivil || "Solteiro", clientData.genero || "M")}
                 onChange={(e) =>
                   setClientData({ ...clientData, estadoCivil: e.target.value })
                 }
               >
-                <option>
+                <option value={clientData.genero === "F" ? "Solteira" : "Solteiro"}>
                   {clientData.genero === "F" ? "Solteira" : "Solteiro"}
                 </option>
-                <option>
+                <option value={clientData.genero === "F" ? "Casada" : "Casado"}>
                   {clientData.genero === "F" ? "Casada" : "Casado"}
                 </option>
-                <option>
+                <option value={clientData.genero === "F" ? "Divorciada" : "Divorciado"}>
                   {clientData.genero === "F" ? "Divorciada" : "Divorciado"}
                 </option>
-                <option>{clientData.genero === "F" ? "Viúva" : "Viúvo"}</option>
-                <option>União Estável</option>
+                <option value={clientData.genero === "F" ? "Viúva" : "Viúvo"}>
+                  {clientData.genero === "F" ? "Viúva" : "Viúvo"}
+                </option>
+                <option value="União Estável">União Estável</option>
               </select>
             </div>
             <div>
