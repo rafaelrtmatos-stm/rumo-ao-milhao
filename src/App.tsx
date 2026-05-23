@@ -2373,6 +2373,38 @@ const LotDashboard = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") setIsCtrlPanning(true);
+
+      // Ctrl+G = agrupar selecionadas
+      if (e.ctrlKey && e.key === "g" && isEditingMap) {
+        e.preventDefault();
+        const ids = ctrlSelectedIds;
+        if (ids.size < 2) { alert("Selecione ao menos 2 bolinhas para agrupar."); return; }
+        const grupoId = `grupo_${Date.now()}`;
+        setGruposMap(prev => {
+          const next = { ...prev };
+          ids.forEach(id => { next[id] = grupoId; });
+          return next;
+        });
+        alert(`${ids.size} bolinhas agrupadas! Arraste qualquer uma para mover o grupo.`);
+        return;
+      }
+
+      // Ctrl+U = desagrupar selecionadas
+      if (e.ctrlKey && e.key === "u" && isEditingMap) {
+        e.preventDefault();
+        const ids = ctrlSelectedIds;
+        if (ids.size === 0) { alert("Selecione bolinhas para desagrupar."); return; }
+        setGruposMap(prev => {
+          const next = { ...prev };
+          // Encontrar todos os grupos das selecionadas e remover todos do grupo
+          const gruposAfetados = new Set(ids.map(id => next[id]).filter(Boolean));
+          Object.keys(next).forEach(k => { if (gruposAfetados.has(next[k])) delete next[k]; });
+          return next;
+        });
+        alert("Desagrupado!");
+        return;
+      }
+
       // Undo/Redo por grupo
       if (e.ctrlKey && e.key === "z") { e.preventDefault(); aplicarUndo(); }
       if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) { e.preventDefault(); aplicarRedo(); }
@@ -2443,6 +2475,9 @@ const LotDashboard = ({
 
   // Seleção múltipla com CTRL (modo editar)
   const [ctrlSelectedIds, setCtrlSelectedIds] = useState<Set<string>>(new Set());
+  const [gruposMap, setGruposMap] = useState<Record<string, string>>({}); // pontoId → grupoId
+  const [showTrocaQuadra, setShowTrocaQuadra] = useState(false);
+  const [novaQuadraSel, setNovaQuadraSel] = useState("");
 
   // Posição do painel "Novo marcador" arrastável — via ref para zero re-renders durante drag
   const [marcadorPanelPos, setMarcadorPanelPos] = useState<{ x: number; y: number } | null>(null);
@@ -3906,14 +3941,27 @@ const LotDashboard = ({
     }
     if (!draggingId || !dragStart || !mapContainerRef.current) return;
     const rect = mapContainerRef.current.getBoundingClientRect();
-    const dx = ((e.clientX - dragStart.mouseX) / rect.width) * 100;
-    const dy = ((e.clientY - dragStart.mouseY) / rect.height) * 100;
-    const newX = Math.max(0, Math.min(100, dragStart.xPercent + dx));
-    const newY = Math.max(0, Math.min(100, dragStart.yPercent + dy));
+    // Dividir pela escala (zoom) para acertar o movimento real
+    const scale = mapZoomRef.current || 1;
+    const dx = ((e.clientX - dragStart.mouseX) / (rect.width / scale)) * 100 / scale;
+    const dy = ((e.clientY - dragStart.mouseY) / (rect.height / scale)) * 100 / scale;
     const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    const nextPontos = currentPontos.map((p: any) =>
-      p.id === draggingId ? { ...p, xPercent: newX, yPercent: newY, atualizadoEm: new Date().toISOString() } : p
-    );
+    
+    // Verificar se faz parte de um grupo
+    const grupoId = gruposMap[draggingId];
+    const idsParaMover = grupoId
+      ? new Set(Object.entries(gruposMap).filter(([,g]) => g === grupoId).map(([id]) => id))
+      : new Set([draggingId]);
+    
+    const nextPontos = currentPontos.map((p: any) => {
+      if (!idsParaMover.has(p.id)) return p;
+      // Para o ponto arrastado: posição absoluta
+      if (p.id === draggingId) {
+        return { ...p, xPercent: Math.max(0, Math.min(100, dragStart.xPercent + dx)), yPercent: Math.max(0, Math.min(100, dragStart.yPercent + dy)), atualizadoEm: new Date().toISOString() };
+      }
+      // Para demais do grupo: deslocamento relativo
+      return { ...p, xPercent: Math.max(0, Math.min(100, p.xPercent + dx)), yPercent: Math.max(0, Math.min(100, p.yPercent + dy)), atualizadoEm: new Date().toISOString() };
+    });
     setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
   };
 
@@ -4505,7 +4553,7 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
@@ -4657,7 +4705,36 @@ const LotDashboard = ({
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Seleção múltipla</p>
                   <p className="text-[10px] text-slate-500">Segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e clique nas bolinhas para selecionar. Para mover o mapa, segure <kbd className="bg-slate-200 px-1 rounded text-[9px] font-bold">CTRL</kbd> e arraste.</p>
                     {ctrlSelectedIds.size > 0 && (
-                      <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-bold text-emerald-700">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
+                        <div className="flex flex-wrap gap-1">
+                          <button onClick={() => {
+                            if (ctrlSelectedIds.size < 2) { alert("Selecione ao menos 2 bolinhas."); return; }
+                            const grupoId = `grupo_${Date.now()}`;
+                            setGruposMap(prev => {
+                              const next = { ...prev };
+                              ctrlSelectedIds.forEach(id => { next[id] = grupoId; });
+                              return next;
+                            });
+                          }} className="px-2 py-1 rounded-lg bg-purple-600 text-white text-[9px] font-black uppercase active:scale-95 transition-all">
+                            Ctrl+G Agrupar
+                          </button>
+                          <button onClick={() => {
+                            setGruposMap(prev => {
+                              const next = { ...prev };
+                              const gruposAfetados = new Set(Array.from(ctrlSelectedIds).map(id => next[id]).filter(Boolean));
+                              Object.keys(next).forEach(k => { if (gruposAfetados.has(next[k])) delete next[k]; });
+                              return next;
+                            });
+                          }} className="px-2 py-1 rounded-lg bg-slate-200 text-slate-700 text-[9px] font-black uppercase active:scale-95 transition-all">
+                            Ctrl+U Desagrupar
+                          </button>
+                          <button onClick={() => setShowTrocaQuadra(true)}
+                            className="px-2 py-1 rounded-lg bg-blue-600 text-white text-[9px] font-black uppercase active:scale-95 transition-all">
+                            Trocar quadra
+                          </button>
+                        </div>
+                      </div>
                     )}
                     {ctrlSelectedIds.size >= 3 && (
                       <button onClick={alinharLotesSelecionados} className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-emerald-100 text-emerald-800 hover:bg-emerald-200">
@@ -5732,6 +5809,47 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+    {/* MODAL: Trocar Quadra das selecionadas */}
+    {showTrocaQuadra && (
+      <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+          <h3 className="text-base font-black text-slate-900">Trocar Quadra</h3>
+          <p className="text-xs text-slate-500">{ctrlSelectedIds.size} bolinha(s) selecionada(s) serão movidas para a quadra escolhida.</p>
+          <div>
+            <label className="label">Nova quadra</label>
+            <select className="input-field" value={novaQuadraSel} onChange={e => setNovaQuadraSel(e.target.value)}>
+              <option value="">Selecione...</option>
+              {getQuadraList(localDev).map(q => (
+                <option key={q} value={q}>{q}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setShowTrocaQuadra(false); setNovaQuadraSel(""); }}
+              className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-sm font-black active:scale-95 transition-all">
+              Cancelar
+            </button>
+            <button
+              disabled={!novaQuadraSel}
+              onClick={() => {
+                if (!novaQuadraSel) return;
+                const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                const nextPontos = currentPontos.map((p: any) =>
+                  ctrlSelectedIds.has(p.id) ? { ...p, quadra: novaQuadraSel, atualizadoEm: new Date().toISOString() } : p
+                );
+                persistDev({ ...localDev, mapaPontos: nextPontos } as Empreendimento);
+                setShowTrocaQuadra(false);
+                setNovaQuadraSel("");
+                setCtrlSelectedIds(new Set());
+              }}
+              className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white text-sm font-black disabled:opacity-50 active:scale-95 transition-all">
+              Aplicar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* MODAL: Lote já cadastrado — substitui window.prompt por UI React */}
     <AnimatePresence>
