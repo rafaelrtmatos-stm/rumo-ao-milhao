@@ -12,6 +12,11 @@ function formatBRL(val: number): string {
 }
 
 export default function LoadingScreen({ progress }: Props) {
+  // Revelar o app assim que o LoadingScreen estiver pronto — sem piscar o dashboard
+  // Usar ref callback no div raiz em vez de useEffect para ser síncrono com o DOM
+  const revealRef = (el: HTMLDivElement | null) => {
+    if (el) document.getElementById("root")?.classList.add("ready");
+  };
   const [displayValue, setDisplayValue] = useState(1);
   const [animDone, setAnimDone] = useState(false);
   const rafRef = useRef<number | null>(null);
@@ -48,7 +53,7 @@ export default function LoadingScreen({ progress }: Props) {
   const pct = Math.max(progress, animDone ? 100 : Math.round((displayValue / TARGET) * 100));
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0d200d]"
+    <div ref={revealRef} className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0d200d]"
       style={{ fontFamily: "'Inter', sans-serif" }}>
 
       {/* Partículas de dinheiro */}
