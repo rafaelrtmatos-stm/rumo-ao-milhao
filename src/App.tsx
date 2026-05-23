@@ -3302,19 +3302,24 @@ const LotDashboard = ({
           setMapUploadProgress(40);
           const originalBuffer = reader.result as ArrayBuffer;
           const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
+          setMapUploadProgress(50);
+          // Preview leve — aparece imediato
+          const previewImage = await renderPdfPageToPng(originalBuffer, 1.5);
           setMapUploadProgress(70);
-          const previewScale = Math.max(1.25, Math.min(2, window.devicePixelRatio || 1));
-          const previewImage = await renderPdfPageToPng(originalBuffer, previewScale);
-          setMapUploadProgress(90);
+          // Yield para não travar o browser
+          await new Promise(r => setTimeout(r, 0));
+          // Alta resolução — pré-gerar no upload para não travar depois
+          const highImage = await renderPdfPageToPng(originalBuffer, 2.5);
+          setMapUploadProgress(95);
           persistDev({
             ...localDev,
             mapaImagemBase64: previewImage,
-            mapaImagemHighResBase64: "",
+            mapaImagemHighResBase64: highImage,
             mapaPdfOriginalBase64: pdfOriginalBase64,
             mapaPdfOriginalName: file.name,
             mapaImagemUrl: "",
             mapaPontos: mapaPontos,
-            mapaAltaResolucao: false,
+            mapaAltaResolucao: true,
             mapaMarkerReferenceWidth: 1000,
           } as Empreendimento);
           setMode("mapa");
@@ -4347,11 +4352,7 @@ const LotDashboard = ({
         <div className="flex flex-col h-full w-full">
           {/* CANVAS DO MAPA */}
           <div className="relative bg-slate-100 rounded-2xl overflow-hidden flex-1 h-full">
-            {mapHighResLoading && (
-              <div className="absolute top-2 left-2 z-10 bg-black/50 text-white text-[10px] px-2 py-1 rounded-lg">
-                Carregando alta resolução...
-              </div>
-            )}
+
             <div
               ref={mapViewportRef}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
