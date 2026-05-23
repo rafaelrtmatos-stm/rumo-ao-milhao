@@ -2383,6 +2383,7 @@ const LotDashboard = ({
   const [mapActive, setMapActive] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
   const mapZoomRef = useRef(1); // ref sempre atualizado para evitar closure stale
+  const mapPanRef = useRef({ x: 0, y: 0 }); // ref sempre atualizado para evitar closure stale no pinch
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const mapTouchRef = useRef<{
     mode: "none" | "pan" | "pinch";
@@ -2513,8 +2514,9 @@ const LotDashboard = ({
     };
   };
 
-  // Manter ref sincronizado com state
+  // Manter refs sincronizados com states
   useEffect(() => { mapZoomRef.current = mapZoom; }, [mapZoom]);
+  useEffect(() => { mapPanRef.current = mapPan; }, [mapPan]);
 
   // Zoom para um ponto específico da tela (cursor ou centro do pinch)
   // focalX/focalY = coordenadas do ponto focal em px relativas ao viewport
@@ -2525,27 +2527,36 @@ const LotDashboard = ({
     } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
       void requestHighResolutionMap();
     }
-    setMapZoom(clamped);
-    setMapPan((prevPan) => {
-      // Se não tem ponto focal, clamp simples (ex: botões +/-)
-      if (focalX === undefined || focalY === undefined) {
-        return clampMapPan(prevPan, clamped);
-      }
-      const oldZoom = mapZoomRef.current;
-      // Centro do viewport
+
+    // Usar refs para leitura imediata (sem closure stale do React)
+    const oldZoom = mapZoomRef.current;
+    const prevPan = mapPanRef.current;
+
+    let newPan: { x: number; y: number };
+    if (focalX === undefined || focalY === undefined) {
+      // Sem ponto focal: clamp simples
+      newPan = clampMapPan(prevPan, clamped);
+    } else {
+      // Com ponto focal: manter o ponto fixo na tela
       const viewport = mapViewportRef.current;
       const vpW = viewport?.offsetWidth || window.innerWidth;
       const vpH = viewport?.offsetHeight || window.innerHeight;
       const centerX = vpW / 2;
       const centerY = vpH / 2;
-      // Offset do ponto focal em relação ao centro
       const dx = focalX - centerX;
       const dy = focalY - centerY;
-      // Novo pan para manter o ponto focal fixo na tela
-      const newPanX = dx - (dx - prevPan.x) * (clamped / oldZoom);
-      const newPanY = dy - (dy - prevPan.y) * (clamped / oldZoom);
-      return clampMapPan({ x: newPanX, y: newPanY }, clamped);
-    });
+      const ratio = oldZoom > 0 ? clamped / oldZoom : 1;
+      const newPanX = dx - (dx - prevPan.x) * ratio;
+      const newPanY = dy - (dy - prevPan.y) * ratio;
+      newPan = clampMapPan({ x: newPanX, y: newPanY }, clamped);
+    }
+
+    // Atualizar refs ANTES do setState para que o próximo frame já leia valores corretos
+    mapZoomRef.current = clamped;
+    mapPanRef.current = newPan;
+
+    setMapZoom(clamped);
+    setMapPan(newPan);
   };
 
   const setMapZoomSafely = (nextZoom: number) => setMapZoomAtPoint(nextZoom);
