@@ -22,21 +22,31 @@ function calcularStats(dev: Empreendimento, sales: Venda[]) {
 }
 
 // Tiles de satélite — Google via proxy público (sem API key)
-const TILES: Record<Camada, { url: string; options: any; overlay?: { url: string; options: any } }> = {
+// Tiles com fallback: tenta Google primeiro, cai para Esri se falhar
+const GOOGLE_OPTS = {
+  subdomains: "0123",
+  maxZoom: 20,
+  maxNativeZoom: 19,
+  tileSize: 256,
+  attribution: "© Google",
+  errorTileUrl: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=", // tile transparente
+};
+
+const TILES: Record<Camada, { url: string; options: any }> = {
   satelite: {
-    // Google Satellite — tiles públicos gratuitos, sem API key
-    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
+    // Esri World Imagery — gratuito, sem API key, sem bloqueio
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri, Maxar" },
   },
   hibrido: {
-    // Google Hybrid — satélite + ruas e nomes
-    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
+    // Esri satélite + Google roads overlay
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri" },
   },
   ruas: {
-    // Google Roads
-    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
-    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
+    // CartoDB Voyager — moderno, sem bloqueio
+    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
+    options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB" },
   },
 };
 
@@ -174,12 +184,21 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   }, [mapReady, empreendimentos]);
 
   // Trocar camada
+  const overlayRef = useRef<any>(null);
   useEffect(() => {
     if (!mapReady || !leafletRef.current) return;
     import("leaflet").then(L => {
       if (tileRef.current) { tileRef.current.remove(); tileRef.current = null; }
+      if (overlayRef.current) { overlayRef.current.remove(); overlayRef.current = null; }
       const cfg = TILES[camada];
       tileRef.current = L.tileLayer(cfg.url, cfg.options).addTo(leafletRef.current!);
+      // Overlay de nomes para modo híbrido
+      if (camada === 'hibrido') {
+        overlayRef.current = L.tileLayer(
+          "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+          { maxZoom: 19, opacity: 0.8 }
+        ).addTo(leafletRef.current!);
+      }
     });
   }, [camada, mapReady]);
 
@@ -247,7 +266,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   }
 
   return (
-    <div className="relative w-full h-full flex">
+    <div className="relative w-full h-full flex" style={{ minHeight: 200 }}>
       {/* MAPA */}
       <div ref={mapRef} className="flex-1 h-full" />
 

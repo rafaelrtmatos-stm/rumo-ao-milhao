@@ -5970,6 +5970,7 @@ const EmpreendimentosSection = ({
               </div>
             )}
             {comCoord.length > 0 && (
+              <div className="flex-1 min-h-0">
               <MapaGlobalDashboard
                 empreendimentos={developments}
                 sales={sales}
@@ -5985,6 +5986,7 @@ const EmpreendimentosSection = ({
                   if (dev) setSelectedDevForMap(dev);
                 }}
               />
+              </div>
             )}
             {/* HANDLE DE RESIZE */}
             <div
@@ -6007,6 +6009,11 @@ const EmpreendimentosSection = ({
                   const delta = ev.clientY - globalMapResizeRef.current.startY;
                   const finalH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
                   localStorage.setItem('globalMapHeight', String(Math.round(finalH)));
+                  // Forçar Leaflet a recalcular tiles após resize
+                  setTimeout(() => {
+                    const mapEl = document.querySelector('.leaflet-container') as any;
+                    if (mapEl?._leaflet_id) (window as any).L?.map?.(mapEl)?.invalidateSize?.();
+                  }, 100);
                 };
                 window.addEventListener('mousemove', onMove);
                 window.addEventListener('mouseup', onUp);
