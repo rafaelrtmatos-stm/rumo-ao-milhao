@@ -1506,7 +1506,7 @@ const Sidebar = ({
       </AnimatePresence>
 
       <div
-        className={`w-72 bg-surface-card h-screen flex flex-col fixed left-0 top-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
+        className={`w-72 bg-surface-card flex flex-col fixed left-0 top-0 bottom-0 border-r border-border-subtle shadow-xl z-[60] transition-transform duration-300 transform ${forceDesktop || isOpen ? "translate-x-0" : "-translate-x-full lg:translate-x-0"}`}
       >
         <div className="p-5 sm:p-8 flex justify-between items-center bg-surface-card border-b border-border-subtle">
           <div>
@@ -1627,7 +1627,7 @@ const Sidebar = ({
         </nav>
 
         {/* BOTÃO SAIR — fixo no bottom, sempre visível sem scroll */}
-        <div className="flex-shrink-0 px-4 pb-6 pt-3 border-t border-slate-100 bg-white">
+        <div className="flex-shrink-0 px-4 pt-3 border-t border-slate-100 bg-white" style={{ paddingBottom: "max(1.5rem, env(safe-area-inset-bottom))" }}>
           {userEmail && (
             <div className="px-3 py-2 rounded-xl bg-slate-50 mb-2">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Logado como</p>
