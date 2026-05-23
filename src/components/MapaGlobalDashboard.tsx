@@ -24,23 +24,19 @@ function calcularStats(dev: Empreendimento, sales: Venda[]) {
 // Tiles de satélite — Google via proxy público (sem API key)
 const TILES: Record<Camada, { url: string; options: any; overlay?: { url: string; options: any } }> = {
   satelite: {
-    // Esri World Imagery — satélite gratuito, alta qualidade, sem API key, sem limite
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    options: { maxZoom: 19, attribution: "© Esri, Maxar, Earthstar Geographics" },
+    // Google Satellite — tiles públicos gratuitos, sem API key
+    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
   },
   hibrido: {
-    // Satélite Esri + rótulos de ruas
-    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    options: { maxZoom: 19, attribution: "© Esri" },
-    overlay: {
-      url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-      options: { maxZoom: 19, opacity: 0.9 },
-    },
+    // Google Hybrid — satélite + ruas e nomes
+    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
   },
   ruas: {
-    // CartoDB Voyager — mapa moderno e limpo
-    url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB" },
+    // Google Roads
+    url: "https://mt{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",
+    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
   },
 };
 
