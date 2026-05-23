@@ -5507,7 +5507,7 @@ const LotDashboard = ({
               <div className="w-9 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Abas: Visualizar / Editar bolinhas / Editar faixas */}
+            {/* Abas: Visualizar / Adicionar bolinhas / Editar faixas */}
             <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-3">
               <button
                 onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
@@ -5517,8 +5517,11 @@ const LotDashboard = ({
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
-                <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
-                Editar bolinhas
+                {mapaPontos.length === 0 ? (
+                  <><span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-black" style={{fontSize:12}}>+</span><span>Adicionar bolinhas</span></>
+                ) : (
+                  <><span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" /><span>Editar bolinhas</span></>
+                )}
               </button>
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
@@ -5564,95 +5567,203 @@ const LotDashboard = ({
             )}
 
             {/* ── EDITAR BOLINHAS ── */}
-            {isEditingMap && mapAction !== "massa" && mapAction !== "visualizar" && (
-              <div className="space-y-5">
-                {/* Ações rápidas */}
-                <div>
-                  <p className="text-sm font-black text-slate-800 mb-3">Ações rápidas</p>
-                  <div className="flex gap-2 flex-wrap">
-                    {([
-                      { label: "Disponível", status: "disponivel" as MapaLoteStatus, color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
-                      { label: "Reservado",  status: "reservado"  as MapaLoteStatus, color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
-                      { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
-                    ] as any[]).map((a:any) => (
-                      <button key={a.status}
-                        onClick={() => {
-                          if (ctrlSelectedIds.size === 0) { alert("Toque nas bolinhas no mapa para selecioná-las."); return; }
-                          const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-                          const next = currentPontos.map((p:any) => ctrlSelectedIds.has(p.id) ? {...p,status:a.status} : p);
-                          persistDev({ ...localDev, mapaPontos: next } as Empreendimento);
-                          setCtrlSelectedIds(new Set());
-                        }}
-                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 bg-white active:scale-95 transition-all"
-                        style={{borderColor: a.border}}>
-                        <span className="w-4 h-4 rounded-full flex-shrink-0" style={{background:a.color}}/>
-                        <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
-                      </button>
-                    ))}
-                    <button onClick={() => setCtrlSelectedIds(new Set())}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-slate-200 bg-white active:scale-95 transition-all">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                      <span className="text-xs font-bold text-slate-400">Limpar</span>
-                    </button>
-                  </div>
-                  {ctrlSelectedIds.size > 0 && (
-                    <p className="text-xs font-bold text-emerald-600 mt-2">{ctrlSelectedIds.size} bolinha(s) selecionada(s) no mapa</p>
-                  )}
-                </div>
+            {isEditingMap && mapAction !== "massa" && mapAction !== "visualizar" && (() => {
+              // Estado local para o formulário de adicionar bolinha
+              const [mobileNovaQuadra, setMobileNovaQuadra] = (useState as any)("");
+              const [mobileNovoLote, setMobileNovoLote] = (useState as any)("");
+              const [mobileNovoStatus, setMobileNovoStatus] = (useState as any)("disponivel" as MapaLoteStatus);
 
-                {/* Editar status por quadra */}
-                <div>
-                  <p className="text-sm font-black text-slate-800 mb-1">Editar status de lotes</p>
-                  <p className="text-xs text-slate-400 mb-3">Selecione os lotes no mapa e altere o status.</p>
-                  <div className="space-y-2">
-                    {quadraList.map(q => {
-                      const lotes = getLotesQuadra(q);
-                      const isOpen = quadraAberta === q;
-                      return (
-                        <div key={q} className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
-                          <button className="w-full flex items-center justify-between px-4 py-3.5 active:bg-slate-50 transition-colors"
-                            onClick={() => (setQuadraAberta as any)(isOpen ? "" : q)}>
-                            <span className="text-sm font-black text-slate-800">Quadra {q}</span>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-slate-400 font-medium">{lotes.length} lotes</span>
-                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"
-                                style={{transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
-                                <polyline points="6 9 12 15 18 9"/>
-                              </svg>
-                            </div>
-                          </button>
-                          {isOpen && (
-                            <div className="px-4 pb-4 pt-1 border-t border-slate-50">
-                              <div className="flex flex-wrap gap-2 mt-2">
-                                {lotes.map(l => {
-                                  const st = getLoteStatus(q, l);
-                                  const isVendido = st === "vendido" || st === "indisponivel";
-                                  const isReservado = !isVendido && st === "reservado";
-                                  const bg = isVendido ? "#fee2e2" : isReservado ? "#fef3c7" : "#dbeafe";
-                                  const tc = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
-                                  const bc = isVendido ? "#fca5a5" : isReservado ? "#fcd34d" : "#93c5fd";
-                                  return (
-                                    <button key={l}
-                                      onClick={() => {
-                                        if (isVendido) return;
-                                        const next: MapaLoteStatus = st === "disponivel" ? "reservado" : st === "reservado" ? "indisponivel" : "disponivel";
-                                        setLoteStatusMobile(q, l, next);
-                                      }}
-                                      style={{background:bg,color:tc,borderColor:bc,width:44,height:44,borderRadius:12,border:`2px solid`,fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,opacity:isVendido?0.6:1}}>
-                                      {String(l).padStart(2,"0")}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
+              const adicionarBolinhaMobile = () => {
+                if (!mobileNovaQuadra || !mobileNovoLote) { alert("Informe a quadra e o número do lote."); return; }
+                // Usar posição central do viewport como ponto inicial
+                const xPct = 50; const yPct = 50;
+                const novoPonto = {
+                  id: `p_${Date.now()}_${Math.random().toString(36).slice(2,7)}`,
+                  quadra: mobileNovaQuadra,
+                  lote: mobileNovoLote,
+                  status: mobileNovoStatus,
+                  xPercent: xPct, yPercent: yPct,
+                  criadoEm: new Date().toISOString(),
+                };
+                const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                persistDev({ ...localDev, mapaPontos: [...currentPontos, novoPonto] } as Empreendimento);
+                setMobileNovoLote("");
+              };
+
+              return (
+              <div className="space-y-5">
+                {mapaPontos.length === 0 ? (
+                  // ── SEM BOLINHAS: mostrar layout de adicionar ──
+                  <>
+                    {/* Card de instrução */}
+                    <div className="bg-blue-50 rounded-2xl p-4 flex items-start gap-3">
+                      <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                      </div>
+                      <div className="flex-1">
+                        <p className="text-sm font-black text-blue-900 mb-1">Como adicionar bolinhas</p>
+                        <p className="text-xs text-blue-700 leading-relaxed">1. Toque no mapa em um lote<br/>2. Informe a quadra e o número do lote</p>
+                      </div>
+                      <button className="flex items-center gap-1 text-xs font-black text-blue-600 flex-shrink-0">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="#3b82f6"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                        Ver tutorial
+                      </button>
+                    </div>
+
+                    {/* Formulário adicionar bolinha */}
+                    <div>
+                      <p className="text-base font-black text-slate-900 mb-0.5">Adicionar bolinha</p>
+                      <p className="text-xs text-slate-400 mb-4">Toque no mapa para selecionar o lote</p>
+                      <div className="border border-slate-200 rounded-2xl p-4 space-y-4 bg-white">
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <p className="text-xs font-bold text-slate-500 mb-2">Quadra</p>
+                            <select value={mobileNovaQuadra} onChange={e => setMobileNovaQuadra(e.target.value)}
+                              className="w-full px-3 py-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-white appearance-none outline-none">
+                              <option value="">Selecione</option>
+                              {quadraList.map(q => <option key={q} value={q}>{q}</option>)}
+                            </select>
+                          </div>
+                          <div>
+                            <p className="text-xs font-bold text-slate-500 mb-2">Lote</p>
+                            <input value={mobileNovoLote} onChange={e => setMobileNovoLote(e.target.value)}
+                              placeholder="Número do lote" type="number"
+                              className="w-full px-3 py-3 border border-slate-200 rounded-xl text-sm font-semibold text-slate-700 bg-white outline-none" />
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-500 mb-2">Status</p>
+                          <div className="flex gap-2">
+                            {([
+                              { s: "disponivel" as MapaLoteStatus, label: "Disponível", color: "#3b82f6" },
+                              { s: "reservado"  as MapaLoteStatus, label: "Reservado",  color: "#f59e0b" },
+                              { s: "indisponivel" as MapaLoteStatus, label: "Indisponível", color: "#ef4444" },
+                            ] as any[]).map((opt:any) => (
+                              <button key={opt.s} onClick={() => setMobileNovoStatus(opt.s)}
+                                className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition-all active:scale-95"
+                                style={{
+                                  background: mobileNovoStatus === opt.s ? opt.color : '#f1f5f9',
+                                  color: mobileNovoStatus === opt.s ? 'white' : '#64748b',
+                                }}>
+                                <span className="w-2.5 h-2.5 rounded-full bg-current flex-shrink-0" style={{background: mobileNovoStatus === opt.s ? 'rgba(255,255,255,0.7)' : opt.color}}/>
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                        <button
+                          onClick={adicionarBolinhaMobile}
+                          disabled={!mobileNovaQuadra || !mobileNovoLote}
+                          className="w-full py-3.5 rounded-2xl flex items-center justify-center gap-2 text-sm font-black transition-all active:scale-95 disabled:opacity-40"
+                          style={{background: mobileNovaQuadra && mobileNovoLote ? '#1e3a5f' : '#e2e8f0', color: mobileNovaQuadra && mobileNovoLote ? 'white' : '#94a3b8'}}>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                          Adicionar bolinha no mapa
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Dica */}
+                    <div className="bg-emerald-50 rounded-2xl p-4 flex items-start gap-3">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                      <div>
+                        <p className="text-sm font-black text-emerald-800 mb-1">Dica</p>
+                        <p className="text-xs text-emerald-700">Use o zoom para aproximar e selecionar o lote com mais precisão.</p>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  // ── COM BOLINHAS: ações rápidas + lista por quadra ──
+                  <>
+                    {/* Ações rápidas */}
+                    <div>
+                      <p className="text-sm font-black text-slate-800 mb-3">Ações rápidas</p>
+                      <div className="flex gap-2 flex-wrap">
+                        {([
+                          { label: "Disponível",   status: "disponivel"   as MapaLoteStatus, color: "#3b82f6", border: "#bfdbfe" },
+                          { label: "Reservado",    status: "reservado"    as MapaLoteStatus, color: "#f59e0b", border: "#fde68a" },
+                          { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", border: "#fecaca" },
+                        ] as any[]).map((a:any) => (
+                          <button key={a.status}
+                            onClick={() => {
+                              if (ctrlSelectedIds.size === 0) { alert("Toque nas bolinhas no mapa para selecioná-las."); return; }
+                              const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                              const next = currentPontos.map((p:any) => ctrlSelectedIds.has(p.id) ? {...p,status:a.status} : p);
+                              persistDev({ ...localDev, mapaPontos: next } as Empreendimento);
+                              setCtrlSelectedIds(new Set());
+                            }}
+                            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 bg-white active:scale-95 transition-all"
+                            style={{borderColor:a.border}}>
+                            <span className="w-4 h-4 rounded-full flex-shrink-0" style={{background:a.color}}/>
+                            <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
+                          </button>
+                        ))}
+                        <button onClick={() => setCtrlSelectedIds(new Set())}
+                          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-slate-200 bg-white active:scale-95 transition-all">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                          <span className="text-xs font-bold text-slate-400">Limpar</span>
+                        </button>
+                      </div>
+                      {ctrlSelectedIds.size > 0 && (
+                        <p className="text-xs font-bold text-emerald-600 mt-2">{ctrlSelectedIds.size} bolinha(s) selecionada(s)</p>
+                      )}
+                    </div>
+
+                    {/* Editar status por quadra */}
+                    <div>
+                      <p className="text-sm font-black text-slate-800 mb-1">Editar status de lotes</p>
+                      <p className="text-xs text-slate-400 mb-3">Selecione os lotes no mapa e altere o status.</p>
+                      <div className="space-y-2">
+                        {quadraList.map(q => {
+                          const lotes = getLotesQuadra(q);
+                          const isOpen = quadraAberta === q;
+                          return (
+                            <div key={q} className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
+                              <button className="w-full flex items-center justify-between px-4 py-3.5 active:bg-slate-50"
+                                onClick={() => (setQuadraAberta as any)(isOpen ? "" : q)}>
+                                <span className="text-sm font-black text-slate-800">Quadra {q}</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-xs text-slate-400 font-medium">{lotes.length} lotes</span>
+                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"
+                                    style={{transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
+                                    <polyline points="6 9 12 15 18 9"/>
+                                  </svg>
+                                </div>
+                              </button>
+                              {isOpen && (
+                                <div className="px-4 pb-4 pt-1 border-t border-slate-50">
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    {lotes.map(l => {
+                                      const st = getLoteStatus(q, l);
+                                      const isVendido = st === "vendido" || st === "indisponivel";
+                                      const isReservado = !isVendido && st === "reservado";
+                                      const bg = isVendido ? "#fee2e2" : isReservado ? "#fef3c7" : "#dbeafe";
+                                      const tc = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
+                                      const bc = isVendido ? "#fca5a5" : isReservado ? "#fcd34d" : "#93c5fd";
+                                      return (
+                                        <button key={l}
+                                          onClick={() => {
+                                            if (isVendido) return;
+                                            const next: MapaLoteStatus = st === "disponivel" ? "reservado" : st === "reservado" ? "indisponivel" : "disponivel";
+                                            setLoteStatusMobile(q, l, next);
+                                          }}
+                                          style={{background:bg,color:tc,borderColor:bc,width:44,height:44,borderRadius:12,border:'2px solid',fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,opacity:isVendido?0.6:1}}>
+                                          {String(l).padStart(2,"0")}
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </>
+                )}
               </div>
-            )}
+              );
+            })()}
 
             {/* ── EDITAR FAIXAS ── */}
             {isEditingMap && mapAction === "massa" && (
