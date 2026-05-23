@@ -5591,6 +5591,7 @@ const EmpreendimentosSection = ({
   });
   const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
+  const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
@@ -6647,7 +6648,8 @@ const EmpreendimentosSection = ({
           const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl;
           const temGps = !!getEmpreendimentoMapsUrl(dev);
           const numQuadras = (dev.quadras || "").split(",").filter(Boolean).length;
-          const [menuAberto, setMenuAberto] = useState(false);
+          const menuAberto = menuAbertoId === dev.id;
+          const setMenuAberto = (v: boolean) => setMenuAbertoId(v ? dev.id : null);
           return (
           <motion.div
             layout
@@ -15574,17 +15576,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     try {
       const saved = localStorage.getItem('lastSection') as Section;
       const valid: Section[] = ["dashboard","vendas","empreendimentos","contratos","clientes","aniversarios","proprietarios","usuarios","calculadora","config","historico"];
-      // Pré-preencher dados bancários se não existirem
-      const defaultBanking = {
-        pixChave: "60.659.875/0001-21", pixTipo: "cnpj",
-        pixNome: "D SOUZA DE ANDRADE IMOVEIS", pixCidade: "Santarém",
-        bancoAgencia: "4375", bancoContaCorrente: "13.005479-0",
-        bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS", bancoCnpj: "60.659.875/0001-21",
-        bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
-      };
-      Object.entries(defaultBanking).forEach(([k, v]) => {
-        if (!config[k]) saveAppConfig({ ...config, [k]: v });
-      });
+      // Dados bancários serão preenchidos via useEffect após montar
       return valid.includes(saved) ? saved : "dashboard";
     } catch { return "dashboard"; }
   });
@@ -15592,18 +15584,22 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [clients, setClients] = useState<Cliente[]>([]);
   const [sales, setSales] = useState<Venda[]>([]);
   const [vendasExcluidas, setVendasExcluidas] = useState<VendaExcluida[]>(() => loadLixeira());
-  // Dados bancários pré-cadastrados
-  const dadosBancariosDefault = {
-    pixChave: "60.659.875/0001-21",
-    pixTipo: "cnpj",
-    pixNome: "D SOUZA DE ANDRADE IMOVEIS",
-    pixCidade: "Santarém",
-    bancoAgencia: "4375",
-    bancoContaCorrente: "13.005479-0",
-    bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS",
-    bancoCnpj: "60.659.875/0001-21",
-    bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
-  };
+  // Pré-preencher dados bancários uma única vez após montar (não no initializer)
+  useEffect(() => {
+    const defaults: Record<string, string> = {
+      pixChave: "60.659.875/0001-21", pixTipo: "cnpj",
+      pixNome: "D SOUZA DE ANDRADE IMOVEIS", pixCidade: "Santarém",
+      bancoAgencia: "4375", bancoContaCorrente: "13.005479-0",
+      bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS", bancoCnpj: "60.659.875/0001-21",
+      bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
+    };
+    const missing = Object.entries(defaults).filter(([k]) => !config[k]);
+    if (missing.length > 0) {
+      const updated = { ...config };
+      missing.forEach(([k, v]) => { updated[k] = v; });
+      saveAppConfig(updated);
+    }
+  }, []); // roda uma única vez
 
   const [config, setConfig] = useState<AppConfig>({
     theme: "standard",
