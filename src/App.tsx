@@ -3444,33 +3444,37 @@ const LotDashboard = ({
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
-        // Escala 2x para qualidade máxima no export
-        const scale = 2;
+        const imgW = img.naturalWidth || img.width;
+        const imgH = img.naturalHeight || img.height;
+
+        // Canvas com resolução original — sem scale extra que desalinha bolinhas
         const canvas = document.createElement("canvas");
-        canvas.width = (img.naturalWidth || img.width) * scale;
-        canvas.height = (img.naturalHeight || img.height) * scale;
+        canvas.width = imgW;
+        canvas.height = imgH;
         const ctx = canvas.getContext("2d")!;
-        ctx.scale(scale, scale);
         ctx.imageSmoothingEnabled = true;
         ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, img.naturalWidth || img.width, img.naturalHeight || img.height);
-        const baseSize = getBallBasePixelSize().size;
-        const containerCssWidth = mapContainerRef.current?.offsetWidth || mapImageRef.current?.offsetWidth || 1000;
-        const ballFraction = baseSize / containerCssWidth;
-        // Raio proporcional à imagem (já em escala 2x)
-        const radius = Math.max((canvas.width * ballFraction) / 2, 4);
+        ctx.drawImage(img, 0, 0, imgW, imgH);
+
+        // Raio das bolinhas: 2.8% da largura da imagem (mesma proporção do mapa na tela)
+        const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+        const radius = Math.max(4, Math.round(imgW * 0.028 * pct) / 2);
+        const borderWidth = Math.max(1.5, radius * 0.22);
+
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
           const reservado = !indisponivel && ponto.status === "reservado";
-          const x = (Number(ponto.xPercent) / 100) * canvas.width;
-          const y = (Number(ponto.yPercent) / 100) * canvas.height;
-          ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+          // Posição: xPercent/yPercent são % da imagem original
+          const x = (Number(ponto.xPercent) / 100) * imgW;
+          const y = (Number(ponto.yPercent) / 100) * imgH;
+          ctx.beginPath();
+          ctx.arc(x, y, radius, 0, Math.PI * 2);
           ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
           ctx.fill();
-          ctx.lineWidth = Math.max(radius * 0.22, 1); ctx.strokeStyle = "#ffffff"; ctx.stroke();
-          // Exportação/visualização impressa: bolinha limpa, sem número.
-          // Os números aparecem somente no modo Editar mapa.
+          ctx.lineWidth = borderWidth;
+          ctx.strokeStyle = "#ffffff";
+          ctx.stroke();
         });
         resolve(canvas);
       };
