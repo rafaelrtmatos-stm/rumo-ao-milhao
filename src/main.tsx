@@ -204,12 +204,10 @@ function Root() {
   };
 
   if (auth.status === "loading") {
+    // Manter tela verde enquanto verifica autenticação — sem piscar
     return (
-      <div style={{ minHeight: "100vh", background: "#1c1c1e", display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <p style={{ color: "rgba(255,255,255,0.3)", fontWeight: 700, letterSpacing: "0.2em", fontSize: 12, textTransform: "uppercase" }}>
-          Carregando...
-        </p>
-      </div>
+      <div ref={(el) => { if (el) document.getElementById("root")?.classList.add("ready"); }}
+        style={{ minHeight: "100vh", background: "#0d200d" }} />
     );
   }
 
