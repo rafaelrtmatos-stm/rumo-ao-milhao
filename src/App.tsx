@@ -13988,59 +13988,71 @@ const ConfigSection = ({
 
       <div className="card-premium space-y-8">
 
-        {/* CHAVE PIX */}
+        {/* DADOS BANCÁRIOS E PIX */}
         <div>
           <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20.94 11a8.994 8.994 0 0 0-7.94-7.94M3.06 13A9 9 0 0 0 13 20.94M3.06 11A9 9 0 0 1 11 3.06"/><path d="m9 9 5.7 5.7M9 15l5.7-5.7"/></svg>
-            Chave Pix
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+            Dados Bancários e Pix
           </h4>
-          <p className="text-xs text-slate-400 mb-3">Usada para gerar QR Code de pagamento no recibo e nas vendas.</p>
+          <p className="text-xs text-slate-400 mb-3">Aparece no recibo de pagamento e nas cobranças.</p>
           <div className="space-y-3">
-            <div>
-              <label className="label">Tipo de chave</label>
-              <select
-                className="input-field"
-                value={formData.pixTipo || "cpf"}
-                onChange={(e) => setFormData({ ...formData, pixTipo: e.target.value })}
-              >
-                <option value="cpf">CPF</option>
-                <option value="cnpj">CNPJ</option>
-                <option value="email">E-mail</option>
-                <option value="telefone">Telefone</option>
-                <option value="aleatoria">Chave aleatória</option>
-              </select>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Banco / Agência</label>
+                <input className="input-field font-mono" placeholder="Ex: 4375" value={formData.bancoAgencia || ""} onChange={(e) => setFormData({ ...formData, bancoAgencia: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Conta Corrente</label>
+                <input className="input-field font-mono" placeholder="Ex: 13.005479-0" value={formData.bancoContaCorrente || ""} onChange={(e) => setFormData({ ...formData, bancoContaCorrente: e.target.value })} />
+              </div>
             </div>
             <div>
-              <label className="label">Chave Pix</label>
-              <input
-                className="input-field font-mono"
-                placeholder="Digite sua chave Pix"
-                value={formData.pixChave || ""}
-                onChange={(e) => setFormData({ ...formData, pixChave: e.target.value })}
-              />
+              <label className="label">Titular da conta</label>
+              <input className="input-field" placeholder="Nome completo ou razão social" value={formData.bancoTitular || ""} onChange={(e) => setFormData({ ...formData, bancoTitular: e.target.value })} />
             </div>
             <div>
-              <label className="label">Nome do recebedor (aparece no QR)</label>
-              <input
-                className="input-field"
-                placeholder="Nome que aparece ao escanear"
-                value={formData.pixNome || ""}
-                onChange={(e) => setFormData({ ...formData, pixNome: e.target.value })}
-              />
+              <label className="label">CNPJ / CPF</label>
+              <input className="input-field font-mono" placeholder="Ex: 60.659.875/0001-21" value={formData.bancoCnpj || ""} onChange={(e) => setFormData({ ...formData, bancoCnpj: e.target.value })} />
             </div>
             <div>
-              <label className="label">Cidade</label>
-              <input
-                className="input-field"
-                placeholder="Cidade do recebedor"
-                value={formData.pixCidade || ""}
-                onChange={(e) => setFormData({ ...formData, pixCidade: e.target.value })}
-              />
+              <label className="label">Nome Fantasia</label>
+              <input className="input-field" placeholder="Ex: Imobiliária Geo Florestal" value={formData.bancoNomeFantasia || ""} onChange={(e) => setFormData({ ...formData, bancoNomeFantasia: e.target.value })} />
             </div>
-            {formData.pixChave && (
-              <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200">
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-700 mb-1">✓ Chave cadastrada</p>
-                <p className="text-xs font-mono text-emerald-800">{formData.pixChave}</p>
+            <div className="border-t border-slate-100 pt-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Pix</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label">Tipo de chave</label>
+                  <select className="input-field" value={formData.pixTipo || "cnpj"} onChange={(e) => setFormData({ ...formData, pixTipo: e.target.value })}>
+                    <option value="cpf">CPF</option>
+                    <option value="cnpj">CNPJ</option>
+                    <option value="email">E-mail</option>
+                    <option value="telefone">Telefone</option>
+                    <option value="aleatoria">Chave aleatória</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Chave Pix</label>
+                  <input className="input-field font-mono" placeholder="Chave Pix" value={formData.pixChave || ""} onChange={(e) => setFormData({ ...formData, pixChave: e.target.value })} />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="label">Nome no Pix</label>
+                  <input className="input-field" placeholder="Nome do recebedor" value={formData.pixNome || ""} onChange={(e) => setFormData({ ...formData, pixNome: e.target.value })} />
+                </div>
+                <div>
+                  <label className="label">Cidade</label>
+                  <input className="input-field" placeholder="Cidade" value={formData.pixCidade || ""} onChange={(e) => setFormData({ ...formData, pixCidade: e.target.value })} />
+                </div>
+              </div>
+            </div>
+            {(formData.pixChave || formData.bancoContaCorrente) && (
+              <div className="p-3 bg-slate-900 rounded-xl space-y-1.5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">✓ Dados cadastrados</p>
+                {formData.bancoAgencia && <p className="text-xs font-mono text-white">Ag: {formData.bancoAgencia} | CC: {formData.bancoContaCorrente}</p>}
+                {formData.bancoTitular && <p className="text-xs text-slate-300">{formData.bancoTitular}</p>}
+                {formData.pixChave && <p className="text-xs font-mono text-emerald-400">Pix: {formData.pixChave}</p>}
               </div>
             )}
           </div>
@@ -15496,6 +15508,17 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     try {
       const saved = localStorage.getItem('lastSection') as Section;
       const valid: Section[] = ["dashboard","vendas","empreendimentos","contratos","clientes","aniversarios","proprietarios","usuarios","calculadora","config","historico"];
+      // Pré-preencher dados bancários se não existirem
+      const defaultBanking = {
+        pixChave: "60.659.875/0001-21", pixTipo: "cnpj",
+        pixNome: "D SOUZA DE ANDRADE IMOVEIS", pixCidade: "Santarém",
+        bancoAgencia: "4375", bancoContaCorrente: "13.005479-0",
+        bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS", bancoCnpj: "60.659.875/0001-21",
+        bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
+      };
+      Object.entries(defaultBanking).forEach(([k, v]) => {
+        if (!config[k]) saveAppConfig({ ...config, [k]: v });
+      });
       return valid.includes(saved) ? saved : "dashboard";
     } catch { return "dashboard"; }
   });
@@ -15503,6 +15526,19 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [clients, setClients] = useState<Cliente[]>([]);
   const [sales, setSales] = useState<Venda[]>([]);
   const [vendasExcluidas, setVendasExcluidas] = useState<VendaExcluida[]>(() => loadLixeira());
+  // Dados bancários pré-cadastrados
+  const dadosBancariosDefault = {
+    pixChave: "60.659.875/0001-21",
+    pixTipo: "cnpj",
+    pixNome: "D SOUZA DE ANDRADE IMOVEIS",
+    pixCidade: "Santarém",
+    bancoAgencia: "4375",
+    bancoContaCorrente: "13.005479-0",
+    bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS",
+    bancoCnpj: "60.659.875/0001-21",
+    bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
+  };
+
   const [config, setConfig] = useState<AppConfig>({
     theme: "standard",
     vendedores: [],
