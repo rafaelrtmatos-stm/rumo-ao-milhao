@@ -5242,42 +5242,113 @@ const LotDashboard = ({
     </div>
   );
 
+  // Stats para o painel lateral
+  const recalcStats = recalcularEstatisticasEmpreendimento(localDev, sales);
+  const statsDisponiveis = Math.max(0, recalcStats.lotesDisponiveis ?? Math.max(0, localDev.totalLotes - localDev.lotesVendidos));
+  const statsReservados = recalcStats.lotesReservados ?? 0;
+  const statsIndisponiveis = recalcStats.lotesVendidos ?? localDev.lotesVendidos ?? 0;
+  const statsTotal = localDev.totalLotes ?? 0;
+  const statsPct = statsTotal > 0 ? Math.round((statsIndisponiveis / statsTotal) * 100) : 0;
+
   return (
     <>
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-6">
-      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/60 backdrop-blur-md" />
-      <motion.div initial={{ scale: 0.96, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.96, opacity: 0, y: 20 }} className="bg-white w-full max-w-6xl max-h-[94vh] rounded-[28px] shadow-2xl relative overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-2 sm:p-4 lg:p-6">
+      <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} onClick={onClose} className="absolute inset-0 bg-slate-900/70 backdrop-blur-sm" />
 
-        {/* HEADER */}
-        <div className="px-4 py-3 sm:px-6 sm:py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50 gap-3">
-          <div className="flex items-center gap-2 sm:gap-4 min-w-0 flex-1">
-            <div className="w-9 h-9 sm:w-11 sm:h-11 bg-primary-main text-white rounded-xl sm:rounded-2xl flex items-center justify-center flex-shrink-0"><MapPin size={18} /></div>
-            <div className="min-w-0">
-              <h3 className="text-sm sm:text-lg font-display font-bold text-slate-800 truncate leading-tight">{localDev.nome}</h3>
-              <p className="text-[10px] sm:text-xs text-slate-400 font-medium hidden sm:block">Mapa e lotes do empreendimento</p>
+      {/* LAYOUT DESKTOP PREMIUM */}
+      <motion.div
+        initial={{ scale: 0.97, opacity: 0, y: 16 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.97, opacity: 0, y: 16 }}
+        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+        className="relative w-full flex flex-col"
+        style={{ maxWidth: 1400, maxHeight: 'calc(100dvh - 32px)', height: 'calc(100dvh - 32px)' }}
+      >
+        {/* Card principal */}
+        <div className="bg-white rounded-[24px] shadow-2xl flex flex-col h-full overflow-hidden" style={{ boxShadow: '0 32px 80px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.04)' }}>
+
+          {/* HEADER DESKTOP */}
+          <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white flex-shrink-0">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-[#1a4a1a] flex items-center justify-center flex-shrink-0 shadow-sm">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+              </div>
+              <div className="min-w-0">
+                <h2 className="text-base font-black text-slate-900 truncate leading-tight tracking-tight">{localDev.nome}</h2>
+                <p className="text-[11px] text-slate-400 font-medium">
+                  {[localDev.cidade, localDev.estado].filter(Boolean).join(', ') || 'Mapa e lotes do empreendimento'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {/* Barra de progresso compacta */}
+              <div className="hidden lg:flex items-center gap-3 mr-2">
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+                  <span className="text-slate-500 font-medium">{statsDisponiveis} disp.</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                  <span className="text-slate-500 font-medium">{statsReservados} res.</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs">
+                  <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
+                  <span className="text-slate-500 font-medium">{statsIndisponiveis} vend.</span>
+                </div>
+                <div className="w-px h-4 bg-slate-200" />
+                <span className="text-xs font-black text-slate-600">{statsPct}%</span>
+              </div>
+
+              {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
+                <button onClick={entrarEdicao} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase hover:bg-[#1a4a1a] active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Editar mapa
+                </button>
+              )}
+              {canEditMap && !mapaImagem && (
+                <label className="flex items-center gap-2 px-4 py-2 bg-[#1a4a1a] text-white rounded-xl text-xs font-black uppercase cursor-pointer hover:bg-[#245424] active:scale-95 transition-all">
+                  <Upload size={13} />Carregar mapa
+                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
+                </label>
+              )}
+              <button onClick={onClose} className="w-9 h-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors active:scale-95">
+                <X size={18} />
+              </button>
             </div>
           </div>
-          {/* Ações do header */}
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
-              <button onClick={entrarEdicao} className="flex px-3 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2">
-                <MapPin size={12} />Editar mapa
-              </button>
-            )}
-            {canEditMap && !mapaImagem && (
-              <label className="flex px-2 sm:px-4 py-2 bg-slate-900 text-white rounded-xl text-[10px] sm:text-xs font-black uppercase items-center gap-1 sm:gap-2 cursor-pointer hover:bg-primary-main transition-colors">
-                <Upload size={12} /><span className="hidden sm:inline">Carregar mapa</span><span className="sm:hidden">Upload</span>
-                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
-              </label>
-            )}
-            <button onClick={onClose} className="p-2 sm:p-3 hover:bg-slate-100 rounded-xl sm:rounded-2xl text-slate-400"><X size={20} /></button>
-          </div>
-        </div>
 
-        {/* ABAS */}
-        <div className="px-4 sm:px-6 py-3 border-b border-slate-100">
-          <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl w-full">
-            {mapaImagem && (
+          {/* BARRA DE EDIÇÃO */}
+          {isEditingMap && (
+            <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-6 py-2.5 flex items-center gap-3">
+              <button onClick={cancelarEdicaoMapa} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white text-slate-600 text-xs font-black uppercase hover:bg-slate-100 active:scale-95 transition-all border border-slate-200">
+                <X size={12} /> Cancelar
+              </button>
+              <div className="flex-1 min-w-0">
+                {mapUploadProgress > 0 && mapUploadProgress < 100 ? (
+                  <div className="flex items-center gap-3">
+                    <p className="text-[11px] font-bold text-amber-700">Carregando...</p>
+                    <div className="flex-1 h-1.5 bg-amber-200 rounded-full overflow-hidden">
+                      <div className="h-full bg-amber-500 rounded-full transition-all" style={{ width: `${mapUploadProgress}%` }} />
+                    </div>
+                    <span className="text-[11px] font-black text-amber-600">{mapUploadProgress}%</span>
+                  </div>
+                ) : (
+                  <p className="text-[11px] font-bold text-amber-700">✏️ Modo edição — clique no mapa para adicionar marcadores</p>
+                )}
+              </div>
+              <button onClick={salvarEdicaoMapa} disabled={mapUploadProgress > 0 && mapUploadProgress < 100}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-[#1a4a1a] text-white text-xs font-black uppercase hover:bg-[#245424] active:scale-95 transition-all disabled:opacity-50">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Salvar
+              </button>
+            </div>
+          )}
+
+          {/* ABAS */}
+          <div className="px-6 pt-3 pb-0 border-b border-slate-100 flex-shrink-0">
+            <div className="flex gap-0.5">
+              {mapaImagem && (
               <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
                 🗺 Mapa
@@ -5290,159 +5361,111 @@ const LotDashboard = ({
           </div>
         </div>
 
-        {/* CONTEÚDO */}
+        {/* CORPO PRINCIPAL — 2 colunas no desktop */}
         {mode === "mapa" && mapaImagem ? (
-          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
-            {/* MAPA — altura ajustável pelo usuário */}
-            <div
-              className="relative min-h-0 flex-shrink-0"
-              style={{ height: mapaWindowHeight > 0 ? `${mapaWindowHeight}px` : undefined, flex: mapaWindowHeight > 0 ? 'none' : '1' }}
-            >
+          <div className="flex flex-1 min-h-0 overflow-hidden">
+            {/* COLUNA ESQUERDA — MAPA (70%) */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#f5f7fb]">
+              {/* Área do mapa */}
+              <div className="relative flex-1 min-h-0">
               {renderMapa()}
-              {/* HANDLE DE RESIZE — arrastar para ajustar altura */}
-              <div
-                className="absolute bottom-0 left-0 right-0 h-6 flex items-center justify-center cursor-ns-resize z-30 group select-none"
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const startH = e.currentTarget.parentElement!.getBoundingClientRect().height;
-                  mapaResizeRef.current = { dragging: true, startY: e.clientY, startH };
-                  const onMove = (ev: MouseEvent) => {
-                    if (!mapaResizeRef.current.dragging) return;
-                    const delta = ev.clientY - mapaResizeRef.current.startY;
-                    const newH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
-                    setMapaWindowHeight(newH);
-                  };
-                  const onUp = (upEv: MouseEvent) => {
-                    mapaResizeRef.current.dragging = false;
-                    window.removeEventListener('mousemove', onMove);
-                    window.removeEventListener('mouseup', onUp);
-                    // Calcular e salvar altura final
-                    const delta = upEv.clientY - mapaResizeRef.current.startY;
-                    const finalH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
-                    setMapaWindowHeight(finalH);
-                    localStorage.setItem('mapaWindowHeight', String(Math.round(finalH)));
-                  };
-                  window.addEventListener('mousemove', onMove);
-                  window.addEventListener('mouseup', onUp);
-                }}
-                onTouchStart={(e) => {
-                  const startH = e.currentTarget.parentElement!.getBoundingClientRect().height;
-                  mapaResizeRef.current = { dragging: true, startY: e.touches[0].clientY, startH };
-                  const onMove = (ev: TouchEvent) => {
-                    if (!mapaResizeRef.current.dragging) return;
-                    const delta = ev.touches[0].clientY - mapaResizeRef.current.startY;
-                    const newH = Math.max(200, Math.min(window.innerHeight * 0.9, mapaResizeRef.current.startH + delta));
-                    setMapaWindowHeight(newH);
-                  };
-                  const onEnd = () => {
-                    mapaResizeRef.current.dragging = false;
-                    const el = document.querySelector('[data-mapa-container]') as HTMLElement;
-                    if (el) {
-                      localStorage.setItem('mapaWindowHeight', String(Math.round(el.getBoundingClientRect().height)));
-                    }
-                    window.removeEventListener('touchmove', onMove);
-                    window.removeEventListener('touchend', onEnd);
-                  };
-                  window.addEventListener('touchmove', onMove, { passive: true });
-                  window.addEventListener('touchend', onEnd);
-                }}
-              >
-                <div className="w-12 h-1 rounded-full bg-slate-300 group-hover:bg-slate-500 transition-colors" />
               </div>
+              {/* Barra inferior */}
+              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2 flex items-center gap-3">
+                <span className="text-[10px] text-slate-400 flex-1 truncate">💡 {isEditingMap ? "Clique no mapa para adicionar marcadores" : "Scroll = zoom • Arraste para mover • Clique na bolinha"}</span>
+                <div className="flex items-center gap-2 w-36 flex-shrink-0">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400 flex-shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                  <div className="flex-1 relative h-5 flex items-center cursor-pointer"
+                    onPointerDown={(e) => {
+                      e.preventDefault();
+                      const track = e.currentTarget;
+                      const upd = (cx: number) => { const r=track.getBoundingClientRect(); const pct=Math.max(0,Math.min(1,(cx-r.left)/r.width)); const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(1,Math.min(10,1+pct*9)),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); };
+                      upd(e.clientX);
+                      const om=(ev:PointerEvent)=>upd(ev.clientX); const ou=()=>{window.removeEventListener('pointermove',om);window.removeEventListener('pointerup',ou);};
+                      window.addEventListener('pointermove',om); window.addEventListener('pointerup',ou);
+                    }}
+                  >
+                    <div className="w-full h-1 bg-slate-200 rounded-full" />
+                    <div className="absolute left-0 h-1 bg-slate-500 rounded-full pointer-events-none" style={{ width: `${Math.min(100,((mapZoom-1)/9)*100)}%` }} />
+                    <div className="absolute h-3 w-3 bg-slate-700 rounded-full shadow pointer-events-none border border-white" style={{ left: `calc(${Math.min(100,((mapZoom-1)/9)*100)}% - 6px)` }} />
+                  </div>
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400 flex-shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+                </div>
+                <span className="text-[10px] font-black text-slate-500 w-7 text-right flex-shrink-0">{mapZoom.toFixed(1)}x</span>
+              </div>
+              <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
             </div>
-            {/* BOTÕES FIXOS EMBAIXO DO MAPA */}
-            <div className="flex-shrink-0 bg-white border-t border-slate-100">
-              {/* Linha 1: ações principais */}
-              <div className="flex gap-2 px-3 pt-2.5 pb-1">
-                <button
-                  type="button"
-                  onClick={() => { setMapFullscreen(true); setMapActive(true); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; setTimeout(() => fitMapToScreen(0), 200); }}
-                  className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-xs font-black uppercase flex items-center justify-center gap-1.5 hover:bg-slate-700 active:scale-95 transition-all"
-                >
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                  <span>Tela cheia</span>
+
+            {/* COLUNA DIREITA — PAINEL LATERAL */}
+            <div className="w-64 xl:w-72 flex-shrink-0 border-l border-slate-100 flex flex-col bg-white overflow-y-auto">
+              <div className="p-4 border-b border-slate-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Resumo</p>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {([
+                    {label:'Disponíveis',value:statsDisponiveis,bg:'bg-blue-50',text:'text-blue-700',dot:'bg-blue-500'},
+                    {label:'Reservados',value:statsReservados,bg:'bg-amber-50',text:'text-amber-700',dot:'bg-amber-400'},
+                    {label:'Vendidos',value:statsIndisponiveis,bg:'bg-red-50',text:'text-red-600',dot:'bg-red-500'},
+                    {label:'Total',value:statsTotal,bg:'bg-slate-50',text:'text-slate-700',dot:'bg-slate-400'},
+                  ] as {label:string;value:number;bg:string;text:string;dot:string}[]).map(s=>(
+                    <div key={s.label} className={`rounded-xl p-2.5 ${s.bg} ${s.text}`}>
+                      <p className="text-lg font-black leading-none mb-1">{s.value}</p>
+                      <div className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}/><p className="text-[9px] font-bold opacity-70">{s.label}</p></div>
+                    </div>
+                  ))}
+                </div>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-gradient-to-r from-red-400 to-red-500 rounded-full" style={{width:`${statsPct}%`}} />
+                </div>
+                <p className="text-[10px] text-slate-400 text-right mt-1">{statsPct}% ocupado</p>
+              </div>
+              <div className="p-4 border-b border-slate-100">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Legenda</p>
+                <div className="space-y-2">
+                  {([{c:'bg-blue-500',l:'Disponível',d:'Livre para venda'},{c:'bg-amber-400',l:'Reservado',d:'Aguardando'},{c:'bg-red-500',l:'Indisponível',d:'Vendido/bloqueado'}] as {c:string;l:string;d:string}[]).map(i=>(
+                    <div key={i.l} className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${i.c}`}/><div><p className="text-[11px] font-bold text-slate-700">{i.l}</p><p className="text-[10px] text-slate-400">{i.d}</p></div></div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-4 space-y-2">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Ações</p>
+                <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToScreen(0),200);}}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                  Tela cheia
                 </button>
                 <button onClick={baixarMapaInterativoImagem}
-                  className="flex-1 rounded-2xl bg-emerald-700 text-white py-3 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-emerald-600 active:scale-95 transition-all">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span>Imagem</span>
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#1a4a1a] text-white text-xs font-bold hover:bg-[#245424] active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Baixar Imagem
                 </button>
                 <button onClick={baixarMapaInterativoPdf}
-                  className="flex-1 rounded-2xl bg-blue-700 text-white py-3 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-blue-600 active:scale-95 transition-all">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  <span>PDF</span>
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  Gerar PDF
+                </button>
+                <button onClick={()=>fitMapToScreen()}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                  Centralizar
                 </button>
               </div>
-              {/* Linha 2: slider de zoom estilo volume TV */}
-              <div className="flex items-center gap-2 px-3 pb-2.5">
-                {/* Ícone zoom out */}
-                <button type="button" onClick={() => fitMapToScreen()}
-                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 flex items-center justify-center text-xs font-black flex-shrink-0" title="Encaixar">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                </button>
-                {/* SLIDER DE ZOOM — arrastável, acompanha pinch */}
-                <div className="flex-1 relative h-8 flex items-center group cursor-pointer"
-                  onPointerDown={(e) => {
-                    e.preventDefault();
-                    const track = e.currentTarget;
-                    const updateZoom = (clientX: number) => {
-                      const rect = track.getBoundingClientRect();
-                      const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                      const newZoom = Math.max(1, Math.min(10, 1 + pct * 9));
-                      // Slider: zoom para o centro do viewport (não muda o pan desnecessariamente)
-                      const viewport = mapViewportRef.current;
-                      const vpW = viewport?.offsetWidth || window.innerWidth;
-                      const vpH = viewport?.offsetHeight || window.innerHeight;
-                      setMapZoomAtPoint(newZoom, vpW / 2, vpH / 2);
-                    };
-                    updateZoom(e.clientX);
-                    const onMove = (ev: PointerEvent) => updateZoom(ev.clientX);
-                    const onUp = () => {
-                      window.removeEventListener('pointermove', onMove);
-                      window.removeEventListener('pointerup', onUp);
-                    };
-                    window.addEventListener('pointermove', onMove);
-                    window.addEventListener('pointerup', onUp);
-                  }}
-                >
-                  {/* Track fundo */}
-                  <div className="w-full h-1.5 bg-slate-200 rounded-full" />
-                  {/* Track preenchido */}
-                  <div className="absolute left-0 h-1.5 bg-slate-700 rounded-full pointer-events-none transition-none"
-                    style={{ width: `${Math.min(100, ((mapZoom - 1) / 9) * 100)}%` }} />
-                  {/* Thumb — bolinha arrastável */}
-                  <div className="absolute h-5 w-5 bg-slate-900 rounded-full shadow-lg pointer-events-none border-2 border-white transition-none"
-                    style={{ left: `calc(${Math.min(100, ((mapZoom - 1) / 9) * 100)}% - 10px)` }} />
-                </div>
-                {/* Ícone zoom in */}
-                <button type="button" onClick={() => zoomMapBy(2)}
-                  className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-700 flex items-center justify-center flex-shrink-0">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                </button>
+              <div className="mt-auto p-4 border-t border-slate-100">
+                <p className="text-[10px] text-slate-300 text-center">Scroll = zoom • Ctrl+drag = pan</p>
               </div>
             </div>
-            <AnimatePresence>
-              {selectedPoint && renderSelectedPointModal()}
-            </AnimatePresence>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
             {renderQuadradinhos()}
-            <AnimatePresence>
-              {selectedPoint && renderSelectedPointModal()}
-            </AnimatePresence>
+            <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
         )}
+        </div>{/* end card */}
+      </motion.div>{/* end modal */}
+    </div>{/* end overlay */}
 
-        {/* FOOTER LEGENDA */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-center gap-6 text-[10px] font-bold uppercase tracking-widest text-slate-400">
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
-          <div className="flex items-center gap-2"><div className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
-        </div>
-
-        {/* Modal venda do lote (quadradinhos) */}
-        <AnimatePresence>
+    {/* Modal venda do lote (quadradinhos) */}
+    <AnimatePresence>
           {selectedLotSale && (
             <motion.div initial={{ x: "100%" }} animate={{ x: 0 }} exit={{ x: "100%" }} transition={{ type: "spring", stiffness: 320, damping: 32 }} className="absolute inset-0 bg-white z-20 flex flex-col overflow-hidden rounded-[28px]">
               <div className="p-6 border-b border-slate-100 flex items-center gap-4 bg-slate-50/50">
@@ -5469,9 +5492,6 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
-
-      </motion.div>
-    </div>
 
     {/* MODAL: Lote já cadastrado — substitui window.prompt por UI React */}
     <AnimatePresence>
