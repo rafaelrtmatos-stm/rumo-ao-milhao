@@ -2649,15 +2649,11 @@ const LotDashboard = ({
   // Usa sempre a melhor qualidade disponível sem trocar durante zoom
   const mapaImagem = (() => {
     if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
-    if (!mapaImagemOriginal) return "";
-    // Zoom > 1.5x → original (100%)
-    if (mapZoom > 1.5) return mapaImagemOriginal;
-    // Zoom ≤ 1.5x → média (50%) — mais leve para visualização geral
-    return mapaImagemMedia || mapaImagemOriginal;
+    return mapaImagemOriginal; // sempre original — sem troca, sem complexidade
   })();
 
   // Imagem de fundo (fallback enquanto a principal carrega)
-  const mapaImagemFallback = mapaImagemMedia || mapaImagemOriginal;
+  const mapaImagemFallback = mapaImagemOriginal;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -3356,14 +3352,12 @@ const LotDashboard = ({
     reader.onload = async () => {
       setMapUploadProgress(50);
       const original = String(reader.result || "");
-      setMapUploadProgress(60);
-      const media = await gerarImagemLeve(original, 1600, 0.6); // média 60%, max 1600px
       setMapUploadProgress(85);
       persistDev({
         ...localDev,
         mapaImagemBase64: original,
         mapaImagemLeveBase64: "",
-        mapaImagemMedResBase64: media,
+        mapaImagemMedResBase64: "",
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
