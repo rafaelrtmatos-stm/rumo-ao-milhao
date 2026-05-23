@@ -1525,7 +1525,7 @@ const Sidebar = ({
           </button>
         </div>
 
-        <nav className="flex-1 px-4 py-8 space-y-2 overflow-y-auto">
+        <nav className="flex-1 px-4 py-4 space-y-2 overflow-y-auto pb-2">
           {mainMenuItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentSection === item.id;
@@ -1626,9 +1626,10 @@ const Sidebar = ({
           })()}
         </nav>
 
-        <div className="p-6 border-t border-slate-50 space-y-2">
+        {/* BOTÃO SAIR — fixo no bottom, sempre visível sem scroll */}
+        <div className="flex-shrink-0 px-4 pb-6 pt-3 border-t border-slate-100 bg-white">
           {userEmail && (
-            <div className="px-3 py-2 rounded-xl bg-slate-50 mb-1">
+            <div className="px-3 py-2 rounded-xl bg-slate-50 mb-2">
               <p className="text-[9px] font-black uppercase tracking-widest text-slate-300">Logado como</p>
               <p className="text-xs font-bold text-slate-500 truncate">{userEmail}</p>
               {isAdmin && <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest">Administrador</p>}
@@ -1636,10 +1637,10 @@ const Sidebar = ({
           )}
           <button
             onClick={onLogout}
-            className="flex items-center gap-3 px-5 py-4 text-slate-400 hover:text-red-500 transition-colors w-full rounded-2xl hover:bg-red-50"
+            className="flex items-center gap-3 px-4 py-3 text-red-500 hover:text-white hover:bg-red-500 transition-all w-full rounded-2xl font-bold text-sm border border-red-100 hover:border-red-500"
           >
-            <LogOut size={20} />
-            <span className="font-semibold text-sm">Sair do Sistema</span>
+            <LogOut size={18} />
+            <span>Sair do Sistema</span>
           </button>
         </div>
       </div>
