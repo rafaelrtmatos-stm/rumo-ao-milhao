@@ -2495,28 +2495,34 @@ const LotDashboard = ({
   };
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
-    // Com transformOrigin "0 0":
-    // pan = posição do canto superior esquerdo da imagem no viewport
-    // pan=0 → imagem começa no canto top-left do viewport
-    // Para centralizar: pan = (vpW - imgW*zoom) / 2
     const viewport = mapViewportRef.current;
     const img = mapImageRef.current;
     if (!viewport || !img) return pan;
     const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
     const vpH = viewport.offsetHeight || viewport.clientHeight || 0;
-    const imgW = img.offsetWidth || 0;
-    const imgH = img.offsetHeight || 0;
-    if (vpW === 0 || imgW === 0) return pan;
-    const scaledW = imgW * zoom;
-    const scaledH = imgH * zoom;
-    // Limites: imagem não pode sair do viewport além de metade
-    const minX = Math.min(0, vpW - scaledW);
-    const minY = Math.min(0, vpH - scaledH);
-    const maxX = Math.max(0, vpW - scaledW);
-    const maxY = Math.max(0, vpH - scaledH);
+    // imgLayoutW = vpW (imagem é w-full no zoom=1)
+    const imgNatW = img.naturalWidth || 1;
+    const imgNatH = img.naturalHeight || 1;
+    const imgLayoutW = vpW;
+    const imgLayoutH = imgLayoutW * (imgNatH / imgNatW);
+    if (vpW === 0) return pan;
+    const scaledW = imgLayoutW * zoom;
+    const scaledH = imgLayoutH * zoom;
+    // Se imagem menor que viewport: centralizar (pan = (vp - scaled) / 2)
+    // Se imagem maior que viewport: permitir rolar mas não sair dos limites
+    const centerX = (vpW - scaledW) / 2;
+    const centerY = (vpH - scaledH) / 2;
+    if (scaledW <= vpW) {
+      // Imagem cabe na largura — centralizar X, permitir Y livre se maior
+      return {
+        x: centerX,
+        y: scaledH <= vpH ? centerY : Math.max(vpH - scaledH, Math.min(0, pan.y)),
+      };
+    }
+    // Imagem maior que viewport — limitar scrolling
     return {
-      x: Math.max(minX, Math.min(maxX, pan.x)),
-      y: Math.max(minY, Math.min(maxY, pan.y)),
+      x: Math.max(vpW - scaledW, Math.min(0, pan.x)),
+      y: scaledH <= vpH ? centerY : Math.max(vpH - scaledH, Math.min(0, pan.y)),
     };
   };
 
@@ -2575,18 +2581,16 @@ const LotDashboard = ({
       const viewport = mapViewportRef.current;
       const img = mapImageRef.current;
 
-      // Se imagem ou viewport nao estao prontos, tentar de novo (max 8 tentativas)
       if (!viewport || !img || !img.naturalWidth || !img.naturalHeight) {
         if (attempt < 8) setTimeout(() => fitMapToScreen(attempt + 1), 80);
         else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
         return;
       }
 
-      const vpRect = viewport.getBoundingClientRect();
-      const vpW = vpRect.width;
-      const vpH = vpRect.height;
+      // Dimensões do viewport — usar múltiplos métodos
+      const vpW = viewport.offsetWidth || viewport.getBoundingClientRect().width || window.innerWidth;
+      const vpH = viewport.offsetHeight || viewport.getBoundingClientRect().height || window.innerHeight;
 
-      // Viewport sem altura ainda (container nao renderizou) — tentar de novo
       if (vpW <= 0 || vpH <= 0) {
         if (attempt < 8) setTimeout(() => fitMapToScreen(attempt + 1), 80);
         else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
@@ -2595,22 +2599,26 @@ const LotDashboard = ({
 
       const imgW = img.naturalWidth;
       const imgH = img.naturalHeight;
+      const imgAspect = imgH / imgW;
 
-      // Largura CSS da imagem no zoom=1
-      const imgLayoutW = img.offsetWidth || vpW;
-      const imgLayoutH = imgLayoutW * (imgH / imgW);
+      // imgLayoutW = largura que a imagem ocupa no zoom=1
+      // com w-full, a imagem tenta ocupar a largura do viewport
+      const imgLayoutW = vpW;
+      const imgLayoutH = imgLayoutW * imgAspect;
 
-      // Zoom para encaixar inteiro na tela
-      const zoomByWidth  = vpW / imgLayoutW;
+      // Retrato: encaixar pela altura (imgLayoutH > vpH)
+      // Paisagem: encaixar pela largura (imgLayoutH < vpH)
+      const zoomByWidth  = vpW / imgLayoutW;  // sempre 1
       const zoomByHeight = vpH / imgLayoutH;
       const fitZoom = Math.min(zoomByWidth, zoomByHeight);
       const safeZoom = Math.max(0.05, Math.min(10, fitZoom));
 
-      // Com transformOrigin "0 0": centralizar via pan
+      // Centralizar: pan = (vpSize - scaledSize) / 2
+      // Sempre positivo (imagem menor que viewport no eixo dominante)
       const scaledW = imgLayoutW * safeZoom;
       const scaledH = imgLayoutH * safeZoom;
-      const panX = (vpW - scaledW) / 2;
-      const panY = (vpH - scaledH) / 2;
+      const panX = Math.max(0, (vpW - scaledW) / 2);
+      const panY = Math.max(0, (vpH - scaledH) / 2);
 
       mapZoomRef.current = safeZoom;
       mapPanRef.current = { x: panX, y: panY };
