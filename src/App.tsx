@@ -3142,6 +3142,11 @@ const LotDashboard = ({
     const handleOrientationChange = () => {
       scheduleMapScaleUpdate(true);
       if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+      // Forçar re-render das bolinhas após rotação (viewport muda de tamanho)
+      setTimeout(() => {
+        setDisplayedMapScale(s => s + 0.000001); // trigger mínimo
+        setTimeout(fitMapToScreen, 150);
+      }, 200);
     };
 
     window.addEventListener("resize", handleResize);
@@ -3390,35 +3395,23 @@ const LotDashboard = ({
 
   // Tamanho base das bolinhas — calculado uma vez quando imagem carrega
   // Não recalcula durante zoom (evita bolinhas mudando de tamanho)
-  const ballBaseSizeRef = useRef<{ size: number; font: number; border: number } | null>(null);
-
-  const calcBallBaseSize = () => {
+  // Tamanho das bolinhas — calculado a cada render, sem cache
+  // O cálculo é trivial (uma multiplicação) então não precisa de cache
+  // Cache causava bug: não atualizava ao rotacionar o celular
+  const getBallPixelSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+    // Largura real da imagem no zoom=1 (sem considerar o scale do container)
     const imgEl = mapImageRef.current;
     const mapW = (imgEl?.offsetWidth || 0)
       || (mapContainerRef.current?.offsetWidth || 0)
+      || (mapViewportRef.current?.offsetWidth || 0)
+      || (getActiveViewport()?.offsetWidth || 0)
       || 600;
-    // 2.8% da largura do mapa no zoom=1
+    // 2.8% da largura do mapa — proporcional, acompanha rotação automaticamente
     const size = Math.round(mapW * 0.028 * pct);
     const safeSz = Math.max(8, Math.min(80, size));
     return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
-
-  const getBallPixelSize = () => {
-    // Usar tamanho cached se disponível — não recalcula durante zoom
-    if (ballBaseSizeRef.current) return ballBaseSizeRef.current;
-    const calc = calcBallBaseSize();
-    ballBaseSizeRef.current = calc;
-    return calc;
-  };
-
-  // Recalcular quando: imagem muda, slider muda, modo muda
-  useEffect(() => {
-    ballBaseSizeRef.current = null; // invalidar cache
-    setTimeout(() => {
-      ballBaseSizeRef.current = calcBallBaseSize();
-    }, 100); // após imagem carregar
-  }, [mapaImagem, markerSizePercent, mode]);
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
   const fullscreenMapWidth = `min(100vw, calc(100dvh * ${Math.max(0.5, Math.min(3, mapAspectRatio))}))`;
