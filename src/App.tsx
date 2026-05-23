@@ -4586,23 +4586,33 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* Aviso lotes sem bolinha — fora do mapa, sempre visível, não some */}
+          {/* BALÃO FLUTUANTE — aviso lotes sem bolinha, fixo no topo */}
           {isEditingMap && !isMobile && lotesConfigSemBolinha > 0 && (
-            <div className="flex-shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 space-y-1.5">
-              <p className="text-[11px] font-black text-amber-800 flex items-center gap-1.5">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                {lotesConfigSemBolinha} lote(s) sem bolinha no mapa:
-              </p>
-              <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
-                {lotesConfigSemBolinhaList.slice(0, 80).map(({ quadra, lote }) => (
-                  <span key={`${quadra}-${lote}`}
-                    className="text-[9px] font-black px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded border border-amber-300 whitespace-nowrap">
-                    Q{quadra}:{lote}
-                  </span>
-                ))}
-                {lotesConfigSemBolinhaList.length > 80 && (
-                  <span className="text-[9px] font-bold text-amber-600 self-center">+{lotesConfigSemBolinhaList.length - 80} mais...</span>
-                )}
+            <div className="absolute top-16 left-1/2 -translate-x-1/2 z-50 w-auto max-w-[90%]"
+              style={{ pointerEvents: 'auto' }}>
+              <div className="bg-amber-500 text-white rounded-2xl shadow-2xl px-4 py-3 flex items-start gap-3"
+                style={{ boxShadow: '0 8px 32px rgba(245,158,11,0.4)' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div className="min-w-0">
+                  <p className="text-xs font-black text-white mb-1.5">
+                    {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
+                  </p>
+                  <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                    {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
+                      <span key={`${quadra}-${lote}`}
+                        className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30">
+                        Q{quadra}:{lote}
+                      </span>
+                    ))}
+                    {lotesConfigSemBolinhaList.length > 60 && (
+                      <span className="text-[10px] font-bold text-white/80 self-center">+{lotesConfigSemBolinhaList.length - 60} mais...</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+              {/* Seta apontando para baixo */}
+              <div className="flex justify-center">
+                <div className="w-3 h-3 bg-amber-500 rotate-45 -mt-1.5" />
               </div>
             </div>
           )}
@@ -5476,25 +5486,30 @@ const LotDashboard = ({
           </button>
         </div>
 
-        {/* Aviso lotes sem bolinha — mobile, fora do mapa */}
-        {isEditingMap && lotesConfigSemBolinha > 0 && (
-          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-2 space-y-1">
-            <p className="text-[11px] font-black text-amber-800">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
-            <div className="flex flex-wrap gap-1 max-h-12 overflow-y-auto">
-              {lotesConfigSemBolinhaList.slice(0, 40).map(({ quadra, lote }) => (
-                <span key={`${quadra}-${lote}`} className="text-[9px] font-black px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded border border-amber-300 whitespace-nowrap">
-                  Q{quadra}:{lote}
-                </span>
-              ))}
-              {lotesConfigSemBolinhaList.length > 40 && (
-                <span className="text-[9px] font-bold text-amber-600 self-center">+{lotesConfigSemBolinhaList.length - 40} mais</span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* ── MAPA ── */}
         <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}>
+          {/* Balão flutuante mobile */}
+          {isEditingMap && lotesConfigSemBolinha > 0 && (
+            <div className="absolute top-2 left-2 right-12 z-30">
+              <div className="bg-amber-500 text-white rounded-2xl shadow-xl px-3 py-2 flex items-start gap-2"
+                style={{ boxShadow: '0 4px 20px rgba(245,158,11,0.5)' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                <div className="min-w-0">
+                  <p className="text-[10px] font-black text-white mb-1">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
+                  <div className="flex flex-wrap gap-1 max-h-12 overflow-y-auto">
+                    {lotesConfigSemBolinhaList.slice(0, 30).map(({ quadra, lote }) => (
+                      <span key={`${quadra}-${lote}`} className="text-[9px] font-black px-1.5 py-0.5 bg-white/20 text-white rounded border border-white/30 whitespace-nowrap">
+                        Q{quadra}:{lote}
+                      </span>
+                    ))}
+                    {lotesConfigSemBolinhaList.length > 30 && (
+                      <span className="text-[9px] text-white/80 font-bold self-center">+{lotesConfigSemBolinhaList.length - 30}</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {renderMapa()}
           {/* Botões flutuantes direita */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
