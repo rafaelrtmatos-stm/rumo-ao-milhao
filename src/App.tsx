@@ -4351,15 +4351,16 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // AVISO LOTES SEM BOLINHA
   // ──────────────────────────────────────────────
-  const lotesConfigSemBolinha = (() => {
+  const lotesConfigSemBolinhaList = (() => {
     const pontoKeys = new Set(mapaPontos.map((p: any) => getLotInfoKey(p.quadra, p.lote)));
-    let count = 0;
+    const lista: { quadra: string; lote: string }[] = [];
     quadras.forEach((q) => {
       const lotes = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
-      lotes.forEach((l) => { if (!pontoKeys.has(getLotInfoKey(q, l))) count++; });
+      lotes.forEach((l) => { if (!pontoKeys.has(getLotInfoKey(q, l))) lista.push({ quadra: q, lote: l }); });
     });
-    return count;
+    return lista;
   })();
+  const lotesConfigSemBolinha = lotesConfigSemBolinhaList.length;
 
   // ──────────────────────────────────────────────
   // PREVIEW BOLINHAS PARA SEQUÊNCIA
@@ -4457,8 +4458,23 @@ const LotDashboard = ({
         <div className="h-full flex flex-col" data-mapa-container="true">
         {/* Aviso lotes sem bolinha */}
         {isEditingMap && lotesConfigSemBolinha > 0 && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-sm text-amber-700 font-medium">
-            Existem lotes cadastrados que ainda não foram adicionados ao mapa interativo.
+          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
+            <p className="text-sm text-amber-800 font-bold">
+              {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
+            </p>
+            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
+              {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
+                <span key={`${quadra}-${lote}`}
+                  className="text-[10px] font-black px-2 py-0.5 bg-amber-100 text-amber-800 rounded-lg border border-amber-200 whitespace-nowrap">
+                  Q{quadra}:{lote}
+                </span>
+              ))}
+              {lotesConfigSemBolinhaList.length > 60 && (
+                <span className="text-[10px] font-bold text-amber-600 self-center">
+                  +{lotesConfigSemBolinhaList.length - 60} mais...
+                </span>
+              )}
+            </div>
           </div>
         )}
         <div className="flex flex-col h-full w-full">
