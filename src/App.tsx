@@ -4593,12 +4593,13 @@ const LotDashboard = ({
           {/* BARRA FIXA DE EDIÇÃO NO TOPO — só desktop */}
           {isEditingMap && !isMobile && (
             <div className="flex-shrink-0 bg-white border-b border-slate-100 px-3 py-2 flex items-center gap-2 z-30">
-              <button
-                onClick={cancelarEdicaoMapa}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all"
-              >
-                <X size={14} /> Cancelar
+              {/* Cancelar — descarta alterações */}
+              <button onClick={cancelarEdicaoMapa}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all">
+                <X size={13} /> Cancelar
               </button>
+
+              {/* Progresso / nome */}
               <div className="flex-1 min-w-0">
                 {mapUploadProgress > 0 && mapUploadProgress < 100 ? (
                   <div className="space-y-0.5">
@@ -4608,18 +4609,25 @@ const LotDashboard = ({
                     </div>
                   </div>
                 ) : mapUploadProgress === 100 ? (
-                  <p className="text-[10px] font-black text-emerald-600 uppercase flex items-center gap-1">✓ Mapa carregado!</p>
+                  <p className="text-[10px] font-black text-emerald-600 uppercase">✓ Mapa carregado!</p>
                 ) : (
                   <p className="text-[10px] font-bold text-slate-400 truncate">Editando: {localDev.nome}</p>
                 )}
               </div>
-              <button
-                onClick={salvarEdicaoMapa}
+
+              {/* Aplicar — salva mas permanece no modo edição */}
+              <button onClick={aplicarEdicaoMapa}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase hover:bg-blue-500 active:scale-95 transition-all">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Aplicar
+              </button>
+
+              {/* OK — salva e sai da edição */}
+              <button onClick={salvarEdicaoMapa}
                 disabled={mapUploadProgress > 0 && mapUploadProgress < 100}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                Salvar
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all disabled:opacity-50">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                OK
               </button>
             </div>
           )}
@@ -4637,18 +4645,9 @@ const LotDashboard = ({
             </button>
             <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
             {/* MODO VISUALIZAÇÃO */}
-            {!isEditingMap && (
-              <div className="card-premium p-4 space-y-3">
-                {getEmpreendimentoMapsUrl(localDev) && (
-                  <button
-                    type="button"
-                    onClick={() => abrirLocalizacaoGoogleMaps(localDev)}
-                    className="w-full flex items-center justify-center gap-2 rounded-2xl bg-primary-main/10 text-primary-main hover:bg-primary-main hover:text-primary-contrast py-3 text-[11px] font-black uppercase tracking-widest transition-colors"
-                  >
-                    <MapPin size={14} /> Ir no Google Maps
-                  </button>
-                )}
-                {!canEditMap && <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>}
+            {!isEditingMap && !canEditMap && (
+              <div className="card-premium p-4">
+                <p className="text-[11px] text-slate-400 font-medium">A edição do mapa é restrita ao admin ou usuários autorizados.</p>
               </div>
             )}
 
@@ -5355,9 +5354,17 @@ const LotDashboard = ({
             <p className="text-xs text-slate-400 font-medium">Editando mapa — tela cheia</p>
           </div>
         </div>
-        <button onClick={salvarEdicaoMapa} className="flex-none px-5 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-black uppercase flex items-center gap-2">
-          <Check size={14} />Salvar / OK
-        </button>
+        <div className="flex items-center gap-2">
+          <button onClick={cancelarEdicaoMapa} className="px-3 py-2 bg-white/10 text-white rounded-xl text-xs font-black uppercase hover:bg-white/20 active:scale-95 transition-all flex items-center gap-1.5">
+            <X size={13} />Cancelar
+          </button>
+          <button onClick={aplicarEdicaoMapa} className="px-3 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all flex items-center gap-1.5">
+            <Check size={13} />Aplicar
+          </button>
+          <button onClick={salvarEdicaoMapa} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-400 text-white rounded-xl text-xs font-black uppercase active:scale-95 transition-all flex items-center gap-1.5">
+            <Check size={13} />OK
+          </button>
+        </div>
       </div>
 
       {/* CONTEÚDO EDIÇÃO */}
