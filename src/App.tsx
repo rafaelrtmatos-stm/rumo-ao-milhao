@@ -12009,7 +12009,7 @@ VENDEDOR: ${vendedorLabel}`;
                   <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
                 </button>
                 <button
-                  onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                  onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
                   title="Gerar recibo"
                   className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all"
                 >
@@ -12108,7 +12108,7 @@ VENDEDOR: ${vendedorLabel}`;
                     {venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}
                   </button>
                   <button
-                    onClick={() => { setSelectedVenda(venda); setShowReciboModal(true); }}
+                    onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
                     className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
                     title="Gerar recibo"
                   >
@@ -12255,7 +12255,7 @@ VENDEDOR: ${vendedorLabel}`;
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
                   <button
-                    onClick={() => setShowReciboModal(true)}
+                    onClick={() => { setReciboObservacao((selectedVenda as any)?.reciboObservacao || ""); setShowReciboModal(true); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Gerar recibo"
                   >
@@ -12434,11 +12434,24 @@ VENDEDOR: ${vendedorLabel}`;
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Observação no recibo <span className="font-normal text-slate-400">(opcional)</span></label>
                   <textarea
                     value={reciboObservacao}
-                    onChange={(e) => setReciboObservacao(e.target.value)}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setReciboObservacao(val);
+                      // Salvar automaticamente na venda
+                      if (selectedVenda) {
+                        onUpdateVenda({ ...selectedVenda, reciboObservacao: val } as any);
+                      }
+                    }}
                     placeholder="Ex: Pago via Pix. Restam 2 parcelas. Documento entregue."
                     rows={2}
                     className="input-field text-sm resize-none"
                   />
+                  {reciboObservacao && (
+                    <p className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                      Salvo automaticamente
+                    </p>
+                  )}
                 </div>
                 <div className="flex gap-2 flex-wrap">
                   <button
