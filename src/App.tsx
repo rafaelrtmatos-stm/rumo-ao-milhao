@@ -6564,225 +6564,138 @@ const EmpreendimentosSection = ({
         </div>
       )}
 
-      {/* MODO GRADE — cards completos */}
-      <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6" : "hidden"}>
-        {filteredDevelopments.map((dev) => (
+      {/* MODO GRADE — cards modernos estilo QuintoAndar/Nubank */}
+      <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "hidden"}>
+        {filteredDevelopments.map((dev) => {
+          const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+          const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos));
+          const reservados = recalc.lotesReservados ?? 0;
+          const vendidos = dev.lotesVendidos ?? 0;
+          const total = dev.totalLotes ?? 0;
+          const pct = total > 0 ? Math.round((vendidos / total) * 100) : 0;
+          const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl;
+          const temGps = !!getEmpreendimentoMapsUrl(dev);
+          const numQuadras = (dev.quadras || "").split(",").filter(Boolean).length;
+          const [menuAberto, setMenuAberto] = useState(false);
+          return (
           <motion.div
             layout
             key={dev.id}
-            whileHover={{ scale: 1.01, translateY: -4 }}
-            className="card-premium flex flex-col group relative overflow-hidden"
+            className="bg-white rounded-3xl border border-slate-100 shadow-sm hover:shadow-md transition-all duration-200 flex flex-col overflow-hidden"
           >
-
-            <div className="mb-6 flex items-center gap-4">
-              <div className="p-4 bg-slate-50 text-primary-main rounded-2xl group-hover:bg-primary-main group-hover:text-primary-contrast transition-colors duration-300">
-                <Building2 size={24} className="stroke-[2.5]" />
-              </div>
-              <div>
-                <h4 className="text-xl font-display font-bold text-slate-800 leading-tight">
-                  {dev.nome}
-                </h4>
-                <div className="flex items-center gap-1.5 text-xs font-bold text-slate-400 mt-1 uppercase tracking-wider">
-                  <MapPin size={12} className="text-primary-light" />
-                  {dev.cidade} • {dev.estado}
+            {/* TOPO — nome, localização, status */}
+            <div className="px-5 pt-5 pb-4">
+              <div className="flex items-start justify-between gap-2 mb-3">
+                <div className="min-w-0 flex-1">
+                  <h4 className="text-lg font-black text-slate-900 leading-tight truncate">{dev.nome}</h4>
+                  <p className="text-xs text-slate-400 mt-0.5 truncate">
+                    {[dev.comunidade, dev.cidade, dev.estado].filter(Boolean).join(" • ")}
+                  </p>
                 </div>
-                {getEmpreendimentoMapsUrl(dev) && (
-                  <button
-                    type="button"
-                    onClick={(e) => { e.stopPropagation(); abrirLocalizacaoGoogleMaps(dev); }}
-                    className="mt-2 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-primary-main bg-primary-main/10 hover:bg-primary-main hover:text-primary-contrast rounded-lg px-2 py-1 transition-colors"
-                    title="Abrir localização no Google Maps"
-                  >
-                    <MapPin size={11} /> Google Maps
-                  </button>
+                {/* Menu ⋮ — apenas admin */}
+                {isAdmin && (
+                  <div className="relative flex-shrink-0">
+                    <button onClick={() => setMenuAberto(m => !m)}
+                      className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                    </button>
+                    {menuAberto && (
+                      <div className="absolute right-0 top-9 z-50 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden min-w-[160px]" onClick={() => setMenuAberto(false)}>
+                        <button onClick={() => openEditForm(dev)} className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 font-semibold">
+                          <Pencil size={14} /> Editar
+                        </button>
+                        <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }} className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 font-semibold">
+                          <Settings size={14} /> Gerenciar Lotes
+                        </button>
+                        {temGps && <button onClick={() => abrirLocalizacaoGoogleMaps(dev)} className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-slate-700 hover:bg-slate-50 font-semibold">
+                          <MapPin size={14} /> Abrir no GPS
+                        </button>}
+                        <div className="border-t border-slate-100" />
+                        <button onClick={() => requestDelete(`Excluir "${dev.nome}"?`, () => onDelete(dev.id))} className="flex items-center gap-2.5 w-full px-4 py-3 text-sm text-red-500 hover:bg-red-50 font-semibold">
+                          <Trash2 size={14} /> Excluir
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Pill de status */}
+              <div className="flex items-center gap-2">
+                <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest ${disponiveis > 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                  {disponiveis > 0 ? "Em Vendas" : "Esgotado"}
+                </span>
+                {numQuadras > 0 && (
+                  <span className="text-[10px] text-slate-400 font-semibold">{numQuadras} quadra{numQuadras !== 1 ? "s" : ""} • {total} lotes</span>
                 )}
               </div>
             </div>
 
-            <div className="mb-4 px-1">
-              {dev.comunidade && (
-                <p className="text-[10px] font-bold text-primary-main uppercase tracking-widest mb-2 flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary-main" />
-                  {dev.comunidade}
-                </p>
-              )}
-              {dev.ruasFaixas && dev.ruasFaixas.length > 0 ? (
-                <div className="mb-1 space-y-0.5">
-                  {dev.ruasFaixas.slice(0, 3).map((f, i) => (
-                    <p key={i} className="text-xs text-slate-500 line-clamp-1">
-                      <span className="font-bold text-slate-700">Q.{f.quadra} ({f.loteInicio}–{f.loteFim}):</span>{" "}{f.rua}
-                    </p>
-                  ))}
-                  {dev.ruasFaixas.length > 3 && (
-                    <p className="text-[10px] text-slate-400">+{dev.ruasFaixas.length - 3} faixas</p>
-                  )}
+            {/* MÉTRICAS — linha horizontal limpa */}
+            <div className="grid grid-cols-4 gap-0 px-5 pb-4">
+              {[
+                { label: "Disponíveis", value: disponiveis, color: "text-emerald-600" },
+                { label: "Vendidos", value: vendidos, color: "text-slate-800" },
+                { label: "Reservados", value: reservados, color: "text-amber-600" },
+                { label: "Total", value: total, color: "text-slate-800" },
+              ].map((m) => (
+                <div key={m.label} className="text-center">
+                  <p className={`text-xl font-black ${m.color} leading-none`}>{m.value}</p>
+                  <p className="text-[9px] text-slate-400 font-semibold mt-0.5 leading-tight">{m.label}</p>
                 </div>
-              ) : dev.ruasPorQuadra && Object.keys(dev.ruasPorQuadra).length > 0 ? (
-                <div className="mb-1">
-                  {Object.entries(dev.ruasPorQuadra).slice(0, 2).map(([q, ruas]) => ruas ? (
-                    <p key={q} className="text-xs text-slate-500 line-clamp-1">
-                      <span className="font-bold text-slate-700">Q.{q}:</span>{" "}{ruas}
-                    </p>
-                  ) : null)}
-                </div>
-              ) : dev.ruas ? (
-                <p className="text-xs text-slate-500 line-clamp-1 mb-1">
-                  <span className="font-bold text-slate-700">Ruas:</span>{" "}{dev.ruas}
-                </p>
-              ) : null}
-              {dev.quadras && (
-                dev.lotesPorQuadra && Object.values(dev.lotesPorQuadra).some((r) => getLotesDeQuadra(r).length > 0) ? (
-                  <div className="mt-1">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Lotes por quadra</p>
-                    <div className="flex flex-wrap gap-1">
-                      {dev.quadras.split(",").map((q) => q.trim()).filter(Boolean).map((q) => {
-                        const entry = dev.lotesPorQuadra?.[q];
-                        const lotes = getLotesDeQuadra(entry);
-                        if (lotes.length === 0) return null;
-                        const label = entry?.especificos !== undefined
-                          ? `${lotes.length} espec.`
-                          : `${entry?.inicio}–${entry?.fim}`;
-                        return (
-                          <span key={q} className="inline-flex items-center gap-1 text-[10px] font-bold bg-primary-main/8 text-primary-main rounded-lg px-2 py-0.5">
-                            Q.{q} <span className="font-black">{label}</span>
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-500 line-clamp-1">
-                    <span className="font-bold text-slate-700">Quadras:</span>{" "}
-                    {dev.quadras}
-                  </p>
-                )
-              )}
+              ))}
             </div>
 
-
-            <div className="mt-auto space-y-5 bg-slate-50/50 p-5 rounded-2xl border border-slate-100">
-              {/* Warning: quadras sem faixa configurada */}
-              {(() => {
-                const quadraList = (dev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
-                const semFaixa = quadraList.filter(q => getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length === 0);
-                const somaQuadras = quadraList.reduce((s, q) => s + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length, 0);
-                const diffTotal = quadraList.length > 0 && somaQuadras > 0 && somaQuadras !== dev.totalLotes;
-                if (semFaixa.length === 0 && !diffTotal) return null;
-                return (
-                  <div className="flex items-start gap-2 bg-amber-50 border border-amber-200 rounded-xl p-3">
-                    <AlertCircle size={15} className="text-amber-500 mt-0.5 shrink-0" />
-                    <div className="text-[11px] font-bold text-amber-700 space-y-0.5">
-                      {semFaixa.length > 0 && (
-                        <p>⚠️ Quadra{semFaixa.length > 1 ? 's' : ''} sem lotes configurados: <span className="font-black">{semFaixa.map(q => `Q.${q}`).join(', ')}</span></p>
-                      )}
-                      {diffTotal && (
-                        <div className="space-y-1">
-                          <p>⚠️ Total configurado ({somaQuadras}) difere do total cadastrado ({dev.totalLotes}).</p>
-                          {(() => {
-                            const divergencias = getLotDivergenceDetails(dev, sales);
-                            return (
-                              <div className="space-y-0.5">
-                                {divergencias.extraLabels.length > 0 && (
-                                  <p>🛑 Lote a mais: <span className="font-black">{divergencias.extraLabels.join(", ")}</span>. Veja nos quadradinhos em preto e confira se há contrato vinculado.</p>
-                                )}
-                                {divergencias.missingLabels.length > 0 && (
-                                  <p>⚠️ Lote configurado sem cadastro: <span className="font-black">{divergencias.missingLabels.join(", ")}</span>.</p>
-                                )}
-                                {divergencias.extraLabels.length === 0 && divergencias.missingLabels.length === 0 && (
-                                  <p>Confira as faixas por quadra para encontrar a diferença.</p>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Métricas: Vendidos / Disponíveis / Total */}
-              <div className="grid grid-cols-3 gap-2 text-center">
-                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Vendidos</p>
-                  <p className="text-lg font-display font-bold text-slate-800">{dev.lotesVendidos}</p>
-                </div>
-                <div className="bg-emerald-50 rounded-xl p-2.5 border border-emerald-100">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-emerald-600 mb-0.5">Disponíveis</p>
-                  <p className="text-lg font-display font-bold text-emerald-700">{(() => {
-                    const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
-                    return Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos));
-                  })()}</p>
-                </div>
-                <div className="bg-white rounded-xl p-2.5 border border-slate-100">
-                  <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-0.5">Total</p>
-                  <p className="text-lg font-display font-bold text-slate-800">{dev.totalLotes}</p>
-                </div>
+            {/* BARRA DE PROGRESSO */}
+            <div className="px-5 pb-4">
+              <div className="flex justify-between items-center mb-1.5">
+                <span className="text-[11px] text-slate-400 font-semibold">{pct}% vendido</span>
+                {temMapa && <span className="text-[10px] text-primary-main font-bold">Com mapa ✓</span>}
               </div>
-
-              <div className="space-y-1">
-                <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                  <span>Progresso de vendas</span>
-                  <span className="text-primary-main">{dev.totalLotes > 0 ? Math.round((dev.lotesVendidos / dev.totalLotes) * 100) : 0}%</span>
-                </div>
-                <div className="w-full bg-slate-200 h-2.5 rounded-full overflow-hidden">
-                  <motion.div
-                    initial={{ width: 0 }}
-                    animate={{ width: `${dev.totalLotes > 0 ? (dev.lotesVendidos / dev.totalLotes) * 100 : 0}%` }}
-                    className="bg-primary-main h-full rounded-full shadow-[0_0_8px_rgba(45,80,22,0.3)]"
-                  />
-                </div>
+              <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-primary-main rounded-full transition-all duration-500"
+                  style={{ width: `${pct}%` }} />
               </div>
+            </div>
 
-              <div className="flex justify-between items-center text-[11px] font-bold uppercase tracking-widest pt-2 border-t border-slate-100">
-                <span className="text-slate-400">Dados do Mapa:</span>
-                <span className="text-primary-main">
-                  {Object.keys(dev.lotesInfo || {}).length} lotes mapeados
-                </span>
-              </div>
+            {/* BOTÃO PRINCIPAL */}
+            <div className="px-5 pb-3">
+              <button onClick={() => setSelectedDevForMap(dev)}
+                className="w-full py-3 bg-slate-900 text-white rounded-2xl font-black text-sm hover:bg-primary-main transition-colors flex items-center justify-center gap-2">
+                <MapPin size={16} />
+                Ver Mapa
+              </button>
+            </div>
 
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setSelectedDevForMap(dev)}
-                  className="flex items-center justify-center gap-2 py-3 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg shadow-slate-900/10"
-                >
-                  <MapPin size={14} />
-                  <span>Ver Mapa</span>
+            {/* AÇÕES SECUNDÁRIAS */}
+            <div className="grid grid-cols-3 gap-2 px-5 pb-5">
+              <button onClick={() => onStartSale && onStartSale({ empreendimentoId: dev.id } as any)}
+                className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                <ShoppingCart size={15} />
+                <span>Nova Venda</span>
+              </button>
+              <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                <Settings size={15} />
+                <span>Lotes</span>
+              </button>
+              {temGps ? (
+                <button onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                  className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                  <MapPin size={15} />
+                  <span>GPS</span>
                 </button>
-                <button
-                  onClick={() => abrirLocalizacaoGoogleMaps(dev)}
-                  disabled={!getEmpreendimentoMapsUrl(dev)}
-                  className={`flex items-center justify-center gap-2 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-colors ${getEmpreendimentoMapsUrl(dev) ? "bg-emerald-50 text-emerald-700 hover:bg-emerald-600 hover:text-white" : "bg-slate-100 text-slate-300 cursor-not-allowed"}`}
-                  title={getEmpreendimentoMapsUrl(dev) ? "Abrir localização no Google Maps" : "Cadastre o link da localização em Editar"}
-                >
-                  <MapPin size={14} />
-                  <span>Ir no Google Maps</span>
-                </button>
-                <button
-                  onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                  className="flex items-center justify-center gap-2 py-3 bg-primary-main/10 text-primary-main rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white transition-colors"
-                >
-                  <Settings size={14} />
-                  <span>Gerenciar Lotes</span>
-                </button>
-                <button
-                  onClick={() => openEditForm(dev)}
-                  className="flex items-center justify-center gap-2 py-3 bg-blue-50 text-blue-600 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-blue-500 hover:text-white transition-colors"
-                >
-                  <Pencil size={14} />
+              ) : (
+                <button onClick={() => openEditForm(dev)}
+                  className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                  <Pencil size={15} />
                   <span>Editar</span>
                 </button>
-                <button
-                  onClick={() => requestDelete(`Excluir o empreendimento "${dev.nome}"? Esta ação não pode ser desfeita.`, () => onDelete(dev.id))}
-                  className="flex items-center justify-center gap-2 py-3 bg-red-50 text-red-500 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-red-500 hover:text-white transition-colors"
-                >
-                  <Trash2 size={14} />
-                  <span>Excluir</span>
-                </button>
-              </div>
+              )}
             </div>
           </motion.div>
-        ))}
+          );
+        })}
         {developments.length === 0 && !isAdding && (
           <div className="col-span-full py-20 text-center flex flex-col items-center gap-4 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200">
             <div className="p-4 bg-surface-card rounded-full text-slate-300 shadow-sm">
