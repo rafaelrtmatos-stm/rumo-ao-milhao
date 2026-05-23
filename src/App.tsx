@@ -3434,8 +3434,51 @@ const LotDashboard = ({
   };
 
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
-    return new Promise((resolve, reject) => {
-      // Usar sempre a imagem ORIGINAL em máxima qualidade para o export
+    return new Promise(async (resolve, reject) => {
+      // PDF: re-renderizar o vetor original em escala máxima (melhor qualidade possível)
+      const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+      if (originalPdf) {
+        try {
+          const pdfjsLib = await loadPdfJsIfNeeded();
+          const buffer = dataUrlToArrayBuffer(originalPdf);
+          const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+          const page = await pdfDoc.getPage(1);
+          // Escala 4x para exportação — qualidade máxima
+          const exportScale = 4;
+          const viewport = page.getViewport({ scale: exportScale });
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          const ctx = canvas.getContext("2d")!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          await page.render({ canvasContext: ctx, viewport }).promise;
+          // Desenhar bolinhas sobre o PDF em alta resolução
+          const imgW = canvas.width;
+          const imgH = canvas.height;
+          const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+          const radius = Math.max(4, Math.round(imgW * 0.028 * pct) / 2);
+          const borderWidth = Math.max(1.5, radius * 0.22);
+          mapaPontos.forEach((ponto) => {
+            const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+            const indisponivel = ponto.status === "indisponivel" || !!venda;
+            const reservado = !indisponivel && ponto.status === "reservado";
+            const x = (Number(ponto.xPercent) / 100) * imgW;
+            const y = (Number(ponto.yPercent) / 100) * imgH;
+            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
+            ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
+            ctx.fill();
+            ctx.lineWidth = borderWidth; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+          });
+          resolve(canvas);
+          return;
+        } catch (err) {
+          reject(new Error("Erro ao renderizar PDF: " + String((err as any)?.message || err)));
+          return;
+        }
+      }
+
+      // Imagem (JPG/PNG): usar original em máxima qualidade
       const imgSrc = mapaImagemOriginal || mapaImagem;
       if (!imgSrc) {
         reject(new Error("Nenhum mapa carregado para baixar."));
@@ -3447,7 +3490,6 @@ const LotDashboard = ({
         const imgW = img.naturalWidth || img.width;
         const imgH = img.naturalHeight || img.height;
 
-        // Canvas com resolução original — sem scale extra que desalinha bolinhas
         const canvas = document.createElement("canvas");
         canvas.width = imgW;
         canvas.height = imgH;
