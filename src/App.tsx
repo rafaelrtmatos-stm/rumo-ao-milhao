@@ -2484,6 +2484,8 @@ const LotDashboard = ({
   const [gruposMap, setGruposMap] = useState<Record<string, string>>({}); // pontoId → grupoId
   const [showTrocaQuadra, setShowTrocaQuadra] = useState(false);
   const [novaQuadraSel, setNovaQuadraSel] = useState("");
+  const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
+  const balaoDragRef = useRef<{startX:number;startY:number;startBX:number;startBY:number} | null>(null);
 
   // Posição do painel "Novo marcador" arrastável — via ref para zero re-renders durante drag
   const [marcadorPanelPos, setMarcadorPanelPos] = useState<{ x: number; y: number } | null>(null);
@@ -5850,28 +5852,56 @@ const LotDashboard = ({
 
   return (
     <>
-    {/* BARRA FIXA TOPO — aviso de lotes sem bolinha, aparece sobre tudo */}
+    {/* BALÃO FLUTUANTE ARRASTÁVEL — aviso lotes sem bolinha */}
     {isEditingMap && !isMobile && lotesConfigSemBolinha > 0 && (
-      <div className="fixed top-0 left-0 right-0 z-[9999] bg-amber-500 shadow-lg"
-        style={{ boxShadow: '0 4px 24px rgba(245,158,11,0.5)' }}>
-        <div className="max-w-6xl mx-auto px-4 py-2.5 flex items-start gap-3">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-          </svg>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-black text-white mb-1">
-              {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
-            </p>
-            <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
-              {lotesConfigSemBolinhaList.slice(0, 80).map(({ quadra, lote }) => (
-                <span key={`${quadra}-${lote}`}
-                  className="text-[9px] font-black px-1.5 py-0.5 bg-white/25 text-white rounded border border-white/40 whitespace-nowrap">
-                  Q{quadra}:{lote}
-                </span>
-              ))}
-              {lotesConfigSemBolinhaList.length > 80 && (
-                <span className="text-[9px] text-white/80 font-bold self-center">+{lotesConfigSemBolinhaList.length - 80} mais</span>
-              )}
+      <div
+        className="fixed z-[9999] select-none"
+        style={{
+          top: balaoPos ? balaoPos.y : 16,
+          left: balaoPos ? balaoPos.x : '50%',
+          transform: balaoPos ? 'none' : 'translateX(-50%)',
+          cursor: 'grab',
+          maxWidth: 380,
+          minWidth: 260,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault(); e.stopPropagation();
+          const rect = e.currentTarget.getBoundingClientRect();
+          balaoDragRef.current = { startX: e.clientX, startY: e.clientY, startBX: rect.left, startBY: rect.top };
+          const onMove = (ev: MouseEvent) => {
+            if (!balaoDragRef.current) return;
+            setBalaoPos({
+              x: balaoDragRef.current.startBX + (ev.clientX - balaoDragRef.current.startX),
+              y: Math.max(0, balaoDragRef.current.startBY + (ev.clientY - balaoDragRef.current.startY)),
+            });
+          };
+          const onUp = () => { balaoDragRef.current = null; window.removeEventListener('mousemove', onMove); window.removeEventListener('mouseup', onUp); };
+          window.addEventListener('mousemove', onMove);
+          window.addEventListener('mouseup', onUp);
+        }}
+      >
+        <div className="bg-amber-500 rounded-2xl shadow-2xl overflow-hidden"
+          style={{ boxShadow: '0 8px 32px rgba(245,158,11,0.5)' }}>
+          {/* Handle */}
+          <div className="flex items-center gap-2 px-3 py-2 bg-amber-600/30 border-b border-amber-400/30">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="white" opacity="0.6"><circle cx="9" cy="7" r="1.5"/><circle cx="15" cy="7" r="1.5"/><circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/><circle cx="9" cy="17" r="1.5"/><circle cx="15" cy="17" r="1.5"/></svg>
+            <span className="text-[10px] font-black text-white/70 uppercase tracking-widest">Arraste para mover</span>
+          </div>
+          <div className="px-4 py-3 flex items-start gap-3">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" className="flex-shrink-0 mt-0.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            <div className="min-w-0">
+              <p className="text-xs font-black text-white mb-1.5">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
+              <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
+                  <span key={`${quadra}-${lote}`}
+                    className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30">
+                    Q{quadra}:{lote}
+                  </span>
+                ))}
+                {lotesConfigSemBolinhaList.length > 60 && (
+                  <span className="text-[10px] font-bold text-white/80 self-center">+{lotesConfigSemBolinhaList.length - 60} mais...</span>
+                )}
+              </div>
             </div>
           </div>
         </div>
