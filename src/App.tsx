@@ -2645,19 +2645,19 @@ const LotDashboard = ({
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
   // Para imagens (nao PDF): original ja e a melhor resolucao disponivel
   // REGRA: mapaImagem NUNCA pode ser string vazia — sempre cai para original
+  // Imagem atual para exibição — nunca vazia para evitar tela branca
+  // Usa sempre a melhor qualidade disponível sem trocar durante zoom
   const mapaImagem = (() => {
-    // PDF: usa canvas direto
     if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
     if (!mapaImagemOriginal) return "";
-    // Durante zoom ativo: manter imagem atual para evitar flicker
-    // Seleção por nível de zoom (só aplica quando parado):
-    // zoom ≤ 1.0  → leve (baixa qualidade, carregamento rápido)
-    // zoom 1.0-2.5 → original
-    // zoom > 2.5  → alta (se disponível)
-    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) return mapaImagemAlta || mapaImagemOriginal;
-    if (mapZoom > 1) return mapaImagemOriginal;
-    return mapaImagemLeveBase64 || mapaImagemOriginal;
+    // Sempre usar a melhor imagem disponível — sem trocar durante zoom
+    // Prioridade: alta > original > leve
+    if (mapaImagemAlta) return mapaImagemAlta;
+    return mapaImagemOriginal;
   })();
+
+  // Imagem de fundo (fallback enquanto a principal carrega)
+  const mapaImagemFallback = mapaImagemLeveBase64 || mapaImagemOriginal;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -4404,7 +4404,12 @@ const LotDashboard = ({
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : (
-                <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                <>
+                  {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
+                    <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
+                  )}
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                </>
               )}
 
               {/* Preview bolinhas + linha para multi-lote */}
@@ -4963,11 +4968,9 @@ const LotDashboard = ({
             >
               <div
                 ref={mapContainerRef}
-                className="absolute left-1/2 top-1/2 bg-white select-none"
+                className="absolute left-0 top-0 bg-white select-none"
                 style={{
-                  width: fullscreenMapWidth,
-                  maxWidth: "100vw",
-                  maxHeight: "100dvh",
+                  width: "100%",
                   transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
                   transformOrigin: "0 0",
                   willChange: "transform",
@@ -4976,7 +4979,12 @@ const LotDashboard = ({
                 {(localDev as any).mapaPdfOriginalBase64 ? (
                   <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
                 ) : (
-                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                  <>
+                    {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
+                      <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
+                    )}
+                    <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                  </>
                 )}
 
                 {mapaPontos.map((ponto) => {
