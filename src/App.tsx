@@ -2381,6 +2381,7 @@ const LotDashboard = ({
   }, []);
   const [mapActive, setMapActive] = useState(false);
   const [mapZoom, setMapZoom] = useState(1);
+  const mapZoomRef = useRef(1); // ref sempre atualizado para evitar closure stale
   const [mapPan, setMapPan] = useState({ x: 0, y: 0 });
   const mapTouchRef = useRef<{
     mode: "none" | "pan" | "pinch";
@@ -2492,19 +2493,27 @@ const LotDashboard = ({
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
     if (zoom <= 1) return { x: 0, y: 0 };
-    const viewport = mapViewportRef.current?.getBoundingClientRect();
-    const content = mapContainerRef.current?.getBoundingClientRect();
-    // Se dimensoes nao disponiveis ainda (mobile primeiro render), mantem pan atual
-    if (!viewport || !content || viewport.width === 0 || content.width === 0) return pan;
-    const scaledW = content.width * zoom;
-    const scaledH = content.height * zoom;
-    const maxX = Math.max(0, (scaledW - viewport.width) / 2);
-    const maxY = Math.max(0, (scaledH - viewport.height) / 2);
+    // Usar offsetWidth/offsetHeight (layout, sem transform) para evitar oscilação durante zoom
+    const viewport = mapViewportRef.current;
+    const content = mapContainerRef.current;
+    if (!viewport || !content) return pan;
+    const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
+    const vpH = viewport.offsetHeight || viewport.clientHeight || 0;
+    const imgW = mapImageRef.current?.offsetWidth || content.offsetWidth || 0;
+    const imgH = mapImageRef.current?.offsetHeight || content.offsetHeight || 0;
+    if (vpW === 0 || imgW === 0) return pan;
+    const scaledW = imgW * zoom;
+    const scaledH = imgH * zoom;
+    const maxX = Math.max(0, (scaledW - vpW) / 2);
+    const maxY = Math.max(0, (scaledH - vpH) / 2);
     return {
       x: Math.max(-maxX, Math.min(maxX, pan.x)),
       y: Math.max(-maxY, Math.min(maxY, pan.y)),
     };
   };
+
+  // Manter ref sincronizado com state
+  useEffect(() => { mapZoomRef.current = mapZoom; }, [mapZoom]);
 
   const setMapZoomSafely = (nextZoom: number) => {
     const clamped = Math.max(1, Math.min(10, nextZoom));
@@ -2637,7 +2646,7 @@ const LotDashboard = ({
         zoomingRef.current = false;
         void requestHighResolutionMap();
       }, 400);
-      setMapZoomSafely(mapZoom + clampedDelta);
+      setMapZoomSafely(mapZoomRef.current + clampedDelta);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
 
@@ -2692,7 +2701,6 @@ const LotDashboard = ({
 
   const handleMapTouchStart = (e: React.TouchEvent<HTMLDivElement>) => {
     setMapActive(true);
-    if (!mapActive && e.touches.length < 2) return;
     if (e.touches.length >= 2) {
       e.preventDefault();
       mapTouchRef.current = {
