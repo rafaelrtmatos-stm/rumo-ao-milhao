@@ -6386,27 +6386,104 @@ const EmpreendimentosSection = ({
       alert("Nenhum lote encontrado no script.");
       return;
     }
+
+    // ── 1. Verificar vendas em lotes que serão alterados ─────────────────────
+    // Agrupar itens do script por quadra para saber quais lotes o script define
+    const scriptPorQuadra: Record<string, string[]> = {};
+    parsed.items.forEach(item => {
+      if (!scriptPorQuadra[item.quadra]) scriptPorQuadra[item.quadra] = [];
+      scriptPorQuadra[item.quadra].push(item.lote);
+    });
+
+    // Lotes que existem no gerenciador mas NÃO estão no script → serão removidos
+    const lotesParaRemover: { quadra: string; lote: string }[] = [];
+    Object.entries(scriptPorQuadra).forEach(([quadra, lotesScript]) => {
+      const lotesGerenciador = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[quadra]);
+      const scriptSet = new Set(lotesScript.map(l => l.toUpperCase()));
+      lotesGerenciador.forEach(l => {
+        if (!scriptSet.has(l.toUpperCase())) {
+          lotesParaRemover.push({ quadra, lote: l });
+        }
+      });
+    });
+
+    // Verificar se algum lote a remover tem venda
+    const lotesComVenda = lotesParaRemover.filter(({ quadra, lote }) => {
+      return sales.some(v =>
+        v.empreendimentoId === lotRegDev.id &&
+        String(v.quadra) === String(quadra) &&
+        String(v.numeroLote) === String(lote)
+      );
+    });
+
+    if (lotesComVenda.length > 0) {
+      const msg = lotesComVenda.map(({ quadra, lote }) => {
+        const venda = sales.find(v =>
+          v.empreendimentoId === lotRegDev.id &&
+          String(v.quadra) === String(quadra) &&
+          String(v.numeroLote) === String(lote)
+        );
+        return `Q${quadra}:${lote} → Cliente: ${(venda as any)?.clienteNome || venda?.clienteId || "?"}`;
+      }).join("
+");
+      const continuar = window.confirm(
+        "⚠️ ATENÇÃO: " + lotesComVenda.length + " lote(s) a remover têm VENDA vinculada:\n\n" + msg + "\n\nDeseja continuar mesmo assim?"
+      );
+      if (!continuar) return;
+    }
+
+    // ── 2. Atualizar lotesInfo (status das bolinhas) ─────────────────────────
     const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
     let created = 0; let updated = 0;
     for (const item of parsed.items) {
       const key = `${item.quadra}-${item.lote}`.toUpperCase();
       const existing = newLotesInfo[key];
-      // item.status já é "disponivel" | "indisponivel" | "reservado" — usar diretamente
       const novoStatus: MapaLoteStatus = item.status as MapaLoteStatus;
-      if (existing && existing.status !== novoStatus) {
-        const confirmar = window.confirm(`Lote ${key} já existe com status "${existing.status}". Substituir por "${novoStatus}"?`);
-        if (!confirmar) continue;
-        updated++;
-      } else if (!existing) {
-        created++;
-      } else {
-        continue;
-      }
+      if (existing && existing.status !== novoStatus) { updated++; }
+      else if (!existing) { created++; }
+      else { continue; }
       newLotesInfo[key] = { ...(existing || {}), status: novoStatus };
     }
+
+    // ── 3. Sincronizar gerenciador de lotes com o script ─────────────────────
+    // Cada quadra do script → atualiza lotesPorQuadra com os lotes definidos no script
+    const newLotesPorQuadra = { ...(lotRegDev.lotesPorQuadra || {}) };
+    Object.entries(scriptPorQuadra).forEach(([quadra, lotesScript]) => {
+      // Ordenar lotes numericamente
+      const sorted = [...lotesScript].sort((a, b) =>
+        parseInt(a) - parseInt(b)
+      );
+      newLotesPorQuadra[quadra] = sorted.join(",");
+    });
+
+    // Remover lotes excedentes do lotesInfo
+    lotesParaRemover.forEach(({ quadra, lote }) => {
+      const key = `${quadra}-${lote}`.toUpperCase();
+      delete newLotesInfo[key];
+    });
+
+    // ── 4. Calcular total de lotes ────────────────────────────────────────────
+    const totalLotes = Object.values(newLotesPorQuadra).reduce((acc, val) => {
+      return acc + getLotesDeQuadra(val).length;
+    }, 0);
+
+    // ── 5. Salvar tudo ────────────────────────────────────────────────────────
+    const devAtualizado = {
+      ...lotRegDev,
+      lotesInfo: newLotesInfo,
+      lotesPorQuadra: newLotesPorQuadra,
+      totalLotes,
+      quadras: Object.keys(scriptPorQuadra).sort((a, b) => parseInt(a) - parseInt(b)).join(","),
+    } as Empreendimento;
+
     onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
-    setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
-    setScriptMsg(`Importado: ${created} criado(s), ${updated} atualizado(s).`);
+    onSaveDev(devAtualizado);
+    setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(devAtualizado, newLotesInfo, sales) : null);
+
+    const removidos = lotesParaRemover.length;
+    setScriptMsg(
+      `✓ Importado: ${created} criado(s), ${updated} atualizado(s)${removidos > 0 ? `, ${removidos} removido(s) do gerenciador` : ""}. Gerenciador sincronizado!`
+    );
     setScriptPasteText("");
   };
 
