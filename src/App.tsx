@@ -2740,25 +2740,26 @@ const LotDashboard = ({
     setMapActive(true);
     if (e.touches.length >= 2) {
       e.preventDefault();
+      // Usar REFS para evitar closure stale
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
-        startZoom: mapZoom,
-        startPanX: mapPan.x,
-        startPanY: mapPan.y,
-        startX: 0,
-        startY: 0,
+        startZoom: mapZoomRef.current,
+        startPanX: mapPanRef.current.x,
+        startPanY: mapPanRef.current.y,
+        startX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
+        startY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
       };
       return;
     }
-    if (mapZoom > 1 && e.touches.length === 1) {
+    if (e.touches.length === 1) {
       e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
-        startZoom: mapZoom,
-        startPanX: mapPan.x,
-        startPanY: mapPan.y,
+        startZoom: mapZoomRef.current,
+        startPanX: mapPanRef.current.x,
+        startPanY: mapPanRef.current.y,
         startX: e.touches[0].clientX,
         startY: e.touches[0].clientY,
       };
@@ -2768,33 +2769,44 @@ const LotDashboard = ({
   const handleMapTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!mapActive) return;
     const gesture = mapTouchRef.current;
+
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      const rawZoom = gesture.startZoom * (distance / Math.max(1, gesture.startDistance));
-      const nextZoom = Math.max(1, Math.min(10, rawZoom));
+      const nextZoom = Math.max(1, Math.min(10,
+        gesture.startZoom * (distance / Math.max(1, gesture.startDistance))
+      ));
+
+      // Centro atual dos dois dedos relativo ao viewport
+      const viewport = mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const focalX = rect ? midClientX - rect.left : midClientX;
+      const focalY = rect ? midClientY - rect.top : midClientY;
+
       zoomingRef.current = true;
       clearTimeout((window as any).__zoomEndTimer);
       (window as any).__zoomEndTimer = setTimeout(() => { zoomingRef.current = false; }, 300);
-      // Centro dos dois dedos = ponto focal do pinch
-      const viewport = mapViewportRef.current;
-      const rect = viewport?.getBoundingClientRect();
-      const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const focalX = rect ? midX - rect.left : midX;
-      const focalY = rect ? midY - rect.top : midY;
+
       if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
       else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
+
       setMapZoomAtPoint(nextZoom, focalX, focalY);
       return;
     }
-    if (gesture.mode === "pan" && e.touches.length === 1 && mapZoom > 1) {
+
+    if (gesture.mode === "pan" && e.touches.length === 1) {
       e.preventDefault();
+      const dx = e.touches[0].clientX - gesture.startX;
+      const dy = e.touches[0].clientY - gesture.startY;
       const nextPan = {
-        x: gesture.startPanX + (e.touches[0].clientX - gesture.startX),
-        y: gesture.startPanY + (e.touches[0].clientY - gesture.startY),
+        x: gesture.startPanX + dx,
+        y: gesture.startPanY + dy,
       };
-      setMapPan(clampMapPan(nextPan));
+      const clamped = clampMapPan(nextPan, mapZoomRef.current);
+      mapPanRef.current = clamped;
+      setMapPan(clamped);
     }
   };
 
@@ -7833,6 +7845,7 @@ const VendasSection = ({
     add("numeroLote", "Lote", saleData.numeroLote);
     add("quadra", "Quadra", saleData.quadra);
     addPositive("valorLote", "Valor total", saleData.valorLote);
+    add("vendedor", "Corretor / Vendedor", saleData.vendedor);
 
     if (tipoVenda === "parcelado") {
       add("valorEntrada", "Entrada", saleData.valorEntrada);
@@ -9755,33 +9768,8 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                       />
                     )}
                   </div>
-                  <div>
-                    <label className="label text-slate-400">Corretor / Vendedor 2 <span className="font-normal text-slate-300">(opcional)</span></label>
-                    {vendedores.length > 0 ? (
-                      <select
-                        className="input-field font-semibold"
-                        value={(saleData as any).vendedorId2 || ""}
-                        onChange={(e) => {
-                          const v = vendedores.find(x => x.id === e.target.value);
-                          setSaleData({ ...saleData, vendedorId2: e.target.value, vendedor2: textoMaiusculo(v?.nome || "") } as any);
-                        }}
-                      >
-                        <option value="">Nenhum segundo vendedor</option>
-                        {vendedores.map((v) => (
-                          <option key={v.id} value={v.id}>{v.nome}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <input
-                        className="input-field font-semibold"
-                        placeholder="Nome do segundo corretor (opcional)"
-                        value={(saleData as any).vendedor2 || ""}
-                        onChange={(e) => setSaleData({ ...saleData, vendedor2: textoMaiusculo(e.target.value), vendedorId2: "" } as any)}
-                      />
-                    )}
-                  </div>
                   <p className="text-[10px] text-slate-400 font-bold">
-                    Fica salvo no registro e será usado no contrato e recibo quando aplicável.
+                    Fica salvo no registro e será usado no contrato e recibo.
                   </p>
                 </div>
                 <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
