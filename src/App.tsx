@@ -5669,13 +5669,13 @@ const EmpreendimentosSection = ({
       alert("Nenhum lote encontrado no script.");
       return;
     }
-    const mapStatus: Record<string, MapaLoteStatus> = { D: "disponivel", I: "indisponivel", R: "reservado" };
     const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
     let created = 0; let updated = 0;
     for (const item of parsed.items) {
       const key = `${item.quadra}-${item.lote}`.toUpperCase();
       const existing = newLotesInfo[key];
-      const novoStatus: MapaLoteStatus = mapStatus[item.status] || "disponivel";
+      // item.status já é "disponivel" | "indisponivel" | "reservado" — usar diretamente
+      const novoStatus: MapaLoteStatus = item.status as MapaLoteStatus;
       if (existing && existing.status !== novoStatus) {
         const confirmar = window.confirm(`Lote ${key} já existe com status "${existing.status}". Substituir por "${novoStatus}"?`);
         if (!confirmar) continue;
