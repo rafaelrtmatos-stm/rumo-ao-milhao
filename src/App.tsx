@@ -4457,27 +4457,7 @@ const LotDashboard = ({
     const ballSize = getBallPixelSize();
     return (
         <div className="h-full flex flex-col" data-mapa-container="true">
-        {/* Aviso lotes sem bolinha */}
-        {isEditingMap && lotesConfigSemBolinha > 0 && (
-          <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 space-y-2">
-            <p className="text-sm text-amber-800 font-bold">
-              {lotesConfigSemBolinha} lote(s) cadastrados sem bolinha no mapa:
-            </p>
-            <div className="flex flex-wrap gap-1.5 max-h-24 overflow-y-auto">
-              {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
-                <span key={`${quadra}-${lote}`}
-                  className="text-[10px] font-black px-2 py-0.5 bg-amber-100 text-amber-800 rounded-lg border border-amber-200 whitespace-nowrap">
-                  Q{quadra}:{lote}
-                </span>
-              ))}
-              {lotesConfigSemBolinhaList.length > 60 && (
-                <span className="text-[10px] font-bold text-amber-600 self-center">
-                  +{lotesConfigSemBolinhaList.length - 60} mais...
-                </span>
-              )}
-            </div>
-          </div>
-        )}
+
         <div className="flex flex-col h-full w-full">
           {/* CANVAS DO MAPA */}
           <div className="relative bg-slate-100 rounded-2xl overflow-hidden flex-1 h-full">
@@ -4603,6 +4583,27 @@ const LotDashboard = ({
                 <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${mapUploadProgress}%` }} />
               </div>
               <span className="text-[10px] font-black text-emerald-600">{mapUploadProgress}%</span>
+            </div>
+          )}
+
+          {/* Aviso lotes sem bolinha — fora do mapa, sempre visível, não some */}
+          {isEditingMap && !isMobile && lotesConfigSemBolinha > 0 && (
+            <div className="flex-shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 space-y-1.5">
+              <p className="text-[11px] font-black text-amber-800 flex items-center gap-1.5">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                {lotesConfigSemBolinha} lote(s) sem bolinha no mapa:
+              </p>
+              <div className="flex flex-wrap gap-1 max-h-16 overflow-y-auto">
+                {lotesConfigSemBolinhaList.slice(0, 80).map(({ quadra, lote }) => (
+                  <span key={`${quadra}-${lote}`}
+                    className="text-[9px] font-black px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded border border-amber-300 whitespace-nowrap">
+                    Q{quadra}:{lote}
+                  </span>
+                ))}
+                {lotesConfigSemBolinhaList.length > 80 && (
+                  <span className="text-[9px] font-bold text-amber-600 self-center">+{lotesConfigSemBolinhaList.length - 80} mais...</span>
+                )}
+              </div>
             </div>
           )}
 
@@ -5474,6 +5475,23 @@ const LotDashboard = ({
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><circle cx="4" cy="6" r="1"/><line x1="8" y1="6" x2="20" y2="6"/><circle cx="4" cy="12" r="1"/><line x1="8" y1="12" x2="20" y2="12"/><circle cx="4" cy="18" r="1"/><line x1="8" y1="18" x2="20" y2="18"/></svg>
           </button>
         </div>
+
+        {/* Aviso lotes sem bolinha — mobile, fora do mapa */}
+        {isEditingMap && lotesConfigSemBolinha > 0 && (
+          <div className="flex-shrink-0 bg-amber-50 border-b border-amber-200 px-4 py-2 space-y-1">
+            <p className="text-[11px] font-black text-amber-800">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
+            <div className="flex flex-wrap gap-1 max-h-12 overflow-y-auto">
+              {lotesConfigSemBolinhaList.slice(0, 40).map(({ quadra, lote }) => (
+                <span key={`${quadra}-${lote}`} className="text-[9px] font-black px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded border border-amber-300 whitespace-nowrap">
+                  Q{quadra}:{lote}
+                </span>
+              ))}
+              {lotesConfigSemBolinhaList.length > 40 && (
+                <span className="text-[9px] font-bold text-amber-600 self-center">+{lotesConfigSemBolinhaList.length - 40} mais</span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* ── MAPA ── */}
         <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}>
