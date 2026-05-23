@@ -5980,7 +5980,7 @@ const EmpreendimentosSection = ({
         <div style={{ display: showMapaGlobal ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
-            style={{ height: globalMapHeight }}
+            style={{ height: globalMapHeight, isolation: 'isolate', contain: 'layout' }}
           >
             {comCoord.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
