@@ -2767,19 +2767,20 @@ const LotDashboard = ({
   const handleMapMousePanStart = (e: React.MouseEvent<HTMLDivElement>) => {
     // Suporta pan: modo mover OU Ctrl pressionado — funciona em visualização, edição e tela cheia
     const isCtrlDown = e.ctrlKey || isCtrlPanning;
-    if (!isCtrlDown && isEditingMap && mapEditTool !== "mover") return;
-    if (!isCtrlDown && !isEditingMap) return;
+    // No modo edição: Ctrl obrigatório para pan (evita conflito com adicionar bolinhas)
+    // No modo visualização: arrastar sempre funciona
+    if (isEditingMap && !isCtrlDown) return;
     e.preventDefault();
     e.stopPropagation();
     setMapActive(true);
     if (isCtrlDown) {
-      // Ctrl+drag: armazena em ctrlPanRef para não conflitar com mapMousePanRef do modo mover
+      // Ctrl+drag: usa refs imediatas para evitar closure stale
       ctrlPanRef.current = {
         active: true,
         startX: e.clientX,
         startY: e.clientY,
-        startPanX: mapPan.x,
-        startPanY: mapPan.y,
+        startPanX: mapPanRef.current.x,
+        startPanY: mapPanRef.current.y,
       };
       return;
     }
@@ -4483,7 +4484,8 @@ const LotDashboard = ({
 
             <div
               ref={mapViewportRef}
-              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onPointerDown={(e) => { setMapActive(true); }}
+              onMouseDown={handleMapMousePanStart}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
@@ -4494,7 +4496,6 @@ const LotDashboard = ({
             <div
               ref={mapContainerRef}
               onClick={handleMapClick}
-              onMouseDown={handleMapMousePanStart}
               onMouseMove={(e) => {
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
