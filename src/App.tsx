@@ -6424,8 +6424,7 @@ const EmpreendimentosSection = ({
           String(v.numeroLote) === String(lote)
         );
         return `Q${quadra}:${lote} → Cliente: ${(venda as any)?.clienteNome || venda?.clienteId || "?"}`;
-      }).join("
-");
+      }).join("\n");
       const continuar = window.confirm(
         "⚠️ ATENÇÃO: " + lotesComVenda.length + " lote(s) a remover têm VENDA vinculada:\n\n" + msg + "\n\nDeseja continuar mesmo assim?"
       );
