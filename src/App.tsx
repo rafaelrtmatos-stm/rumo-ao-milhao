@@ -2990,30 +2990,21 @@ const LotDashboard = ({
   // ─────────────────────────────────────────────────────────────────────────────
 
   const requestHighResolutionMap = async () => {
-    // Gera a imagem em alta resolução sob demanda (estágio 3).
-    // Se o PDF original não estiver disponível, apenas atualiza a escala.
     if ((localDev as any).mapaImagemHighResBase64 || mapHighResLoading) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
-    if (!originalPdf) {
-      scheduleMapScaleUpdate(false);
-      return;
-    }
+    if (!originalPdf) { scheduleMapScaleUpdate(false); return; }
     try {
       setMapHighResLoading(true);
+      // Mostrar progresso na barra do mapa (reutiliza mapUploadProgress)
+      setMapUploadProgress(20);
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-
-      // Escala reduzida para não travar o celular
-      // Média: 1.5x — boa qualidade sem travar
-      const medScale = Math.max(1.5, Math.min(2, deviceRatio));
-      const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), medScale);
-
-      // Yield para não bloquear o thread — permite o browser renderizar frames
-      await new Promise(resolve => setTimeout(resolve, 0));
-
-      // Alta: 2.5x — qualidade extra só se o dispositivo aguentar
-      const highScale = Math.max(2, Math.min(3, 2 * deviceRatio));
-      const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
-
+      // Preview
+      const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), 1.5);
+      setMapUploadProgress(60);
+      await new Promise(r => setTimeout(r, 0)); // yield — browser pode pintar frames
+      // Alta resolução
+      const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), Math.max(2, Math.min(2.5, 2 * deviceRatio)));
+      setMapUploadProgress(90);
       persistDev({
         ...localDev,
         mapaImagemMedResBase64: medImage,
@@ -3021,10 +3012,12 @@ const LotDashboard = ({
         mapaAltaResolucao: true,
         mapaMarkerReferenceWidth: (localDev as any).mapaMarkerReferenceWidth || 1000,
       } as Empreendimento);
+      setMapUploadProgress(100);
+      setTimeout(() => setMapUploadProgress(0), 1500);
       window.setTimeout(() => scheduleMapScaleUpdate(false), 80);
     } catch (err) {
-      console.error("Não foi possível gerar o mapa em alta resolução", err);
-      setLotScriptMsg("Não foi possível gerar o mapa em alta resolução. O app continuará usando a prévia atual.");
+      console.error("Erro ao gerar alta resolução", err);
+      setMapUploadProgress(0);
     } finally {
       setMapHighResLoading(false);
     }
@@ -4460,6 +4453,17 @@ const LotDashboard = ({
             </div>
             </div>
           </div>
+
+          {/* BARRA DE PROGRESSO DISCRETA — aparece em edição e ao gerar alta res */}
+          {!isEditingMap && mapUploadProgress > 0 && mapUploadProgress < 100 && (
+            <div className="flex-shrink-0 bg-white px-4 py-2 flex items-center gap-3 border-b border-slate-100">
+              <p className="text-[11px] font-bold text-slate-500">Otimizando qualidade do mapa...</p>
+              <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                <div className="h-full bg-emerald-500 rounded-full transition-all duration-300" style={{ width: `${mapUploadProgress}%` }} />
+              </div>
+              <span className="text-[10px] font-black text-emerald-600">{mapUploadProgress}%</span>
+            </div>
+          )}
 
           {/* BARRA FIXA DE EDIÇÃO NO TOPO */}
           {isEditingMap && (
