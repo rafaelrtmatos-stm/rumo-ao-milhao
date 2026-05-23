@@ -2328,6 +2328,7 @@ const LotDashboard = ({
     try { return parseInt(localStorage.getItem('mapaWindowHeight') || '0') || 0; } catch { return 0; }
   });
   const mapaResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
+  const zoomingRef = useRef(false); // Suprime troca de imagem durante zoom ativo
   // Qualidade progressiva do mapa: prévia leve no zoom normal e alta resolução somente quando aproximar.
   const [mapHighResLoading, setMapHighResLoading] = useState(false);
 
@@ -2591,17 +2592,17 @@ const LotDashboard = ({
   // Para imagens (nao PDF): original ja e a melhor resolucao disponivel
   // REGRA: mapaImagem NUNCA pode ser string vazia — sempre cai para original
   const mapaImagem = (() => {
-    // PDF: nao usa mapaImagem (usa canvas direto), retorna qualquer string nao vazia
+    // PDF: usa canvas direto
     if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
-    // Imagem: sempre tem o original como base
     if (!mapaImagemOriginal) return "";
-    // Zoom alto: tenta alta res, senao usa original (NAO fica branco)
+    // Durante zoom ativo: manter imagem atual para evitar flicker
+    // Seleção por nível de zoom (só aplica quando parado):
+    // zoom ≤ 1.0  → leve (baixa qualidade, carregamento rápido)
+    // zoom 1.0-2.5 → original
+    // zoom > 2.5  → alta (se disponível)
     if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) return mapaImagemAlta || mapaImagemOriginal;
-    // Zoom medio: tenta media res, senao usa original
-    if (mapZoom > MED_RES_ZOOM_THRESHOLD) return (localDev as any).mapaImagemMedResBase64 || mapaImagemOriginal;
-    // Zoom baixo: usa leve se disponivel, senao original
-    if (mapZoom <= 1) return mapaImagemLeveBase64 || mapaImagemOriginal;
-    return mapaImagemOriginal;
+    if (mapZoom > 1) return mapaImagemOriginal;
+    return mapaImagemLeveBase64 || mapaImagemOriginal;
   })();
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
@@ -2622,13 +2623,21 @@ const LotDashboard = ({
     if (!el) return;
     const onNativeWheel = (ev: WheelEvent) => {
       if (!mapaImagem) return;
-      // { passive: false } obrigatório para poder chamar preventDefault() sem erro.
       ev.preventDefault();
       ev.stopPropagation();
       setMapActive(true);
-      const delta = ev.deltaY < 0 ? 0.25 : -0.25;
-      if (mapZoom + delta > MED_RES_ZOOM_THRESHOLD) void requestHighResolutionMap();
-      setMapZoomSafely(mapZoom + delta);
+      // Delta proporcional — zoom mais suave e responsivo
+      const speed = ev.deltaMode === 1 ? 0.15 : 0.0008; // linha vs pixel
+      const delta = -ev.deltaY * speed;
+      const clampedDelta = Math.max(-0.5, Math.min(0.5, delta));
+      // Marcar como zooming para não trocar imagem durante o gesto
+      zoomingRef.current = true;
+      clearTimeout((window as any).__zoomEndTimer);
+      (window as any).__zoomEndTimer = setTimeout(() => {
+        zoomingRef.current = false;
+        void requestHighResolutionMap();
+      }, 400);
+      setMapZoomSafely(mapZoom + clampedDelta);
     };
     el.addEventListener("wheel", onNativeWheel, { passive: false });
 
@@ -2717,7 +2726,12 @@ const LotDashboard = ({
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      const nextZoom = Math.max(1, Math.min(10, gesture.startZoom * (distance / Math.max(1, gesture.startDistance))));
+      // Pinch: usar delta suavizado para evitar jitter
+      const rawZoom = gesture.startZoom * (distance / Math.max(1, gesture.startDistance));
+      const nextZoom = Math.max(1, Math.min(10, rawZoom));
+      zoomingRef.current = true;
+      clearTimeout((window as any).__zoomEndTimer);
+      (window as any).__zoomEndTimer = setTimeout(() => { zoomingRef.current = false; }, 300);
       if ((localDev as any).mapaPdfOriginalBase64) {
         schedulePdfRender(nextZoom);
       } else if (nextZoom > HIGH_RES_ZOOM_THRESHOLD) {
@@ -5230,39 +5244,41 @@ const LotDashboard = ({
                 <div className="w-12 h-1 rounded-full bg-slate-300 group-hover:bg-slate-500 transition-colors" />
               </div>
             </div>
-            {/* BOTÕES FIXOS EMBAIXO DO MAPA — sempre visíveis mesmo com resize */}
-            <div className="flex-shrink-0 flex gap-2 p-3 sm:p-4 bg-white border-t border-slate-100">
-              {/* Zoom + / Fit / Zoom - */}
-              <div className="flex gap-1">
-                <button type="button" onClick={() => zoomMapBy(0.25)}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-xl hover:bg-slate-200 flex items-center justify-center">+</button>
-                <button type="button" onClick={() => fitMapToScreen()}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-lg hover:bg-slate-200 flex items-center justify-center" title="Encaixar na tela">⊡</button>
-                <button type="button" onClick={() => zoomMapBy(-0.25)}
-                  className="w-11 h-11 rounded-2xl bg-slate-100 text-slate-800 font-black text-xl hover:bg-slate-200 flex items-center justify-center">−</button>
+            {/* BOTÕES FIXOS EMBAIXO DO MAPA */}
+            <div className="flex-shrink-0 bg-white border-t border-slate-100">
+              {/* Linha 1: ações principais */}
+              <div className="flex gap-2 px-3 pt-2.5 pb-1">
+                <button
+                  type="button"
+                  onClick={() => { setMapFullscreen(true); setMapActive(true); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}; scheduleMapScaleUpdate(true); }}
+                  className="flex-1 rounded-2xl bg-slate-900 text-white py-3 text-xs font-black uppercase flex items-center justify-center gap-1.5 hover:bg-slate-700 active:scale-95 transition-all"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                  <span>Tela cheia</span>
+                </button>
+                <button onClick={baixarMapaInterativoImagem}
+                  className="flex-1 rounded-2xl bg-emerald-700 text-white py-3 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-emerald-600 active:scale-95 transition-all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Imagem</span>
+                </button>
+                <button onClick={baixarMapaInterativoPdf}
+                  className="flex-1 rounded-2xl bg-blue-700 text-white py-3 text-xs font-black flex items-center justify-center gap-1.5 hover:bg-blue-600 active:scale-95 transition-all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span>PDF</span>
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMapFullscreen(true);
-                  setMapActive(true);
-                  setMapZoom(1);
-                  setMapPan({ x: 0, y: 0 });
-                  try { (screen as any).orientation?.lock?.("landscape")?.catch?.(() => {}); } catch {}
-                  scheduleMapScaleUpdate(true);
-                }}
-                className="flex-1 rounded-2xl bg-slate-900 text-white py-3.5 sm:py-4 text-xs sm:text-sm font-black uppercase tracking-widest hover:bg-slate-800 flex items-center justify-center gap-2"
-              >
-                ⛶ <span>Tela cheia</span>
-              </button>
-              <button onClick={baixarMapaInterativoImagem}
-                className="flex-1 rounded-2xl bg-slate-100 text-slate-700 py-3.5 sm:py-4 text-xs sm:text-sm font-black hover:bg-slate-200 flex items-center justify-center gap-2">
-                <FileDown size={18} /><span>Imagem</span>
-              </button>
-              <button onClick={baixarMapaInterativoPdf}
-                className="flex-1 rounded-2xl bg-slate-100 text-slate-700 py-3.5 sm:py-4 text-xs sm:text-sm font-black hover:bg-slate-200 flex items-center justify-center gap-2">
-                <FileText size={18} /><span>PDF</span>
-              </button>
+              {/* Linha 2: zoom */}
+              <div className="flex items-center gap-2 px-3 pb-2.5">
+                <button type="button" onClick={() => zoomMapBy(-0.5)}
+                  className="w-11 h-10 rounded-xl bg-slate-100 text-slate-700 font-black text-2xl hover:bg-slate-200 flex items-center justify-center active:scale-95">−</button>
+                <div className="flex-1 h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-slate-400 rounded-full transition-all duration-200" style={{ width: `${Math.min(100, ((mapZoom - 1) / 9) * 100)}%` }} />
+                </div>
+                <button type="button" onClick={() => fitMapToScreen()}
+                  className="w-10 h-10 rounded-xl bg-slate-100 text-slate-600 text-sm font-black hover:bg-slate-200 flex items-center justify-center active:scale-95" title="Encaixar">⊡</button>
+                <button type="button" onClick={() => zoomMapBy(0.5)}
+                  className="w-11 h-10 rounded-xl bg-slate-900 text-white font-black text-2xl hover:bg-slate-700 flex items-center justify-center active:scale-95">+</button>
+              </div>
             </div>
             <AnimatePresence>
               {selectedPoint && renderSelectedPointModal()}
