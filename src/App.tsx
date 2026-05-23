@@ -2315,6 +2315,9 @@ const LotDashboard = ({
   const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapViewportRef = useRef<HTMLDivElement>(null);
+  const mapViewportFullscreenRef = useRef<HTMLDivElement>(null);
+  // Retorna o viewport ativo (fullscreen ou normal)
+  const getActiveViewport = () => mapFullscreen ? mapViewportFullscreenRef.current : mapViewportRef.current;
   const mapImageRef = useRef<HTMLImageElement>(null);
   // Canvas de renderização direta do PDF (opção C — qualidade vetorial infinita)
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -2495,7 +2498,7 @@ const LotDashboard = ({
   };
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
-    const viewport = mapViewportRef.current;
+    const viewport = getActiveViewport() || mapViewportRef.current;
     const img = mapImageRef.current;
     if (!viewport || !img) return pan;
     const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
@@ -2578,7 +2581,8 @@ const LotDashboard = ({
 
   const fitMapToScreen = (attempt = 0) => {
     requestAnimationFrame(() => {
-      const viewport = mapViewportRef.current;
+      // Usar o viewport correto — fullscreen ou normal
+      const viewport = getActiveViewport() || mapViewportRef.current;
       const img = mapImageRef.current;
 
       if (!viewport || !img || !img.naturalWidth || !img.naturalHeight) {
@@ -2587,7 +2591,7 @@ const LotDashboard = ({
         return;
       }
 
-      // Dimensões do viewport — usar múltiplos métodos
+      // Dimensões do viewport
       const vpW = viewport.offsetWidth || viewport.getBoundingClientRect().width || window.innerWidth;
       const vpH = viewport.offsetHeight || viewport.getBoundingClientRect().height || window.innerHeight;
 
@@ -2998,12 +3002,16 @@ const LotDashboard = ({
       setMapHighResLoading(true);
       const deviceRatio = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
 
-      // Estágio 2 — Média: 2x (carrega primeiro, melhora nitidez rapidamente)
-      const medScale = Math.max(2, Math.min(3, 2 * deviceRatio));
+      // Escala reduzida para não travar o celular
+      // Média: 1.5x — boa qualidade sem travar
+      const medScale = Math.max(1.5, Math.min(2, deviceRatio));
       const medImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), medScale);
 
-      // Estágio 3 — Alta: 4–5x (para zoom avançado, edição e tela cheia)
-      const highScale = Math.max(4, Math.min(5, 3 * deviceRatio));
+      // Yield para não bloquear o thread — permite o browser renderizar frames
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Alta: 2.5x — qualidade extra só se o dispositivo aguentar
+      const highScale = Math.max(2, Math.min(3, 2 * deviceRatio));
       const highImage = await renderPdfPageToPng(dataUrlToArrayBuffer(originalPdf), highScale);
 
       persistDev({
@@ -4939,7 +4947,7 @@ const LotDashboard = ({
             </div>
 
             <div
-              ref={mapViewportRef}
+              ref={mapViewportFullscreenRef}
               onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
