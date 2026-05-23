@@ -24,14 +24,21 @@ function calcularStats(dev: Empreendimento, sales: Venda[]) {
 // Tiles de satélite — Google via proxy público (sem API key)
 const TILES: Record<Camada, { url: string; options: any; overlay?: { url: string; options: any } }> = {
   satelite: {
-    url: "https://mt{s}.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
-    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
+    // Esri World Imagery — satélite gratuito, alta qualidade, sem API key, sem limite
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 19, attribution: "© Esri, Maxar, Earthstar Geographics" },
   },
   hibrido: {
-    url: "https://mt{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
-    options: { maxZoom: 20, subdomains: "0123", attribution: "© Google" },
+    // Satélite Esri + rótulos de ruas
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    options: { maxZoom: 19, attribution: "© Esri" },
+    overlay: {
+      url: "https://services.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
+      options: { maxZoom: 19, opacity: 0.9 },
+    },
   },
   ruas: {
+    // CartoDB Voyager — mapa moderno e limpo
     url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
     options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB" },
   },
@@ -305,55 +312,80 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         );
       })()}
 
-      {/* FILTROS E BUSCA */}
-      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-2" style={{ maxWidth: 200 }}>
-        <input
-          value={busca}
-          onChange={e => setBusca(e.target.value)}
-          placeholder="Buscar..."
-          className="w-full px-3 py-2 rounded-xl bg-white/95 backdrop-blur text-xs font-semibold shadow-lg border border-slate-200 outline-none"
-        />
-        <div className="flex flex-wrap gap-1">
+      {/* BUSCA — topo centralizado */}
+      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] w-72 max-w-[90vw]">
+        <div className="relative">
+          <input
+            value={busca}
+            onChange={e => {
+              setBusca(e.target.value);
+              // Centralizar no primeiro resultado ao digitar
+              if (e.target.value.trim()) {
+                const q = e.target.value.toLowerCase();
+                const found = devsComLoc.find(d =>
+                  d.nome.toLowerCase().includes(q) || d.cidade?.toLowerCase().includes(q)
+                );
+                if (found && leafletRef.current) {
+                  leafletRef.current.flyTo([found.lat!, found.lng!], 15, { animate: true, duration: 0.8 });
+                  setSelectedDev(found);
+                }
+              }
+            }}
+            placeholder="🔍  Buscar empreendimento..."
+            className="w-full pl-4 pr-8 py-2.5 rounded-2xl bg-white/98 backdrop-blur text-sm font-semibold shadow-xl border border-slate-200/80 outline-none placeholder-slate-400"
+          />
+          {busca && (
+            <button onClick={() => setBusca("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-lg leading-none">
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* CONTROLES — canto superior esquerdo */}
+      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-1.5">
+        {/* Centralizar */}
+        <button
+          onClick={() => {
+            if (!leafletRef.current) return;
+            const devs = devsComLoc;
+            if (devs.length === 0) return;
+            import("leaflet").then(L => {
+              if (!leafletRef.current) return;
+              if (devs.length === 1) {
+                leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
+              } else {
+                const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
+                leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+              }
+            });
+          }}
+          className="bg-white text-slate-700 rounded-xl px-3 py-2 text-[11px] font-black shadow-lg border border-slate-200 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all flex items-center gap-1.5"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+          Centralizar
+        </button>
+        {/* Filtros rápidos */}
+        <div className="flex flex-col gap-1">
           {(["todos","com_mapa","disponiveis"] as Filtro[]).map(f => (
             <button key={f} onClick={() => setFiltro(f)}
-              className={`px-2 py-1 rounded-lg text-[10px] font-black shadow transition-all ${filtro === f ? "bg-slate-900 text-white" : "bg-white/90 text-slate-600 hover:bg-white"}`}>
+              className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow transition-all whitespace-nowrap ${filtro === f ? "bg-slate-900 text-white" : "bg-white/95 text-slate-600 hover:bg-white border border-slate-200"}`}>
               {f === "todos" ? "Todos" : f === "com_mapa" ? "Com mapa" : "Disponíveis"}
             </button>
           ))}
         </div>
       </div>
 
-      {/* CAMADAS */}
-      <div className="absolute bottom-14 right-3 z-[1000] flex flex-col gap-1">
+      {/* CAMADAS — canto direito */}
+      <div className="absolute top-14 right-3 z-[1000] flex flex-col gap-1">
         {(["satelite","hibrido","ruas"] as Camada[]).map(c => (
           <button key={c} onClick={() => setCamada(c)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow-md transition-all whitespace-nowrap ${camada === c ? "bg-slate-900 text-white" : "bg-white/90 text-slate-700 hover:bg-white"}`}>
+            className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow-md transition-all whitespace-nowrap ${camada === c ? "bg-slate-900 text-white" : "bg-white/95 text-slate-700 hover:bg-white border border-slate-200"}`}>
             {c === "satelite" ? "🛰 Satélite" : c === "hibrido" ? "🌍 Híbrido" : "🗺 Ruas"}
           </button>
         ))}
       </div>
-
-      {/* CENTRALIZAR TODOS EMPREENDIMENTOS */}
-      <button
-        onClick={() => {
-          if (!leafletRef.current) return;
-          const devs = devsComLoc;
-          if (devs.length === 0) return;
-          import("leaflet").then(L => {
-            if (!leafletRef.current) return;
-            if (devs.length === 1) {
-              leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 14, { animate: true, duration: 0.8 });
-            } else {
-              const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
-              leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
-            }
-          });
-        }}
-        className="absolute bottom-12 left-3 z-[1000] bg-white/95 text-slate-700 rounded-xl px-3 py-2 text-[11px] font-black shadow-lg border border-slate-200 hover:bg-white flex items-center gap-1.5"
-        title="Centralizar todos os empreendimentos"
-      >
-        ⊡ Centralizar
-      </button>
 
       {/* MINHA LOCALIZAÇÃO */}
       <button
