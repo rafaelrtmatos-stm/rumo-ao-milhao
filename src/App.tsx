@@ -3314,31 +3314,37 @@ const LotDashboard = ({
     return Math.max(0.1, displayedMapScale || 1);
   };
 
-  const getBallPixelSize = () => {
+  // Tamanho base das bolinhas — calculado uma vez quando imagem carrega
+  // Não recalcula durante zoom (evita bolinhas mudando de tamanho)
+  const ballBaseSizeRef = useRef<{ size: number; font: number; border: number } | null>(null);
+
+  const calcBallBaseSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-
-    // Largura CSS da imagem do mapa no zoom=1 (sem considerar o transform:scale do container)
-    // O transform:scale(mapZoom) já é aplicado pelo container — a bolinha não multiplica por mapZoom
     const imgEl = mapImageRef.current;
-    const imgLayoutW = imgEl
-      ? (imgEl.offsetWidth || imgEl.getBoundingClientRect().width || 0)
-      : 0;
-
-    // Fallback para o container
-    const containerW = mapContainerRef.current?.offsetWidth
-      || mapViewportRef.current?.offsetWidth
-      || 0;
-
-    const mapW = imgLayoutW || containerW || 600;
-
-    // Bolinha = 2.8% da largura CSS da imagem (no zoom 1)
-    // Como o container usa transform:scale(mapZoom), a bolinha vai crescer automaticamente com o zoom
+    const mapW = (imgEl?.offsetWidth || 0)
+      || (mapContainerRef.current?.offsetWidth || 0)
+      || 600;
+    // 2.8% da largura do mapa no zoom=1
     const size = Math.round(mapW * 0.028 * pct);
     const safeSz = Math.max(8, Math.min(80, size));
-    const border = Math.max(1.5, safeSz * 0.14);
-    const font = Math.max(5, Math.round(safeSz * 0.42));
-    return { size: safeSz, font, border };
+    return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
+
+  const getBallPixelSize = () => {
+    // Usar tamanho cached se disponível — não recalcula durante zoom
+    if (ballBaseSizeRef.current) return ballBaseSizeRef.current;
+    const calc = calcBallBaseSize();
+    ballBaseSizeRef.current = calc;
+    return calc;
+  };
+
+  // Recalcular quando: imagem muda, slider muda, modo muda
+  useEffect(() => {
+    ballBaseSizeRef.current = null; // invalidar cache
+    setTimeout(() => {
+      ballBaseSizeRef.current = calcBallBaseSize();
+    }, 100); // após imagem carregar
+  }, [mapaImagem, markerSizePercent, mode]);
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
   const fullscreenMapWidth = `min(100vw, calc(100dvh * ${Math.max(0.5, Math.min(3, mapAspectRatio))}))`;
@@ -4207,7 +4213,7 @@ const LotDashboard = ({
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
               <div key={loteLabel} className="absolute rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
-                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, borderWidth: `${ballSize.border ?? 2}px` }}>
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: "translate(-50%,-50%)", borderWidth: `${ballSize.border ?? 2}px` }}>
                 {loteLabel}
               </div>
             );
@@ -4380,7 +4386,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4957,7 +4963,7 @@ const LotDashboard = ({
                         height: `${ballSize.size}px`,
                         fontSize: `${ballSize.font}px`,
                         borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
-                        transform: `translate(-50%,-50%) scale(${1/mapZoom})`,
+                        transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
                       }}
                     />
