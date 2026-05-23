@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LoginScreen, SetupScreen } from "./auth";
 import "./index.css";
+import "leaflet/dist/leaflet.css";
 import { initSyncListeners } from "./syncService";
 
 // Inicializa listeners de sync offline/online ao carregar o app

@@ -266,9 +266,9 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   }
 
   return (
-    <div className="relative w-full h-full flex" style={{ minHeight: 200, flex: 1 }}>
+    <div className="relative w-full h-full flex" style={{ minHeight: 200, flex: 1, position: 'relative' }}>
       {/* MAPA */}
-      <div ref={mapRef} className="flex-1" style={{ minHeight: 200 }} />
+      <div ref={mapRef} style={{ position: 'absolute', inset: 0 }} />
 
       {/* POPUP DO EMPREENDIMENTO */}
       {selectedDev && (() => {
@@ -449,7 +449,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
             {painelAberto ? "Ocultar lista" : "Ver lista"}
           </button>
           {painelAberto && (
-            <div className="absolute top-0 bottom-0 left-0 z-[999] w-52 bg-white/95 backdrop-blur-sm shadow-2xl overflow-y-auto hidden lg:block border-r border-slate-100">
+            <div className="absolute top-0 bottom-0 right-0 z-[999] w-52 bg-white/95 backdrop-blur-sm shadow-2xl overflow-y-auto hidden lg:block border-l border-slate-100">
               <div className="p-3 border-b border-slate-100">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{devsComLoc.length} empreendimentos</p>
               </div>
