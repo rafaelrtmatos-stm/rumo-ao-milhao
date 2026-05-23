@@ -15,6 +15,24 @@ export function setCurrentUser(_id: string) {}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+export function extrairCoordenadasDoLink(url?: string) {
+  if (!url) return null;
+  const match = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
+}
+
+function injectCoordenadas(dev: Empreendimento): Empreendimento {
+  const link = (dev as any).googleMapsUrl || (dev as any).linkGoogleMaps || (dev as any).mapaLocalizacaoUrl;
+  
+  if (link && (!dev.lat || !dev.lng || dev.lat === 0)) {
+    const coords = extrairCoordenadasDoLink(link);
+    if (coords) {
+      return { ...dev, lat: coords.lat, lng: coords.lng };
+    }
+  }
+  return dev;
+}
+
 async function apiGet<T>(path: string): Promise<T> {
   const res = await authFetch(path);
   if (!res.ok) {
@@ -58,32 +76,28 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
       for (const item of items) {
         const local = await db.empreendimentos.get(item.id);
         if (!local || local.syncStatus === 'synced') {
-          // Preserva mapaImagemBase64 do cache local, pois o GET da lista não retorna a imagem
           const base64 = (local?.data as any)?.mapaImagemBase64;
           const merged = base64 ? { ...item, mapaImagemBase64: base64 } : item;
           await db.empreendimentos.put({ id: item.id, data: merged, syncStatus: 'synced', updatedAt: now });
         }
       }
-      // Retorna com imagem do cache local
       const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
-      return records.map(r => r.data);
+      return records.map(r => injectCoordenadas(r.data));
     } catch (err) {
       console.warn('[db] getEmpreendimentos API falhou, usando cache:', err);
     }
   }
   const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
-  return records.map(r => r.data);
+  return records.map(r => injectCoordenadas(r.data));
 }
 
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
   if (navigator.onLine) {
-    // Salva metadados (sem base64)
     const itemsSemImagem = items.map(stripBase64);
     await apiPost('/api/empreendimentos', itemsSemImagem);
     const now = Date.now();
     for (const item of items) {
       await db.empreendimentos.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
-      // Envia imagem separadamente se existir
       if ((item as any).mapaImagemBase64) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
           mapaImagemBase64: (item as any).mapaImagemBase64,
@@ -100,15 +114,12 @@ async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
 }
 
 async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
-  // Salva local imediatamente (UX responsiva)
   await db.empreendimentos.put({ id: item.id, data: item, syncStatus: 'pending', updatedAt: Date.now() });
 
   if (navigator.onLine) {
     try {
-      // 1) Envia metadados sem a imagem base64 (evita 413)
       await apiPut(`/api/empreendimentos/${item.id}`, stripBase64(item));
 
-      // 2) Envia imagem separadamente se existir
       if ((item as any).mapaImagemBase64) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
           mapaImagemBase64: (item as any).mapaImagemBase64,
@@ -139,8 +150,6 @@ async function deleteEmpreendimento(id: string): Promise<void> {
   processSyncQueue();
 }
 
-// Remove mapaImagemBase64 antes de enviar ao servidor principal
-// O campo pode ter vários MB e estoura o limite de 4.5MB do Vercel
 function stripBase64(item: Empreendimento): Empreendimento {
   const { mapaImagemBase64, ...rest } = item as any;
   return rest as Empreendimento;
