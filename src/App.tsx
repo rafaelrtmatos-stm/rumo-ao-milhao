@@ -4207,7 +4207,7 @@ const LotDashboard = ({
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
               <div key={loteLabel} className="absolute rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
-                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: "translate(-50%,-50%)", borderWidth: `${ballSize.border ?? 2}px` }}>
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, borderWidth: `${ballSize.border ?? 2}px` }}>
                 {loteLabel}
               </div>
             );
@@ -4380,7 +4380,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4957,7 +4957,7 @@ const LotDashboard = ({
                         height: `${ballSize.size}px`,
                         fontSize: `${ballSize.font}px`,
                         borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
-                        transform: "translate(-50%,-50%)",
+                        transform: `translate(-50%,-50%) scale(${1/mapZoom})`,
                         pointerEvents: "auto",
                       }}
                     />
