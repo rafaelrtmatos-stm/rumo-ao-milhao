@@ -7840,12 +7840,40 @@ const VendasSection = ({
     });
   };
 
+  // Mapeamento campo → seção do formulário
+  const saleFieldSection: Record<string, string> = {
+    nome: "section-comprador", cpf: "section-comprador", rg: "section-comprador",
+    estadoCivil: "section-comprador", nascimento: "section-comprador",
+    profissao: "section-comprador", telefone: "section-comprador",
+    endereco: "section-comprador", cidade: "section-comprador",
+    empreendimentoId: "section-lote", numeroLote: "section-lote",
+    quadra: "section-lote", valorLote: "section-lote",
+    vendedor: "section-vendedor",
+    valorEntrada: "section-pagamento", quantidadeParcelas: "section-pagamento",
+    valorParcela: "section-pagamento", dataVencimento: "section-pagamento",
+  };
+
   const focusInvalidSaleField = (field: string) => {
-    const el = vendasFormRef.current?.querySelector<HTMLElement>(`[data-sale-field="${field}"]`);
-    if (el) {
-      el.scrollIntoView({ behavior: "smooth", block: "center" });
-      setTimeout(() => el.focus(), 250);
+    // Primeiro: rolar para a seção correta se necessário
+    const sectionId = saleFieldSection[field];
+    if (sectionId) {
+      const section = vendasFormRef.current?.querySelector<HTMLElement>(`#${sectionId}`);
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     }
+    // Depois: focar no campo específico
+    setTimeout(() => {
+      const el = vendasFormRef.current?.querySelector<HTMLElement>(`[data-sale-field="${field}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+        // Piscar vermelho para chamar atenção
+        el.style.transition = "box-shadow 0.1s";
+        el.style.boxShadow = "0 0 0 4px rgba(239,68,68,0.4)";
+        setTimeout(() => { el.style.boxShadow = ""; }, 1000);
+      }
+    }, 300);
   };
 
   const validateVendaFields = () => {
@@ -8944,7 +8972,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
             Preencha o campo obrigatório destacado: {Object.values(invalidSaleFields)[0]}.
           </div>
         )}
-        <div className="card-premium">
+        <div id="section-comprador" className="card-premium">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
               <Users size={22} className="stroke-[2.5]" />
@@ -9193,7 +9221,8 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
               <label className="label">RG</label>
               <input
                 required
-                className={`input-field font-mono ${rgErr ? "border-red-400 focus:ring-red-400" : rgStatus(clientData.rg) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                data-sale-field="rg"
+                className={`input-field font-mono${requiredSaleFieldClass("rg")} ${rgErr ? "border-red-400 focus:ring-red-400" : rgStatus(clientData.rg) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
                 value={clientData.rg}
                 onChange={(e) => {
                   const masked = maskRG(e.target.value);
@@ -9538,7 +9567,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
           </div>
         </div>
 
-        <div className="card-premium border-primary-light/10 bg-primary-light/[0.02]">
+        <div id="section-lote" className="card-premium border-primary-light/10 bg-primary-light/[0.02]">
           <div className="flex items-center gap-3 mb-8">
             <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl">
               <Package size={22} className="stroke-[2.5]" />
@@ -9798,7 +9827,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                     Fica salvo no registro e será usado no contrato e recibo.
                   </p>
                 </div>
-                <div className={tipoVenda === 'avista' ? 'hidden' : ''}>
+                <div id="section-pagamento" className={tipoVenda === 'avista' ? 'hidden' : ''}>
                   <label className="label">Entrada</label>
                   <input
                     type="number"
