@@ -6773,6 +6773,27 @@ const EmpreendimentosSection = ({
               onSubmit={handleSubmit}
               className="card-premium grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50"
             >
+              {/* MAPA DE LOCALIZAÇÃO NO TOPO */}
+              <div className="md:col-span-2">
+                <label className="label flex items-center gap-2">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                  Localização no mapa
+                  {(formData as any).lat && (formData as any).lng && (
+                    <span className="text-[10px] text-emerald-600 font-bold ml-1">✓ Definida</span>
+                  )}
+                </label>
+                <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
+                  <PickLocationMap
+                    lat={(formData as any).lat ?? null}
+                    lng={(formData as any).lng ?? null}
+                    onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
+                  />
+                </div>
+                {!(formData as any).lat && (
+                  <p className="text-[10px] text-slate-400 mt-1">Clique no mapa para definir a localização do empreendimento.</p>
+                )}
+              </div>
+
               <div className="md:col-span-2">
                 <label className="label">Nome do Empreendimento</label>
                 <input
@@ -6944,12 +6965,7 @@ const EmpreendimentosSection = ({
                     <p className="text-[10px] text-slate-400">Cole o link do Maps, coordenadas DMS (2°26'50.1"S 54°48'18.1"W) ou decimais. Ou clique no mapa abaixo.</p>
                   </div>
                 )}
-                {/* MINI MAPA PARA CLICAR E DEFINIR LOCALIZAÇÃO */}
-                <PickLocationMap
-                  lat={(formData as any).lat ?? null}
-                  lng={(formData as any).lng ?? null}
-                  onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
-                />
+
               </div>
 
               <div>
