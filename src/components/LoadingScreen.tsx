@@ -83,14 +83,16 @@ export default function LoadingScreen({ progress }: Props) {
           0% { background-position: -200% center; }
           100% { background-position: 200% center; }
         }
+        @keyframes pulse-money {
+          0%, 100% { transform: scale(1); opacity: 1; }
+          50% { transform: scale(1.3); opacity: 0.8; }
+        }
       `}</style>
 
       {/* Logo */}
       <div className="relative z-10 flex flex-col items-center gap-8 px-8 w-full max-w-sm">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-20 h-20 rounded-3xl bg-[#1a4a1a] border-2 border-emerald-700/50 shadow-2xl flex items-center justify-center">
-            <img src="/icon-192x192.png" alt="RA1M" className="w-14 h-14 rounded-2xl" />
-          </div>
+          <img src="/logo-transparent.png" alt="RA1M" className="w-28 h-28 drop-shadow-2xl" />
           <div className="text-center">
             <h1 className="text-2xl font-black text-white italic tracking-tight">Rumo ao Milhão</h1>
             <p className="text-[11px] text-emerald-400/70 uppercase tracking-widest font-bold mt-0.5">Sistema Imobiliário</p>
@@ -112,8 +114,8 @@ export default function LoadingScreen({ progress }: Props) {
             {formatBRL(displayValue)}
           </div>
           {animDone && (
-            <p className="text-emerald-400 text-sm font-black animate-bounce">
-              🎯 1 Milhão!
+            <p className="text-emerald-400 text-lg font-black" style={{ animation: "pulse-money 0.4s ease-in-out infinite" }}>
+              💰 1 Milhão!
             </p>
           )}
         </div>

@@ -13,6 +13,12 @@
     <!-- iPhone / iPad (ícone na tela inicial) -->
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-title" content="RA1M" />
+    <style>
+      /* Evitar piscada (FOUC) antes do React montar */
+      body { background: #0d200d; }
+      #root { opacity: 0; transition: opacity 0.1s; }
+      #root.ready { opacity: 1; }
+    </style>
 
     <meta name="theme-color" content="#000000" />
     <link rel="manifest" href="/manifest.json" />

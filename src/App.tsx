@@ -15322,6 +15322,8 @@ const HistoricoExclusoesSection = ({
 // --- Main App ---
 
 export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
+  // Remover piscada inicial (FOUC)
+  useEffect(() => { document.getElementById("root")?.classList.add("ready"); }, []);
   const [section, setSection] = useState<Section>(() => {
     try {
       const saved = localStorage.getItem('lastSection') as Section;
