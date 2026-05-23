@@ -5495,6 +5495,7 @@ const EmpreendimentosSection = ({
   onReleaseSoldLot,
   proprietarios = [],
   canEditMap = false,
+  isAdmin = false,
 }: {
   developments: Empreendimento[];
   sales: Venda[];
@@ -5511,6 +5512,7 @@ const EmpreendimentosSection = ({
   onReleaseSoldLot: (vendaId: string) => void;
   proprietarios?: Proprietario[];
   canEditMap?: boolean;
+  isAdmin?: boolean;
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
@@ -16182,6 +16184,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onReleaseSoldLot={(vendaId) => updateVendaStatus(vendaId, "cancelado")}
             proprietarios={config.proprietarios || []}
             canEditMap={!!isAdmin || userPermissions?.editar_mapas === true}
+            isAdmin={!!isAdmin}
           />
         );
       case "proprietarios":
