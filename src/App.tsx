@@ -2282,7 +2282,7 @@ const LotDashboard = ({
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
   const [isMobile] = useState(() => window.innerWidth < 768);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
   const [drawerY, setDrawerY] = useState(0);
   const drawerDragRef = useRef<{ startY: number; startDY: number } | null>(null);
   const loteBusca = useRef<string>("");
@@ -5393,9 +5393,8 @@ const LotDashboard = ({
       persistDev({ ...localDev, lotesInfo: newInfo } as Empreendimento);
     };
 
-    // Altura do mapa: tela - header(~88) - busca(~52) - painel(drawerOpen ? 55vh : 140px)
-    const PANEL_H = drawerOpen ? Math.min(Math.round(window.innerHeight * 0.55), 500) : 140;
-    const MAP_H = Math.max(180, window.innerHeight - 88 - 52 - PANEL_H);
+    // Mapa: altura fixa ~40% da tela, painel ocupa o resto
+    const MAP_H = Math.max(220, Math.round(window.innerHeight * 0.40));
 
     return (
       <>
