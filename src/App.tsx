@@ -7015,7 +7015,7 @@ const EmpreendimentosSection = ({
               {/* Tab: Lotes Registrados */}
               {lotRegTab === "lotes" && (
                 <>
-                  <div className="flex-1 overflow-y-auto">
+                  <div className="flex-1 overflow-y-auto min-h-0">
                     {Object.keys(lotRegDev.lotesInfo || {}).length === 0 ? (
                       <div className="p-10 text-center text-slate-400 space-y-2">
                         <MapPin size={32} className="mx-auto opacity-30" />
@@ -7025,15 +7025,15 @@ const EmpreendimentosSection = ({
                         </button>
                       </div>
                     ) : (
-                      <div className="overflow-x-auto">
-                      <table className="w-full text-sm min-w-[380px]">
+                      <div>
+                      <table className="w-full text-xs">
                         <thead className="bg-slate-50 sticky top-0">
                           <tr>
-                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Quadra</th>
-                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Lote</th>
-                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                            <th className="text-left px-3 py-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Comprador</th>
-                            <th className="px-3 py-3" />
+                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Q</th>
+                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Lote</th>
+                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Comprador</th>
+                            <th className="px-2 py-2" />
                           </tr>
                         </thead>
                         <tbody>
@@ -7047,11 +7047,11 @@ const EmpreendimentosSection = ({
                               const temDesistente = !!(info as any).desistente;
                               return (
                                 <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
-                                  <td className="px-4 py-3">
-                                    <span className="font-black text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md text-xs">{quadra}</span>
+                                  <td className="px-2 py-2">
+                                    <span className="font-black text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-md text-[10px]">{quadra}</span>
                                   </td>
-                                  <td className="px-4 py-3 font-bold text-slate-800">{lote}</td>
-                                  <td className="px-4 py-3">
+                                  <td className="px-2 py-2 font-bold text-slate-800 text-[11px]">{lote}</td>
+                                  <td className="px-2 py-2">
                                     {venda ? (
                                       <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
                                     ) : isIndisponivel ? (
@@ -7060,7 +7060,7 @@ const EmpreendimentosSection = ({
                                       <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3 text-xs max-w-[130px]">
+                                  <td className="px-2 py-2 text-[10px] max-w-[80px]">
                                     {venda ? (
                                       <span className="text-red-600 font-bold flex items-center gap-1 truncate">
                                         <User size={11} />
@@ -7078,8 +7078,8 @@ const EmpreendimentosSection = ({
                                       <span className="text-slate-300 italic text-[10px]">—</span>
                                     )}
                                   </td>
-                                  <td className="px-4 py-3">
-                                    <div className="flex items-center justify-end gap-1">
+                                  <td className="px-1 py-1">
+                                    <div className="flex items-center justify-end gap-0.5">
                                       {/* Botão editar */}
                                       <button
                                         onClick={() => {
