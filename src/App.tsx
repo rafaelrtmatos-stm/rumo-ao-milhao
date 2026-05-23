@@ -2287,6 +2287,12 @@ const LotDashboard = ({
   const drawerDragRef = useRef<{ startY: number; startDY: number } | null>(null);
   const loteBusca = useRef<string>("");
   const [loteBuscaVal, setLoteBuscaVal] = useState("");
+  // Estados mobile — declarados aqui para seguir regras dos hooks
+  const quadraListInit = getQuadraList(dev);
+  const [quadraAberta, setQuadraAberta] = useState<string>(quadraListInit[0] || "");
+  const [mobileNovaQuadra, setMobileNovaQuadra] = useState("");
+  const [mobileNovoLote, setMobileNovoLote] = useState("");
+  const [mobileNovoStatus, setMobileNovoStatus] = useState<MapaLoteStatus>("disponivel");
   // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
   const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
 
@@ -5377,7 +5383,6 @@ const LotDashboard = ({
   // ── LAYOUT MOBILE ──────────────────────────────────────────────────────────
   if (isMobile && (mode === "mapa" || isEditingMap) && mapaImagem) {
     const quadraList = getQuadraList(localDev);
-    const [quadraAberta, setQuadraAberta] = (useState as any)(() => quadraList[0] || "");
     const getLotesQuadra = (q: string) => getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
     const getLoteStatus = (q: string, l: string) => {
       const key = getLotInfoKey(q, l);
@@ -5568,10 +5573,6 @@ const LotDashboard = ({
             {/* ── EDITAR BOLINHAS ── */}
             {isEditingMap && mapAction !== "massa" && mapAction !== "visualizar" && (() => {
               // Estado local para o formulário de adicionar bolinha
-              const [mobileNovaQuadra, setMobileNovaQuadra] = (useState as any)("");
-              const [mobileNovoLote, setMobileNovoLote] = (useState as any)("");
-              const [mobileNovoStatus, setMobileNovoStatus] = (useState as any)("disponivel" as MapaLoteStatus);
-
               const adicionarBolinhaMobile = () => {
                 if (!mobileNovaQuadra || !mobileNovoLote) { alert("Informe a quadra e o número do lote."); return; }
                 // Usar posição central do viewport como ponto inicial
