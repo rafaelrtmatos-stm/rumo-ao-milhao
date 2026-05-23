@@ -6,6 +6,7 @@ interface Props {
   sales: Venda[];
   onAbrirEmpreendimento: (id: string) => void;
   onVerMapa: (id: string) => void;
+  visible?: boolean;
 }
 
 type Camada = "satelite" | "hibrido" | "ruas";
@@ -57,7 +58,7 @@ function clusterPins(devs: Empreendimento[], zoom: number) {
   return clusters;
 }
 
-export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa }: Props) {
+export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
@@ -126,6 +127,14 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       if (leafletRef.current) { leafletRef.current.remove(); leafletRef.current = null; }
     };
   }, []);
+
+  // Quando mapa fica visível: corrigir dimensões (estava em display:none)
+  useEffect(() => {
+    if (!visible || !leafletRef.current) return;
+    setTimeout(() => {
+      leafletRef.current?.invalidateSize();
+    }, 50);
+  }, [visible]);
 
   // Centralizar quando empreendimentos carregarem (resolve closure stale)
   const centradoRef = useRef(false);

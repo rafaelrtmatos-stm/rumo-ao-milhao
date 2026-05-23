@@ -2971,6 +2971,20 @@ const LotDashboard = ({
     window.setTimeout(updateDisplayedMapScale, 500);
   };
 
+  // ResizeObserver: recalcula escala sempre que o container muda de tamanho
+  useEffect(() => {
+    if (!mapContainerRef.current) return;
+    let rafId: number;
+    const ro = new ResizeObserver(() => {
+      cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(updateDisplayedMapScale);
+    });
+    const targets = [mapContainerRef, mapViewportRef, mapImageRef]
+      .map(r => r.current).filter(Boolean) as Element[];
+    targets.forEach(el => ro.observe(el));
+    return () => { ro.disconnect(); cancelAnimationFrame(rafId); };
+  }, [mapaImagem]);
+
   // Renderização direta do PDF sempre que o zoom ou o empreendimento mudar
   useEffect(() => {
     if ((localDev as any).mapaPdfOriginalBase64) {
@@ -3249,15 +3263,29 @@ const LotDashboard = ({
   };
 
   const getBallPixelSize = () => {
-    // Tamanho baseado na LARGURA DO MAPA — proporcional ao conteúdo, não à tela.
-    // Assim a bolinha mantém o mesmo tamanho visual independente do zoom ou device.
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-    // Referência: largura do container do mapa em px no zoom 1
-    const mapW = mapContainerRef.current?.offsetWidth || mapImageRef.current?.offsetWidth || 600;
-    // Bolinha = 2.8% da largura do mapa * slider (100% = padrão)
+
+    // Largura CSS da imagem do mapa no zoom=1 (sem considerar o transform:scale do container)
+    // O transform:scale(mapZoom) já é aplicado pelo container — a bolinha não multiplica por mapZoom
+    const imgEl = mapImageRef.current;
+    const imgLayoutW = imgEl
+      ? (imgEl.offsetWidth || imgEl.getBoundingClientRect().width || 0)
+      : 0;
+
+    // Fallback para o container
+    const containerW = mapContainerRef.current?.offsetWidth
+      || mapViewportRef.current?.offsetWidth
+      || 0;
+
+    const mapW = imgLayoutW || containerW || 600;
+
+    // Bolinha = 2.8% da largura CSS da imagem (no zoom 1)
+    // Como o container usa transform:scale(mapZoom), a bolinha vai crescer automaticamente com o zoom
     const size = Math.round(mapW * 0.028 * pct);
-    const safeSz = Math.max(8, Math.min(60, size));
-    return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)) };
+    const safeSz = Math.max(8, Math.min(80, size));
+    const border = Math.max(1.5, safeSz * 0.14);
+    const font = Math.max(5, Math.round(safeSz * 0.42));
+    return { size: safeSz, font, border };
   };
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
@@ -3286,27 +3314,30 @@ const LotDashboard = ({
 
   const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
     return new Promise((resolve, reject) => {
-      if (!mapaImagem) {
+      // Usar sempre a imagem ORIGINAL em máxima qualidade para o export
+      const imgSrc = mapaImagemOriginal || mapaImagem;
+      if (!imgSrc) {
         reject(new Error("Nenhum mapa carregado para baixar."));
         return;
       }
       const img = new Image();
       img.crossOrigin = "anonymous";
       img.onload = () => {
+        // Escala 2x para qualidade máxima no export
+        const scale = 2;
         const canvas = document.createElement("canvas");
-        canvas.width = img.naturalWidth || img.width;
-        canvas.height = img.naturalHeight || img.height;
-        const ctx = canvas.getContext("2d");
-        if (!ctx) { reject(new Error("Não foi possível preparar o mapa.")); return; }
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        canvas.width = (img.naturalWidth || img.width) * scale;
+        canvas.height = (img.naturalHeight || img.height) * scale;
+        const ctx = canvas.getContext("2d")!;
+        ctx.scale(scale, scale);
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, img.naturalWidth || img.width, img.naturalHeight || img.height);
         const baseSize = getBallBasePixelSize().size;
-        // Calcula o raio proporcional: bolinha tem tamanho fixo em px na tela
-        // Para o export, converte o tamanho visual para proporção da imagem
         const containerCssWidth = mapContainerRef.current?.offsetWidth || mapImageRef.current?.offsetWidth || 1000;
-        // quantos % da largura do container a bolinha ocupa na tela
         const ballFraction = baseSize / containerCssWidth;
-        // aplica essa fração sobre a largura real da imagem
-        const radius = Math.max((canvas.width * ballFraction) / 2, 3);
+        // Raio proporcional à imagem (já em escala 2x)
+        const radius = Math.max((canvas.width * ballFraction) / 2, 4);
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
           const indisponivel = ponto.status === "indisponivel" || !!venda;
@@ -3323,7 +3354,7 @@ const LotDashboard = ({
         resolve(canvas);
       };
       img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
-      img.src = mapaImagem;
+      img.src = mapaImagemOriginal || mapaImagem;
     });
   };
 
@@ -3332,7 +3363,7 @@ const LotDashboard = ({
       const canvas = await gerarCanvasMapaInterativo();
       const link = document.createElement("a");
       link.download = getNomeArquivoMapaExportado("png");
-      link.href = canvas.toDataURL("image/png");
+      link.href = canvas.toDataURL("image/png", 1.0);
       document.body.appendChild(link); link.click(); document.body.removeChild(link);
     } catch (error: any) {
       alert(error?.message || "Não foi possível baixar o mapa com as bolinhas.");
@@ -4124,7 +4155,7 @@ const LotDashboard = ({
             const y = marcadorPonto1.yPercent + (marcadorPonto2Preview.yPercent - marcadorPonto1.yPercent) * t;
             return (
               <div key={loteLabel} className="absolute rounded-full border-2 border-white bg-blue-400 opacity-60 flex items-center justify-center font-black text-white pointer-events-none map-marker-label whitespace-nowrap leading-none overflow-hidden"
-                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, transformOrigin: "center center" }}>
+                style={{ left: `${x}%`, top: `${y}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, transform: "translate(-50%,-50%)", borderWidth: `${ballSize.border ?? 2}px` }}>
                 {loteLabel}
               </div>
             );
@@ -4297,7 +4328,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, transform: `translate(-50%,-50%) scale(${1/mapZoom})`, transformOrigin: "center center", pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4873,9 +4904,8 @@ const LotDashboard = ({
                         width: `${ballSize.size}px`,
                         height: `${ballSize.size}px`,
                         fontSize: `${ballSize.font}px`,
-                        borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
-                        transform: `translate(-50%,-50%) scale(${1/mapZoom})`,
-                        transformOrigin: "center center",
+                        borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
+                        transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
                       }}
                     />
@@ -5792,6 +5822,7 @@ const EmpreendimentosSection = ({
               <MapaGlobalDashboard
                 empreendimentos={developments}
                 sales={sales}
+                visible={showMapaGlobal}
                 onAbrirEmpreendimento={(id) => {
                   setShowMapaGlobal(false);
                   const dev = developments.find(d => d.id === id);
