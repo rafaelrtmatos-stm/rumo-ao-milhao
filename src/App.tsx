@@ -2346,8 +2346,8 @@ const LotDashboard = ({
 
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
-  const MED_RES_ZOOM_THRESHOLD = 1.4;   // zoom > 1.4 → imagem média
-  const HIGH_RES_ZOOM_THRESHOLD = 2.5;  // zoom > 2.5 → imagem alta resolução
+  const MED_RES_ZOOM_THRESHOLD = 1.5;   // zoom > 1.5 → original
+  const HIGH_RES_ZOOM_THRESHOLD = 1.5;  // mesmo threshold — só 2 versões
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -2650,16 +2650,14 @@ const LotDashboard = ({
   const mapaImagem = (() => {
     if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
     if (!mapaImagemOriginal) return "";
-    // Zoom > 2.5 → original (100% qualidade)
-    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) return mapaImagemOriginal;
-    // Zoom 1-2.5 → média (50%)
-    if (mapZoom > 1) return mapaImagemMedia || mapaImagemOriginal;
-    // Zoom ≤ 1 → leve (30%, carrega rápido)
-    return mapaImagemLeveBase64 || mapaImagemOriginal;
+    // Zoom > 1.5x → original (100%)
+    if (mapZoom > 1.5) return mapaImagemOriginal;
+    // Zoom ≤ 1.5x → média (50%) — mais leve para visualização geral
+    return mapaImagemMedia || mapaImagemOriginal;
   })();
 
   // Imagem de fundo (fallback enquanto a principal carrega)
-  const mapaImagemFallback = mapaImagemLeveBase64 || mapaImagemOriginal;
+  const mapaImagemFallback = mapaImagemMedia || mapaImagemOriginal;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -3358,14 +3356,13 @@ const LotDashboard = ({
     reader.onload = async () => {
       setMapUploadProgress(50);
       const original = String(reader.result || "");
-      const leve = await gerarImagemLeve(original, 800, 0.3);
-      setMapUploadProgress(70);
-      const media = await gerarImagemLeve(original, 1600, 0.7); // 50% qualidade, max 1600px
+      setMapUploadProgress(60);
+      const media = await gerarImagemLeve(original, 1600, 0.6); // média 60%, max 1600px
       setMapUploadProgress(85);
       persistDev({
         ...localDev,
         mapaImagemBase64: original,
-        mapaImagemLeveBase64: leve,
+        mapaImagemLeveBase64: "",
         mapaImagemMedResBase64: media,
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
