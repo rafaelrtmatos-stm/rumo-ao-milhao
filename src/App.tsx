@@ -5320,8 +5320,12 @@ const LotDashboard = ({
                     const updateZoom = (clientX: number) => {
                       const rect = track.getBoundingClientRect();
                       const pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-                      const newZoom = 1 + pct * 9; // 1x a 10x
-                      setMapZoomSafely(newZoom);
+                      const newZoom = Math.max(1, Math.min(10, 1 + pct * 9));
+                      // Slider: zoom para o centro do viewport (não muda o pan desnecessariamente)
+                      const viewport = mapViewportRef.current;
+                      const vpW = viewport?.offsetWidth || window.innerWidth;
+                      const vpH = viewport?.offsetHeight || window.innerHeight;
+                      setMapZoomAtPoint(newZoom, vpW / 2, vpH / 2);
                     };
                     updateZoom(e.clientX);
                     const onMove = (ev: PointerEvent) => updateZoom(ev.clientX);
