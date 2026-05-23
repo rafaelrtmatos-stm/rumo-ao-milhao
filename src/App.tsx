@@ -5474,16 +5474,8 @@ const LotDashboard = ({
             <button onClick={() => { setMapFullscreen(false); try{(screen as any).orientation?.unlock?.()}catch{}; scheduleMapScaleUpdate(true); }}
               className="bg-white/20 backdrop-blur rounded-2xl px-4 py-2 text-white text-xs font-black">Fechar</button>
           </div>
-          <div ref={mapViewportFullscreenRef}
-            onTouchStart={handleMapTouchStart} onTouchMove={handleMapTouchMove}
-            onTouchEnd={handleMapTouchEnd} onTouchCancel={handleMapTouchEnd}
-            className="flex-1 relative overflow-hidden" style={{ touchAction: 'none' }}>
-            <div ref={mapContainerRef} className="absolute left-0 top-0 select-none"
-              style={{ width: '100%', transform: `translate(${mapPan.x}px,${mapPan.y}px) scale(${mapZoom})`, transformOrigin: '0 0', willChange: 'transform' }}>
-              <img ref={mapImageRef} src={mapaImagem} alt="Mapa" className="block w-full h-auto pointer-events-none" draggable={false}
-                onLoad={() => { updateDisplayedMapScale(); setTimeout(() => fitMapToScreen(0), 200); }} />
-              {renderMapaPontos()}
-            </div>
+          <div className="flex-1 relative overflow-hidden">
+            {renderMapa()}
           </div>
           <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
         </div>
