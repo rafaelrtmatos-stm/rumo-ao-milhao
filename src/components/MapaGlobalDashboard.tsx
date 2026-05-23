@@ -266,9 +266,9 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   }
 
   return (
-    <div className="relative w-full h-full flex" style={{ minHeight: 200 }}>
+    <div className="relative w-full h-full flex" style={{ minHeight: 200, flex: 1 }}>
       {/* MAPA */}
-      <div ref={mapRef} className="flex-1 h-full" />
+      <div ref={mapRef} className="flex-1" style={{ minHeight: 200 }} />
 
       {/* POPUP DO EMPREENDIMENTO */}
       {selectedDev && (() => {

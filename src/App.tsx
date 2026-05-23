@@ -6022,7 +6022,7 @@ const EmpreendimentosSection = ({
         <div style={{ display: showMapaGlobal ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
-            style={{ height: globalMapHeight, isolation: 'isolate', contain: 'layout' }}
+            style={{ height: globalMapHeight, isolation: 'isolate' }}
           >
             {comCoord.length === 0 && (
               <div className="flex-1 flex flex-col items-center justify-center gap-3 p-8 text-center">
@@ -6041,7 +6041,7 @@ const EmpreendimentosSection = ({
               </div>
             )}
             {comCoord.length > 0 && (
-              <div className="flex-1 min-h-0">
+              <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
               <MapaGlobalDashboard
                 empreendimentos={developments}
                 sales={sales}
