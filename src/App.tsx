@@ -3500,18 +3500,22 @@ const LotDashboard = ({
       const canvas = await gerarCanvasMapaInterativo();
       const { jsPDF } = await import("jspdf");
       const landscape = canvas.width >= canvas.height;
-      const pdf = new jsPDF({ orientation: landscape ? "landscape" : "portrait", unit: "mm", format: "a4" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 6;
-      const maxWidth = pageWidth - margin * 2;
-      const maxHeight = pageHeight - margin * 2;
-      const ratio = Math.min(maxWidth / canvas.width, maxHeight / canvas.height);
-      const imgWidth = canvas.width * ratio;
-      const imgHeight = canvas.height * ratio;
-      const x = (pageWidth - imgWidth) / 2;
-      const y = (pageHeight - imgHeight) / 2;
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, y, imgWidth, imgHeight);
+      // Formato baseado na proporção real do mapa — não forçar A4
+      const pdf = new jsPDF({
+        orientation: landscape ? "landscape" : "portrait",
+        unit: "px",
+        format: [canvas.width, canvas.height],
+        compress: false, // sem compressão — máxima qualidade
+      });
+      // Imagem ocupa a página inteira (sem margens) — máxima resolução
+      pdf.addImage(
+        canvas.toDataURL("image/png", 1.0), // qualidade 100%
+        "PNG",
+        0, 0,
+        canvas.width, canvas.height,
+        undefined,
+        "FAST" // sem recompressão interna
+      );
       pdf.save(getNomeArquivoMapaExportado("pdf"));
     } catch (error: any) {
       alert(error?.message || "Não foi possível baixar o mapa em PDF.");
