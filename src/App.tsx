@@ -2889,34 +2889,54 @@ const LotDashboard = ({
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
-        const scale = Math.min(1, maxWidth / img.width);
-        const canvas = document.createElement("canvas");
-        canvas.width = Math.floor(img.width * scale);
-        canvas.height = Math.floor(img.height * scale);
-        const ctx = canvas.getContext("2d")!;
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "medium";
-        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-        resolve(canvas.toDataURL("image/webp", quality));
+        // Yield antes de processar imagem grande
+        requestAnimationFrame(() => {
+          const scale = Math.min(1, maxWidth / img.width);
+          const canvas = document.createElement("canvas");
+          canvas.width = Math.floor(img.width * scale);
+          canvas.height = Math.floor(img.height * scale);
+          const ctx = canvas.getContext("2d")!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "medium";
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          // Yield antes de toDataURL (pode ser pesado)
+          requestAnimationFrame(() => {
+            resolve(canvas.toDataURL("image/webp", quality));
+          });
+        });
       };
-      img.onerror = () => resolve(dataUrl); // fallback: usa original
+      img.onerror = () => resolve(dataUrl);
       img.src = dataUrl;
     });
   };
 
   const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number) => {
+    // Yield para não bloquear o browser antes de iniciar
+    await new Promise(r => setTimeout(r, 0));
     const pdfjsLib = await loadPdfJsIfNeeded();
+    // Yield após carregar lib
+    await new Promise(r => setTimeout(r, 0));
     const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
     const page = await pdfDoc.getPage(1);
     const viewport = page.getViewport({ scale });
+    // Limitar resolução máxima para não travar celular
+    const maxPx = 4000;
+    const finalScale = viewport.width > maxPx || viewport.height > maxPx
+      ? scale * (maxPx / Math.max(viewport.width, viewport.height))
+      : scale;
+    const vp = finalScale !== scale ? page.getViewport({ scale: finalScale }) : viewport;
     const canvas = document.createElement("canvas");
-    canvas.width = Math.floor(viewport.width);
-    canvas.height = Math.floor(viewport.height);
+    canvas.width = Math.floor(vp.width);
+    canvas.height = Math.floor(vp.height);
     const ctx = canvas.getContext("2d")!;
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    return canvas.toDataURL("image/png", 1);
+    // Yield antes de renderizar (operação pesada)
+    await new Promise(r => setTimeout(r, 0));
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    // Yield após renderizar
+    await new Promise(r => setTimeout(r, 0));
+    return canvas.toDataURL("image/png", 0.92);
   };
 
   // ── OPÇÃO C: renderização direta do PDF no canvas ──────────────────────────
@@ -10944,12 +10964,12 @@ const ContratosSection = ({
         </div>
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
-      <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
       ${reciboObservacao ? `
-      <div style="margin:32px 0;padding:24px 28px;background:#f0fdf4;border:2px solid #16a34a;border-radius:16px;">
-        <p style="font-size:11px;font-weight:900;color:#15803d;text-transform:uppercase;letter-spacing:2px;margin:0 0 10px 0;">📋 Observações</p>
-        <p style="font-size:16px;color:#1e293b;line-height:1.7;margin:0;font-weight:600;">${reciboObservacao}</p>
+      <div style="margin:0 0 28px 0;padding:0;border-top:1px solid #e2e8f0;padding-top:20px;">
+        <p style="font-size:13px;font-weight:900;color:#64748b;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px 0;">Observações</p>
+        <p style="font-size:16px;color:#1e293b;line-height:1.7;margin:0;">${reciboObservacao}</p>
       </div>` : ''}
+      <p class="obs">Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.</p>
       <div class="rodape">
         <div>
           <p class="data-texto">Santarém/PA, ${dataFormatada}</p>
@@ -12580,15 +12600,15 @@ VENDEDOR: ${vendedorLabel}`;
                         </div>
                       )}
                     </div>
+                    {reciboObservacao && (
+                      <div className="mb-6 pt-5 border-t border-slate-200">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Observações</p>
+                        <p className="text-sm text-slate-800 leading-relaxed">{reciboObservacao}</p>
+                      </div>
+                    )}
                     <p className="text-sm font-medium italic text-slate-500">
                       Pelo que damos plena, geral e irrevogável quitação do referido valor, para que nada mais se reclame.
                     </p>
-                    {reciboObservacao && (
-                      <div className="mt-6 p-5 bg-emerald-50 border-2 border-emerald-500 rounded-2xl">
-                        <p style={{fontSize:'9px',fontWeight:900,textTransform:'uppercase',letterSpacing:'2px',color:'#15803d',marginBottom:'8px'}}>📋 Observações</p>
-                        <p className="text-sm font-semibold text-slate-800 leading-relaxed">{reciboObservacao}</p>
-                      </div>
-                    )}
                   </div>
                   <div className="pt-10 border-t border-slate-100 flex justify-between items-end">
                     <div>
