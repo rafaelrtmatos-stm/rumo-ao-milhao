@@ -4416,7 +4416,7 @@ const LotDashboard = ({
           </div>
 
           {/* PAINEL LATERAL FLUTUANTE */}
-          <div className={`lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : "hidden lg:flex lg:w-[280px]"}`}>
+          <div className={`lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
             {/* Botao recolher */}
             <button
               type="button"
