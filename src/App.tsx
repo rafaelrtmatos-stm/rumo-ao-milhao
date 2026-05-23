@@ -2650,10 +2650,12 @@ const LotDashboard = ({
   const mapaImagem = (() => {
     if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
     if (!mapaImagemOriginal) return "";
-    // Sempre usar a melhor imagem disponível — sem trocar durante zoom
-    // Prioridade: alta > original > leve
-    if (mapaImagemAlta) return mapaImagemAlta;
-    return mapaImagemOriginal;
+    // Zoom > 2.5 → original (100% qualidade)
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) return mapaImagemOriginal;
+    // Zoom 1-2.5 → média (50%)
+    if (mapZoom > 1) return mapaImagemMedia || mapaImagemOriginal;
+    // Zoom ≤ 1 → leve (30%, carrega rápido)
+    return mapaImagemLeveBase64 || mapaImagemOriginal;
   })();
 
   // Imagem de fundo (fallback enquanto a principal carrega)
@@ -3357,11 +3359,14 @@ const LotDashboard = ({
       setMapUploadProgress(50);
       const original = String(reader.result || "");
       const leve = await gerarImagemLeve(original, 800, 0.3);
+      setMapUploadProgress(70);
+      const media = await gerarImagemLeve(original, 1600, 0.7); // 50% qualidade, max 1600px
       setMapUploadProgress(85);
       persistDev({
         ...localDev,
         mapaImagemBase64: original,
         mapaImagemLeveBase64: leve,
+        mapaImagemMedResBase64: media,
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
