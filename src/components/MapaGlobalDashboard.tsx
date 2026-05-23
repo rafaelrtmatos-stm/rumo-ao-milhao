@@ -138,10 +138,25 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   // Quando mapa fica visível: corrigir dimensões (estava em display:none)
   useEffect(() => {
     if (!visible || !leafletRef.current) return;
-    setTimeout(() => {
-      leafletRef.current?.invalidateSize();
-    }, 50);
+    // Chamar várias vezes para garantir que o layout está pronto
+    const map = leafletRef.current;
+    const fix = () => { map?.invalidateSize({ animate: false }); };
+    fix();
+    const t1 = setTimeout(fix, 50);
+    const t2 = setTimeout(fix, 150);
+    const t3 = setTimeout(fix, 400);
+    return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [visible]);
+
+  // ResizeObserver no container do mapa para invalidateSize automático
+  useEffect(() => {
+    if (!mapRef.current) return;
+    const ro = new ResizeObserver(() => {
+      leafletRef.current?.invalidateSize({ animate: false });
+    });
+    ro.observe(mapRef.current);
+    return () => ro.disconnect();
+  }, [mapReady]);
 
   // Centralizar quando empreendimentos carregarem (resolve closure stale)
   const centradoRef = useRef(false);
