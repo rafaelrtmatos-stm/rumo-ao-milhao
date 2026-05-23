@@ -14473,6 +14473,61 @@ const AniversariosSection = ({
   );
 };
 
+// Componente separado para botão de sync (usa hooks corretamente)
+const SyncButton = ({ dbService }: { dbService: any }) => {
+  const [syncStatus, setSyncStatus] = useState<"idle"|"loading"|"ok"|"error">("idle");
+  const [syncMsg, setSyncMsg] = useState("");
+
+  const forceSyncAll = async () => {
+    setSyncStatus("loading");
+    setSyncMsg("");
+    try {
+      const { db } = await import('./offlineDb');
+      const devRecords = await (db as any).empreendimentos.filter((r: any) => r.syncStatus !== 'deleted').toArray();
+      const clientRecords = await (db as any).clientes.filter((r: any) => r.syncStatus !== 'deleted').toArray();
+      const vendaRecords = await (db as any).vendas.filter((r: any) => r.syncStatus !== 'deleted').toArray();
+      let ok = 0; let erros = 0;
+      for (const rec of devRecords) {
+        try { await dbService.upsertEmpreendimento(rec.data); ok++; } catch { erros++; }
+      }
+      for (const rec of clientRecords) {
+        try { await dbService.upsertCliente(rec.data); ok++; } catch { erros++; }
+      }
+      for (const rec of vendaRecords) {
+        try { await dbService.upsertVenda(rec.data); ok++; } catch { erros++; }
+      }
+      setSyncStatus(erros === 0 ? "ok" : "error");
+      setSyncMsg(`${ok} registro(s) sincronizado(s)${erros > 0 ? `, ${erros} com erro` : ""}.`);
+    } catch (e: any) {
+      setSyncStatus("error");
+      setSyncMsg("Erro: " + (e?.message || "Tente novamente."));
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <button onClick={forceSyncAll} disabled={syncStatus === "loading"}
+        className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-60">
+        <svg className={syncStatus === "loading" ? "animate-spin" : ""} width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/>
+          <path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+        {syncStatus === "loading" ? "Sincronizando..." : "Forçar Sincronização Agora"}
+      </button>
+      {syncMsg && (
+        <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${syncStatus === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
+          {syncStatus === "ok"
+            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+          }
+          {syncMsg}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const ConfigSection = ({
   config,
   onSave,
@@ -14708,84 +14763,7 @@ const ConfigSection = ({
               Abra este navegador/dispositivo que tem os dados salvos e clique em Forçar Sincronização. Os dados serão enviados ao servidor e aparecerão em todos os outros dispositivos.
             </p>
           </div>
-          {(() => {
-            const [syncStatus, setSyncStatus] = (useState as any)<"idle"|"loading"|"ok"|"error">("idle");
-            const [syncMsg, setSyncMsg] = (useState as any)("");
-
-            const forceSyncAll = async () => {
-              setSyncStatus("loading");
-              setSyncMsg("");
-              try {
-                // Buscar todos os dados do IndexedDB local
-                const { db } = await import('./offlineDb');
-                const devRecords = await db.empreendimentos.filter((r: any) => r.syncStatus !== 'deleted').toArray();
-                const clientRecords = await db.clientes.filter((r: any) => r.syncStatus !== 'deleted').toArray();
-                const vendaRecords = await db.vendas.filter((r: any) => r.syncStatus !== 'deleted').toArray();
-
-                let ok = 0; let erros = 0;
-
-                // Reenviar empreendimentos
-                for (const rec of devRecords) {
-                  try {
-                    await dbService.upsertEmpreendimento(rec.data);
-                    ok++;
-                  } catch { erros++; }
-                }
-                // Reenviar clientes
-                for (const rec of clientRecords) {
-                  try {
-                    await dbService.upsertCliente(rec.data);
-                    ok++;
-                  } catch { erros++; }
-                }
-                // Reenviar vendas
-                for (const rec of vendaRecords) {
-                  try {
-                    await dbService.upsertVenda(rec.data);
-                    ok++;
-                  } catch { erros++; }
-                }
-
-                setSyncStatus(erros === 0 ? "ok" : "error");
-                setSyncMsg(`${ok} registro(s) sincronizado(s)${erros > 0 ? `, ${erros} com erro` : ""}.`);
-              } catch (e: any) {
-                setSyncStatus("error");
-                setSyncMsg("Erro: " + (e?.message || "Tente novamente."));
-              }
-            };
-
-            return (
-              <div className="space-y-3">
-                <button
-                  onClick={forceSyncAll}
-                  disabled={syncStatus === "loading"}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-slate-900 text-white font-black text-sm hover:bg-slate-700 active:scale-95 transition-all disabled:opacity-60"
-                >
-                  {syncStatus === "loading" ? (
-                    <>
-                      <svg className="animate-spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                      Sincronizando...
-                    </>
-                  ) : (
-                    <>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10"/><path d="M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                      Forçar Sincronização Agora
-                    </>
-                  )}
-                </button>
-                {syncMsg && (
-                  <div className={`p-3 rounded-xl text-xs font-bold flex items-center gap-2 ${syncStatus === "ok" ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
-                    {syncStatus === "ok" ? (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    ) : (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
-                    )}
-                    {syncMsg}
-                  </div>
-                )}
-              </div>
-            );
-          })()}
+          <SyncButton dbService={dbService} />
         </div>
 
         {/* DADOS BANCÁRIOS E PIX */}
