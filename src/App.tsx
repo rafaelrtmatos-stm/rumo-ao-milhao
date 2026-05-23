@@ -5376,184 +5376,333 @@ const LotDashboard = ({
 
   // ── LAYOUT MOBILE ──────────────────────────────────────────────────────────
   if (isMobile && mode === "mapa" && mapaImagem) {
-    const drawerHeight = drawerOpen ? Math.min(window.innerHeight * 0.65, 420) : 80;
+    const quadraList = getQuadraList(localDev);
+    const [quadraAberta, setQuadraAberta] = (useState as any)(() => quadraList[0] || "");
+    const getLotesQuadra = (q: string) => getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
+    const getLoteStatus = (q: string, l: string) => {
+      const key = getLotInfoKey(q, l);
+      const info = (localDev.lotesInfo || {})[key] as any;
+      const venda = vendaDoLote(q, l);
+      if (venda) return "vendido";
+      return info?.status || "disponivel";
+    };
+    const setLoteStatusMobile = (q: string, l: string, novoStatus: MapaLoteStatus) => {
+      const key = getLotInfoKey(q, l);
+      const existing = ((localDev.lotesInfo || {})[key] as any) || {};
+      const newInfo = { ...((localDev.lotesInfo) || {}), [key]: { ...existing, status: novoStatus } };
+      persistDev({ ...localDev, lotesInfo: newInfo } as Empreendimento);
+    };
+
+    // Altura do mapa: tela - header(~88) - busca(~52) - painel(drawerOpen ? 55vh : 140px)
+    const PANEL_H = drawerOpen ? Math.min(Math.round(window.innerHeight * 0.55), 500) : 140;
+    const MAP_H = Math.max(180, window.innerHeight - 88 - 52 - PANEL_H);
+
     return (
       <>
-      <div className="fixed inset-0 z-[100] flex flex-col bg-black" style={{ fontFamily: 'system-ui, sans-serif' }}>
+      <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden"
+        style={{ background: '#f5f7fb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
 
-        {/* HEADER MOBILE — topo sobre o mapa */}
-        <div className="absolute top-0 left-0 right-0 z-30 flex items-center gap-2 px-3 pt-10 pb-2">
-          {/* Pill do nome */}
-          <div className="flex-1 bg-white/95 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-lg flex items-center gap-2 min-w-0">
-            <div className="w-6 h-6 rounded-lg bg-[#1a4a1a] flex items-center justify-center flex-shrink-0">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
-            </div>
-            <p className="text-sm font-black text-slate-900 truncate leading-tight">{localDev.nome}</p>
+        {/* ── HEADER ── */}
+        <div className="flex-shrink-0 bg-white flex items-center gap-3 px-4 pt-11 pb-3 shadow-sm">
+          <div className="w-10 h-10 rounded-2xl bg-[#1a4a1a] flex items-center justify-center flex-shrink-0 shadow-sm">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
           </div>
-          {/* Botão editar */}
-          {canEditMap && mapAction === "visualizar" && (
-            <button onClick={entrarEdicao} className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-all flex-shrink-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            </button>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-black text-slate-900 leading-tight truncate">{localDev.nome}</p>
+            <p className="text-[11px] text-slate-400 font-medium">{isEditingMap ? "Editando mapa" : "Mapa de lotes"}</p>
+          </div>
+          {isEditingMap ? (
+            <div className="flex items-center gap-2">
+              <button onClick={cancelarEdicaoMapa}
+                className="w-9 h-9 rounded-2xl border border-slate-200 bg-white flex items-center justify-center active:scale-90 transition-all shadow-sm">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+              <button onClick={salvarEdicaoMapa}
+                className="h-9 px-4 rounded-2xl border-2 border-[#1a4a1a] text-[#1a4a1a] text-xs font-black flex items-center gap-1.5 active:scale-90 transition-all bg-white shadow-sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                Salvar
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {canEditMap && (
+                <button onClick={entrarEdicao}
+                  className="h-9 px-3 rounded-2xl border border-slate-200 bg-white text-slate-700 text-xs font-black flex items-center gap-1.5 active:scale-90 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Editar
+                </button>
+              )}
+              <button onClick={onClose}
+                className="w-9 h-9 rounded-2xl border border-slate-200 bg-white flex items-center justify-center active:scale-90 transition-all">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
           )}
-          {/* Botão fechar */}
-          <button onClick={onClose} className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-all flex-shrink-0">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </div>
+
+        {/* ── BUSCA ── */}
+        <div className="flex-shrink-0 px-4 pt-3 pb-2 flex gap-2 bg-white border-b border-slate-100">
+          <div className="flex-1 relative">
+            <svg className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input value={loteBuscaVal} onChange={e => setLoteBuscaVal(e.target.value)}
+              placeholder="Buscar lote (ex: Q10:15)"
+              className="w-full pl-10 pr-4 py-2.5 bg-slate-100 rounded-xl text-sm font-medium text-slate-800 placeholder-slate-400 outline-none border-0" />
+          </div>
+          <button
+            className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center active:scale-90 transition-all flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><circle cx="4" cy="6" r="1"/><line x1="8" y1="6" x2="20" y2="6"/><circle cx="4" cy="12" r="1"/><line x1="8" y1="12" x2="20" y2="12"/><circle cx="4" cy="18" r="1"/><line x1="8" y1="18" x2="20" y2="18"/></svg>
           </button>
         </div>
 
-        {/* BUSCA LOTE */}
-        <div className="absolute top-24 left-3 right-3 z-30">
-          <div className="relative">
-            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input
-              value={loteBuscaVal}
-              onChange={e => {
-                setLoteBuscaVal(e.target.value);
-                // Filtrar bolinhas visualmente seria feito via estado, por ora apenas guarda
-              }}
-              placeholder="Buscar lote (ex: Q10:15)"
-              className="w-full pl-8 pr-4 py-2.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg text-sm font-medium text-slate-800 placeholder-slate-400 outline-none border-0"
-              style={{ fontSize: 14 }}
-            />
-          </div>
-        </div>
-
-        {/* MAPA — ocupa tudo menos o drawer */}
-        <div className="flex-1 relative overflow-hidden" style={{ paddingBottom: drawerHeight }}>
+        {/* ── MAPA ── */}
+        <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}>
           {renderMapa()}
-
-          {/* BOTÕES FLUTUANTES DIREITA */}
+          {/* Botões flutuantes direita */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-            <button onClick={() => setMapZoomAtPoint(Math.min(10, mapZoomRef.current + 1), (getActiveViewport()?.offsetWidth||window.innerWidth)/2, (getActiveViewport()?.offsetHeight||window.innerHeight)/2)}
-              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
-            <button onClick={() => setMapZoomAtPoint(Math.max(1, mapZoomRef.current - 1), (getActiveViewport()?.offsetWidth||window.innerWidth)/2, (getActiveViewport()?.offsetHeight||window.innerHeight)/2)}
-              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
+            {([
+              { icon: '+', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.min(10,mapZoomRef.current+0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
+              { icon: '−', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(1,mapZoomRef.current-0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
+            ]).map((b,i) => (
+              <button key={i} onClick={b.action}
+                className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all text-slate-700 text-xl font-light border border-slate-100">
+                {b.icon}
+              </button>
+            ))}
             <button onClick={() => fitMapToScreen()}
-              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+              className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all border border-slate-100">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
             </button>
-            <button onClick={() => { setMapFullscreen(true); setMapActive(true); setTimeout(() => fitMapToScreen(0), 200); }}
-              className="w-11 h-11 bg-[#1a4a1a] rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            <button onClick={() => { setMapFullscreen(true); setMapActive(true); setTimeout(()=>fitMapToScreen(0),200); }}
+              className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all border border-slate-100">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
             </button>
           </div>
-
-          {/* Rosa dos ventos */}
-          <div className="absolute top-16 right-3 z-20 w-9 h-9 bg-white/90 backdrop-blur rounded-xl shadow flex items-center justify-center">
-            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H3l5.5 4-2 7L12 16l5.5 4-2-7L21 9h-6L12 2z" fill="#1a4a1a" stroke="white" strokeWidth="0.5"/></svg>
+          {/* Mini-mapa / Rosa dos ventos */}
+          <div className="absolute left-3 bottom-3 z-20">
+            <div className="bg-white/90 backdrop-blur rounded-xl shadow-md p-1.5 flex items-center justify-center" style={{width:38,height:38}}>
+              <svg width="24" height="24" viewBox="0 0 24 24"><polygon points="12,2 9,9 12,7 15,9" fill="#1a4a1a"/><polygon points="12,22 15,15 12,17 9,15" fill="#94a3b8"/><polygon points="2,12 9,9 7,12 9,15" fill="#94a3b8"/><polygon points="22,12 15,9 17,12 15,15" fill="#94a3b8"/><text x="11.5" y="13.5" fontSize="3.5" fontWeight="bold" fill="#1a4a1a" textAnchor="middle">N</text></svg>
+            </div>
           </div>
         </div>
 
-        {/* BOTTOM DRAWER */}
-        <div
-          className="absolute left-0 right-0 z-40 bg-white rounded-t-3xl shadow-2xl"
-          style={{
-            bottom: 0,
-            height: drawerHeight,
-            transition: drawerDragRef.current ? 'none' : 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
-          }}
-        >
-          {/* Handle de arraste */}
-          <div
-            className="flex justify-center pt-3 pb-1 cursor-pointer select-none"
-            onPointerDown={(e) => {
-              drawerDragRef.current = { startY: e.clientY, startDY: drawerOpen ? 0 : 0 };
-              const onMove = (ev: PointerEvent) => {
-                const dy = drawerDragRef.current!.startY - ev.clientY;
-                if (dy > 30) setDrawerOpen(true);
-                if (dy < -30) setDrawerOpen(false);
-              };
-              const onUp = () => { drawerDragRef.current = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
-              window.addEventListener('pointermove', onMove);
-              window.addEventListener('pointerup', onUp);
-            }}
-            onClick={() => setDrawerOpen(o => !o)}
-          >
-            <div className="w-10 h-1 bg-slate-300 rounded-full" />
+        {/* ── PAINEL INFERIOR ── */}
+        <div className="flex-1 flex flex-col overflow-hidden bg-white rounded-t-3xl shadow-2xl" style={{boxShadow:'0 -4px 32px rgba(0,0,0,0.10)'}}>
+
+          {/* Handle + abas */}
+          <div className="flex-shrink-0 px-4 pt-3 pb-0">
+            {/* Handle arrastável */}
+            <div className="flex justify-center mb-3"
+              onPointerDown={(e) => {
+                const startY = e.clientY;
+                const wasOpen = drawerOpen;
+                const om = (ev: PointerEvent) => {
+                  const dy = startY - ev.clientY;
+                  if (dy > 40) setDrawerOpen(true);
+                  if (dy < -40) setDrawerOpen(false);
+                };
+                const ou = () => { window.removeEventListener('pointermove',om); window.removeEventListener('pointerup',ou); };
+                window.addEventListener('pointermove',om); window.addEventListener('pointerup',ou);
+              }}
+              onClick={() => setDrawerOpen(o => !o)}>
+              <div className="w-9 h-1 bg-slate-200 rounded-full" />
+            </div>
+
+            {/* Abas: Visualizar / Editar bolinhas / Editar faixas */}
+            <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-3">
+              <button
+                onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mapAction === "visualizar" && !isEditingMap ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                Visualizar
+              </button>
+              <button
+                onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
+                <span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" />
+                Editar bolinhas
+              </button>
+              <button
+                onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
+                Editar faixas
+              </button>
+            </div>
           </div>
 
-          {/* Resumo compacto — sempre visível */}
-          <div className="px-4 pb-2 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-black text-slate-800">{localDev.nome}</p>
-              <p className="text-[10px] text-slate-400">{statsTotal2} lotes · {statsDisponiveis2} disponíveis</p>
-            </div>
-            <div className="flex gap-1.5">
-              <span className="text-[10px] font-black px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">{statsDisponiveis2} liv.</span>
-              <span className="text-[10px] font-black px-2 py-1 bg-red-50 text-red-600 rounded-lg">{statsIndisponiveis2} vend.</span>
-            </div>
+          {/* Conteúdo scrollável */}
+          <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5">
+
+            {/* ── VISUALIZAR ── */}
+            {(!isEditingMap || mapAction === "visualizar") && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-4 gap-2">
+                  {([{l:'Total',v:statsTotal2,bg:'#f8fafc',t:'#1e293b'},{l:'Livres',v:statsDisponiveis2,bg:'#eff6ff',t:'#1d4ed8'},{l:'Reserv.',v:statsReservados2,bg:'#fffbeb',t:'#d97706'},{l:'Vendid.',v:statsIndisponiveis2,bg:'#fef2f2',t:'#dc2626'}] as any[]).map((s:any) => (
+                    <div key={s.l} className="rounded-2xl p-3 text-center" style={{background:s.bg}}>
+                      <p className="text-lg font-black leading-none" style={{color:s.t}}>{s.v}</p>
+                      <p className="text-[9px] font-bold mt-1" style={{color:'#94a3b8'}}>{s.l}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex gap-4">
+                  {([{c:'#3b82f6',l:'Disponível'},{c:'#f59e0b',l:'Reservado'},{c:'#ef4444',l:'Indisponível'}] as any[]).map((i:any) => (
+                    <div key={i.l} className="flex items-center gap-1.5">
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{background:i.c}}/>
+                      <span className="text-xs font-semibold" style={{color:'#475569'}}>{i.l}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={baixarMapaInterativoImagem} className="flex items-center justify-center gap-2 py-3.5 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Imagem
+                  </button>
+                  <button onClick={baixarMapaInterativoPdf} className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    PDF
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ── EDITAR BOLINHAS ── */}
+            {isEditingMap && mapAction !== "massa" && mapAction !== "visualizar" && (
+              <div className="space-y-5">
+                {/* Ações rápidas */}
+                <div>
+                  <p className="text-sm font-black text-slate-800 mb-3">Ações rápidas</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {([
+                      { label: "Disponível", status: "disponivel" as MapaLoteStatus, color: "#3b82f6", bg: "#eff6ff", border: "#bfdbfe" },
+                      { label: "Reservado",  status: "reservado"  as MapaLoteStatus, color: "#f59e0b", bg: "#fffbeb", border: "#fde68a" },
+                      { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", bg: "#fef2f2", border: "#fecaca" },
+                    ] as any[]).map((a:any) => (
+                      <button key={a.status}
+                        onClick={() => {
+                          if (ctrlSelectedIds.size === 0) { alert("Toque nas bolinhas no mapa para selecioná-las."); return; }
+                          const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                          const next = currentPontos.map((p:any) => ctrlSelectedIds.has(p.id) ? {...p,status:a.status} : p);
+                          persistDev({ ...localDev, mapaPontos: next } as Empreendimento);
+                          setCtrlSelectedIds(new Set());
+                        }}
+                        className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 bg-white active:scale-95 transition-all"
+                        style={{borderColor: a.border}}>
+                        <span className="w-4 h-4 rounded-full flex-shrink-0" style={{background:a.color}}/>
+                        <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
+                      </button>
+                    ))}
+                    <button onClick={() => setCtrlSelectedIds(new Set())}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 border-slate-200 bg-white active:scale-95 transition-all">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
+                      <span className="text-xs font-bold text-slate-400">Limpar</span>
+                    </button>
+                  </div>
+                  {ctrlSelectedIds.size > 0 && (
+                    <p className="text-xs font-bold text-emerald-600 mt-2">{ctrlSelectedIds.size} bolinha(s) selecionada(s) no mapa</p>
+                  )}
+                </div>
+
+                {/* Editar status por quadra */}
+                <div>
+                  <p className="text-sm font-black text-slate-800 mb-1">Editar status de lotes</p>
+                  <p className="text-xs text-slate-400 mb-3">Selecione os lotes no mapa e altere o status.</p>
+                  <div className="space-y-2">
+                    {quadraList.map(q => {
+                      const lotes = getLotesQuadra(q);
+                      const isOpen = quadraAberta === q;
+                      return (
+                        <div key={q} className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
+                          <button className="w-full flex items-center justify-between px-4 py-3.5 active:bg-slate-50 transition-colors"
+                            onClick={() => (setQuadraAberta as any)(isOpen ? "" : q)}>
+                            <span className="text-sm font-black text-slate-800">Quadra {q}</span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-slate-400 font-medium">{lotes.length} lotes</span>
+                              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"
+                                style={{transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
+                                <polyline points="6 9 12 15 18 9"/>
+                              </svg>
+                            </div>
+                          </button>
+                          {isOpen && (
+                            <div className="px-4 pb-4 pt-1 border-t border-slate-50">
+                              <div className="flex flex-wrap gap-2 mt-2">
+                                {lotes.map(l => {
+                                  const st = getLoteStatus(q, l);
+                                  const isVendido = st === "vendido" || st === "indisponivel";
+                                  const isReservado = !isVendido && st === "reservado";
+                                  const bg = isVendido ? "#fee2e2" : isReservado ? "#fef3c7" : "#dbeafe";
+                                  const tc = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
+                                  const bc = isVendido ? "#fca5a5" : isReservado ? "#fcd34d" : "#93c5fd";
+                                  return (
+                                    <button key={l}
+                                      onClick={() => {
+                                        if (isVendido) return;
+                                        const next: MapaLoteStatus = st === "disponivel" ? "reservado" : st === "reservado" ? "indisponivel" : "disponivel";
+                                        setLoteStatusMobile(q, l, next);
+                                      }}
+                                      style={{background:bg,color:tc,borderColor:bc,width:44,height:44,borderRadius:12,border:`2px solid`,fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,opacity:isVendido?0.6:1}}>
+                                      {String(l).padStart(2,"0")}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── EDITAR FAIXAS ── */}
+            {isEditingMap && mapAction === "massa" && (
+              <div className="space-y-4">
+                <p className="text-sm font-black text-slate-800">Selecionar em massa</p>
+                <p className="text-xs text-slate-400">Toque nas bolinhas no mapa para selecioná-las e depois aplique o status.</p>
+                <div className="flex flex-wrap gap-2">
+                  {([
+                    { label: "Disponível",   status: "disponivel"   as MapaLoteStatus, color: "#3b82f6", border: "#bfdbfe" },
+                    { label: "Reservado",    status: "reservado"    as MapaLoteStatus, color: "#f59e0b", border: "#fde68a" },
+                    { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", border: "#fecaca" },
+                  ] as any[]).map((a:any) => (
+                    <button key={a.status}
+                      onClick={() => {
+                        if (massaSelIds.size === 0) { alert("Selecione bolinhas no mapa."); return; }
+                        const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                        const next = currentPontos.map((p:any) => massaSelIds.has(p.id) ? {...p,status:a.status} : p);
+                        persistDev({ ...localDev, mapaPontos: next } as Empreendimento);
+                        setMassaSelIds(new Set());
+                      }}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 bg-white active:scale-95 transition-all"
+                      style={{borderColor:a.border}}>
+                      <span className="w-3.5 h-3.5 rounded-full" style={{background:a.color}}/>
+                      <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
+                    </button>
+                  ))}
+                </div>
+                {massaSelIds.size > 0 && (
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-bold text-emerald-600">{massaSelIds.size} bolinha(s) selecionada(s)</p>
+                    <button onClick={() => setMassaSelIds(new Set())} className="text-xs text-slate-400 underline">limpar</button>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-
-          {/* Conteúdo expandido */}
-          {drawerOpen && (
-            <div className="overflow-y-auto px-4 pb-6 space-y-4" style={{ maxHeight: drawerHeight - 80 }}>
-              {/* Stats */}
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { label: 'Total', value: statsTotal2, bg: 'bg-slate-50', text: 'text-slate-800' },
-                  { label: 'Livres', value: statsDisponiveis2, bg: 'bg-blue-50', text: 'text-blue-700' },
-                  { label: 'Reserv.', value: statsReservados2, bg: 'bg-amber-50', text: 'text-amber-700' },
-                  { label: 'Vendid.', value: statsIndisponiveis2, bg: 'bg-red-50', text: 'text-red-600' },
-                ].map(s => (
-                  <div key={s.label} className={`rounded-2xl p-3 ${s.bg} text-center`}>
-                    <p className={`text-lg font-black leading-none ${s.text}`}>{s.value}</p>
-                    <p className="text-[9px] text-slate-400 font-bold mt-1">{s.label}</p>
-                  </div>
-                ))}
-              </div>
-
-              {/* Legenda horizontal */}
-              <div className="flex gap-3">
-                {[{c:'bg-blue-500',l:'Disponível'},{c:'bg-amber-400',l:'Reservado'},{c:'bg-red-500',l:'Indisponível'}].map(i=>(
-                  <div key={i.l} className="flex items-center gap-1.5">
-                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${i.c}`}/>
-                    <span className="text-[11px] font-bold text-slate-600">{i.l}</span>
-                  </div>
-                ))}
-              </div>
-
-              {/* Ações */}
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={baixarMapaInterativoImagem}
-                  className="flex items-center justify-center gap-2 py-3 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Imagem
-                </button>
-                <button onClick={baixarMapaInterativoPdf}
-                  className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  PDF
-                </button>
-              </div>
-
-              {/* Dica */}
-              <p className="text-[11px] text-slate-400 text-center">
-                Toque na bolinha para ver detalhes do lote
-              </p>
-            </div>
-          )}
         </div>
 
-        {/* Modal bolinha selecionada */}
         <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
       </div>
 
-      {/* Tela cheia */}
+      {/* ── TELA CHEIA ── */}
       {mapFullscreen && (
         <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-10 pb-3">
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-11 pb-3">
             <p className="text-white font-black text-sm drop-shadow">{localDev.nome}</p>
             <button onClick={() => { setMapFullscreen(false); try{(screen as any).orientation?.unlock?.()}catch{}; scheduleMapScaleUpdate(true); }}
-              className="bg-white/20 backdrop-blur rounded-2xl px-4 py-2 text-white text-xs font-black">Fechar</button>
+              className="bg-white/20 backdrop-blur-md rounded-2xl px-4 py-2 text-white text-xs font-black active:scale-95 transition-all">Fechar</button>
           </div>
-          <div className="flex-1 relative overflow-hidden">
-            {renderMapa()}
-          </div>
+          <div className="flex-1 relative overflow-hidden">{renderMapa()}</div>
           <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
         </div>
       )}
