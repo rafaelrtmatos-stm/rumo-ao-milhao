@@ -2281,6 +2281,12 @@ const LotDashboard = ({
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
+  const [isMobile] = useState(() => window.innerWidth < 768);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerY, setDrawerY] = useState(0);
+  const drawerDragRef = useRef<{ startY: number; startDY: number } | null>(null);
+  const loteBusca = useRef<string>("");
+  const [loteBuscaVal, setLoteBuscaVal] = useState("");
   // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
   const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
 
@@ -5286,6 +5292,206 @@ const LotDashboard = ({
 
   // Stats para o painel lateral
   const recalcStats = recalcularEstatisticasEmpreendimento(localDev, sales);
+  const statsTotal2 = localDev.totalLotes ?? 0;
+  const statsDisponiveis2 = Math.max(0, recalcStats.lotesDisponiveis ?? statsTotal2 - (localDev.lotesVendidos ?? 0));
+  const statsReservados2 = recalcStats.lotesReservados ?? 0;
+  const statsIndisponiveis2 = recalcStats.lotesVendidos ?? localDev.lotesVendidos ?? 0;
+
+  // ── LAYOUT MOBILE ──────────────────────────────────────────────────────────
+  if (isMobile && mode === "mapa" && mapaImagem) {
+    const drawerHeight = drawerOpen ? Math.min(window.innerHeight * 0.65, 420) : 80;
+    return (
+      <>
+      <div className="fixed inset-0 z-[100] flex flex-col bg-black" style={{ fontFamily: 'system-ui, sans-serif' }}>
+
+        {/* HEADER MOBILE — topo sobre o mapa */}
+        <div className="absolute top-0 left-0 right-0 z-30 flex items-center gap-2 px-3 pt-10 pb-2">
+          {/* Pill do nome */}
+          <div className="flex-1 bg-white/95 backdrop-blur-md rounded-2xl px-4 py-2.5 shadow-lg flex items-center gap-2 min-w-0">
+            <div className="w-6 h-6 rounded-lg bg-[#1a4a1a] flex items-center justify-center flex-shrink-0">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>
+            </div>
+            <p className="text-sm font-black text-slate-900 truncate leading-tight">{localDev.nome}</p>
+          </div>
+          {/* Botão editar */}
+          {canEditMap && mapAction === "visualizar" && (
+            <button onClick={entrarEdicao} className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-all flex-shrink-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            </button>
+          )}
+          {/* Botão fechar */}
+          <button onClick={onClose} className="w-10 h-10 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg flex items-center justify-center active:scale-95 transition-all flex-shrink-0">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
+
+        {/* BUSCA LOTE */}
+        <div className="absolute top-24 left-3 right-3 z-30">
+          <div className="relative">
+            <svg className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 flex-shrink-0" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <input
+              value={loteBuscaVal}
+              onChange={e => {
+                setLoteBuscaVal(e.target.value);
+                // Filtrar bolinhas visualmente seria feito via estado, por ora apenas guarda
+              }}
+              placeholder="Buscar lote (ex: Q10:15)"
+              className="w-full pl-8 pr-4 py-2.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-lg text-sm font-medium text-slate-800 placeholder-slate-400 outline-none border-0"
+              style={{ fontSize: 14 }}
+            />
+          </div>
+        </div>
+
+        {/* MAPA — ocupa tudo menos o drawer */}
+        <div className="flex-1 relative overflow-hidden" style={{ paddingBottom: drawerHeight }}>
+          {renderMapa()}
+
+          {/* BOTÕES FLUTUANTES DIREITA */}
+          <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            <button onClick={() => setMapZoomAtPoint(Math.min(10, mapZoomRef.current + 1), (getActiveViewport()?.offsetWidth||window.innerWidth)/2, (getActiveViewport()?.offsetHeight||window.innerHeight)/2)}
+              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button onClick={() => setMapZoomAtPoint(Math.max(1, mapZoomRef.current - 1), (getActiveViewport()?.offsetWidth||window.innerWidth)/2, (getActiveViewport()?.offsetHeight||window.innerHeight)/2)}
+              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button onClick={() => fitMapToScreen()}
+              className="w-11 h-11 bg-white rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all border border-slate-100">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1e293b" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            </button>
+            <button onClick={() => { setMapFullscreen(true); setMapActive(true); setTimeout(() => fitMapToScreen(0), 200); }}
+              className="w-11 h-11 bg-[#1a4a1a] rounded-2xl shadow-lg flex items-center justify-center active:scale-90 transition-all">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+            </button>
+          </div>
+
+          {/* Rosa dos ventos */}
+          <div className="absolute top-16 right-3 z-20 w-9 h-9 bg-white/90 backdrop-blur rounded-xl shadow flex items-center justify-center">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><path d="M12 2L9 9H3l5.5 4-2 7L12 16l5.5 4-2-7L21 9h-6L12 2z" fill="#1a4a1a" stroke="white" strokeWidth="0.5"/></svg>
+          </div>
+        </div>
+
+        {/* BOTTOM DRAWER */}
+        <div
+          className="absolute left-0 right-0 z-40 bg-white rounded-t-3xl shadow-2xl"
+          style={{
+            bottom: 0,
+            height: drawerHeight,
+            transition: drawerDragRef.current ? 'none' : 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}
+        >
+          {/* Handle de arraste */}
+          <div
+            className="flex justify-center pt-3 pb-1 cursor-pointer select-none"
+            onPointerDown={(e) => {
+              drawerDragRef.current = { startY: e.clientY, startDY: drawerOpen ? 0 : 0 };
+              const onMove = (ev: PointerEvent) => {
+                const dy = drawerDragRef.current!.startY - ev.clientY;
+                if (dy > 30) setDrawerOpen(true);
+                if (dy < -30) setDrawerOpen(false);
+              };
+              const onUp = () => { drawerDragRef.current = null; window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); };
+              window.addEventListener('pointermove', onMove);
+              window.addEventListener('pointerup', onUp);
+            }}
+            onClick={() => setDrawerOpen(o => !o)}
+          >
+            <div className="w-10 h-1 bg-slate-300 rounded-full" />
+          </div>
+
+          {/* Resumo compacto — sempre visível */}
+          <div className="px-4 pb-2 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-black text-slate-800">{localDev.nome}</p>
+              <p className="text-[10px] text-slate-400">{statsTotal2} lotes · {statsDisponiveis2} disponíveis</p>
+            </div>
+            <div className="flex gap-1.5">
+              <span className="text-[10px] font-black px-2 py-1 bg-blue-50 text-blue-700 rounded-lg">{statsDisponiveis2} liv.</span>
+              <span className="text-[10px] font-black px-2 py-1 bg-red-50 text-red-600 rounded-lg">{statsIndisponiveis2} vend.</span>
+            </div>
+          </div>
+
+          {/* Conteúdo expandido */}
+          {drawerOpen && (
+            <div className="overflow-y-auto px-4 pb-6 space-y-4" style={{ maxHeight: drawerHeight - 80 }}>
+              {/* Stats */}
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { label: 'Total', value: statsTotal2, bg: 'bg-slate-50', text: 'text-slate-800' },
+                  { label: 'Livres', value: statsDisponiveis2, bg: 'bg-blue-50', text: 'text-blue-700' },
+                  { label: 'Reserv.', value: statsReservados2, bg: 'bg-amber-50', text: 'text-amber-700' },
+                  { label: 'Vendid.', value: statsIndisponiveis2, bg: 'bg-red-50', text: 'text-red-600' },
+                ].map(s => (
+                  <div key={s.label} className={`rounded-2xl p-3 ${s.bg} text-center`}>
+                    <p className={`text-lg font-black leading-none ${s.text}`}>{s.value}</p>
+                    <p className="text-[9px] text-slate-400 font-bold mt-1">{s.label}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Legenda horizontal */}
+              <div className="flex gap-3">
+                {[{c:'bg-blue-500',l:'Disponível'},{c:'bg-amber-400',l:'Reservado'},{c:'bg-red-500',l:'Indisponível'}].map(i=>(
+                  <div key={i.l} className="flex items-center gap-1.5">
+                    <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${i.c}`}/>
+                    <span className="text-[11px] font-bold text-slate-600">{i.l}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Ações */}
+              <div className="grid grid-cols-2 gap-2">
+                <button onClick={baixarMapaInterativoImagem}
+                  className="flex items-center justify-center gap-2 py-3 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Imagem
+                </button>
+                <button onClick={baixarMapaInterativoPdf}
+                  className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  PDF
+                </button>
+              </div>
+
+              {/* Dica */}
+              <p className="text-[11px] text-slate-400 text-center">
+                Toque na bolinha para ver detalhes do lote
+              </p>
+            </div>
+          )}
+        </div>
+
+        {/* Modal bolinha selecionada */}
+        <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
+      </div>
+
+      {/* Tela cheia */}
+      {mapFullscreen && (
+        <div className="fixed inset-0 z-[200] bg-black flex flex-col">
+          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-10 pb-3">
+            <p className="text-white font-black text-sm drop-shadow">{localDev.nome}</p>
+            <button onClick={() => { setMapFullscreen(false); try{(screen as any).orientation?.unlock?.()}catch{}; scheduleMapScaleUpdate(true); }}
+              className="bg-white/20 backdrop-blur rounded-2xl px-4 py-2 text-white text-xs font-black">Fechar</button>
+          </div>
+          <div ref={mapViewportFullscreenRef}
+            onTouchStart={handleMapTouchStart} onTouchMove={handleMapTouchMove}
+            onTouchEnd={handleMapTouchEnd} onTouchCancel={handleMapTouchEnd}
+            className="flex-1 relative overflow-hidden" style={{ touchAction: 'none' }}>
+            <div ref={mapContainerRef} className="absolute left-0 top-0 select-none"
+              style={{ width: '100%', transform: `translate(${mapPan.x}px,${mapPan.y}px) scale(${mapZoom})`, transformOrigin: '0 0', willChange: 'transform' }}>
+              <img ref={mapImageRef} src={mapaImagem} alt="Mapa" className="block w-full h-auto pointer-events-none" draggable={false}
+                onLoad={() => { updateDisplayedMapScale(); setTimeout(() => fitMapToScreen(0), 200); }} />
+              {renderMapaPontos()}
+            </div>
+          </div>
+          <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
+        </div>
+      )}
+      </>
+    );
+  }
+  // ── FIM LAYOUT MOBILE ──────────────────────────────────────────────────────
   const statsDisponiveis = Math.max(0, recalcStats.lotesDisponiveis ?? Math.max(0, localDev.totalLotes - localDev.lotesVendidos));
   const statsReservados = recalcStats.lotesReservados ?? 0;
   const statsIndisponiveis = recalcStats.lotesVendidos ?? localDev.lotesVendidos ?? 0;
