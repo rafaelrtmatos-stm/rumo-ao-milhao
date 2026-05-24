@@ -4458,9 +4458,9 @@ const LotDashboard = ({
   const renderMapa = () => {
     const ballSize = getBallPixelSize();
     return (
-        <div className="h-full flex flex-col" data-mapa-container="true">
+        <div className="h-full flex flex-col overflow-hidden" data-mapa-container="true">
 
-        <div className="flex flex-col h-full w-full">
+        <div className="flex flex-col h-full w-full overflow-hidden">
           {/* CANVAS DO MAPA */}
           <div className="relative bg-slate-100 rounded-2xl overflow-hidden flex-1 h-full">
 
@@ -4573,6 +4573,24 @@ const LotDashboard = ({
                   <div className="w-1.5 h-1.5 bg-white rounded-full" />
                 </div>
               )}
+
+              {/* Indicador de modo navegação com Ctrl */}
+              {isCtrlPanning && (
+                <div className="absolute bottom-4 left-4 z-30 pointer-events-none">
+                  <div className="bg-emerald-600 text-white px-4 py-2 rounded-xl shadow-xl border-2 border-white flex items-center gap-2 animate-pulse">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M12 2v20M2 12h20"/>
+                      <path d="m8 6-6 6 6 6M16 6l6 6-6 6"/>
+                    </svg>
+                    <span className="text-[11px] font-black uppercase tracking-wider">Modo Navegação</span>
+                  </div>
+                  <div className="text-center mt-1">
+                    <span className="text-[9px] font-bold text-slate-600 bg-white/90 px-2 py-1 rounded-full shadow">
+                      Clique e arraste para mover o mapa
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
             </div>
           </div>
@@ -4633,17 +4651,34 @@ const LotDashboard = ({
           )}
 
           {/* PAINEL LATERAL FLUTUANTE — só desktop */}
-          <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${painelRecolhido ? "hidden lg:flex lg:w-10" : isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
-            {/* Botao recolher */}
-            <button
-              type="button"
-              onClick={() => setPainelRecolhido(r => !r)}
-              className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex"
-              title={painelRecolhido ? "Expandir painel" : "Recolher painel"}
-            >
-              {painelRecolhido ? "⊲" : "⊳"}
-            </button>
-            <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
+          {painelRecolhido ? (
+            // Painel recolhido - apenas barra vertical
+            <div className="hidden lg:flex lg:absolute lg:top-3 lg:right-3 lg:z-20">
+              <button
+                type="button"
+                onClick={() => setPainelRecolhido(false)}
+                className="flex flex-col items-center justify-center gap-2 px-2 py-6 rounded-xl bg-white shadow-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all group"
+                title="Expandir painel de opções"
+              >
+                <ChevronLeft size={16} className="group-hover:scale-110 transition-transform" />
+                <div className="flex flex-col gap-0.5" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
+                  <span className="text-[10px] font-black uppercase tracking-widest">OPÇÕES</span>
+                </div>
+              </button>
+            </div>
+          ) : (
+            // Painel expandido
+            <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${isEditingMap ? "flex w-full lg:w-[280px]" : "hidden lg:flex lg:w-[280px]"}`}>
+              {/* Botao recolher */}
+              <button
+                type="button"
+                onClick={() => setPainelRecolhido(true)}
+                className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex transition-all hover:scale-105"
+                title="Recolher painel"
+              >
+                <ChevronRight size={16} />
+              </button>
+              <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && !canEditMap && (
               <div className="card-premium p-4">
@@ -4672,7 +4707,12 @@ const LotDashboard = ({
                     <button type="button" onClick={() => { setMapEditTool("mover"); setMapActive(true); void requestHighResolutionMap(); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "mover" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Mover mapa</button>
                     <button type="button" onClick={() => setMapEditTool("marcar")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "marcar" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Marcar lote</button>
                   </div>
-                  <p className="text-[10px] text-slate-400 font-medium">No PC, passe o mouse sobre o mapa e use a roda do mouse para aproximar, igual Google Maps. O zoom é apenas visual; as bolinhas continuam salvas em percentual.</p>
+                  <div className="p-2 rounded-xl bg-blue-50 border border-blue-100 space-y-1">
+                    <p className="text-[10px] text-blue-700 font-bold">💡 Dicas de navegação:</p>
+                    <p className="text-[10px] text-slate-600">• <kbd className="bg-white px-1 rounded text-[9px] font-bold border border-slate-300">Roda do mouse</kbd> = Zoom in/out</p>
+                    <p className="text-[10px] text-slate-600">• <kbd className="bg-white px-1 rounded text-[9px] font-bold border border-slate-300">Ctrl</kbd> + <kbd className="bg-white px-1 rounded text-[9px] font-bold border border-slate-300">Clique e arraste</kbd> = Navegar pelo mapa</p>
+                    <p className="text-[10px] text-slate-500 italic">O mapa inicia centralizado automaticamente</p>
+                  </div>
                 </div>
 
                 {/* Instrução contextual */}
@@ -4856,7 +4896,8 @@ const LotDashboard = ({
               <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
             </div>
           </div>
-        </div>
+            </div>
+          )}
 
 
 
