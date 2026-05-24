@@ -6846,7 +6846,7 @@ const EmpreendimentosSection = ({
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
-        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none' }}>
+        <div style={{ display: (showMapaGlobal && (!isAdding || (editingDev && (editingDev as any).lat))) ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
             style={{ height: globalMapHeight, isolation: 'isolate' }}
@@ -6873,6 +6873,7 @@ const EmpreendimentosSection = ({
                 empreendimentos={developments}
                 sales={sales}
                 visible={showMapaGlobal}
+                focusDevId={isAdding && editingDev ? editingDev.id : null}
                 onAbrirEmpreendimento={(id) => {
                   setShowMapaGlobal(false);
                   const dev = developments.find(d => d.id === id);
@@ -6989,6 +6990,36 @@ const EmpreendimentosSection = ({
               onSubmit={handleSubmit}
               className="card-premium grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50"
             >
+              {/* HEADER DO FORMULÁRIO */}
+              <div className="md:col-span-2 flex items-center justify-between pb-2 border-b border-slate-100 -mx-6 px-6 -mt-6 pt-5 bg-white rounded-t-3xl">
+                <div>
+                  <h3 className="text-base font-black text-slate-900">
+                    {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
+                  </h3>
+                  <p className="text-xs text-slate-400">{editingDev ? "Apenas este empreendimento" : "Preencha os dados abaixo"}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  {editingDev && (
+                    <button type="button"
+                      onClick={(e) => { e.preventDefault(); handleSubmit({ preventDefault: () => {} } as any); }}
+                      className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase hover:bg-blue-500 active:scale-95 transition-all flex items-center gap-1.5">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                      Aplicar
+                    </button>
+                  )}
+                  <button type="submit"
+                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all flex items-center gap-1.5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    OK
+                  </button>
+                  <button type="button"
+                    onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
+                    className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all flex items-center gap-1.5">
+                    <X size={13} /> Cancelar
+                  </button>
+                </div>
+              </div>
+
               {/* MAPA DE LOCALIZAÇÃO NO TOPO */}
               <div className="md:col-span-2">
                 <label className="label flex items-center gap-2">
@@ -7462,29 +7493,7 @@ const EmpreendimentosSection = ({
                 )}
               </div>
 
-              <div className="md:col-span-2 sticky bottom-0 bg-white border-t border-slate-100 -mx-6 -mb-6 px-6 py-3 flex items-center gap-3 rounded-b-3xl z-10">
-                <button type="button"
-                  onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all">
-                  <X size={13} /> Cancelar
-                </button>
-                <p className="flex-1 text-[11px] font-bold text-slate-400 truncate">
-                  {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
-                </p>
-                {editingDev && (
-                  <button type="button"
-                    onClick={() => { handleSubmit({ preventDefault: () => {} } as any); }}
-                    className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-black uppercase hover:bg-blue-500 active:scale-95 transition-all">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    Aplicar
-                  </button>
-                )}
-                <button type="submit"
-                  className="flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                  OK
-                </button>
-              </div>
+
             </form>
           </motion.div>
         )}

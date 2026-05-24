@@ -7,6 +7,7 @@ interface Props {
   onAbrirEmpreendimento: (id: string) => void;
   onVerMapa: (id: string) => void;
   visible?: boolean;
+  focusDevId?: string | null; // quando definido: mostra só esse empreendimento
 }
 
 type Camada = "satelite" | "hibrido" | "ruas";
@@ -71,12 +72,17 @@ function clusterPins(devs: Empreendimento[], zoom: number) {
   return clusters;
 }
 
-export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true }: Props) {
+export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
   const markersRef = useRef<any[]>([]);
   const [selectedDev, setSelectedDev] = useState<Empreendimento | null>(null);
+  const [locked, setLocked] = useState(!!focusDevId); // cadeado — bloqueia zoom/pan
+  // Filtrar para mostrar só o empreendimento em foco (se houver)
+  const empreendimentosFiltrados = focusDevId
+    ? empreendimentos.filter(d => d.id === focusDevId)
+    : empreendimentos;
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busca, setBusca] = useState("");
   const [mapZoom, setMapZoom] = useState(5);
@@ -89,8 +95,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   useEffect(() => { empreendimentosRef.current = empreendimentos; }, [empreendimentos]);
 
   const devsComLoc = useMemo(() =>
-    empreendimentos.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
-    [empreendimentos]
+    empreendimentosFiltrados.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
+    [empreendimentosFiltrados]
   );
 
   const devsFiltrados = useMemo(() => {
@@ -164,11 +170,11 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
     return () => ro.disconnect();
   }, [mapReady]);
 
-  // Centralizar quando empreendimentos carregarem (resolve closure stale)
+  // Centralizar no foco ou nos empreendimentos
   const centradoRef = useRef(false);
   useEffect(() => {
     if (!mapReady || !leafletRef.current) return;
-    const devs = empreendimentos.filter(d => d.lat && d.lng && d.lat !== 0);
+    const devs = empreendimentosFiltrados.filter(d => d.lat && d.lng && d.lat !== 0);
     if (devs.length === 0) return;
     if (centradoRef.current) return; // Só centraliza uma vez
     centradoRef.current = true;
@@ -224,22 +230,21 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
           });
         } else {
           const dev = cluster.devs[0];
-          const stats = calcularStats(dev, sales);
-          const pct = stats.pct;
-          const color = pct >= 80 ? "#ef4444" : pct >= 50 ? "#f59e0b" : "#22c55e";
+          const nome = dev.nome.length > 16 ? dev.nome.slice(0,16)+'…' : dev.nome;
           icon = L.divIcon({
             className: "",
-            html: `<div style="position:relative;cursor:pointer;">
-              <div style="background:${color};color:white;border-radius:10px 10px 10px 0;
-                padding:4px 8px;font-size:11px;font-weight:900;white-space:nowrap;
-                border:2.5px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.5);
-                transform:rotate(-0deg);max-width:120px;overflow:hidden;text-overflow:ellipsis;">
-                ${dev.nome.length > 14 ? dev.nome.slice(0,14)+'…' : dev.nome}
+            html: `<div style="position:relative;cursor:pointer;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.4));">
+              <div style="background:#ef4444;color:white;border-radius:12px 12px 12px 2px;
+                padding:5px 10px;font-size:11px;font-weight:900;white-space:nowrap;
+                border:2.5px solid white;box-shadow:0 2px 8px rgba(239,68,68,0.5);
+                display:flex;align-items:center;gap:5px;">
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+                ${nome}
               </div>
-              <div style="width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;
-                border-top:8px solid ${color};margin-left:4px;"></div>
+              <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;
+                border-top:9px solid #ef4444;margin-left:6px;"></div>
             </div>`,
-            iconSize: [130, 44], iconAnchor: [6, 44],
+            iconSize: [160, 48], iconAnchor: [8, 48],
           });
         }
 
@@ -268,7 +273,22 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   return (
     <div className="relative w-full h-full flex" style={{ minHeight: 200, flex: 1, position: 'relative' }}>
       {/* MAPA */}
-      <div ref={mapRef} style={{ position: 'absolute', inset: 0 }} />
+      <div ref={mapRef} style={{ position: 'absolute', inset: 0, pointerEvents: locked ? 'none' : 'auto' }} />
+      {/* Overlay de cadeado */}
+      {locked && (
+        <div style={{ position:'absolute', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.05)' }}>
+          <button
+            onClick={() => setLocked(false)}
+            style={{ background:'white', border:'none', borderRadius:16, padding:'12px 20px', cursor:'pointer',
+              display:'flex', alignItems:'center', gap:8, fontWeight:900, fontSize:13, color:'#1e293b',
+              boxShadow:'0 4px 20px rgba(0,0,0,0.2)' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            Clique para editar localização
+          </button>
+        </div>
+      )}
 
       {/* POPUP DO EMPREENDIMENTO */}
       {selectedDev && (() => {
