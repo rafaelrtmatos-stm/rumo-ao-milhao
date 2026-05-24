@@ -182,7 +182,9 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
     import("leaflet").then(L => {
       if (!leafletRef.current) return;
       if (devs.length === 1) {
-        leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1.2 });
+        // focusDevId = editando empreendimento: zoom 19 (~200 pés altitude)
+        const zoomLevel = focusDevId ? 19 : 15;
+        leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], zoomLevel, { animate: true, duration: 1.0 });
       } else {
         const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
         // maxZoom 16 = ~1km de altitude, mostra todos os pinos bem próximos
