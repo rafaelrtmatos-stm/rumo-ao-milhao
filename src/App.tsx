@@ -100,6 +100,7 @@ import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 import MapaGlobalDashboard from "./components/MapaGlobalDashboard";
 import PickLocationMap from "./components/PickLocationMap";
+import { uploadMapaImagem, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
@@ -3412,7 +3413,7 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // UPLOAD DE IMAGEM
   // ──────────────────────────────────────────────
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
     const allowedImages = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
@@ -3423,68 +3424,70 @@ const LotDashboard = ({
     }
     setMapUploadProgress(10);
     if (isPDF) {
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          setMapUploadProgress(40);
-          const originalBuffer = reader.result as ArrayBuffer;
-          const pdfOriginalBase64 = arrayBufferToDataUrl(originalBuffer, "application/pdf");
-          setMapUploadProgress(50);
-          // Preview leve — aparece imediato
-          const previewImage = await renderPdfPageToPng(originalBuffer, 1.5);
-          setMapUploadProgress(70);
-          // Yield para não travar o browser
-          await new Promise(r => setTimeout(r, 0));
-          // Alta resolução — pré-gerar no upload para não travar depois
-          const highImage = await renderPdfPageToPng(originalBuffer, 2.5);
-          setMapUploadProgress(95);
-          persistDev({
-            ...localDev,
-            mapaImagemBase64: previewImage,
-            mapaImagemHighResBase64: highImage,
-            mapaPdfOriginalBase64: pdfOriginalBase64,
-            mapaPdfOriginalName: file.name,
-            mapaImagemUrl: "",
-            mapaPontos: mapaPontos,
-            mapaAltaResolucao: true,
-            mapaMarkerReferenceWidth: 1000,
-          } as Empreendimento);
-          setMode("mapa");
-          setMapUploadProgress(100);
-          setTimeout(() => setMapUploadProgress(0), 2000);
-        } catch (err) {
-          setMapUploadProgress(0);
-          alert("Não foi possível converter o PDF.\n" + String((err as any)?.message || err));
-        }
-      };
-      reader.onprogress = (e) => { if (e.lengthComputable) setMapUploadProgress(10 + Math.round((e.loaded/e.total)*25)); };
-      reader.readAsArrayBuffer(file);
+      // Upload PDF binário para Supabase Storage + renderizar preview local
+      try {
+        setMapUploadProgress(15);
+        const pdfUrl = await uploadMapaPDF(file, localDev.id, (pct) => setMapUploadProgress(Math.round(pct * 0.5)));
+        // Renderizar preview local para usar como imagem do mapa
+        const reader2 = new FileReader();
+        reader2.onload = async () => {
+          try {
+            const originalBuffer = reader2.result as ArrayBuffer;
+            setMapUploadProgress(60);
+            const previewImage = await renderPdfPageToPng(originalBuffer, 1.5);
+            setMapUploadProgress(85);
+            const highImage = await renderPdfPageToPng(originalBuffer, 2.5);
+            setMapUploadProgress(95);
+            persistDev({
+              ...localDev,
+              mapaImagemBase64: previewImage,
+              mapaImagemHighResBase64: highImage,
+              mapaPdfOriginalBase64: "",
+              mapaPdfOriginalName: file.name,
+              mapaPdfUrl: pdfUrl,
+              mapaImagemUrl: "",
+              mapaPontos: mapaPontos,
+              mapaAltaResolucao: true,
+              mapaMarkerReferenceWidth: 1000,
+            } as Empreendimento);
+            setMode("mapa");
+            setMapUploadProgress(100);
+            setTimeout(() => setMapUploadProgress(0), 2000);
+          } catch(err2) {
+            setMapUploadProgress(0);
+            alert("Erro ao renderizar PDF.\n" + String((err2 as any)?.message || err2));
+          }
+        };
+        reader2.readAsArrayBuffer(file);
+      } catch (err) {
+        setMapUploadProgress(0);
+        alert("Falha no upload do PDF.\n" + String((err as any)?.message || err));
+      }
       return;
     }
-    const reader = new FileReader();
-    reader.onload = async () => {
-      setMapUploadProgress(50);
-      const original = String(reader.result || "");
-      setMapUploadProgress(85);
+    // Upload binário para Supabase Storage (sem Base64)
+    try {
+      const url = await uploadMapaImagem(file, localDev.id, (pct) => setMapUploadProgress(pct));
+      precacheMapaUrl(url); // pré-cacheia para offline
       persistDev({
         ...localDev,
-        mapaImagemBase64: original,
+        mapaImagemUrl: url,
+        mapaImagemBase64: "",
         mapaImagemLeveBase64: "",
         mapaImagemMedResBase64: "",
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
         mapaPdfOriginalName: "",
-        mapaImagemUrl: "",
         mapaPontos: mapaPontos,
         mapaAltaResolucao: true,
         mapaMarkerReferenceWidth: 1000,
       } as Empreendimento);
       setMode("mapa");
-      setMapUploadProgress(100);
       setTimeout(() => setMapUploadProgress(0), 2000);
-    };
-    reader.onprogress = (e) => { if (e.lengthComputable) setMapUploadProgress(10 + Math.round((e.loaded/e.total)*35)); };
-    reader.readAsDataURL(file);
+    } catch (err) {
+      setMapUploadProgress(0);
+      alert("Falha no upload da imagem.\n" + String((err as any)?.message || err));
+    }
   };
 
   // ──────────────────────────────────────────────

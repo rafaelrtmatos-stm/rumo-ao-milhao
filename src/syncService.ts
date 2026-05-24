@@ -58,16 +58,18 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
           if (item.operation === 'delete') {
             res = await authFetch(`${endpoint}/${item.entityId}`, { method: 'DELETE' });
           } else {
-            if (item.entity === 'empreendimento') {
-              // Split em partes para evitar 413
-              const dev = item.payload as any;
-              const { mapaPontos, lotesInfo, mapaImagemBase64,
-                mapaImagemLeveBase64, mapaImagemMedResBase64,
-                mapaImagemHighResBase64, mapaPdfOriginalBase64, ...base } = dev;
+            // Remove Base64 — imagens agora são URLs do Supabase Storage
+            const { mapaImagemBase64, mapaImagemLeveBase64,
+              mapaImagemMedResBase64, mapaImagemHighResBase64,
+              mapaPdfOriginalBase64, ...cleanPayload } = item.payload as any;
 
+            if (item.entity === 'empreendimento') {
+              const { mapaPontos, lotesInfo, ...base } = cleanPayload;
+              // Base sempre leve (sem imagens)
               res = await authFetch(`${endpoint}/${item.entityId}`, {
                 method: 'PUT', body: JSON.stringify(base),
               });
+              // Pontos e lotes separados se necessário
               if (res.ok && mapaPontos !== undefined) {
                 await authFetch(`${endpoint}/${item.entityId}/pontos`, {
                   method: 'PUT', body: JSON.stringify({ mapaPontos: mapaPontos ?? [] }),
@@ -78,14 +80,9 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
                   method: 'PUT', body: JSON.stringify({ lotesInfo: lotesInfo ?? {} }),
                 });
               }
-              if (res.ok && mapaImagemBase64) {
-                await authFetch(`${endpoint}/${item.entityId}/mapa`, {
-                  method: 'PUT', body: JSON.stringify({ mapaImagemBase64 }),
-                });
-              }
             } else {
               res = await authFetch(`${endpoint}/${item.entityId}`, {
-                method: 'PUT', body: JSON.stringify(item.payload),
+                method: 'PUT', body: JSON.stringify(cleanPayload),
               });
             }
           }
