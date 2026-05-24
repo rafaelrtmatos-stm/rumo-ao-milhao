@@ -17,8 +17,37 @@ export function setCurrentUser(_id: string) {}
 
 export function extrairCoordenadasDoLink(url?: string) {
   if (!url) return null;
-  const match = url.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
-  return match ? { lat: parseFloat(match[1]), lng: parseFloat(match[2]) } : null;
+  const s = url.trim();
+
+  // 1. Padrão @lat,lng (link longo Google Maps)
+  const m1 = s.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m1) return { lat: parseFloat(m1[1]), lng: parseFloat(m1[2]) };
+
+  // 2. Coordenadas decimais diretas: -2.4474, -54.8058 ou -2.4474,-54.8058
+  const m2 = s.match(/^\s*(-?\d{1,3}\.\d+)[,\s]+(-?\d{1,3}\.\d+)\s*$/);
+  if (m2) return { lat: parseFloat(m2[1]), lng: parseFloat(m2[2]) };
+
+  // 3. DMS: 2°26'50.2"S 54°48'18.1"W ou 2°26'50.2''S 54°48'18.1''W
+  const dms = s.match(/(\d+)[°\s](\d+)['′\s](\d+(?:\.\d+)?)["″\s]?([NSns])[,\s]+(\d+)[°\s](\d+)['′\s](\d+(?:\.\d+)?)["″\s]?([EWew])/);
+  if (dms) {
+    const lat = (parseInt(dms[1]) + parseInt(dms[2])/60 + parseFloat(dms[3])/3600) * (/[Ss]/.test(dms[4]) ? -1 : 1);
+    const lng = (parseInt(dms[5]) + parseInt(dms[6])/60 + parseFloat(dms[7])/3600) * (/[Ww]/.test(dms[8]) ? -1 : 1);
+    return { lat, lng };
+  }
+
+  // 4. Google Maps com 3d= e 4d= (link com pin) 
+  const m4 = s.match(/[?&!]3d(-?\d+\.\d+).*?[!&]4d(-?\d+\.\d+)/);
+  if (m4) return { lat: parseFloat(m4[1]), lng: parseFloat(m4[2]) };
+
+  // 5. q=lat,lng ou query=lat,lng
+  const m5 = s.match(/[?&]q=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m5) return { lat: parseFloat(m5[1]), lng: parseFloat(m5[2]) };
+
+  // 6. ll=lat,lng
+  const m6 = s.match(/[?&]ll=(-?\d+\.\d+),(-?\d+\.\d+)/);
+  if (m6) return { lat: parseFloat(m6[1]), lng: parseFloat(m6[2]) };
+
+  return null;
 }
 
 function injectCoordenadas(dev: Empreendimento): Empreendimento {

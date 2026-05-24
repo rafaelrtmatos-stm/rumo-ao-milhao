@@ -6845,6 +6845,17 @@ const EmpreendimentosSection = ({
       {(() => {
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
+        // Log para diagnóstico
+        if (process.env.NODE_ENV === "development" || true) {
+          console.log("[MapaGlobal] Com coord:", comCoord.map(d => d.nome + " (" + d.lat + "," + d.lng + ")"));
+          console.log("[MapaGlobal] Sem coord:", semCoord.map(d => ({
+            nome: d.nome,
+            googleMapsUrl: (d as any).googleMapsUrl,
+            mapaLocalizacaoUrl: (d as any).mapaLocalizacaoUrl,
+            linkGoogleMaps: (d as any).linkGoogleMaps,
+            lat: d.lat, lng: d.lng
+          })));
+        }
         return (
         <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none' }}>
           <div
@@ -6857,7 +6868,7 @@ const EmpreendimentosSection = ({
                 <h3 className="font-black text-slate-900">Nenhum empreendimento com localização</h3>
                 <p className="text-sm text-slate-500 max-w-xs">
                   {semCoord.length > 0
-                    ? `Seus ${semCoord.length} empreendimento(s) ainda não têm coordenadas. Edite cada um e salve — as coordenadas serão detectadas automaticamente pela cidade.`
+                    ? `${semCoord.length} empreendimento(s) sem localização: ${semCoord.map(d => d.nome).join(", ")}`
                     : "Cadastre empreendimentos para vê-los no mapa."}
                 </p>
                 {semCoord.length > 0 && (
