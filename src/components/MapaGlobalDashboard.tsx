@@ -52,25 +52,10 @@ const TILES: Record<Camada, { url: string; options: any }> = {
   },
 };
 
-// Cluster simples
+// Sem cluster — cada empreendimento sempre tem pino próprio (igual Google Maps)
 function clusterPins(devs: Empreendimento[], zoom: number) {
   if (!devs.length) return [];
-  const threshold = zoom < 6 ? 3 : zoom < 9 ? 1 : zoom < 12 ? 0.3 : 0.05;
-  const clusters: { devs: Empreendimento[]; lat: number; lng: number; isCluster: boolean }[] = [];
-  const used = new Set<string>();
-  devs.forEach(d => {
-    if (used.has(d.id)) return;
-    const nearby = devs.filter(o =>
-      !used.has(o.id) &&
-      Math.abs((o.lat ?? 0) - (d.lat ?? 0)) < threshold &&
-      Math.abs((o.lng ?? 0) - (d.lng ?? 0)) < threshold
-    );
-    nearby.forEach(o => used.add(o.id));
-    const lat = nearby.reduce((s, o) => s + (o.lat ?? 0), 0) / nearby.length;
-    const lng = nearby.reduce((s, o) => s + (o.lng ?? 0), 0) / nearby.length;
-    clusters.push({ devs: nearby, lat, lng, isCluster: nearby.length > 1 });
-  });
-  return clusters;
+  return devs.map(d => ({ devs: [d], lat: d.lat!, lng: d.lng!, isCluster: false }));
 }
 
 export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick }: Props) {

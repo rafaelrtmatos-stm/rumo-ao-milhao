@@ -2347,8 +2347,9 @@ const LotDashboard = ({
     // Novo fator base é 0.0112 (40% do antigo), então dividir por 2.5
     // Se não há valor salvo ou é 100 (padrão antigo), usar 100 como novo padrão
     if (!saved || saved === 0) return 100;
-    const converted = Math.round(saved / 2.5);
-    return Number.isFinite(converted) ? Math.max(50, Math.min(300, converted)) : 100;
+    // Migração de escala antiga para nova (fator 0.0037 vs 0.028 original = 1/7.6)
+    const converted = Math.round(saved / 7.6);
+    return Number.isFinite(converted) ? Math.max(50, Math.min(200, converted)) : 100;
   });
 
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
@@ -3519,7 +3520,7 @@ const LotDashboard = ({
     // No celular: dividir pelo zoom para compensar (bolinhas menores quando zoom baixo)
     const currentZoom = mapZoomRef.current || 1;
     const zoomScale = isMobile ? Math.max(0.5, Math.min(1, currentZoom)) : 1;
-    const size = Math.round(mapW * 0.0112 * pct * zoomScale);
+    const size = Math.round(mapW * 0.0037 * pct * zoomScale);
     const safeSz = Math.max(8, Math.min(80, size));
     return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
