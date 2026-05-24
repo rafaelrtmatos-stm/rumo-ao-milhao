@@ -79,6 +79,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const markersRef = useRef<any[]>([]);
   const [selectedDev, setSelectedDev] = useState<Empreendimento | null>(null);
   const [locked, setLocked] = useState(!!focusDevId); // cadeado — bloqueia zoom/pan
+  const [flashLock, setFlashLock] = useState(false); // piscar vermelho ao clicar no mapa bloqueado
   // Filtrar para mostrar só o empreendimento em foco (se houver)
   const empreendimentosFiltrados = focusDevId
     ? empreendimentos.filter(d => d.id === focusDevId)
@@ -282,20 +283,46 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
     <div className="relative w-full h-full flex" style={{ minHeight: 200, flex: 1, position: 'relative' }}>
       {/* MAPA */}
       <div ref={mapRef} style={{ position: 'absolute', inset: 0, pointerEvents: locked ? 'none' : 'auto' }} />
-      {/* Overlay de cadeado */}
+
+      {/* OVERLAY BLOQUEADO — captura cliques e scroll */}
       {locked && (
-        <div style={{ position:'absolute', inset:0, zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.05)' }}>
-          <button
-            onClick={() => setLocked(false)}
-            style={{ background:'white', border:'none', borderRadius:16, padding:'12px 20px', cursor:'pointer',
-              display:'flex', alignItems:'center', gap:8, fontWeight:900, fontSize:13, color:'#1e293b',
-              boxShadow:'0 4px 20px rgba(0,0,0,0.2)' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-            </svg>
-            Clique para editar localização
-          </button>
-        </div>
+        <div
+          style={{
+            position: 'absolute', inset: 0, zIndex: 1000, cursor: 'not-allowed',
+            background: flashLock ? 'rgba(239,68,68,0.08)' : 'transparent',
+            transition: 'background 0.15s',
+          }}
+          onClick={() => {
+            // Piscar vermelho e destacar cadeado
+            setFlashLock(true);
+            setTimeout(() => setFlashLock(false), 600);
+          }}
+          onWheel={(e) => e.stopPropagation()} // bloqueia scroll/zoom
+        />
+      )}
+
+      {/* CADEADO — canto superior direito, sempre visível quando locked */}
+      {locked && (
+        <button
+          onClick={() => setLocked(false)}
+          style={{
+            position: 'absolute', top: 12, right: 12, zIndex: 1001,
+            background: flashLock ? '#ef4444' : 'white',
+            color: flashLock ? 'white' : '#1e293b',
+            border: flashLock ? '2px solid #ef4444' : '2px solid #e2e8f0',
+            borderRadius: 12, padding: '8px 14px', cursor: 'pointer',
+            display: 'flex', alignItems: 'center', gap: 7,
+            fontWeight: 900, fontSize: 12,
+            boxShadow: flashLock ? '0 0 0 4px rgba(239,68,68,0.3)' : '0 2px 12px rgba(0,0,0,0.15)',
+            transition: 'all 0.15s',
+            animation: flashLock ? 'none' : undefined,
+          }}>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+          {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}
+        </button>
       )}
 
       {/* POPUP DO EMPREENDIMENTO */}
