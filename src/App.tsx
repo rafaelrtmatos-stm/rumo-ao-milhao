@@ -7039,6 +7039,7 @@ const EmpreendimentosSection = ({
                       focusDevId={editingDev.id}
                       onAbrirEmpreendimento={() => {}}
                       onVerMapa={() => {}}
+                      onLocationPick={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
                     />
                   </div>
                 ) : (

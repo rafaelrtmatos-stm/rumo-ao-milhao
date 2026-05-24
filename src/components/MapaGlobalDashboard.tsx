@@ -7,7 +7,8 @@ interface Props {
   onAbrirEmpreendimento: (id: string) => void;
   onVerMapa: (id: string) => void;
   visible?: boolean;
-  focusDevId?: string | null; // quando definido: mostra só esse empreendimento
+  focusDevId?: string | null;
+  onLocationPick?: (lat: number, lng: number) => void; // clique no mapa define coordenada
 }
 
 type Camada = "satelite" | "hibrido" | "ruas";
@@ -72,7 +73,7 @@ function clusterPins(devs: Empreendimento[], zoom: number) {
   return clusters;
 }
 
-export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null }: Props) {
+export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick }: Props) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
@@ -135,6 +136,13 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       L.control.zoom({ position: "bottomright" }).addTo(map);
 
       map.on("zoomend", () => setMapZoom(map.getZoom()));
+
+      // Clique no mapa quando desbloqueado = define localização
+      map.on('click', (e: any) => {
+        if (onLocationPick) {
+          onLocationPick(Number(e.latlng.lat.toFixed(6)), Number(e.latlng.lng.toFixed(6)));
+        }
+      });
 
       leafletRef.current = map;
       setMapReady(true);
@@ -306,7 +314,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       {/* CADEADO — canto superior direito, sempre visível quando locked */}
       {locked && (
         <button
-          onClick={() => setLocked(false)}
+          onClick={() => { setLocked(false); }}
           style={{
             position: 'absolute', top: 12, right: 12, zIndex: 1001,
             background: flashLock ? '#ef4444' : 'white',
@@ -325,6 +333,19 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
           </svg>
           {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}
         </button>
+      )}
+
+      {/* Instrução de clique quando desbloqueado para editar localização */}
+      {!locked && onLocationPick && (
+        <div style={{
+          position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
+          zIndex: 1001, background: 'rgba(30,30,30,0.85)', color: 'white',
+          padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700,
+          whiteSpace: 'nowrap', pointerEvents: 'none',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
+        }}>
+          📍 Clique no mapa para definir a localização
+        </div>
       )}
 
       {/* POPUP DO EMPREENDIMENTO */}
