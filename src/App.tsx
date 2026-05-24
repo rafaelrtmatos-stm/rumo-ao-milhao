@@ -2300,7 +2300,7 @@ const LotDashboard = ({
   onMarkerSaved?: (quadra: string, lote: string, status: MapaLoteStatus, observacao: string) => void;
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
-  const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
+  const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
   const [mobileSelIds, setMobileSelIds] = useState<Set<string>>(new Set()); // seleção múltipla mobile
@@ -5718,7 +5718,7 @@ const LotDashboard = ({
           </button>
         </div>
 
-        {/* ── MAPA ── */}
+        {/* ── MAPA ou GLOBAL ── */}
         <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}
           onClick={(e) => {
             // Captura cliques para criar fileira mobile (passo 2)
@@ -5864,12 +5864,17 @@ const LotDashboard = ({
               <div className="w-9 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Abas: Visualizar / Adicionar bolinhas / Editar faixas */}
+            {/* Abas: Visualizar / Global / Adicionar bolinhas / Editar faixas */}
             <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-3">
               <button
                 onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mapAction === "visualizar" && !isEditingMap ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
-                Visualizar
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mapAction === "visualizar" && !isEditingMap && mode !== "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                Mapa
+              </button>
+              <button
+                onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); setDrawerOpen(true); }}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                🌍 Global
               </button>
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
@@ -5891,8 +5896,26 @@ const LotDashboard = ({
           {/* Conteúdo scrollável */}
           <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5">
 
+            {/* ── GLOBAL ── */}
+            {mode === "global" && (
+              <div className="space-y-3">
+                <p className="text-sm font-black text-slate-800">Localização do empreendimento</p>
+                <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 300 }}>
+                  <MapaGlobalDashboard
+                    empreendimentos={[localDev]}
+                    sales={sales}
+                    visible={true}
+                    focusDevId={localDev.id}
+                    onAbrirEmpreendimento={() => {}}
+                    onVerMapa={() => {}}
+                  />
+                </div>
+                <p className="text-xs text-slate-400 text-center">Mapa de satélite — localização do empreendimento</p>
+              </div>
+            )}
+
             {/* ── VISUALIZAR ── */}
-            {(!isEditingMap || mapAction === "visualizar") && (
+            {(!isEditingMap || mapAction === "visualizar") && mode !== "global" && (
               <div className="space-y-4">
                 <div className="grid grid-cols-4 gap-2">
                   {([{l:'Total',v:statsTotal2,bg:'#f8fafc',t:'#1e293b'},{l:'Livres',v:statsDisponiveis2,bg:'#eff6ff',t:'#1d4ed8'},{l:'Reserv.',v:statsReservados2,bg:'#fffbeb',t:'#d97706'},{l:'Vendid.',v:statsIndisponiveis2,bg:'#fef2f2',t:'#dc2626'}] as any[]).map((s:any) => (
@@ -6459,17 +6482,38 @@ const LotDashboard = ({
           <div className="px-6 pt-3 pb-0 border-b border-slate-100 flex-shrink-0">
             <div className="flex gap-0.5">
               {mapaImagem && (
-              <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-                🗺 Mapa
+                <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
+                  className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  🗺 Mapa
+                </button>
+              )}
+              <button onClick={() => setMode("global")}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "global" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                🌍 Global
               </button>
-            )}
-            <button onClick={() => setMode("quadradinhos")}
-              className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-              ⊞ Lotes
-            </button>
+              <button onClick={() => setMode("quadradinhos")}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                ⊞ Lotes
+              </button>
+            </div>
           </div>
-        </div>
+
+        {/* ABA GLOBAL — mapa satélite do empreendimento */}
+        {mode === "global" && (
+          <div className="flex-1 min-h-0 overflow-hidden" style={{ minHeight: 400 }}>
+            <MapaGlobalDashboard
+              empreendimentos={[localDev]}
+              sales={sales}
+              visible={true}
+              focusDevId={localDev.id}
+              onAbrirEmpreendimento={() => {}}
+              onVerMapa={() => {}}
+              onLocationPick={canEditMap ? (lat, lng) => {
+                persistDev({ ...localDev, lat, lng } as any);
+              } : undefined}
+            />
+          </div>
+        )}
 
         {/* CORPO PRINCIPAL — 2 colunas no desktop */}
         {mode === "mapa" && mapaImagem ? (
