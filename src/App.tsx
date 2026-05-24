@@ -6515,13 +6515,8 @@ const EmpreendimentosSection = ({
       const msg = lotesXComVenda.map(({ quadra, lote }) => {
         const v = sales.find(s => s.empreendimentoId === lotRegDev.id && String(s.quadra) === String(quadra) && String(s.numeroLote) === String(lote));
         return `Q${quadra}:${lote} → ${(v as any)?.clienteNome || v?.clienteId || "?"}`;
-      }).join("
-");
-      const ok = window.confirm("⚠️ Lotes com X têm VENDA vinculada:
-
-" + msg + "
-
-Excluir mesmo assim?");
+      }).join("\n");
+      const ok = window.confirm("⚠️ Lotes com X têm VENDA vinculada:\n\n" + msg + "\n\nExcluir mesmo assim?");
       if (!ok) return;
     }
     // Processar exclusões via X
