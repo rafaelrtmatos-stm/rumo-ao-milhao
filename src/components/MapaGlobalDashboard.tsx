@@ -216,7 +216,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
-      const clusters = clusterPins(devsFiltrados, mapZoom);
+      const clusters = clusterPins(devsComLoc, mapZoom); // sempre mostra todos no mapa
 
       clusters.forEach(cluster => {
         let icon: any;
