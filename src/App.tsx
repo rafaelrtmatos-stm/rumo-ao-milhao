@@ -6024,7 +6024,7 @@ const LotDashboard = ({
                         <p className="text-xs font-black text-slate-700">Tamanho das bolinhas</p>
                         <span className="text-xs font-black text-slate-500">{markerSizePercent}%</span>
                       </div>
-                      <input type="range" min={50} max={300} step={5}
+                      <input type="range" min={50} max={200} step={5}
                         value={markerSizePercent}
                         onChange={e => setMarkerSizePercent(Number(e.target.value))}
                         className="w-full h-2 rounded-full accent-emerald-600"
