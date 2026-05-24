@@ -404,6 +404,7 @@ function parseLotScriptStatus(letter: string): MapaLoteStatus | null {
   if (l === "D") return "disponivel";
   if (l === "I") return "indisponivel";
   if (l === "R") return "reservado";
+  if (l === "X") return "excluir" as any; // X = excluir lote
   return null;
 }
 
@@ -438,9 +439,9 @@ function parseLotScriptByQuadra(raw: string): LotScriptParseResult {
 
     loteParts.forEach((token) => {
       const clean = token.replace(/\s+/g, "");
-      const m = clean.match(/^(.+?)([DIR])$/i);
+      const m = clean.match(/^(.+?)([DIRX])$/i);
       if (!m) {
-        errors.push(`Lote "${token}" inválido. Use D, I ou R no final. Ex.: 12D`);
+        errors.push(`Lote "${token}" inválido. Use D, I, R ou X no final. Ex.: 12D ou 5X`);
         return;
       }
       const lote = normalizeLotText(m[1]);
@@ -5519,9 +5520,19 @@ const LotDashboard = ({
                   <p className="text-[10px] font-black text-white mb-1">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
                   <div className="flex flex-wrap gap-1 max-h-12 overflow-y-auto">
                     {lotesConfigSemBolinhaList.slice(0, 30).map(({ quadra, lote }) => (
-                      <span key={`${quadra}-${lote}`} className="text-[9px] font-black px-1.5 py-0.5 bg-white/20 text-white rounded border border-white/30 whitespace-nowrap">
-                        Q{quadra}:{lote}
-                      </span>
+                      <button key={`${quadra}-${lote}`}
+                        onClick={() => {
+                          const venda = sales.find(v => v.empreendimentoId === localDev.id && String(v.quadra) === String(quadra) && String(v.numeroLote) === String(lote));
+                          const msg = venda
+                            ? `⚠️ Lote Q${quadra}:${lote} tem venda vinculada. Excluir?`
+                            : `Excluir lote Q${quadra}:${lote}?`;
+                          if (!window.confirm(msg)) return;
+                          persistDev(deleteLotFromEmpreendimento(localDev as Empreendimento, `${quadra}-${lote}`, sales));
+                        }}
+                        className="text-[9px] font-black px-1.5 py-0.5 bg-white/20 text-white rounded border border-white/30 whitespace-nowrap hover:bg-red-500/60 transition-colors flex items-center gap-0.5"
+                        title="Excluir lote">
+                        Q{quadra}:{lote} ×
+                      </button>
                     ))}
                     {lotesConfigSemBolinhaList.length > 30 && (
                       <span className="text-[9px] text-white/80 font-bold self-center">+{lotesConfigSemBolinhaList.length - 30}</span>
@@ -5941,10 +5952,21 @@ const LotDashboard = ({
               <p className="text-xs font-black text-white mb-1.5">{lotesConfigSemBolinha} lote(s) sem bolinha:</p>
               <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
                 {lotesConfigSemBolinhaList.slice(0, 60).map(({ quadra, lote }) => (
-                  <span key={`${quadra}-${lote}`}
-                    className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30">
+                  <button key={`${quadra}-${lote}`}
+                    onClick={() => {
+                      const venda = sales.find(v => v.empreendimentoId === localDev.id && String(v.quadra) === String(quadra) && String(v.numeroLote) === String(lote));
+                      const msg = venda
+                        ? `⚠️ O lote Q${quadra}:${lote} tem venda vinculada (${(venda as any)?.clienteNome || "cliente"}). Excluir mesmo assim?`
+                        : `Excluir lote Q${quadra}:${lote} do gerenciador?`;
+                      if (!window.confirm(msg)) return;
+                      const devAtualizado = deleteLotFromEmpreendimento(localDev as Empreendimento, `${quadra}-${lote}`, sales);
+                      persistDev(devAtualizado);
+                    }}
+                    className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30 hover:bg-red-500/60 hover:border-red-300 transition-colors cursor-pointer flex items-center gap-1"
+                    title="Clique para excluir este lote">
                     Q{quadra}:{lote}
-                  </span>
+                    <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
                 ))}
                 {lotesConfigSemBolinhaList.length > 60 && (
                   <span className="text-[10px] font-bold text-white/80 self-center">+{lotesConfigSemBolinhaList.length - 60} mais...</span>
@@ -6481,8 +6503,35 @@ const EmpreendimentosSection = ({
 
     // ── 2. Atualizar lotesInfo (status das bolinhas) ─────────────────────────
     const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
-    let created = 0; let updated = 0;
-    for (const item of parsed.items) {
+    let created = 0; let updated = 0; let excluidos = 0;
+    // Separar itens normais de exclusões
+    const itensNormais = parsed.items.filter(i => (i.status as any) !== "excluir");
+    const itensExcluir = parsed.items.filter(i => (i.status as any) === "excluir");
+    // Verificar se algum lote a excluir via X tem venda
+    const lotesXComVenda = itensExcluir.filter(({ quadra, lote }) =>
+      sales.some(v => v.empreendimentoId === lotRegDev.id && String(v.quadra) === String(quadra) && String(v.numeroLote) === String(lote))
+    );
+    if (lotesXComVenda.length > 0) {
+      const msg = lotesXComVenda.map(({ quadra, lote }) => {
+        const v = sales.find(s => s.empreendimentoId === lotRegDev.id && String(s.quadra) === String(quadra) && String(s.numeroLote) === String(lote));
+        return `Q${quadra}:${lote} → ${(v as any)?.clienteNome || v?.clienteId || "?"}`;
+      }).join("
+");
+      const ok = window.confirm("⚠️ Lotes com X têm VENDA vinculada:
+
+" + msg + "
+
+Excluir mesmo assim?");
+      if (!ok) return;
+    }
+    // Processar exclusões via X
+    itensExcluir.forEach(({ quadra, lote }) => {
+      const key = `${quadra}-${lote}`.toUpperCase();
+      delete newLotesInfo[key];
+      excluidos++;
+    });
+    // Processar atualizações normais
+    for (const item of itensNormais) {
       const key = `${item.quadra}-${item.lote}`.toUpperCase();
       const existing = newLotesInfo[key];
       const novoStatus: MapaLoteStatus = item.status as MapaLoteStatus;
@@ -6529,7 +6578,7 @@ const EmpreendimentosSection = ({
 
     const removidos = lotesParaRemover.length;
     setScriptMsg(
-      `✓ Importado: ${created} criado(s), ${updated} atualizado(s)${removidos > 0 ? `, ${removidos} removido(s) do gerenciador` : ""}. Gerenciador sincronizado!`
+      `✓ Importado: ${created} criado(s), ${updated} atualizado(s)${excluidos > 0 ? `, ${excluidos} excluído(s) via X` : ""}${removidos > 0 ? `, ${removidos} removido(s) do gerenciador` : ""}. Gerenciador sincronizado!`
     );
     setScriptPasteText("");
   };
