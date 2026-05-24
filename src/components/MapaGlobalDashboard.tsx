@@ -191,7 +191,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       if (!leafletRef.current) return;
       if (devs.length === 1) {
         // focusDevId = editando empreendimento: zoom 19 (~200 pés altitude)
-        const zoomLevel = focusDevId ? 18 : 15;
+        const zoomLevel = focusDevId ? 17 : 15;
         leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], zoomLevel, { animate: true, duration: 1.0 });
       } else {
         const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
