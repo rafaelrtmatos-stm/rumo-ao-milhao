@@ -444,8 +444,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       {/* ── CORPO: painel + mapa ── */}
       <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300, position:'relative' }}>
 
-        {/* PAINEL LATERAL PREMIUM */}
-        {!focusDevId && (
+        {/* PAINEL LATERAL PREMIUM — só desktop */}
+        {!focusDevId && typeof window !== 'undefined' && window.innerWidth >= 768 && (
           <div style={{
             width: painelAberto ? 220 : 0,
             opacity: painelAberto ? 1 : 0,
@@ -536,26 +536,31 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
               onWheel={e => e.stopPropagation()}/>
           )}
 
-          {/* Cadeado premium */}
-          {locked && (
-            <button onClick={() => setLocked(false)} style={{
-              position:'absolute', top:12, right:12, zIndex:1001,
-              background: flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(10,15,26,0.85)',
-              backdropFilter:'blur(12px)',
-              color: flashLock ? 'white' : 'rgba(255,255,255,0.8)',
-              border: flashLock ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.12)',
-              borderRadius:10, padding:'7px 12px', cursor:'pointer',
-              display:'flex', alignItems:'center', gap:6,
-              fontWeight:800, fontSize:11,
-              boxShadow: flashLock ? '0 0 20px rgba(239,68,68,0.4)' : '0 4px 20px rgba(0,0,0,0.4)',
-              transition:'all 0.15s',
-            }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-              </svg>
-              {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}
-            </button>
-          )}
+          {/* Cadeado — toggle bloquear/desbloquear, sempre visível */}
+          <button onClick={() => setLocked(l => !l)} style={{
+            position:'absolute', top:12, right:12, zIndex:1001,
+            background: locked
+              ? (flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(10,15,26,0.85)')
+              : 'rgba(26,74,26,0.85)',
+            backdropFilter:'blur(12px)',
+            color: 'white',
+            border: locked
+              ? (flashLock ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.12)')
+              : '1px solid rgba(255,255,255,0.2)',
+            borderRadius:10, padding:'6px 11px', cursor:'pointer',
+            display:'flex', alignItems:'center', gap:6,
+            fontWeight:800, fontSize:11,
+            boxShadow: flashLock ? '0 0 20px rgba(239,68,68,0.4)' : '0 4px 20px rgba(0,0,0,0.4)',
+            transition:'all 0.2s',
+          }}>
+            {locked ? (
+              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}</>
+            ) : (
+              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>
+              Desbloqueado</>
+            )}
+          </button>
 
           {/* Instrução localização */}
           {!locked && onLocationPick && (
@@ -570,8 +575,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
             </div>
           )}
 
-          {/* Card stats flutuante inferior esquerdo */}
-          {!focusDevId && !locked && devsComLoc.length > 0 && (
+          {/* Card stats flutuante inferior esquerdo — só desktop */}
+          {!focusDevId && !locked && devsComLoc.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 768 && (
             <div style={{
               position:'absolute', bottom:12, left:12, zIndex:1000,
               background:'rgba(10,15,26,0.82)', backdropFilter:'blur(16px)',
