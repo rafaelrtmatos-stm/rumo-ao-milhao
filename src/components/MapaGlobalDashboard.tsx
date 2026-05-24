@@ -376,7 +376,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       )}
 
       {/* CORPO: mapa + painel */}
-      <div className="flex" style={{ height: focusDevId ? '100%' : mapHeight, minHeight: 300 }}>
+      <div className="flex" style={{ height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300 }}>
 
         {/* PAINEL LATERAL — recolhível */}
         {!focusDevId && (
@@ -592,58 +592,14 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         </div>
       </div>
 
-      {/* CONTROLES MINIMALISTAS — botões icon-only no canto direito */}
-      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
-        {/* Centralizar */}
-        <button title="Centralizar" onClick={() => {
-          if (!leafletRef.current) return;
-          const devs = devsComLoc;
-          if (devs.length === 0) return;
-          import("leaflet").then(L => {
-            if (!leafletRef.current) return;
-            if (devs.length === 1) {
-              leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
-            } else {
-              const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
-              leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
-            }
-          });
-        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-        </button>
-        {/* Minha localização */}
-        <button title="Minha localização" onClick={() => {
-          navigator.geolocation.getCurrentPosition(
-            pos => {
-              leafletRef.current?.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 1 });
-              import("leaflet").then(L => {
-                L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
-                  radius: 10, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.8, weight: 3,
-                }).addTo(leafletRef.current!).bindPopup("📍 Você está aqui").openPopup();
-              });
-            },
-            err => { const m: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."}; alert(m[err.code]||err.message); },
-            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-          );
-        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-blue-600 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/><path d="M12 8a4 4 0 0 1 4 4"/></svg>
-        </button>
-        {/* Camadas — cicla entre satélite/híbrido/ruas */}
-        <button title={`Camada: ${camada}`} onClick={() => {
-          const ordem: Camada[] = ["satelite","hibrido","ruas"];
-          const idx = ordem.indexOf(camada);
-          setCamada(ordem[(idx+1) % ordem.length]);
-        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all text-sm">
-          {camada === "satelite" ? "🛰" : camada === "hibrido" ? "🌍" : "🗺"}
-        </button>
-      </div>
+
 
 
         </div>{/* fim MAPA */}
       </div>{/* fim CORPO */}
 
       {/* BARRA DE RESIZE — arrastar para ajustar altura */}
-      {!focusDevId && (
+      {!focusDevId && !isFullscreen && (
         <div
           onMouseDown={startResizeDrag}
           onTouchStart={startResizeDrag}
