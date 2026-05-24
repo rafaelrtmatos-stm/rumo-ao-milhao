@@ -118,7 +118,10 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
 
   if (navigator.onLine) {
     try {
-      await apiPut(`/api/empreendimentos/${item.id}`, stripBase64(item));
+      const stripped = stripBase64(item);
+      const payloadSize = JSON.stringify(stripped).length;
+      console.log('[db] upsertEmpreendimento payload size:', payloadSize, 'bytes');
+      await apiPut(`/api/empreendimentos/${item.id}`, stripped);
 
       if ((item as any).mapaImagemBase64) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
@@ -129,7 +132,7 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
       await db.empreendimentos.update(item.id, { syncStatus: 'synced' });
       return;
     } catch (err) {
-      console.warn('[db] upsertEmpreendimento API falhou, enfileirando:', err);
+      console.error('[db] upsertEmpreendimento FALHOU:', err);
     }
   }
   await enqueue('empreendimento', 'upsert', item.id, item);
