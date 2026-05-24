@@ -231,21 +231,28 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
           });
         } else {
           const dev = cluster.devs[0];
-          const nome = dev.nome.length > 16 ? dev.nome.slice(0,16)+'…' : dev.nome;
+          const nome = dev.nome.length > 18 ? dev.nome.slice(0,18)+'…' : dev.nome;
+          // Estilo Google Maps: pino vermelho + label branco ao lado
           icon = L.divIcon({
             className: "",
-            html: `<div style="position:relative;cursor:pointer;filter:drop-shadow(0 4px 8px rgba(0,0,0,0.4));">
-              <div style="background:#ef4444;color:white;border-radius:12px 12px 12px 2px;
-                padding:5px 10px;font-size:11px;font-weight:900;white-space:nowrap;
-                border:2.5px solid white;box-shadow:0 2px 8px rgba(239,68,68,0.5);
-                display:flex;align-items:center;gap:5px;">
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="white"><path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/></svg>
+            html: `<div style="display:flex;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">
+              <!-- PIN vermelho estilo Google Maps -->
+              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
+                <div style="width:22px;height:22px;background:#e53935;border-radius:50% 50% 50% 0;
+                  transform:rotate(-45deg);border:2.5px solid white;
+                  box-shadow:0 2px 6px rgba(229,57,53,0.6);"></div>
+                <div style="width:4px;height:8px;background:#e53935;margin-top:-1px;border-radius:0 0 2px 2px;"></div>
+              </div>
+              <!-- NOME branco ao lado -->
+              <div style="background:rgba(30,30,30,0.82);color:white;
+                padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;
+                white-space:nowrap;letter-spacing:0.2px;backdrop-filter:blur(4px);
+                border:1px solid rgba(255,255,255,0.15);max-width:140px;
+                overflow:hidden;text-overflow:ellipsis;">
                 ${nome}
               </div>
-              <div style="width:0;height:0;border-left:7px solid transparent;border-right:7px solid transparent;
-                border-top:9px solid #ef4444;margin-left:6px;"></div>
             </div>`,
-            iconSize: [160, 48], iconAnchor: [8, 48],
+            iconSize: [200, 36], iconAnchor: [11, 30],
           });
         }
 
