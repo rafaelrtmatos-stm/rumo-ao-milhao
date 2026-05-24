@@ -3511,7 +3511,10 @@ const LotDashboard = ({
       || (getActiveViewport()?.offsetWidth || 0)
       || 600;
     // 2.8% da largura do mapa — proporcional, acompanha rotação automaticamente
-    const size = Math.round(mapW * 0.028 * pct);
+    // No celular: dividir pelo zoom para compensar (bolinhas menores quando zoom baixo)
+    const currentZoom = mapZoomRef.current || 1;
+    const zoomScale = isMobile ? Math.max(0.5, Math.min(1, currentZoom)) : 1;
+    const size = Math.round(mapW * 0.028 * pct * zoomScale);
     const safeSz = Math.max(8, Math.min(80, size));
     return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
@@ -6010,6 +6013,27 @@ const LotDashboard = ({
                 ) : (
                   // ── COM BOLINHAS: ações rápidas + lista por quadra ──
                   <>
+                    {/* Tamanho das bolinhas */}
+                    <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs font-black text-slate-700">Tamanho das bolinhas</p>
+                        <span className="text-xs font-black text-slate-500">{markerSizePercent}%</span>
+                      </div>
+                      <input type="range" min={40} max={220} step={5}
+                        value={markerSizePercent}
+                        onChange={e => setMarkerSizePercent(Number(e.target.value))}
+                        className="w-full h-2 rounded-full accent-emerald-600"
+                      />
+                      <div className="flex justify-between">
+                        <span className="text-[9px] text-slate-400 font-bold">Menor</span>
+                        <button onClick={() => setMarkerSizePercent(100)}
+                          className="px-2 py-0.5 bg-slate-200 rounded text-slate-500 text-[9px] font-black active:scale-95">
+                          Padrão
+                        </button>
+                        <span className="text-[9px] text-slate-400 font-bold">Maior</span>
+                      </div>
+                    </div>
+
                     {/* Ações rápidas */}
                     <div>
                       <p className="text-sm font-black text-slate-800 mb-3">Ações rápidas</p>
