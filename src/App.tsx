@@ -6846,7 +6846,7 @@ const EmpreendimentosSection = ({
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
-        <div style={{ display: (showMapaGlobal && (!isAdding || (editingDev && ((editingDev as any).lat || (formData as any).lat)))) ? undefined : 'none' }}>
+        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
             style={{ height: globalMapHeight, isolation: 'isolate' }}
@@ -7029,13 +7029,27 @@ const EmpreendimentosSection = ({
                     <span className="text-[10px] text-emerald-600 font-bold ml-1">✓ Definida</span>
                   )}
                 </label>
-                <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
-                  <PickLocationMap
-                    lat={(formData as any).lat ?? null}
-                    lng={(formData as any).lng ?? null}
-                    onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
-                  />
-                </div>
+                {/* Quando editando empreendimento existente: usa MapaGlobal focado e bloqueado */}
+                {editingDev ? (
+                  <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 300 }}>
+                    <MapaGlobalDashboard
+                      empreendimentos={developments}
+                      sales={sales}
+                      visible={true}
+                      focusDevId={editingDev.id}
+                      onAbrirEmpreendimento={() => {}}
+                      onVerMapa={() => {}}
+                    />
+                  </div>
+                ) : (
+                  <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
+                    <PickLocationMap
+                      lat={(formData as any).lat ?? null}
+                      lng={(formData as any).lng ?? null}
+                      onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
+                    />
+                  </div>
+                )}
                 {!(formData as any).lat && (
                   <p className="text-[10px] text-slate-400 mt-1">Clique no mapa para definir a localização do empreendimento.</p>
                 )}
