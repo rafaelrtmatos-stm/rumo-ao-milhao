@@ -5,8 +5,7 @@
   "functions": {
     "api/index.ts": {
       "maxDuration": 30,
-      "memory": 1024,
-      "maxBodySize": "10mb"
+      "memory": 1024
     }
   },
   "routes": [
