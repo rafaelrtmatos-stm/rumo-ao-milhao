@@ -17122,6 +17122,34 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     const next = !forceDesktop;
     setForceDesktop(next);
     localStorage.setItem('force-desktop', String(next));
+
+    // Viewport meta tag — muda dinamicamente
+    const viewportMeta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement;
+
+    if (next) {
+      // MODO PC: viewport 1280px escalado para caber na tela + rotacionar para landscape
+      const screenW = window.screen.width;
+      const screenH = window.screen.height;
+      const targetW = 1280;
+      // Calcular escala para caber na tela em landscape
+      const scale = Math.min(screenW / targetW, screenH / targetW, 1).toFixed(3);
+      if (viewportMeta) {
+        viewportMeta.content = `width=${targetW}, initial-scale=${scale}, minimum-scale=${scale}, maximum-scale=3.0`;
+      }
+      // Forçar landscape (funciona no Android; iOS ignora)
+      try {
+        (screen.orientation as any).lock?.("landscape").catch(() => {});
+      } catch {}
+    } else {
+      // MODO MOBILE: volta ao viewport normal
+      if (viewportMeta) {
+        viewportMeta.content = "width=device-width, initial-scale=1.0, viewport-fit=cover";
+      }
+      // Desbloquear orientação
+      try {
+        (screen.orientation as any).unlock?.();
+      } catch {}
+    }
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [prefilledSale, setPrefilledSale] = useState<
