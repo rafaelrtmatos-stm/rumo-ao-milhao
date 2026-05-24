@@ -250,7 +250,12 @@ function getLotesDeQuadra(faixa?: { inicio?: number; fim?: number; especificos?:
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean)
-      .sort((a, b) => Number(a) - Number(b));
+      .sort((a, b) => {
+        const na = parseInt(a) || 0;
+        const nb = parseInt(b) || 0;
+        if (na !== nb) return na - nb;
+        return a.localeCompare(b);
+      });
   }
   if (faixa.inicio !== undefined && faixa.fim !== undefined && faixa.fim >= faixa.inicio && faixa.fim > 0) {
     return Array.from({ length: faixa.fim - faixa.inicio + 1 }, (_, i) => (faixa.inicio! + i).toString());
@@ -350,7 +355,13 @@ function getQuadraList(dev?: Empreendimento | null): string[] {
   return (dev?.quadras || "")
     .split(",")
     .map((q) => q.trim())
-    .filter(Boolean);
+    .filter(Boolean)
+    .sort((a, b) => {
+      const na = parseInt(a) || 0;
+      const nb = parseInt(b) || 0;
+      if (na !== nb) return na - nb;
+      return a.localeCompare(b);
+    });
 }
 
 function findQuadraName(dev: Empreendimento, quadra: string): string | null {
@@ -7976,7 +7987,6 @@ const EmpreendimentosSection = ({
                                       <button
                                         onClick={() => {
                                           setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (info.status as any) || "disponivel" });
-                                          setLotRegTab("cadastrar");
                                         }}
                                         className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
                                         title="Editar lote"
