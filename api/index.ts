@@ -735,6 +735,42 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+// Rota separada para mapaPontos (bolinhas) — evita 413
+app.put("/api/empreendimentos/:id/pontos", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const { mapaPontos } = req.body;
+    if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
+    const [existing] = await db.select().from(empreendimentos)
+      .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
+    if (!existing) return res.status(404).json({ error: "Empreendimento não encontrado." });
+    const updatedData = { ...(existing.data as any), mapaPontos };
+    await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_USER, data: updatedData })
+      .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to update mapaPontos" });
+  }
+});
+
+// Rota separada para lotesInfo — evita 413
+app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const { lotesInfo } = req.body;
+    if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
+    const [existing] = await db.select().from(empreendimentos)
+      .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
+    if (!existing) return res.status(404).json({ error: "Empreendimento não encontrado." });
+    const updatedData = { ...(existing.data as any), lotesInfo };
+    await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_USER, data: updatedData })
+      .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to update lotesInfo" });
+  }
+});
+
 // Upload separado da imagem do mapa (evita 413 — imagens base64 podem ter vários MB)
 app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");

@@ -147,11 +147,26 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
 
   if (navigator.onLine) {
     try {
-      const stripped = stripBase64(item);
-      const payloadSize = JSON.stringify(stripped).length;
-      console.log('[db] upsertEmpreendimento payload size:', payloadSize, 'bytes');
-      await apiPut(`/api/empreendimentos/${item.id}`, stripped);
+      // 1. Dados básicos sem campos pesados
+      const base = stripHeavy(item);
+      console.log('[db] upsertEmpreendimento base size:', JSON.stringify(base).length, 'bytes');
+      await apiPut(`/api/empreendimentos/${item.id}`, base);
 
+      // 2. mapaPontos separado (pode ser grande com muitas bolinhas)
+      if ((item as any).mapaPontos !== undefined) {
+        await apiPut(`/api/empreendimentos/${item.id}/pontos`, {
+          mapaPontos: (item as any).mapaPontos ?? [],
+        });
+      }
+
+      // 3. lotesInfo separado
+      if ((item as any).lotesInfo !== undefined) {
+        await apiPut(`/api/empreendimentos/${item.id}/lotes`, {
+          lotesInfo: (item as any).lotesInfo ?? {},
+        });
+      }
+
+      // 4. Imagem do mapa separada
       if ((item as any).mapaImagemBase64) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
           mapaImagemBase64: (item as any).mapaImagemBase64,
@@ -189,6 +204,21 @@ function stripBase64(item: Empreendimento): Empreendimento {
     mapaImagemMedResBase64,
     mapaImagemHighResBase64,
     mapaPdfOriginalBase64,
+    ...rest
+  } = item as any;
+  return rest as Empreendimento;
+}
+
+// Remove tudo pesado — só dados básicos do empreendimento
+function stripHeavy(item: Empreendimento): Empreendimento {
+  const {
+    mapaImagemBase64,
+    mapaImagemLeveBase64,
+    mapaImagemMedResBase64,
+    mapaImagemHighResBase64,
+    mapaPdfOriginalBase64,
+    mapaPontos,
+    lotesInfo,
     ...rest
   } = item as any;
   return rest as Empreendimento;
