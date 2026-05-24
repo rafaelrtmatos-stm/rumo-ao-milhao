@@ -2342,8 +2342,13 @@ const LotDashboard = ({
   // Tamanho visual das bolinhas configurável em porcentagem.
   // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
   const [markerSizePercent, setMarkerSizePercent] = useState<number>(() => {
-    const initial = Number((dev as any).mapaMarkerSizePercent ?? 100);
-    return Number.isFinite(initial) ? Math.max(40, Math.min(220, initial)) : 100;
+    const saved = Number((dev as any).mapaMarkerSizePercent ?? 0);
+    // Migração: valores antigos (calibrados em 0.028) precisam ser convertidos
+    // Novo fator base é 0.0112 (40% do antigo), então dividir por 2.5
+    // Se não há valor salvo ou é 100 (padrão antigo), usar 100 como novo padrão
+    if (!saved || saved === 0) return 100;
+    const converted = Math.round(saved / 2.5);
+    return Number.isFinite(converted) ? Math.max(50, Math.min(300, converted)) : 100;
   });
 
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
@@ -3514,7 +3519,7 @@ const LotDashboard = ({
     // No celular: dividir pelo zoom para compensar (bolinhas menores quando zoom baixo)
     const currentZoom = mapZoomRef.current || 1;
     const zoomScale = isMobile ? Math.max(0.5, Math.min(1, currentZoom)) : 1;
-    const size = Math.round(mapW * 0.028 * pct * zoomScale);
+    const size = Math.round(mapW * 0.0112 * pct * zoomScale);
     const safeSz = Math.max(8, Math.min(80, size));
     return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
@@ -6019,7 +6024,7 @@ const LotDashboard = ({
                         <p className="text-xs font-black text-slate-700">Tamanho das bolinhas</p>
                         <span className="text-xs font-black text-slate-500">{markerSizePercent}%</span>
                       </div>
-                      <input type="range" min={40} max={220} step={5}
+                      <input type="range" min={50} max={300} step={5}
                         value={markerSizePercent}
                         onChange={e => setMarkerSizePercent(Number(e.target.value))}
                         className="w-full h-2 rounded-full accent-emerald-600"
