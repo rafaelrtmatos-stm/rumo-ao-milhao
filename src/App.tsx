@@ -6579,7 +6579,7 @@ const EmpreendimentosSection = ({
     } as Empreendimento;
 
     onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
-    onSaveDev(devAtualizado);
+    onSave(devAtualizado);
     setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(devAtualizado, newLotesInfo, sales) : null);
 
     const removidos = lotesParaRemover.length;

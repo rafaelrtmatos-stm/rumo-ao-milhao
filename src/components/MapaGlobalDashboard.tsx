@@ -171,20 +171,21 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   }, [mapReady]);
 
   // Centralizar no foco ou nos empreendimentos
-  const centradoRef = useRef(false);
+  const centradoRef = useRef<string | false>(false);
   useEffect(() => {
     if (!mapReady || !leafletRef.current) return;
     const devs = empreendimentosFiltrados.filter(d => d.lat && d.lng && d.lat !== 0);
     if (devs.length === 0) return;
-    if (centradoRef.current) return; // Só centraliza uma vez
-    centradoRef.current = true;
+    if (centradoRef.current === (focusDevId || "todos")) return;
+    centradoRef.current = focusDevId || "todos";
     import("leaflet").then(L => {
       if (!leafletRef.current) return;
       if (devs.length === 1) {
         leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1.2 });
       } else {
         const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
-        leafletRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: true });
+        // maxZoom 16 = ~1km de altitude, mostra todos os pinos bem próximos
+        leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 16, animate: true });
       }
     });
   }, [mapReady, empreendimentos]);
