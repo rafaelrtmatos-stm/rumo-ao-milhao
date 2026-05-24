@@ -397,49 +397,26 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
                 return (
                   <div key={dev.id}
                     onClick={() => centralizarEm(dev)}
-                    className="group relative rounded-2xl overflow-hidden cursor-pointer transition-all duration-200 hover:scale-[1.02]"
+                    className="cursor-pointer rounded-xl px-3 py-2.5 transition-all active:scale-[0.98]"
                     style={{
-                      background: isActive ? 'linear-gradient(135deg,#1e3a5f,#1a4a1a)' : 'rgba(51,65,85,0.8)',
-                      border: isActive ? '1.5px solid rgba(255,255,255,0.2)' : '1.5px solid rgba(255,255,255,0.06)',
-                      boxShadow: isActive ? '0 4px 20px rgba(0,0,0,0.4)' : '0 2px 8px rgba(0,0,0,0.2)',
+                      background: isActive ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: isActive ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.06)',
                     }}>
-                    {/* Preview mapa */}
-                    {((dev as any).mapaImagemLeveBase64 || (dev as any).mapaImagemUrl) && (
-                      <div className="h-16 overflow-hidden">
-                        <img src={(dev as any).mapaImagemLeveBase64 || (dev as any).mapaImagemUrl}
-                          className="w-full h-full object-cover opacity-60 group-hover:opacity-80 transition-opacity"
-                          alt="preview" />
-                        <div className="absolute inset-0 h-16 bg-gradient-to-b from-transparent to-slate-800/90"/>
-                      </div>
-                    )}
-                    <div className="p-3 space-y-2">
-                      <p className="text-xs font-black text-white leading-tight truncate">{dev.nome}</p>
-                      {dev.cidade && <p className="text-[10px] text-slate-400">📍 {dev.cidade}</p>}
-                      <div className="grid grid-cols-3 gap-1 text-center">
-                        <div className="rounded-lg py-1" style={{background:'rgba(255,255,255,0.07)'}}>
-                          <p className="text-xs font-black text-white">{stats.total}</p>
-                          <p className="text-[8px] text-slate-400">Total</p>
-                        </div>
-                        <div className="rounded-lg py-1" style={{background:'rgba(34,197,94,0.15)'}}>
-                          <p className="text-xs font-black text-emerald-400">{stats.disponiveis}</p>
-                          <p className="text-[8px] text-emerald-500">Disp.</p>
-                        </div>
-                        <div className="rounded-lg py-1" style={{background:'rgba(239,68,68,0.15)'}}>
-                          <p className="text-xs font-black text-red-400">{stats.vendidos}</p>
-                          <p className="text-[8px] text-red-500">Vend.</p>
-                        </div>
-                      </div>
-                      {/* Barra progresso */}
-                      <div className="h-1 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all"
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-xs font-black text-white truncate flex-1">{dev.nome}</p>
+                      <button onClick={e => { e.stopPropagation(); onVerMapa(dev.id); }}
+                        className="flex-shrink-0 px-2 py-1 rounded-lg text-[9px] font-black text-white/70 hover:text-white hover:bg-white/10 transition-all">
+                        Abrir
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-3 mt-1.5">
+                      <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full"
                           style={{ width:`${stats.pct}%`, background: stats.pct > 70 ? '#ef4444' : stats.pct > 40 ? '#f59e0b' : '#22c55e' }}/>
                       </div>
-                      <button
-                        onClick={e => { e.stopPropagation(); onVerMapa(dev.id); }}
-                        className="w-full py-1.5 rounded-xl text-[10px] font-black uppercase transition-all active:scale-95"
-                        style={{ background: isActive ? 'rgba(255,255,255,0.2)' : 'rgba(255,255,255,0.1)', color: 'white' }}>
-                        Ver mapa
-                      </button>
+                      <span className="text-[9px] text-slate-400 font-bold flex-shrink-0">
+                        {stats.disponiveis} disp. · {stats.pct}%
+                      </span>
                     </div>
                   </div>
                 );
@@ -615,53 +592,27 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         </div>
       </div>
 
-      {/* CONTROLES — canto superior esquerdo */}
-      <div className="absolute top-3 left-3 z-[1000] flex flex-col gap-1.5">
+      {/* CONTROLES MINIMALISTAS — botões icon-only no canto direito */}
+      <div className="absolute top-3 right-3 z-[1000] flex flex-col gap-1.5">
         {/* Centralizar */}
-        <button
-          onClick={() => {
+        <button title="Centralizar" onClick={() => {
+          if (!leafletRef.current) return;
+          const devs = devsComLoc;
+          if (devs.length === 0) return;
+          import("leaflet").then(L => {
             if (!leafletRef.current) return;
-            const devs = devsComLoc;
-            if (devs.length === 0) return;
-            import("leaflet").then(L => {
-              if (!leafletRef.current) return;
-              if (devs.length === 1) {
-                leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
-              } else {
-                const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
-                leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
-              }
-            });
-          }}
-          className="bg-white text-slate-700 rounded-xl px-3 py-2 text-[11px] font-black shadow-lg border border-slate-200 hover:bg-slate-900 hover:text-white hover:border-slate-900 transition-all flex items-center gap-1.5"
-        >
+            if (devs.length === 1) {
+              leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
+            } else {
+              const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number, number]));
+              leafletRef.current.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+            }
+          });
+        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-          Centralizar
         </button>
-        {/* Filtros rápidos */}
-        <div className="flex flex-col gap-1">
-          {(["todos","com_mapa","disponiveis"] as Filtro[]).map(f => (
-            <button key={f} onClick={() => setFiltro(f)}
-              className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow transition-all whitespace-nowrap ${filtro === f ? "bg-slate-900 text-white" : "bg-white/95 text-slate-600 hover:bg-white border border-slate-200"}`}>
-              {f === "todos" ? "Todos" : f === "com_mapa" ? "Com mapa" : "Disponíveis"}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* CAMADAS — canto direito */}
-      <div className="absolute top-14 right-3 z-[1000] flex flex-col gap-1">
-        {(["satelite","hibrido","ruas"] as Camada[]).map(c => (
-          <button key={c} onClick={() => setCamada(c)}
-            className={`px-3 py-1.5 rounded-xl text-[10px] font-black shadow-md transition-all whitespace-nowrap ${camada === c ? "bg-slate-900 text-white" : "bg-white/95 text-slate-700 hover:bg-white border border-slate-200"}`}>
-            {c === "satelite" ? "🛰 Satélite" : c === "hibrido" ? "🌍 Híbrido" : "🗺 Ruas"}
-          </button>
-        ))}
-      </div>
-
-      {/* MINHA LOCALIZAÇÃO */}
-      <button
-        onClick={() => {
+        {/* Minha localização */}
+        <button title="Minha localização" onClick={() => {
           navigator.geolocation.getCurrentPosition(
             pos => {
               leafletRef.current?.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 1 });
@@ -671,48 +622,23 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
                 }).addTo(leafletRef.current!).bindPopup("📍 Você está aqui").openPopup();
               });
             },
-            err => {
-              const msgs: Record<number, string> = { 1: "Permissão negada.", 2: "GPS indisponível.", 3: "Tempo esgotado." };
-              alert(msgs[err.code] || err.message);
-            },
+            err => { const m: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."}; alert(m[err.code]||err.message); },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
           );
-        }}
-        className="absolute bottom-3 left-3 z-[1000] bg-white/95 text-slate-700 rounded-xl px-3 py-2 text-[11px] font-black shadow-lg border border-slate-200 hover:bg-white"
-      >
-        📍 Minha localização
-      </button>
+        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-blue-600 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/><path d="M12 8a4 4 0 0 1 4 4"/></svg>
+        </button>
+        {/* Camadas — cicla entre satélite/híbrido/ruas */}
+        <button title={`Camada: ${camada}`} onClick={() => {
+          const ordem: Camada[] = ["satelite","hibrido","ruas"];
+          const idx = ordem.indexOf(camada);
+          setCamada(ordem[(idx+1) % ordem.length]);
+        }} className="w-8 h-8 rounded-xl bg-white/90 backdrop-blur text-slate-700 flex items-center justify-center shadow-md border border-slate-200 hover:bg-white active:scale-90 transition-all text-sm">
+          {camada === "satelite" ? "🛰" : camada === "hibrido" ? "🌍" : "🗺"}
+        </button>
+      </div>
 
-      {/* PAINEL LATERAL */}
-      {devsComLoc.length > 1 && (
-        <>
-          <button onClick={() => setPainelAberto(p => !p)}
-            className="absolute bottom-3 right-3 z-[1000] bg-slate-900 text-white rounded-xl px-3 py-1.5 text-[11px] font-black shadow-md hidden lg:block">
-            {painelAberto ? "Ocultar lista" : "Ver lista"}
-          </button>
-          {painelAberto && (
-            <div className="absolute top-0 bottom-0 right-0 z-[999] w-52 bg-white/95 backdrop-blur-sm shadow-2xl overflow-y-auto hidden lg:block border-l border-slate-100">
-              <div className="p-3 border-b border-slate-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">{devsComLoc.length} empreendimentos</p>
-              </div>
-              {devsFiltrados.map(dev => {
-                const stats = calcularStats(dev, sales);
-                return (
-                  <button key={dev.id} onClick={() => centralizarEm(dev)}
-                    className={`w-full text-left px-3 py-2.5 border-b border-slate-50 hover:bg-slate-50 transition-colors ${selectedDev?.id === dev.id ? "bg-emerald-50" : ""}`}>
-                    <p className="text-xs font-bold text-slate-800 leading-tight truncate">{dev.nome}</p>
-                    {dev.cidade && <p className="text-[10px] text-slate-400 truncate">{dev.cidade}</p>}
-                    <div className="flex gap-2 mt-1 text-[10px]">
-                      <span className="text-emerald-600 font-bold">{stats.disponiveis} disp.</span>
-                      <span className="text-slate-400">{stats.pct}%</span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </>
-      )}
+
         </div>{/* fim MAPA */}
       </div>{/* fim CORPO */}
 
