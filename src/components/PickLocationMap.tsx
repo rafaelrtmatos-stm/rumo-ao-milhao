@@ -29,9 +29,13 @@ export default function PickLocationMap({ lat, lng, onChange }: Props) {
         zoomControl: true,
       });
 
-      // CartoDB Voyager — visual moderno
-      L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png", {
-        maxZoom: 19, subdomains: "abcd",
+      // Esri Satélite — sem API key, alta qualidade
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19, attribution: "© Esri",
+      }).addTo(map);
+      // Overlay de nomes
+      L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}", {
+        maxZoom: 19, opacity: 0.7,
       }).addTo(map);
 
       // Ícone personalizado
@@ -126,7 +130,7 @@ export default function PickLocationMap({ lat, lng, onChange }: Props) {
           </span>
         )}
       </div>
-      <div ref={mapRef} style={{ height: 220 }} />
+      <div ref={mapRef} style={{ height: 320 }} />
       {!lat && !lng && (
         <div className="px-3 py-1.5 bg-slate-50 border-t border-slate-200">
           <p className="text-[10px] text-slate-400">Ou use o botão 📍 Minha posição ao editar o mapa do empreendimento</p>

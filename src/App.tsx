@@ -6791,7 +6791,7 @@ const EmpreendimentosSection = ({
         const semCoord = developments.filter(d => !d.lat || !d.lng || d.lat === 0);
         const comCoord = developments.filter(d => d.lat && d.lng && d.lat !== 0);
         return (
-        <div style={{ display: showMapaGlobal ? undefined : 'none' }}>
+        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none' }}>
           <div
             className="card-premium overflow-hidden flex flex-col relative"
             style={{ height: globalMapHeight, isolation: 'isolate' }}
