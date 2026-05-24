@@ -330,281 +330,333 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
     window.addEventListener('touchend', onUp);
   }
 
-  return (
-    <div ref={containerRef} className="flex flex-col w-full bg-slate-900 rounded-2xl overflow-hidden"
-      style={{ fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+  const totalDisponiveis = devsComLoc.reduce((s,d) => s + Math.max(0,(d.totalLotes??0)-(d.lotesVendidos??0)), 0);
+  const totalVendidos = devsComLoc.reduce((s,d) => s + (d.lotesVendidos??0), 0);
+  const totalLotes = devsComLoc.reduce((s,d) => s + (d.totalLotes??0), 0);
 
-      {/* BARRA DE CONTROLES TOPO */}
+  return (
+    <div ref={containerRef} className="flex flex-col w-full overflow-hidden"
+      style={{
+        borderRadius: 20,
+        background: '#0a0f1a',
+        boxShadow: '0 25px 80px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.06)',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}>
+
+      {/* ── TOPBAR PREMIUM ── */}
       {!focusDevId && (
-        <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-slate-900 border-b border-slate-700/50">
+        <div style={{
+          background: 'rgba(10,15,26,0.85)',
+          backdropFilter: 'blur(20px)',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          padding: '10px 14px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: 10,
+          flexShrink: 0,
+        }}>
           {/* Toggle painel */}
-          <button onClick={togglePainel}
-            className="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center transition-all active:scale-90"
-            title={painelAberto ? "Recolher painel" : "Expandir painel"}>
+          <button onClick={togglePainel} title={painelAberto ? "Recolher" : "Expandir"}
+            style={{
+              width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
+              background: painelAberto ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
+              color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex',
+              alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0,
+            }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {painelAberto
-                ? <><polyline points="15 18 9 12 15 6"/></>
-                : <><polyline points="9 18 15 12 9 6"/></>}
+              {painelAberto ? <polyline points="15 18 9 12 15 6"/> : <polyline points="9 18 15 12 9 6"/>}
             </svg>
           </button>
 
-          {/* Busca */}
-          <div className="flex-1 relative">
-            <svg className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          {/* Busca premium */}
+          <div style={{ flex: 1, position: 'relative' }}>
+            <svg style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', opacity:0.4 }}
+              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
             <input value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar empreendimento..."
-              className="w-full pl-7 pr-3 py-1.5 bg-slate-700 text-white text-xs font-medium placeholder-slate-400 rounded-lg border-0 outline-none"/>
+              placeholder="Buscar empreendimento, cidade ou região..."
+              style={{
+                width: '100%', paddingLeft: 36, paddingRight: 14, paddingTop: 8, paddingBottom: 8,
+                background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
+                borderRadius: 10, color: 'white', fontSize: 12, fontWeight: 500, outline: 'none',
+                boxSizing: 'border-box', transition: 'all 0.2s',
+              }}/>
           </div>
 
-          {/* Camada */}
-          <select value={camada} onChange={e => setCamada(e.target.value as Camada)}
-            className="bg-slate-700 text-white text-xs font-bold rounded-lg px-2 py-1.5 border-0 outline-none cursor-pointer">
-            <option value="satelite">🛰 Satélite</option>
-            <option value="hibrido">🗺 Híbrido</option>
-            <option value="ruas">🏙 Ruas</option>
-          </select>
+          {/* Pills de camada */}
+          <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+            {([['satelite','🛰','Sat'],['hibrido','🌍','Híb'],['ruas','🗺','Ruas']] as [Camada,string,string][]).map(([c,icon,label]) => (
+              <button key={c} onClick={() => setCamada(c)}
+                style={{
+                  padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                  border: camada === c ? '1px solid rgba(74,222,128,0.5)' : '1px solid rgba(255,255,255,0.08)',
+                  background: camada === c ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.05)',
+                  color: camada === c ? '#4ade80' : 'rgba(255,255,255,0.5)',
+                  boxShadow: camada === c ? '0 0 12px rgba(74,222,128,0.2)' : 'none',
+                  transition: 'all 0.2s', whiteSpace: 'nowrap',
+                }}>
+                {icon} {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Centralizar */}
+          <button title="Centralizar" onClick={() => {
+            if (!leafletRef.current) return;
+            const devs = devsComLoc;
+            if (!devs.length) return;
+            import("leaflet").then(L => {
+              if (!leafletRef.current) return;
+              if (devs.length === 1) leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
+              else {
+                const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
+                leafletRef.current.fitBounds(bounds, { padding: [60,60], maxZoom: 14, animate: true });
+              }
+            });
+          }} style={{
+            width:34, height:34, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)',
+            background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.7)',
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+            transition:'all 0.2s', flexShrink:0,
+          }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
+            </svg>
+          </button>
 
           {/* Fullscreen */}
-          <button onClick={toggleFullscreen}
-            className="w-8 h-8 rounded-lg bg-slate-700 hover:bg-slate-600 text-white flex items-center justify-center transition-all active:scale-90"
-            title="Tela cheia">
+          <button title="Tela cheia" onClick={toggleFullscreen}
+            style={{
+              width:34, height:34, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)',
+              background: isFullscreen ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)',
+              color: isFullscreen ? '#4ade80' : 'rgba(255,255,255,0.7)',
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
+              transition:'all 0.2s', flexShrink:0,
+            }}>
             {isFullscreen
-              ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3"/></svg>
-              : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>}
+              ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3"/></svg>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>}
           </button>
         </div>
       )}
 
-      {/* CORPO: mapa + painel */}
-      <div className="flex" style={{ height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300 }}>
+      {/* ── CORPO: painel + mapa ── */}
+      <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300, position:'relative' }}>
 
-        {/* PAINEL LATERAL — recolhível */}
+        {/* PAINEL LATERAL PREMIUM */}
         {!focusDevId && (
-          <div className="flex-shrink-0 overflow-hidden transition-all duration-300 bg-slate-800/95 border-r border-slate-700/50"
-            style={{ width: painelAberto ? 240 : 0, opacity: painelAberto ? 1 : 0 }}>
-            <div className="w-60 h-full overflow-y-auto p-2 space-y-2"
-              style={{ scrollbarWidth: 'thin', scrollbarColor: '#475569 transparent' }}>
-              {/* Header painel */}
-              <div className="px-2 py-1.5">
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  {devsComLoc.length} empreendimento(s)
-                </p>
+          <div style={{
+            width: painelAberto ? 220 : 0,
+            opacity: painelAberto ? 1 : 0,
+            overflow: 'hidden',
+            transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s',
+            flexShrink: 0,
+            background: 'rgba(5,10,20,0.92)',
+            backdropFilter: 'blur(20px)',
+            borderRight: '1px solid rgba(255,255,255,0.06)',
+            display: 'flex',
+            flexDirection: 'column',
+          }}>
+            {/* Stats topo do painel */}
+            <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
+              <p style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing: 2, marginBottom: 8 }}>
+                Empreendimentos
+              </p>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                {[
+                  { label:'Total', value: devsComLoc.length, color:'#94a3b8' },
+                  { label:'Lotes disp.', value: totalDisponiveis, color:'#4ade80' },
+                ].map(s => (
+                  <div key={s.label} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'6px 8px', border:'1px solid rgba(255,255,255,0.05)' }}>
+                    <p style={{ fontSize:16, fontWeight:900, color:s.color, lineHeight:1 }}>{s.value}</p>
+                    <p style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{s.label}</p>
+                  </div>
+                ))}
               </div>
-              {/* Cards de empreendimentos */}
+            </div>
+
+            {/* Lista empreendimentos */}
+            <div style={{ flex:1, overflowY:'auto', padding:'8px 8px', scrollbarWidth:'thin', scrollbarColor:'rgba(255,255,255,0.1) transparent' }}>
               {devsFiltrados.map(dev => {
                 const stats = calcularStats(dev, sales);
                 const isActive = activeDevId === dev.id;
+                const statusColor = stats.pct >= 90 ? '#ef4444' : stats.pct >= 60 ? '#f59e0b' : '#4ade80';
                 return (
-                  <div key={dev.id}
-                    onClick={() => centralizarEm(dev)}
-                    className="cursor-pointer rounded-xl px-3 py-2.5 transition-all active:scale-[0.98]"
+                  <div key={dev.id} onClick={() => centralizarEm(dev)}
                     style={{
-                      background: isActive ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.04)',
-                      border: isActive ? '1px solid rgba(255,255,255,0.2)' : '1px solid rgba(255,255,255,0.06)',
+                      padding: '10px 10px', borderRadius:12, marginBottom:4, cursor:'pointer',
+                      background: isActive ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.03)',
+                      border: isActive ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(255,255,255,0.05)',
+                      transition:'all 0.2s',
+                      boxShadow: isActive ? '0 0 16px rgba(74,222,128,0.1)' : 'none',
                     }}>
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-xs font-black text-white truncate flex-1">{dev.nome}</p>
-                      <button onClick={e => { e.stopPropagation(); onVerMapa(dev.id); }}
-                        className="flex-shrink-0 px-2 py-1 rounded-lg text-[9px] font-black text-white/70 hover:text-white hover:bg-white/10 transition-all">
-                        Abrir
-                      </button>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
+                      <p style={{ fontSize:11, fontWeight:800, color:'white', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{dev.nome}</p>
+                      <div style={{ width:6, height:6, borderRadius:'50%', background:statusColor, flexShrink:0, marginLeft:6, boxShadow:`0 0 6px ${statusColor}` }}/>
                     </div>
-                    <div className="flex items-center gap-3 mt-1.5">
-                      <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full"
-                          style={{ width:`${stats.pct}%`, background: stats.pct > 70 ? '#ef4444' : stats.pct > 40 ? '#f59e0b' : '#22c55e' }}/>
-                      </div>
-                      <span className="text-[9px] text-slate-400 font-bold flex-shrink-0">
-                        {stats.disponiveis} disp. · {stats.pct}%
-                      </span>
+                    {dev.cidade && <p style={{ fontSize:9, color:'rgba(255,255,255,0.3)', margin:'0 0 6px' }}>📍 {dev.cidade}</p>}
+                    <div style={{ height:2, background:'rgba(255,255,255,0.06)', borderRadius:2, overflow:'hidden', marginBottom:6 }}>
+                      <div style={{ height:'100%', width:`${stats.pct}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}aa)`, borderRadius:2, transition:'width 0.5s' }}/>
+                    </div>
+                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+                      <span style={{ fontSize:9, color:'rgba(255,255,255,0.4)' }}>{stats.disponiveis} disp. · {stats.pct}%</span>
+                      <button onClick={e => { e.stopPropagation(); onVerMapa(dev.id); }}
+                        style={{
+                          fontSize:9, fontWeight:800, color: isActive ? '#4ade80' : 'rgba(255,255,255,0.4)',
+                          background:'none', border:'none', cursor:'pointer', padding:0, transition:'color 0.2s',
+                        }}>
+                        ABRIR →
+                      </button>
                     </div>
                   </div>
                 );
               })}
               {devsFiltrados.length === 0 && (
-                <div className="text-center py-8 text-slate-500 text-xs">
-                  {devsComLoc.length === 0 ? 'Nenhum empreendimento com localização cadastrada.' : 'Nenhum resultado.'}
+                <div style={{ textAlign:'center', padding:'32px 0', color:'rgba(255,255,255,0.2)', fontSize:11 }}>
+                  {devsComLoc.length === 0 ? 'Nenhum empreendimento com localização.' : 'Sem resultados.'}
                 </div>
               )}
             </div>
           </div>
         )}
 
-        {/* MAPA */}
-        <div className="relative flex-1 min-w-0">
-      {/* MAPA */}
-      <div ref={mapRef} style={{ position: 'absolute', inset: 0, pointerEvents: locked ? 'none' : 'auto' }} />
+        {/* ── MAPA ── */}
+        <div style={{ flex:1, position:'relative', minWidth:0 }}>
+          <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: locked ? 'none' : 'auto' }}/>
 
-      {/* OVERLAY BLOQUEADO — captura cliques e scroll */}
-      {locked && (
-        <div
-          style={{
-            position: 'absolute', inset: 0, zIndex: 1000, cursor: 'not-allowed',
-            background: flashLock ? 'rgba(239,68,68,0.08)' : 'transparent',
-            transition: 'background 0.15s',
-          }}
-          onClick={() => {
-            // Piscar vermelho e destacar cadeado
-            setFlashLock(true);
-            setTimeout(() => setFlashLock(false), 600);
-          }}
-          onWheel={(e) => e.stopPropagation()} // bloqueia scroll/zoom
-        />
-      )}
-
-      {/* CADEADO — canto superior direito, sempre visível quando locked */}
-      {locked && (
-        <button
-          onClick={() => { setLocked(false); }}
-          style={{
-            position: 'absolute', top: 12, right: 12, zIndex: 1001,
-            background: flashLock ? '#ef4444' : 'white',
-            color: flashLock ? 'white' : '#1e293b',
-            border: flashLock ? '2px solid #ef4444' : '2px solid #e2e8f0',
-            borderRadius: 12, padding: '8px 14px', cursor: 'pointer',
-            display: 'flex', alignItems: 'center', gap: 7,
-            fontWeight: 900, fontSize: 12,
-            boxShadow: flashLock ? '0 0 0 4px rgba(239,68,68,0.3)' : '0 2px 12px rgba(0,0,0,0.15)',
-            transition: 'all 0.15s',
-            animation: flashLock ? 'none' : undefined,
-          }}>
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
-          {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}
-        </button>
-      )}
-
-      {/* Instrução de clique quando desbloqueado para editar localização */}
-      {!locked && onLocationPick && (
-        <div style={{
-          position: 'absolute', bottom: 12, left: '50%', transform: 'translateX(-50%)',
-          zIndex: 1001, background: 'rgba(30,30,30,0.85)', color: 'white',
-          padding: '8px 16px', borderRadius: 10, fontSize: 12, fontWeight: 700,
-          whiteSpace: 'nowrap', pointerEvents: 'none',
-          boxShadow: '0 2px 12px rgba(0,0,0,0.3)',
-        }}>
-          📍 Clique no mapa para definir a localização
-        </div>
-      )}
-
-        {/* POPUP DO EMPREENDIMENTO */}
-        {selectedDev && (() => {
-        const stats = calcularStats(selectedDev, sales);
-        const mapsUrl = (selectedDev as any).googleMapsUrl || (selectedDev as any).mapaLocalizacaoUrl ||
-          (selectedDev.lat ? `https://www.google.com/maps/@${selectedDev.lat},${selectedDev.lng},500m/data=!3m1!1e3` : "");
-        return (
-          <div className="absolute top-3 left-3 z-[1000] w-64 bg-white rounded-2xl shadow-2xl overflow-hidden border border-slate-100">
-            {/* Preview do mapa */}
-            {((selectedDev as any).mapaImagemBase64 || (selectedDev as any).mapaImagemUrl) && (
-              <div className="h-28 overflow-hidden bg-slate-100">
-                <img
-                  src={(selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemBase64 || (selectedDev as any).mapaImagemUrl}
-                  className="w-full h-full object-cover"
-                  alt="preview"
-                />
-              </div>
-            )}
-            <div className="p-3 space-y-2">
-              <div className="flex items-start justify-between gap-2">
-                <h3 className="font-black text-slate-900 text-sm leading-tight">{selectedDev.nome}</h3>
-                <button onClick={() => setSelectedDev(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none flex-shrink-0">×</button>
-              </div>
-              {selectedDev.cidade && (
-                <p className="text-xs text-slate-500">📍 {selectedDev.cidade}{selectedDev.estado ? `, ${selectedDev.estado}` : ""}</p>
-              )}
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-1 text-center">
-                <div className="bg-slate-50 rounded-lg p-1.5">
-                  <div className="text-sm font-black text-slate-800">{stats.total}</div>
-                  <div className="text-[9px] text-slate-400 uppercase font-bold">Total</div>
-                </div>
-                <div className="bg-emerald-50 rounded-lg p-1.5">
-                  <div className="text-sm font-black text-emerald-700">{stats.disponiveis}</div>
-                  <div className="text-[9px] text-emerald-500 uppercase font-bold">Disp.</div>
-                </div>
-                <div className="bg-red-50 rounded-lg p-1.5">
-                  <div className="text-sm font-black text-red-600">{stats.vendidos}</div>
-                  <div className="text-[9px] text-red-400 uppercase font-bold">Vend.</div>
-                </div>
-              </div>
-              {/* Barra de progresso */}
-              <div className="space-y-0.5">
-                <div className="flex justify-between text-[10px] font-bold text-slate-400">
-                  <span>Ocupação</span><span>{stats.pct}%</span>
-                </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-emerald-500 to-emerald-400 rounded-full transition-all"
-                    style={{ width: `${stats.pct}%` }} />
-                </div>
-              </div>
-              {/* Botões */}
-              <div className="flex gap-1.5">
-                <button onClick={() => onVerMapa(selectedDev.id)}
-                  className="flex-1 py-2 rounded-xl bg-slate-900 text-white text-[10px] font-black uppercase hover:bg-slate-700">
-                  Ver mapa
-                </button>
-                <button onClick={() => onAbrirEmpreendimento(selectedDev.id)}
-                  className="flex-1 py-2 rounded-xl bg-slate-100 text-slate-700 text-[10px] font-black uppercase hover:bg-slate-200">
-                  Editar
-                </button>
-              </div>
-              {mapsUrl && (
-                <a href={mapsUrl} target="_blank" rel="noopener noreferrer"
-                  className="flex items-center justify-center gap-1.5 w-full py-2 rounded-xl bg-blue-50 text-blue-700 text-[10px] font-black uppercase hover:bg-blue-100 border border-blue-100">
-                  🌍 Abrir no Google Maps
-                </a>
-              )}
-            </div>
-          </div>
-        );
-      })()}
-
-      {/* BUSCA — topo centralizado */}
-      <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1000] w-72 max-w-[90vw]">
-        <div className="relative">
-          <input
-            value={busca}
-            onChange={e => {
-              setBusca(e.target.value);
-              // Centralizar no primeiro resultado ao digitar
-              if (e.target.value.trim()) {
-                const q = e.target.value.toLowerCase();
-                const found = devsComLoc.find(d =>
-                  d.nome.toLowerCase().includes(q) || d.cidade?.toLowerCase().includes(q)
-                );
-                if (found && leafletRef.current) {
-                  leafletRef.current.flyTo([found.lat!, found.lng!], 15, { animate: true, duration: 0.8 });
-                  setSelectedDev(found);
-                }
-              }
+          {/* Overlay bloqueado */}
+          {locked && (
+            <div style={{
+              position:'absolute', inset:0, zIndex:1000, cursor:'not-allowed',
+              background: flashLock ? 'rgba(239,68,68,0.08)' : 'transparent',
+              transition:'background 0.15s',
             }}
-            placeholder="🔍  Buscar empreendimento..."
-            className="w-full pl-4 pr-8 py-2.5 rounded-2xl bg-white/98 backdrop-blur text-sm font-semibold shadow-xl border border-slate-200/80 outline-none placeholder-slate-400"
-          />
-          {busca && (
-            <button onClick={() => setBusca("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 text-lg leading-none">
-              ×
+              onClick={() => { setFlashLock(true); setTimeout(() => setFlashLock(false), 600); }}
+              onWheel={e => e.stopPropagation()}/>
+          )}
+
+          {/* Cadeado premium */}
+          {locked && (
+            <button onClick={() => setLocked(false)} style={{
+              position:'absolute', top:12, right:12, zIndex:1001,
+              background: flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(10,15,26,0.85)',
+              backdropFilter:'blur(12px)',
+              color: flashLock ? 'white' : 'rgba(255,255,255,0.8)',
+              border: flashLock ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.12)',
+              borderRadius:10, padding:'7px 12px', cursor:'pointer',
+              display:'flex', alignItems:'center', gap:6,
+              fontWeight:800, fontSize:11,
+              boxShadow: flashLock ? '0 0 20px rgba(239,68,68,0.4)' : '0 4px 20px rgba(0,0,0,0.4)',
+              transition:'all 0.15s',
+            }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+              {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}
             </button>
           )}
+
+          {/* Instrução localização */}
+          {!locked && onLocationPick && (
+            <div style={{
+              position:'absolute', bottom:12, left:'50%', transform:'translateX(-50%)',
+              zIndex:1001, background:'rgba(10,15,26,0.85)', backdropFilter:'blur(12px)',
+              color:'white', padding:'8px 16px', borderRadius:10, fontSize:11, fontWeight:700,
+              whiteSpace:'nowrap', pointerEvents:'none', border:'1px solid rgba(255,255,255,0.1)',
+              boxShadow:'0 4px 20px rgba(0,0,0,0.4)',
+            }}>
+              📍 Clique no mapa para definir a localização
+            </div>
+          )}
+
+          {/* Card stats flutuante inferior esquerdo */}
+          {!focusDevId && !locked && devsComLoc.length > 0 && (
+            <div style={{
+              position:'absolute', bottom:12, left:12, zIndex:1000,
+              background:'rgba(10,15,26,0.82)', backdropFilter:'blur(16px)',
+              border:'1px solid rgba(255,255,255,0.08)', borderRadius:12,
+              padding:'8px 12px', display:'flex', gap:12,
+              boxShadow:'0 4px 24px rgba(0,0,0,0.4)',
+            }}>
+              {[
+                { label:'Empreend.', value:devsComLoc.length, color:'#94a3b8' },
+                { label:'Disponíveis', value:totalDisponiveis, color:'#4ade80' },
+                { label:'Vendidos', value:totalVendidos, color:'#f87171' },
+              ].map(s => (
+                <div key={s.label} style={{ textAlign:'center' }}>
+                  <p style={{ fontSize:14, fontWeight:900, color:s.color, margin:0, lineHeight:1 }}>{s.value}</p>
+                  <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:'2px 0 0', textTransform:'uppercase', letterSpacing:0.5 }}>{s.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Popup empreendimento premium */}
+          {selectedDev && (() => {
+            const stats = calcularStats(selectedDev, sales);
+            const statusColor = stats.pct >= 90 ? '#ef4444' : stats.pct >= 60 ? '#f59e0b' : '#4ade80';
+            return (
+              <div style={{
+                position:'absolute', top:12, left: painelAberto ? 12 : 12, zIndex:1002,
+                width:220, background:'rgba(10,15,26,0.92)', backdropFilter:'blur(20px)',
+                border:'1px solid rgba(255,255,255,0.1)', borderRadius:16,
+                boxShadow:'0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
+                overflow:'hidden',
+              }}>
+                {((selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl) && (
+                  <div style={{ height:80, overflow:'hidden', position:'relative' }}>
+                    <img src={(selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl}
+                      style={{ width:'100%', height:'100%', objectFit:'cover', opacity:0.7 }} alt=""/>
+                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent, rgba(10,15,26,0.9))' }}/>
+                  </div>
+                )}
+                <div style={{ padding:'12px' }}>
+                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
+                    <div style={{ flex:1 }}>
+                      <p style={{ fontSize:12, fontWeight:900, color:'white', margin:'0 0 2px', lineHeight:1.2 }}>{selectedDev.nome}</p>
+                      {selectedDev.cidade && <p style={{ fontSize:10, color:'rgba(255,255,255,0.4)', margin:0 }}>📍 {selectedDev.cidade}</p>}
+                    </div>
+                    <button onClick={() => setSelectedDev(null)}
+                      style={{ background:'rgba(255,255,255,0.08)', border:'none', color:'rgba(255,255,255,0.5)', borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, marginBottom:8 }}>
+                    {[['Total',stats.total,'#94a3b8'],['Disp.',stats.disponiveis,'#4ade80'],['Vend.',stats.vendidos,'#f87171']].map(([l,v,c]) => (
+                      <div key={String(l)} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'5px 4px', textAlign:'center', border:'1px solid rgba(255,255,255,0.05)' }}>
+                        <p style={{ fontSize:13, fontWeight:900, color:String(c), margin:0 }}>{v}</p>
+                        <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:'1px 0 0', textTransform:'uppercase' }}>{l}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ height:3, background:'rgba(255,255,255,0.08)', borderRadius:2, overflow:'hidden', marginBottom:10 }}>
+                    <div style={{ height:'100%', width:`${stats.pct}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}99)`, borderRadius:2 }}/>
+                  </div>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
+                    <button onClick={() => onVerMapa(selectedDev.id)}
+                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(74,222,128,0.15)', border:'1px solid rgba(74,222,128,0.3)', color:'#4ade80', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
+                      VER MAPA
+                    </button>
+                    <button onClick={() => onAbrirEmpreendimento(selectedDev.id)}
+                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
+                      EDITAR
+                    </button>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       </div>
 
-
-
-
-        </div>{/* fim MAPA */}
-      </div>{/* fim CORPO */}
-
-      {/* BARRA DE RESIZE — arrastar para ajustar altura */}
+      {/* BARRA RESIZE */}
       {!focusDevId && !isFullscreen && (
-        <div
-          onMouseDown={startResizeDrag}
-          onTouchStart={startResizeDrag}
-          className="flex-shrink-0 flex items-center justify-center h-3 bg-slate-800 border-t border-slate-700/50 cursor-row-resize hover:bg-slate-700 transition-colors group">
-          <div className="w-8 h-0.5 bg-slate-600 rounded-full group-hover:bg-slate-400 transition-colors"/>
+        <div onMouseDown={startResizeDrag} onTouchStart={startResizeDrag}
+          style={{
+            flexShrink:0, height:10, background:'rgba(255,255,255,0.03)',
+            borderTop:'1px solid rgba(255,255,255,0.05)', cursor:'row-resize',
+            display:'flex', alignItems:'center', justifyContent:'center',
+          }}>
+          <div style={{ width:32, height:2, background:'rgba(255,255,255,0.15)', borderRadius:2 }}/>
         </div>
       )}
     </div>
