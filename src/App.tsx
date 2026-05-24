@@ -13862,14 +13862,68 @@ VENDEDOR: ${vendedorLabel}`;
             )}
 
             {semContrato.length > 0 && (
-              <div className="card-premium space-y-3">
-                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
-                  <Clock size={14} className="text-amber-500 shrink-0" />
-                  <span className="text-xs font-black uppercase tracking-widest text-amber-600">Sem Contrato</span>
-                  <span className="ml-auto text-xs font-bold text-slate-400">{semContrato.length} registro{semContrato.length !== 1 ? "s" : ""}</span>
+              <div className="card-premium space-y-4 border-2 border-amber-200 bg-amber-50/50">
+                {/* Header com alerta */}
+                <div className="flex items-start gap-3 pb-3 border-b border-amber-200">
+                  <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-black text-amber-800">⚠️ Vendas Fantasmas</span>
+                      <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full text-xs font-black">{semContrato.length}</span>
+                    </div>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Estas vendas não têm contrato gerado. Podem ser simulações ou testes. Estão contabilizando nos lotes como vendidos.
+                    </p>
+                  </div>
+                  {/* Excluir todas */}
+                  <button
+                    onClick={() => requestDelete(
+                      `Excluir TODAS as ${semContrato.length} vendas sem contrato? Esta ação não pode ser desfeita.`,
+                      () => semContrato.forEach(v => onDeleteVenda(v.id))
+                    )}
+                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-black hover:bg-red-700 active:scale-95 transition-all">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    Excluir todas
+                  </button>
                 </div>
-                <div className="sm:hidden space-y-3">{semContrato.map((v) => renderMobileCard(v))}</div>
-                <GroupTable rows={semContrato} />
+
+                {/* Lista com botão excluir em cada uma */}
+                <div className="space-y-2">
+                  {semContrato.map(v => {
+                    const dev = developments.find(d => d.id === v.empreendimentoId);
+                    return (
+                      <div key={v.id} className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-amber-100">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-black text-slate-800 truncate">{v.clienteNome}</span>
+                            {v.status === "cancelado" && (
+                              <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-black">Cancelado</span>
+                            )}
+                            {v.status === "rascunho" && (
+                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black">Rascunho</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-3 mt-0.5">
+                            {dev && <span className="text-xs text-slate-400">{dev.nome}</span>}
+                            {v.quadra && v.numeroLote && <span className="text-xs text-slate-400">Q{v.quadra}:L{v.numeroLote}</span>}
+                            {v.dataVenda && <span className="text-xs text-slate-400">{v.dataVenda}</span>}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => requestDelete(
+                            `Excluir venda de ${v.clienteNome}? Isso liberará o lote Q${v.quadra}:${v.numeroLote}.`,
+                            () => onDeleteVenda(v.id)
+                          )}
+                          className="flex-shrink-0 w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center active:scale-90 transition-all border border-red-200"
+                          title="Excluir venda fantasma">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
 
