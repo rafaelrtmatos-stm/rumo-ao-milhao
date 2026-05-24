@@ -2295,6 +2295,18 @@ const LotDashboard = ({
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
+  const [mobileSelIds, setMobileSelIds] = useState<Set<string>>(new Set()); // seleção múltipla mobile
+  const [mobileSelMode, setMobileSelMode] = useState(false); // modo seleção ativo
+  const longPressTimer = useRef<any>(null); // timer do toque longo
+  const [showMobileColar, setShowMobileColar] = useState(false);
+  const [mobileColarQuadra, setMobileColarQuadra] = useState("");
+  const [mobileClipboard, setMobileClipboard] = useState<any[]>([]);
+  const [showMobileFileira, setShowMobileFileira] = useState(false);
+  const [mobileFileiraQuadra, setMobileFileiraQuadra] = useState("");
+  const [mobileFileiraIni, setMobileFileiraIni] = useState("");
+  const [mobileFileiraFim, setMobileFileiraFim] = useState("");
+  const [mobileFileiraPasso, setMobileFileiraPasso] = useState<1|2>(1); // 1=config, 2=tocar pontos
+  const [mobileFileiraPontos, setMobileFileiraPontos] = useState<{x:number,y:number}[]>([]);
   const [drawerY, setDrawerY] = useState(0);
   const drawerDragRef = useRef<{ startY: number; startDY: number } | null>(null);
   const loteBusca = useRef<string>("");
@@ -2391,6 +2403,23 @@ const LotDashboard = ({
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") setIsCtrlPanning(true);
+
+      // Ctrl+C = copiar selecionadas
+      if (e.ctrlKey && (e.key === "c" || e.key === "C") && isEditingMap && ctrlSelectedIds.size > 0) {
+        e.preventDefault(); e.stopPropagation();
+        const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+        const copiadas = currentPontos.filter((p: any) => ctrlSelectedIds.has(p.id));
+        setClipboard(copiadas);
+        return;
+      }
+
+      // Ctrl+V = colar (abre modal de quadra)
+      if (e.ctrlKey && (e.key === "v" || e.key === "V") && isEditingMap && clipboard.length > 0) {
+        e.preventDefault(); e.stopPropagation();
+        setColarQuadra(clipboard[0]?.quadra || "");
+        setShowModalColar(true);
+        return;
+      }
 
       // Ctrl+G = agrupar selecionadas (preventDefault ANTES de qualquer check)
       if (e.ctrlKey && (e.key === "g" || e.key === "G") && isEditingMap) {
@@ -2499,6 +2528,9 @@ const LotDashboard = ({
   const [showTrocaQuadra, setShowTrocaQuadra] = useState(false);
   const [novaQuadraSel, setNovaQuadraSel] = useState("");
   const [editFileiraNovo, setEditFileiraNovo] = useState<string>(""); // novo lote extremo da fileira
+  const [clipboard, setClipboard] = useState<any[]>([]); // bolinhas copiadas
+  const [showModalColar, setShowModalColar] = useState(false); // modal de quadra ao colar
+  const [colarQuadra, setColarQuadra] = useState("");
   const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
   const balaoDragRef = useRef<{startX:number;startY:number;startBX:number;startBY:number} | null>(null);
 
@@ -3933,15 +3965,19 @@ const LotDashboard = ({
     setMapUndoStack(prev => [...prev.slice(-29), { pontos: currentPontosForUndo, markerSize: Number(markerSizePercent) }]);
     setMapRedoStack([]);
     setDraggingId(ponto.id);
-    // Guardar posição inicial de TODOS os pontos do grupo para evitar acumulação de delta
+    // Guardar posição inicial de TODOS os pontos do grupo OU fileira
     const grupoId = gruposMap[ponto.id];
     const currentPontos = ((localDev as any).mapaPontos || []) as any[];
     const initialPositions: Record<string, {x: number; y: number}> = {};
     if (grupoId) {
+      // Grupo explícito (Ctrl+G)
       currentPontos.forEach((p: any) => {
-        if (gruposMap[p.id] === grupoId) {
-          initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
-        }
+        if (gruposMap[p.id] === grupoId) initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
+      });
+    } else if (ponto.linhaSeqId) {
+      // Fileira — arrastar qualquer bolinha move todas
+      currentPontos.forEach((p: any) => {
+        if (p.linhaSeqId === ponto.linhaSeqId) initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
       });
     }
     setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent, initialPositions } as any);
@@ -3988,9 +4024,13 @@ const LotDashboard = ({
     
     // Verificar se faz parte de um grupo
     const grupoId = gruposMap[draggingId];
+    const draggingPonto = currentPontos.find((p: any) => p.id === draggingId);
+    const fileiraDragging = draggingPonto?.linhaSeqId;
     const idsParaMover = grupoId
       ? new Set(Object.entries(gruposMap).filter(([,g]) => g === grupoId).map(([id]) => id))
-      : new Set([draggingId]);
+      : fileiraDragging
+        ? new Set(currentPontos.filter((p: any) => p.linhaSeqId === fileiraDragging).map((p: any) => p.id))
+        : new Set([draggingId]);
     
     const initialPositions = (dragStart as any).initialPositions || {};
     const nextPontos = currentPontos.map((p: any) => {
@@ -4568,16 +4608,32 @@ const LotDashboard = ({
                 const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
+                const isMobileSel = mobileSelIds.has(ponto.id);
                 const isDragging = draggingId === ponto.id;
                 return (
                   <button
                     key={ponto.id}
                     onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
                     onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
-                    onTouchStart={(ev) => { ev.stopPropagation(); }}
+                    onTouchStart={(ev) => {
+                      ev.stopPropagation();
+                      if (!isEditingMap) return;
+                      // Toque longo (500ms) → modo seleção múltipla mobile
+                      longPressTimer.current = setTimeout(() => {
+                        setMobileSelMode(true);
+                        setMobileSelIds(prev => { const n = new Set(prev); n.add(ponto.id); return n; });
+                      }, 500);
+                    }}
+                    onTouchEnd={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                    onTouchMove={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
                     onClick={(ev) => {
                       if (draggingId) return;
                       ev.stopPropagation();
+                      // Mobile modo seleção: toggle
+                      if (isMobile && mobileSelMode && isEditingMap) {
+                        setMobileSelIds(prev => { const n = new Set(prev); n.has(ponto.id) ? n.delete(ponto.id) : n.add(ponto.id); return n; });
+                        return;
+                      }
                       // CTRL seleção múltipla no modo edição: também alimenta a edição em massa.
                       if (isEditingMap && ev.ctrlKey) {
                         toggleCtrlSel(ponto.id);
@@ -4587,7 +4643,7 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
@@ -5586,7 +5642,46 @@ const LotDashboard = ({
         </div>
 
         {/* ── MAPA ── */}
-        <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}>
+        <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}
+          onClick={(e) => {
+            // Captura cliques para criar fileira mobile (passo 2)
+            if (mobileFileiraPasso !== 2 || !showMobileFileira) return;
+            const rect = e.currentTarget.getBoundingClientRect();
+            const scale = mapZoomRef.current || 1;
+            const xPct = ((e.clientX - rect.left - mapPanRef.current.x) / (rect.width / scale)) * 100 / scale;
+            const yPct = ((e.clientY - rect.top - mapPanRef.current.y) / (rect.height / scale)) * 100 / scale;
+            const novoPonto = { x: Math.max(0,Math.min(100,xPct)), y: Math.max(0,Math.min(100,yPct)) };
+            if (mobileFileiraPontos.length === 0) {
+              setMobileFileiraPontos([novoPonto]);
+            } else {
+              // Dois pontos definidos — criar fileira
+              const ini = parseInt(mobileFileiraIni);
+              const fim = parseInt(mobileFileiraFim);
+              if (!ini || !fim || ini > fim || !mobileFileiraQuadra) return;
+              const total = fim - ini + 1;
+              const p1 = mobileFileiraPontos[0];
+              const p2 = novoPonto;
+              const seqId = `seq-mobile-${Date.now()}`;
+              const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+              const novosLotes = Array.from({ length: total }, (_, i) => {
+                const t = total > 1 ? i / (total - 1) : 0;
+                return {
+                  id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
+                  quadra: mobileFileiraQuadra,
+                  lote: String(ini + i),
+                  status: "disponivel" as MapaLoteStatus,
+                  xPercent: p1.x + (p2.x - p1.x) * t,
+                  yPercent: p1.y + (p2.y - p1.y) * t,
+                  linhaSeqId: seqId,
+                  criadoEm: new Date().toISOString(),
+                };
+              });
+              pushUndo(currentPontos, "Criar fileira mobile");
+              persistDev({ ...localDev, mapaPontos: [...currentPontos, ...novosLotes] } as Empreendimento);
+              setShowMobileFileira(false); setMobileFileiraPasso(1); setMobileFileiraPontos([]);
+              setMobileFileiraQuadra(""); setMobileFileiraIni(""); setMobileFileiraFim("");
+            }
+          }}>
           {/* Balão flutuante mobile */}
           {isEditingMap && lotesConfigSemBolinha > 0 && (
             <div className="absolute top-2 left-2 right-12 z-30">
@@ -5926,42 +6021,177 @@ const LotDashboard = ({
 
             {/* ── EDITAR FAIXAS ── */}
             {isEditingMap && mapAction === "massa" && (
-              <div className="space-y-4">
-                <p className="text-sm font-black text-slate-800">Selecionar em massa</p>
-                <p className="text-xs text-slate-400">Toque nas bolinhas no mapa para selecioná-las e depois aplique o status.</p>
-                <div className="flex flex-wrap gap-2">
-                  {([
-                    { label: "Disponível",   status: "disponivel"   as MapaLoteStatus, color: "#3b82f6", border: "#bfdbfe" },
-                    { label: "Reservado",    status: "reservado"    as MapaLoteStatus, color: "#f59e0b", border: "#fde68a" },
-                    { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", border: "#fecaca" },
-                  ] as any[]).map((a:any) => (
-                    <button key={a.status}
-                      onClick={() => {
-                        if (massaSelIds.size === 0) { alert("Selecione bolinhas no mapa."); return; }
-                        const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-                        const next = currentPontos.map((p:any) => massaSelIds.has(p.id) ? {...p,status:a.status} : p);
-                        persistDev({ ...localDev, mapaPontos: next } as Empreendimento);
-                        setMassaSelIds(new Set());
-                      }}
-                      className="flex items-center gap-2 px-4 py-2.5 rounded-2xl border-2 bg-white active:scale-95 transition-all"
-                      style={{borderColor:a.border}}>
-                      <span className="w-3.5 h-3.5 rounded-full" style={{background:a.color}}/>
-                      <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
+              <div className="space-y-5">
+                {/* Criar fileira */}
+                <div>
+                  <p className="text-sm font-black text-slate-800 mb-3">Criar fileira de bolinhas</p>
+                  {!showMobileFileira ? (
+                    <button onClick={() => setShowMobileFileira(true)}
+                      className="w-full py-3 rounded-2xl border-2 border-dashed border-slate-300 text-slate-500 text-xs font-black active:scale-95 transition-all flex items-center justify-center gap-2">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      Nova fileira
                     </button>
-                  ))}
+                  ) : (
+                    <div className="border border-slate-200 rounded-2xl p-4 space-y-3 bg-white">
+                      <div className="grid grid-cols-3 gap-2">
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 mb-1">Quadra</p>
+                          <select value={mobileFileiraQuadra} onChange={e => setMobileFileiraQuadra(e.target.value)}
+                            className="w-full px-2 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 bg-white outline-none">
+                            <option value="">Q...</option>
+                            {getQuadraList(localDev).map(q => <option key={q} value={q}>{q}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 mb-1">Lote início</p>
+                          <input type="number" value={mobileFileiraIni} onChange={e => setMobileFileiraIni(e.target.value)}
+                            placeholder="1" className="w-full px-2 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none" />
+                        </div>
+                        <div>
+                          <p className="text-[10px] font-bold text-slate-500 mb-1">Lote fim</p>
+                          <input type="number" value={mobileFileiraFim} onChange={e => setMobileFileiraFim(e.target.value)}
+                            placeholder="10" className="w-full px-2 py-2 border border-slate-200 rounded-xl text-sm font-bold text-slate-700 outline-none" />
+                        </div>
+                      </div>
+                      {mobileFileiraPasso === 1 ? (
+                        <button
+                          disabled={!mobileFileiraQuadra || !mobileFileiraIni || !mobileFileiraFim}
+                          onClick={() => setMobileFileiraPasso(2)}
+                          className="w-full py-3 rounded-2xl bg-slate-900 text-white text-xs font-black disabled:opacity-40 active:scale-95 transition-all">
+                          Próximo: toque 2 pontos no mapa
+                        </button>
+                      ) : (
+                        <div className="bg-blue-50 rounded-xl p-3 space-y-2">
+                          <p className="text-xs font-black text-blue-800">
+                            {mobileFileiraPontos.length === 0 ? "Toque no início da fileira no mapa" : "Toque no fim da fileira no mapa"}
+                          </p>
+                          <div className="flex gap-2">
+                            {mobileFileiraPontos.length > 0 && (
+                              <p className="text-[10px] text-blue-600 flex-1">Ponto 1: {mobileFileiraPontos[0].x.toFixed(1)}%, {mobileFileiraPontos[0].y.toFixed(1)}%</p>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <button onClick={() => { setShowMobileFileira(false); setMobileFileiraPasso(1); setMobileFileiraPontos([]); setMobileFileiraQuadra(""); setMobileFileiraIni(""); setMobileFileiraFim(""); }}
+                        className="w-full py-2 rounded-xl bg-slate-100 text-slate-500 text-xs font-black active:scale-95">
+                        Cancelar
+                      </button>
+                    </div>
+                  )}
                 </div>
-                {massaSelIds.size > 0 && (
-                  <div className="flex items-center gap-2">
-                    <p className="text-xs font-bold text-emerald-600">{massaSelIds.size} bolinha(s) selecionada(s)</p>
-                    <button onClick={() => setMassaSelIds(new Set())} className="text-xs text-slate-400 underline">limpar</button>
+
+                {/* Selecionar em massa */}
+                <div>
+                  <p className="text-sm font-black text-slate-800 mb-2">Status em massa</p>
+                  <p className="text-xs text-slate-400 mb-3">Toque longo numa bolinha para selecionar múltiplas.</p>
+                  <div className="flex gap-2 flex-wrap">
+                    {([
+                      { label: "Disponível", status: "disponivel" as MapaLoteStatus, color: "#3b82f6", border: "#bfdbfe" },
+                      { label: "Reservado",  status: "reservado"  as MapaLoteStatus, color: "#f59e0b", border: "#fde68a" },
+                      { label: "Indisponível", status: "indisponivel" as MapaLoteStatus, color: "#ef4444", border: "#fecaca" },
+                    ] as any[]).map((a:any) => (
+                      <button key={a.status}
+                        onClick={() => {
+                          const ids = mobileSelIds.size > 0 ? mobileSelIds : massaSelIds;
+                          if (ids.size === 0) { alert("Toque longo em bolinhas para selecioná-las."); return; }
+                          const cp = ((localDev as any).mapaPontos || []) as any[];
+                          persistDev({ ...localDev, mapaPontos: cp.map((p:any) => ids.has(p.id) ? {...p,status:a.status} : p) } as Empreendimento);
+                          setMassaSelIds(new Set()); setMobileSelIds(new Set()); setMobileSelMode(false);
+                        }}
+                        className="flex items-center gap-2 px-3 py-2 rounded-2xl border-2 bg-white active:scale-95"
+                        style={{borderColor:a.border}}>
+                        <span className="w-3 h-3 rounded-full" style={{background:a.color}}/>
+                        <span className="text-xs font-bold" style={{color:a.color}}>{a.label}</span>
+                      </button>
+                    ))}
                   </div>
-                )}
+                  {(massaSelIds.size + mobileSelIds.size) > 0 && (
+                    <p className="text-xs font-bold text-emerald-600 mt-2">{massaSelIds.size + mobileSelIds.size} selecionada(s)</p>
+                  )}
+                </div>
               </div>
             )}
           </div>
         </div>
 
         <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
+
+        {/* BARRA FLUTUANTE — modo seleção múltipla mobile */}
+        {mobileSelMode && isEditingMap && (
+          <div className="absolute bottom-36 left-3 right-3 z-50">
+            <div className="bg-slate-900 rounded-2xl shadow-2xl px-4 py-3 flex items-center gap-2">
+              <span className="text-white text-xs font-black flex-1">{mobileSelIds.size} selecionada(s)</span>
+              <button onClick={() => {
+                const grupoId = `grupo_${Date.now()}`;
+                const novosGrupos = { ...gruposMap };
+                mobileSelIds.forEach(id => { novosGrupos[id] = grupoId; });
+                setGruposMap(novosGrupos);
+                setMobileSelMode(false); setMobileSelIds(new Set());
+              }} className="px-3 py-1.5 bg-purple-600 text-white rounded-xl text-xs font-black active:scale-95">
+                Agrupar
+              </button>
+              <button onClick={() => {
+                const cp = ((localDev as any).mapaPontos || []).filter((p: any) => mobileSelIds.has(p.id));
+                setMobileClipboard(cp);
+                setMobileColarQuadra(cp[0]?.quadra || "");
+                setShowMobileColar(true);
+              }} className="px-3 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-black active:scale-95">
+                Duplicar
+              </button>
+              <button onClick={() => {
+                const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                const semSel = currentPontos.filter((p: any) => !mobileSelIds.has(p.id));
+                pushUndo(currentPontos, "Excluir seleção mobile");
+                persistDev({ ...localDev, mapaPontos: semSel } as Empreendimento);
+                setMobileSelMode(false); setMobileSelIds(new Set());
+              }} className="px-3 py-1.5 bg-red-600 text-white rounded-xl text-xs font-black active:scale-95">
+                Excluir
+              </button>
+              <button onClick={() => { setMobileSelMode(false); setMobileSelIds(new Set()); }}
+                className="px-3 py-1.5 bg-slate-600 text-white rounded-xl text-xs font-black active:scale-95">
+                ✕
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* MODAL: Duplicar/Colar mobile */}
+        {showMobileColar && (
+          <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 p-4">
+            <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+              <h3 className="text-base font-black text-slate-900">Duplicar {mobileClipboard.length} bolinha(s)</h3>
+              <p className="text-xs text-slate-500">Escolha a quadra de destino das cópias.</p>
+              <select className="input-field w-full" value={mobileColarQuadra} onChange={e => setMobileColarQuadra(e.target.value)}>
+                <option value="">Selecione a quadra...</option>
+                {getQuadraList(localDev).map(q => <option key={q} value={q}>{q}</option>)}
+              </select>
+              <div className="flex gap-2">
+                <button onClick={() => setShowMobileColar(false)}
+                  className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-sm font-black">Cancelar</button>
+                <button disabled={!mobileColarQuadra} onClick={() => {
+                  const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                  const grupoId = `grupo_${Date.now()}`;
+                  const coladas = mobileClipboard.map((p: any, i: number) => ({
+                    ...p,
+                    id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
+                    quadra: mobileColarQuadra,
+                    xPercent: Math.min(98, p.xPercent + 4),
+                    yPercent: Math.min(98, p.yPercent + 4),
+                    linhaSeqId: undefined,
+                  }));
+                  const novosGrupos = { ...gruposMap };
+                  coladas.forEach((p: any) => { novosGrupos[p.id] = grupoId; });
+                  setGruposMap(novosGrupos);
+                  pushUndo(currentPontos, "Duplicar mobile");
+                  persistDev({ ...localDev, mapaPontos: [...currentPontos, ...coladas] } as Empreendimento);
+                  setShowMobileColar(false); setMobileSelMode(false); setMobileSelIds(new Set());
+                }} className="flex-1 py-2.5 rounded-2xl bg-emerald-600 text-white text-sm font-black disabled:opacity-50">
+                  Duplicar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── TELA CHEIA ── */}
@@ -6295,6 +6525,55 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+    {/* MODAL: Colar bolinhas — escolher quadra */}
+    {showModalColar && (
+      <div className="fixed inset-0 z-[500] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div className="bg-white rounded-3xl shadow-2xl p-6 w-full max-w-sm space-y-4">
+          <h3 className="text-base font-black text-slate-900">Colar {clipboard.length} bolinha(s)</h3>
+          <p className="text-xs text-slate-500">Escolha a quadra de destino. As bolinhas serão coladas deslocadas e agrupadas automaticamente.</p>
+          <div>
+            <label className="label">Quadra de destino</label>
+            <select className="input-field" value={colarQuadra} onChange={e => setColarQuadra(e.target.value)}>
+              <option value="">Selecione...</option>
+              {getQuadraList(localDev).map(q => <option key={q} value={q}>{q}</option>)}
+            </select>
+          </div>
+          <div className="flex gap-2">
+            <button onClick={() => { setShowModalColar(false); }}
+              className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-sm font-black active:scale-95 transition-all">
+              Cancelar
+            </button>
+            <button
+              disabled={!colarQuadra}
+              onClick={() => {
+                const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+                const grupoId = `grupo_${Date.now()}`;
+                const offset = 4;
+                const coladas = clipboard.map((p: any, i: number) => ({
+                  ...p,
+                  id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
+                  quadra: colarQuadra,
+                  xPercent: Math.min(98, p.xPercent + offset),
+                  yPercent: Math.min(98, p.yPercent + offset),
+                  linhaSeqId: undefined, // desvincula da fileira original
+                }));
+                // Agrupar as coladas automaticamente
+                const novosGrupos = { ...gruposMap };
+                coladas.forEach((p: any) => { novosGrupos[p.id] = grupoId; });
+                setGruposMap(novosGrupos);
+                pushUndo(currentPontos, "Colar bolinhas");
+                persistDev({ ...localDev, mapaPontos: [...currentPontos, ...coladas] } as Empreendimento);
+                setShowModalColar(false);
+                setCtrlSelectedIds(new Set());
+              }}
+              className="flex-1 py-2.5 rounded-2xl bg-emerald-600 text-white text-sm font-black disabled:opacity-50 active:scale-95 transition-all">
+              Colar
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* MODAL: Trocar Quadra das selecionadas */}
     {showTrocaQuadra && (
