@@ -343,8 +343,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}>
 
-      {/* ── TOPBAR PREMIUM ── */}
-      {!focusDevId && (
+      {/* ── TOPBAR PREMIUM — escondida no mobile (wrapper externo já tem a barra) ── */}
+      {!focusDevId && typeof window !== 'undefined' && window.innerWidth >= 768 && (
         <div style={{
           background: 'rgba(10,15,26,0.85)',
           backdropFilter: 'blur(20px)',
