@@ -303,24 +303,31 @@ function normalizeLotsInput(input: string): string[] {
   const raw = (input || "").trim();
   if (!raw) return [];
 
-  // Detecta padrão de intervalo: N-M, N até M, N a M (apenas se não há vírgula/ponto-e-vírgula)
-  // A presença de vírgula/ponto-e-vírgula cancela a interpretação de intervalo
-  const hasListSeparator = /[,;]/.test(raw) || /\se\s/i.test(raw);
-  if (!hasListSeparator) {
-    // Tenta intervalo: "N-M", "N até M", "N a M"
-    const rangeMatch = raw.match(/^(\d+)\s*(?:-|até|a)\s*(\d+)$/i);
-    if (rangeMatch) {
-      const na = parseInt(rangeMatch[1], 10);
-      const nb = parseInt(rangeMatch[2], 10);
-      if (!isNaN(na) && !isNaN(nb) && nb >= na) {
-        const result: string[] = [];
-        for (let i = na; i <= nb; i++) result.push(String(i));
-        return result;
-      }
+  // Detecta padrão de intervalo: N-M, N até M, N a M
+  const rangeMatch = raw.match(/^(\d+)\s*(?:-|até|a)\s*(\d+)$/i);
+  if (rangeMatch) {
+    const na = parseInt(rangeMatch[1], 10);
+    const nb = parseInt(rangeMatch[2], 10);
+    if (!isNaN(na) && !isNaN(nb) && nb >= na) {
+      const result: string[] = [];
+      for (let i = na; i <= nb; i++) result.push(String(i));
+      return result;
     }
   }
 
-  // Lista literal: separa por vírgula, ponto-e-vírgula ou " e "
+  // NOVO: dois números separados por vírgula = intervalo (ex: "1,12" → lotes 1 ao 12)
+  const twoNumMatch = raw.match(/^(\d+)\s*,\s*(\d+)$/);
+  if (twoNumMatch) {
+    const na = parseInt(twoNumMatch[1], 10);
+    const nb = parseInt(twoNumMatch[2], 10);
+    if (!isNaN(na) && !isNaN(nb) && nb > na) {
+      const result: string[] = [];
+      for (let i = na; i <= nb; i++) result.push(String(i));
+      return result;
+    }
+  }
+
+  // Lista literal: mais de 2 valores, separa por vírgula, ponto-e-vírgula ou " e "
   return raw
     .split(/[,;]|\se\s/i)
     .map((s) => s.trim())
@@ -8555,7 +8562,7 @@ const EmpreendimentosSection = ({
                                         <label className="label text-[10px] mb-1">Lotes disponíveis (separados por vírgula)</label>
                                         <input
                                           className="input-field text-xs h-9"
-                                          placeholder="Ex: 01, 02, 05, 10"
+                                          placeholder="Ex: 1,20 (intervalo) ou 1, 3, 7 (lista)"
                                           value={bulkLotesEspecificos[q] || ""}
                                           onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
                                         />
@@ -8593,7 +8600,7 @@ const EmpreendimentosSection = ({
                         } else {
                           bulkSelectedQuadras.forEach(q => {
                             const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                            const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                            const disponiveis = normalizeLotsInput(bulkLotesEspecificos[q] || "");
                             lotes.forEach(l => {
                               const key = `${q}-${l}`.toUpperCase();
                               const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
@@ -8849,7 +8856,7 @@ const EmpreendimentosSection = ({
                                     />
                                     {bulkLotesEspecificos[q]?.trim() && (
                                       <p className="text-[10px] text-emerald-600 font-bold">
-                                        Disponíveis: {bulkLotesEspecificos[q].split(",").map(s => s.trim()).filter(Boolean).join(", ")}
+                                        Disponíveis: {normalizeLotsInput(bulkLotesEspecificos[q] || "").join(", ")}
                                       </p>
                                     )}
                                   </div>
@@ -8890,7 +8897,7 @@ const EmpreendimentosSection = ({
                       // Para cada quadra com lotes específicos informados, marcar os informados como disponíveis e os demais como indisponíveis
                       bulkSelectedQuadras.forEach(q => {
                         const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
-                        const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
+                        const disponiveis = normalizeLotsInput(bulkLotesEspecificos[q] || "");
                         lotes.forEach(l => {
                           const key = `${q}-${l}`.toUpperCase();
                           const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
@@ -8902,7 +8909,18 @@ const EmpreendimentosSection = ({
                       });
                     }
 
+                    // Sincronizar mapaPontos com os novos status
+                    const mapaPontosAtual = ((bulkAvailDev as any).mapaPontos || []) as any[];
+                    const mapaPontosSync = mapaPontosAtual.map((p: any) => {
+                      const key = `${p.quadra}-${p.lote}`.toUpperCase();
+                      if (newLotesInfo[key]?.status) {
+                        return { ...p, status: newLotesInfo[key].status };
+                      }
+                      return p;
+                    });
+                    const devSincronizado = { ...bulkAvailDev, lotesInfo: { ...(bulkAvailDev.lotesInfo || {}), ...newLotesInfo }, mapaPontos: mapaPontosSync } as Empreendimento;
                     onUpdateLotesInfo(bulkAvailDev.id, newLotesInfo);
+                    onSave(devSincronizado);
                     setBulkAvailDev(null);
                     setBulkSelectedQuadras([]);
                     setBulkLotesEspecificos({});
