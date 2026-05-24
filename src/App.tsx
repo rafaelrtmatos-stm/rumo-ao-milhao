@@ -2392,9 +2392,10 @@ const LotDashboard = ({
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Control") setIsCtrlPanning(true);
 
-      // Ctrl+G = agrupar selecionadas
-      if (e.ctrlKey && e.key === "g" && isEditingMap) {
+      // Ctrl+G = agrupar selecionadas (preventDefault ANTES de qualquer check)
+      if (e.ctrlKey && (e.key === "g" || e.key === "G") && isEditingMap) {
         e.preventDefault();
+        e.stopPropagation();
         const ids = ctrlSelectedIds;
         if (ids.size < 2) { alert("Selecione ao menos 2 bolinhas para agrupar."); return; }
         const grupoId = `grupo_${Date.now()}`;
@@ -2408,8 +2409,9 @@ const LotDashboard = ({
       }
 
       // Ctrl+U = desagrupar selecionadas
-      if (e.ctrlKey && e.key === "u" && isEditingMap) {
+      if (e.ctrlKey && (e.key === "u" || e.key === "U") && isEditingMap) {
         e.preventDefault();
+        e.stopPropagation();
         const ids = ctrlSelectedIds;
         if (ids.size === 0) { alert("Selecione bolinhas para desagrupar."); return; }
         setGruposMap(prev => {
@@ -2424,7 +2426,7 @@ const LotDashboard = ({
       }
 
       // Undo/Redo por grupo
-      if (e.ctrlKey && e.key === "z") { e.preventDefault(); aplicarUndo(); }
+      if (e.ctrlKey && (e.key === "z" || e.key === "Z") && !e.shiftKey) { e.preventDefault(); e.stopPropagation(); aplicarUndo(); }
       if (e.ctrlKey && (e.key === "y" || (e.shiftKey && e.key === "Z"))) { e.preventDefault(); aplicarRedo(); }
     };
     const onKeyUp = (e: KeyboardEvent) => {
@@ -2496,6 +2498,7 @@ const LotDashboard = ({
   const [gruposMap, setGruposMap] = useState<Record<string, string>>({}); // pontoId → grupoId
   const [showTrocaQuadra, setShowTrocaQuadra] = useState(false);
   const [novaQuadraSel, setNovaQuadraSel] = useState("");
+  const [editFileiraNovo, setEditFileiraNovo] = useState<string>(""); // novo lote extremo da fileira
   const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
   const balaoDragRef = useRef<{startX:number;startY:number;startBX:number;startBY:number} | null>(null);
 
@@ -3925,8 +3928,23 @@ const LotDashboard = ({
     if (e.ctrlKey) return;
     e.stopPropagation();
     e.preventDefault();
+    // Salvar estado no undo ANTES de arrastar
+    const currentPontosForUndo = ((localDev as any).mapaPontos || []) as any[];
+    setMapUndoStack(prev => [...prev.slice(-29), { pontos: currentPontosForUndo, markerSize: Number(markerSizePercent) }]);
+    setMapRedoStack([]);
     setDraggingId(ponto.id);
-    setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent });
+    // Guardar posição inicial de TODOS os pontos do grupo para evitar acumulação de delta
+    const grupoId = gruposMap[ponto.id];
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const initialPositions: Record<string, {x: number; y: number}> = {};
+    if (grupoId) {
+      currentPontos.forEach((p: any) => {
+        if (gruposMap[p.id] === grupoId) {
+          initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
+        }
+      });
+    }
+    setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent, initialPositions } as any);
   };
 
   const handleMapMouseUp = () => {
@@ -3974,14 +3992,13 @@ const LotDashboard = ({
       ? new Set(Object.entries(gruposMap).filter(([,g]) => g === grupoId).map(([id]) => id))
       : new Set([draggingId]);
     
+    const initialPositions = (dragStart as any).initialPositions || {};
     const nextPontos = currentPontos.map((p: any) => {
       if (!idsParaMover.has(p.id)) return p;
-      // Para o ponto arrastado: posição absoluta
-      if (p.id === draggingId) {
-        return { ...p, xPercent: Math.max(0, Math.min(100, dragStart.xPercent + dx)), yPercent: Math.max(0, Math.min(100, dragStart.yPercent + dy)), atualizadoEm: new Date().toISOString() };
-      }
-      // Para demais do grupo: deslocamento relativo
-      return { ...p, xPercent: Math.max(0, Math.min(100, p.xPercent + dx)), yPercent: Math.max(0, Math.min(100, p.yPercent + dy)), atualizadoEm: new Date().toISOString() };
+      // Usar posição INICIAL salva no mousedown + delta acumulado desde início
+      const initX = initialPositions[p.id]?.x ?? (p.id === draggingId ? dragStart.xPercent : p.xPercent);
+      const initY = initialPositions[p.id]?.y ?? (p.id === draggingId ? dragStart.yPercent : p.yPercent);
+      return { ...p, xPercent: Math.max(0, Math.min(100, initX + dx)), yPercent: Math.max(0, Math.min(100, initY + dy)), atualizadoEm: new Date().toISOString() };
     });
     setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
   };
@@ -5373,11 +5390,60 @@ const LotDashboard = ({
                       ⧉ Clonar fileira inteira ({fileira.length} lotes)
                     </button>
                   )}
-                  {/* Fileira: mover extremidade redistribui automaticamente */}
-                  {fileira.length > 2 && (isFirst || isLast) && (
-                    <p className="text-[10px] text-violet-600 font-bold text-center bg-violet-50 rounded-lg px-2 py-1">
-                      {isFirst ? "⬆ Mova este ponto — os do meio se redistribuem automaticamente" : "⬇ Mova este ponto — os do meio se redistribuem automaticamente"}
-                    </p>
+                  {/* Fileira: editar extremo redefine quantidade */}
+                  {fileira.length > 1 && (isFirst || isLast) && (
+                    <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 space-y-2">
+                      <p className="text-[10px] font-black text-violet-700 uppercase">
+                        {isFirst ? "Primeiro lote da fileira" : "Último lote da fileira"}
+                      </p>
+                      <p className="text-[10px] text-violet-500">
+                        Fileira vai do lote <strong>{fileira[0].lote}</strong> ao <strong>{fileira[fileira.length-1].lote}</strong> ({fileira.length} bolinhas)
+                      </p>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="number"
+                          value={editFileiraNovo}
+                          onChange={e => setEditFileiraNovo(e.target.value)}
+                          placeholder={isLast ? "Novo último lote" : "Novo primeiro lote"}
+                          className="flex-1 px-3 py-2 border border-violet-300 rounded-xl text-sm font-bold text-slate-800 outline-none"
+                        />
+                        <button
+                          onClick={() => {
+                            const novoNum = parseInt(editFileiraNovo);
+                            if (!novoNum || novoNum < 1) return;
+                            const primeiroLote = parseInt(fileira[0].lote);
+                            const ultimoLote = parseInt(fileira[fileira.length-1].lote);
+                            let novoInicio = isFirst ? novoNum : primeiroLote;
+                            let novoFim = isLast ? novoNum : ultimoLote;
+                            if (novoInicio > novoFim) { alert("O primeiro lote não pode ser maior que o último."); return; }
+                            // Redistribuir bolinhas da fileira do novoInicio ao novoFim
+                            const totalNovo = novoFim - novoInicio + 1;
+                            const sem = currentPontos.filter((p: any) => p.linhaSeqId !== ponto.linhaSeqId);
+                            // Usar posição do primeiro e último para redistribuir
+                            const posInicio = { x: fileira[0].xPercent, y: fileira[0].yPercent };
+                            const posFim = { x: fileira[fileira.length-1].xPercent, y: fileira[fileira.length-1].yPercent };
+                            const novosLotes = Array.from({ length: totalNovo }, (_, i) => {
+                              const t = totalNovo > 1 ? i / (totalNovo - 1) : 0;
+                              return {
+                                ...fileira[0],
+                                id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
+                                lote: String(novoInicio + i),
+                                xPercent: posInicio.x + (posFim.x - posInicio.x) * t,
+                                yPercent: posInicio.y + (posFim.y - posInicio.y) * t,
+                                linhaSeqId: fileira[0].linhaSeqId,
+                              };
+                            });
+                            pushUndo(currentPontos, "Redimensionar fileira");
+                            persistDev({ ...localDev, mapaPontos: [...sem, ...novosLotes] } as any);
+                            setEditFileiraNovo("");
+                            setSelectedPoint(null);
+                          }}
+                          className="px-3 py-2 bg-violet-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 active:scale-95 transition-all"
+                        >
+                          Aplicar
+                        </button>
+                      </div>
+                    </div>
                   )}
                   <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
                 </>
