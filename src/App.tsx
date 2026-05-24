@@ -6457,48 +6457,52 @@ const EmpreendimentosSection = ({
       return;
     }
 
-    // ── 1. Verificar vendas em lotes que serão alterados ─────────────────────
-    // Agrupar itens do script por quadra para saber quais lotes o script define
+    // ── 1. Detectar lotes do gerenciador que NÃO estão no script ─────────────
+    // Agrupar itens do script por quadra
     const scriptPorQuadra: Record<string, string[]> = {};
     parsed.items.forEach(item => {
       if (!scriptPorQuadra[item.quadra]) scriptPorQuadra[item.quadra] = [];
-      scriptPorQuadra[item.quadra].push(item.lote);
+      if ((item.status as any) !== "excluir") scriptPorQuadra[item.quadra].push(item.lote);
     });
 
-    // Lotes que existem no gerenciador mas NÃO estão no script → serão removidos
+    // Para cada quadra do script, detectar lotes sobressalentes no gerenciador
     const lotesParaRemover: { quadra: string; lote: string }[] = [];
-    Object.entries(scriptPorQuadra).forEach(([quadra, lotesScript]) => {
+    const lotesSobressalentesNegar: { quadra: string; lote: string }[] = []; // usuário disse NÃO
+
+    for (const [quadra, lotesScript] of Object.entries(scriptPorQuadra)) {
       const lotesGerenciador = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[quadra]);
-      const scriptSet = new Set(lotesScript.map(l => l.toUpperCase()));
-      lotesGerenciador.forEach(l => {
-        if (!scriptSet.has(l.toUpperCase())) {
-          lotesParaRemover.push({ quadra, lote: l });
-        }
-      });
-    });
+      const scriptSet = new Set(lotesScript.map(l => String(l).toUpperCase()));
+      const sobressalentes = lotesGerenciador.filter(l => !scriptSet.has(String(l).toUpperCase()));
 
-    // Verificar se algum lote a remover tem venda
-    const lotesComVenda = lotesParaRemover.filter(({ quadra, lote }) => {
-      return sales.some(v =>
-        v.empreendimentoId === lotRegDev.id &&
-        String(v.quadra) === String(quadra) &&
-        String(v.numeroLote) === String(lote)
-      );
-    });
-
-    if (lotesComVenda.length > 0) {
-      const msg = lotesComVenda.map(({ quadra, lote }) => {
+      for (const lote of sobressalentes) {
+        // Verificar se tem bolinha no mapa
+        const temBolinha = ((lotRegDev as any).mapaPontos || []).some((p: any) =>
+          String(p.quadra).toUpperCase() === String(quadra).toUpperCase() &&
+          String(p.lote).toUpperCase() === String(lote).toUpperCase()
+        );
+        // Verificar se tem venda
         const venda = sales.find(v =>
           v.empreendimentoId === lotRegDev.id &&
           String(v.quadra) === String(quadra) &&
           String(v.numeroLote) === String(lote)
         );
-        return `Q${quadra}:${lote} → Cliente: ${(venda as any)?.clienteNome || venda?.clienteId || "?"}`;
-      }).join("\n");
-      const continuar = window.confirm(
-        "⚠️ ATENÇÃO: " + lotesComVenda.length + " lote(s) a remover têm VENDA vinculada:\n\n" + msg + "\n\nDeseja continuar mesmo assim?"
-      );
-      if (!continuar) return;
+
+        let aviso = `O lote Q${quadra}:${lote} não está no script.`;
+        if (temBolinha) aviso += "
+⚠️ Este lote TEM BOLINHA no mapa.";
+        if (venda) aviso += `
+🔴 Este lote tem VENDA vinculada (${(venda as any)?.clienteNome || "cliente"}).`;
+        aviso += "
+
+Deseja EXCLUIR este lote do gerenciador?";
+
+        const excluir = window.confirm(aviso);
+        if (excluir) {
+          lotesParaRemover.push({ quadra, lote });
+        } else {
+          lotesSobressalentesNegar.push({ quadra, lote });
+        }
+      }
     }
 
     // ── 2. Atualizar lotesInfo (status das bolinhas) ─────────────────────────
