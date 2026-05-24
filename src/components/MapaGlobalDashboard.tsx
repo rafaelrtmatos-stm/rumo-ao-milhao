@@ -442,17 +442,22 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
               </svg>
             </button>
 
-            {/* Cadeado bloquear/desbloquear */}
-            <button title={mapaLocked ? "Desbloquear" : "Bloquear"} onClick={() => setMapaLocked(v => !v)}
+            {/* Cadeado — único, pisca quando bloqueado e mapa é clicado */}
+            <button title={mapaLocked ? "Desbloquear mapa" : "Bloquear mapa"}
+              onClick={() => setMapaLocked(v => !v)}
               style={{
                 width:36, height:36, borderRadius:10, cursor:'pointer',
-                background: mapaLocked ? 'rgba(239,68,68,0.12)' : 'rgba(74,222,128,0.12)',
+                background: mapaLocked
+                  ? (flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.12)')
+                  : 'rgba(74,222,128,0.12)',
                 backdropFilter:'blur(8px)',
-                border: mapaLocked ? '1px solid rgba(239,68,68,0.3)' : '1px solid rgba(74,222,128,0.3)',
-                boxShadow:'0 2px 10px rgba(0,0,0,0.12)',
+                border: mapaLocked
+                  ? (flashLock ? '2px solid rgba(239,68,68,0.8)' : '1px solid rgba(239,68,68,0.3)')
+                  : '1px solid rgba(74,222,128,0.3)',
+                boxShadow: flashLock ? '0 0 16px rgba(239,68,68,0.5)' : '0 2px 10px rgba(0,0,0,0.12)',
                 display:'flex', alignItems:'center', justifyContent:'center',
-                color: mapaLocked ? '#ef4444' : '#16a34a',
-                transition:'all 0.2s',
+                color: mapaLocked ? (flashLock ? 'white' : '#ef4444') : '#16a34a',
+                transition:'all 0.15s',
               }}>
               {mapaLocked
                 ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
@@ -476,8 +481,8 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
             </button>
           </div>
 
-          {/* Overlay bloqueado */}
-          {locked && (
+          {/* Overlay bloqueado — locked ou mapaLocked */}
+          {(locked || mapaLocked) && (
             <div style={{
               position:'absolute', inset:0, zIndex:1000, cursor:'not-allowed',
               background: flashLock ? 'rgba(239,68,68,0.08)' : 'transparent',
@@ -487,31 +492,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
               onWheel={e => e.stopPropagation()}/>
           )}
 
-          {/* Cadeado — toggle bloquear/desbloquear, sempre visível */}
-          <button onClick={() => setLocked(l => !l)} style={{
-            position:'absolute', top:12, right:12, zIndex:1001,
-            background: locked
-              ? (flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(10,15,26,0.85)')
-              : 'rgba(26,74,26,0.85)',
-            backdropFilter:'blur(12px)',
-            color: 'white',
-            border: locked
-              ? (flashLock ? '1px solid rgba(239,68,68,0.5)' : '1px solid rgba(255,255,255,0.12)')
-              : '1px solid rgba(255,255,255,0.2)',
-            borderRadius:10, padding:'6px 11px', cursor:'pointer',
-            display:'flex', alignItems:'center', gap:6,
-            fontWeight:800, fontSize:11,
-            boxShadow: flashLock ? '0 0 20px rgba(239,68,68,0.4)' : '0 4px 20px rgba(0,0,0,0.4)',
-            transition:'all 0.2s',
-          }}>
-            {locked ? (
-              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              {flashLock ? 'Clique para desbloquear' : 'Bloqueado'}</>
-            ) : (
-              <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>
-              Desbloqueado</>
-            )}
-          </button>
+
 
           {/* Instrução localização */}
           {!locked && onLocationPick && (
