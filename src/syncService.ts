@@ -58,10 +58,36 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
           if (item.operation === 'delete') {
             res = await authFetch(`${endpoint}/${item.entityId}`, { method: 'DELETE' });
           } else {
-            res = await authFetch(`${endpoint}/${item.entityId}`, {
-              method: 'PUT',
-              body: JSON.stringify(item.payload),
-            });
+            if (item.entity === 'empreendimento') {
+              // Split em partes para evitar 413
+              const dev = item.payload as any;
+              const { mapaPontos, lotesInfo, mapaImagemBase64,
+                mapaImagemLeveBase64, mapaImagemMedResBase64,
+                mapaImagemHighResBase64, mapaPdfOriginalBase64, ...base } = dev;
+
+              res = await authFetch(`${endpoint}/${item.entityId}`, {
+                method: 'PUT', body: JSON.stringify(base),
+              });
+              if (res.ok && mapaPontos !== undefined) {
+                await authFetch(`${endpoint}/${item.entityId}/pontos`, {
+                  method: 'PUT', body: JSON.stringify({ mapaPontos: mapaPontos ?? [] }),
+                });
+              }
+              if (res.ok && lotesInfo !== undefined) {
+                await authFetch(`${endpoint}/${item.entityId}/lotes`, {
+                  method: 'PUT', body: JSON.stringify({ lotesInfo: lotesInfo ?? {} }),
+                });
+              }
+              if (res.ok && mapaImagemBase64) {
+                await authFetch(`${endpoint}/${item.entityId}/mapa`, {
+                  method: 'PUT', body: JSON.stringify({ mapaImagemBase64 }),
+                });
+              }
+            } else {
+              res = await authFetch(`${endpoint}/${item.entityId}`, {
+                method: 'PUT', body: JSON.stringify(item.payload),
+              });
+            }
           }
         }
 
