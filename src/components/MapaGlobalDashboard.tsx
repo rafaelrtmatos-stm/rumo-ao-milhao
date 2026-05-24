@@ -73,10 +73,12 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const [filtro, setFiltro] = useState<Filtro>("todos");
   const [busca, setBusca] = useState("");
   const [mapZoom, setMapZoom] = useState(5);
-  const [painelAberto, setPainelAberto] = useState(() => localStorage.getItem('mapGlobal_painel') !== 'false');
+  const [painelAberto, setPainelAberto] = useState(false); // fechado por padrão
   const [mapReady, setMapReady] = useState(false);
   const [camada, setCamada] = useState<Camada>("satelite");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [camadasAberto, setCamadasAberto] = useState(false);
+  const [mapaLocked, setMapaLocked] = useState(false);
   const [mapHeight, setMapHeight] = useState(() => {
     const saved = localStorage.getItem('mapGlobalHeight');
     return saved ? Math.max(300, Math.min(window.innerHeight, parseInt(saved))) : 480;
@@ -343,62 +345,68 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
       }}>
 
-      {/* ── TOPBAR PREMIUM — escondida no mobile (wrapper externo já tem a barra) ── */}
-      {!focusDevId && typeof window !== 'undefined' && window.innerWidth >= 768 && (
+      {/* ── TOPBAR ── */}
+      {!focusDevId && (
         <div style={{
-          background: 'rgba(10,15,26,0.85)',
-          backdropFilter: 'blur(20px)',
+          background: 'rgba(10,15,26,0.85)', backdropFilter: 'blur(20px)',
           borderBottom: '1px solid rgba(255,255,255,0.07)',
-          padding: '10px 14px',
-          display: 'flex',
-          alignItems: 'center',
-          gap: 10,
-          flexShrink: 0,
+          padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0,
+          position: 'relative',
         }}>
-          {/* Toggle painel */}
-          <button onClick={togglePainel} title={painelAberto ? "Recolher" : "Expandir"}
-            style={{
-              width: 34, height: 34, borderRadius: 10, border: '1px solid rgba(255,255,255,0.1)',
-              background: painelAberto ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)',
-              color: 'rgba(255,255,255,0.7)', cursor: 'pointer', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', transition: 'all 0.2s', flexShrink: 0,
-            }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              {painelAberto ? <polyline points="15 18 9 12 15 6"/> : <polyline points="9 18 15 12 9 6"/>}
-            </svg>
-          </button>
-
-          {/* Busca premium */}
+          {/* Busca */}
           <div style={{ flex: 1, position: 'relative' }}>
-            <svg style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', opacity:0.4 }}
-              width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
+            <svg style={{ position:'absolute', left:10, top:'50%', transform:'translateY(-50%)', opacity:0.4 }}
+              width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2">
               <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
             </svg>
             <input value={busca} onChange={e => setBusca(e.target.value)}
-              placeholder="Buscar empreendimento, cidade ou região..."
+              placeholder="Buscar empreendimento..."
               style={{
-                width: '100%', paddingLeft: 36, paddingRight: 14, paddingTop: 8, paddingBottom: 8,
+                width: '100%', paddingLeft: 30, paddingRight: 12, paddingTop: 7, paddingBottom: 7,
                 background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)',
                 borderRadius: 10, color: 'white', fontSize: 12, fontWeight: 500, outline: 'none',
-                boxSizing: 'border-box', transition: 'all 0.2s',
+                boxSizing: 'border-box',
               }}/>
           </div>
 
-          {/* Pills de camada */}
-          <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-            {([['satelite','🛰','Sat'],['hibrido','🌍','Híb'],['ruas','🗺','Ruas']] as [Camada,string,string][]).map(([c,icon,label]) => (
-              <button key={c} onClick={() => setCamada(c)}
-                style={{
-                  padding: '5px 10px', borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                  border: camada === c ? '1px solid rgba(74,222,128,0.5)' : '1px solid rgba(255,255,255,0.08)',
-                  background: camada === c ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.05)',
-                  color: camada === c ? '#4ade80' : 'rgba(255,255,255,0.5)',
-                  boxShadow: camada === c ? '0 0 12px rgba(74,222,128,0.2)' : 'none',
-                  transition: 'all 0.2s', whiteSpace: 'nowrap',
-                }}>
-                {icon} {label}
-              </button>
-            ))}
+          {/* Camadas — ícone único com dropdown */}
+          <div style={{ position: 'relative', flexShrink: 0 }}>
+            <button onClick={() => setCamadasAberto(v => !v)}
+              style={{
+                height: 32, padding: '0 10px', borderRadius: 8, cursor: 'pointer',
+                border: '1px solid rgba(255,255,255,0.12)',
+                background: camadasAberto ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)',
+                color: camadasAberto ? '#4ade80' : 'rgba(255,255,255,0.7)',
+                display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, fontWeight: 700,
+                transition: 'all 0.2s',
+              }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+              </svg>
+              Camadas
+            </button>
+            {camadasAberto && (
+              <div style={{
+                position: 'absolute', top: 36, right: 0, zIndex: 9999,
+                background: 'rgba(15,20,35,0.97)', backdropFilter: 'blur(16px)',
+                border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12,
+                padding: '6px', minWidth: 130, boxShadow: '0 8px 32px rgba(0,0,0,0.5)',
+              }}>
+                {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as [Camada,string,string][]).map(([c,icon,label]) => (
+                  <button key={c} onClick={() => { setCamada(c); setCamadasAberto(false); }}
+                    style={{
+                      width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                      cursor: 'pointer', border: 'none', textAlign: 'left', display: 'flex', alignItems: 'center', gap: 8,
+                      background: camada === c ? 'rgba(74,222,128,0.15)' : 'transparent',
+                      color: camada === c ? '#4ade80' : 'rgba(255,255,255,0.7)',
+                      transition: 'all 0.15s',
+                    }}>
+                    <span>{icon}</span>{label}
+                    {camada === c && <svg style={{marginLeft:'auto'}} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* Centralizar */}
@@ -415,24 +423,36 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
               }
             });
           }} style={{
-            width:34, height:34, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)',
+            width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)',
             background:'rgba(255,255,255,0.06)', color:'rgba(255,255,255,0.7)',
-            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-            transition:'all 0.2s', flexShrink:0,
+            cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
           }}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
               <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
             </svg>
+          </button>
+
+          {/* Cadeado — bloquear/desbloquear mapa */}
+          <button title={mapaLocked ? "Desbloquear mapa" : "Bloquear mapa"} onClick={() => setMapaLocked(v => !v)}
+            style={{
+              width:32, height:32, borderRadius:8, cursor:'pointer', flexShrink:0,
+              border: mapaLocked ? '1px solid rgba(239,68,68,0.4)' : '1px solid rgba(74,222,128,0.4)',
+              background: mapaLocked ? 'rgba(239,68,68,0.12)' : 'rgba(74,222,128,0.12)',
+              color: mapaLocked ? '#f87171' : '#4ade80',
+              display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s',
+            }}>
+            {mapaLocked
+              ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
           </button>
 
           {/* Fullscreen */}
           <button title="Tela cheia" onClick={toggleFullscreen}
             style={{
-              width:34, height:34, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)',
+              width:32, height:32, borderRadius:8, border:'1px solid rgba(255,255,255,0.1)',
               background: isFullscreen ? 'rgba(74,222,128,0.15)' : 'rgba(255,255,255,0.06)',
               color: isFullscreen ? '#4ade80' : 'rgba(255,255,255,0.7)',
-              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center',
-              transition:'all 0.2s', flexShrink:0,
+              cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0,
             }}>
             {isFullscreen
               ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3"/></svg>
@@ -444,86 +464,9 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       {/* ── CORPO: painel + mapa ── */}
       <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300, position:'relative' }}>
 
-        {/* PAINEL LATERAL PREMIUM — só desktop */}
-        {!focusDevId && typeof window !== 'undefined' && window.innerWidth >= 768 && (
-          <div style={{
-            width: painelAberto ? 220 : 0,
-            opacity: painelAberto ? 1 : 0,
-            overflow: 'hidden',
-            transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1), opacity 0.2s',
-            flexShrink: 0,
-            background: 'rgba(5,10,20,0.92)',
-            backdropFilter: 'blur(20px)',
-            borderRight: '1px solid rgba(255,255,255,0.06)',
-            display: 'flex',
-            flexDirection: 'column',
-          }}>
-            {/* Stats topo do painel */}
-            <div style={{ padding: '12px 12px 8px', borderBottom: '1px solid rgba(255,255,255,0.05)', flexShrink: 0 }}>
-              <p style={{ fontSize: 9, fontWeight: 900, color: 'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing: 2, marginBottom: 8 }}>
-                Empreendimentos
-              </p>
-              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-                {[
-                  { label:'Total', value: devsComLoc.length, color:'#94a3b8' },
-                  { label:'Lotes disp.', value: totalDisponiveis, color:'#4ade80' },
-                ].map(s => (
-                  <div key={s.label} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'6px 8px', border:'1px solid rgba(255,255,255,0.05)' }}>
-                    <p style={{ fontSize:16, fontWeight:900, color:s.color, lineHeight:1 }}>{s.value}</p>
-                    <p style={{ fontSize:9, color:'rgba(255,255,255,0.3)', marginTop:2 }}>{s.label}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Lista empreendimentos */}
-            <div style={{ flex:1, overflowY:'auto', padding:'8px 8px', scrollbarWidth:'thin', scrollbarColor:'rgba(255,255,255,0.1) transparent' }}>
-              {devsFiltrados.map(dev => {
-                const stats = calcularStats(dev, sales);
-                const isActive = activeDevId === dev.id;
-                const statusColor = stats.pct >= 90 ? '#ef4444' : stats.pct >= 60 ? '#f59e0b' : '#4ade80';
-                return (
-                  <div key={dev.id} onClick={() => centralizarEm(dev)}
-                    style={{
-                      padding: '10px 10px', borderRadius:12, marginBottom:4, cursor:'pointer',
-                      background: isActive ? 'rgba(74,222,128,0.1)' : 'rgba(255,255,255,0.03)',
-                      border: isActive ? '1px solid rgba(74,222,128,0.3)' : '1px solid rgba(255,255,255,0.05)',
-                      transition:'all 0.2s',
-                      boxShadow: isActive ? '0 0 16px rgba(74,222,128,0.1)' : 'none',
-                    }}>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6 }}>
-                      <p style={{ fontSize:11, fontWeight:800, color:'white', margin:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{dev.nome}</p>
-                      <div style={{ width:6, height:6, borderRadius:'50%', background:statusColor, flexShrink:0, marginLeft:6, boxShadow:`0 0 6px ${statusColor}` }}/>
-                    </div>
-                    {dev.cidade && <p style={{ fontSize:9, color:'rgba(255,255,255,0.3)', margin:'0 0 6px' }}>📍 {dev.cidade}</p>}
-                    <div style={{ height:2, background:'rgba(255,255,255,0.06)', borderRadius:2, overflow:'hidden', marginBottom:6 }}>
-                      <div style={{ height:'100%', width:`${stats.pct}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}aa)`, borderRadius:2, transition:'width 0.5s' }}/>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-                      <span style={{ fontSize:9, color:'rgba(255,255,255,0.4)' }}>{stats.disponiveis} disp. · {stats.pct}%</span>
-                      <button onClick={e => { e.stopPropagation(); onVerMapa(dev.id); }}
-                        style={{
-                          fontSize:9, fontWeight:800, color: isActive ? '#4ade80' : 'rgba(255,255,255,0.4)',
-                          background:'none', border:'none', cursor:'pointer', padding:0, transition:'color 0.2s',
-                        }}>
-                        ABRIR →
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-              {devsFiltrados.length === 0 && (
-                <div style={{ textAlign:'center', padding:'32px 0', color:'rgba(255,255,255,0.2)', fontSize:11 }}>
-                  {devsComLoc.length === 0 ? 'Nenhum empreendimento com localização.' : 'Sem resultados.'}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* ── MAPA ── */}
         <div style={{ flex:1, position:'relative', minWidth:0 }}>
-          <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: locked ? 'none' : 'auto' }}/>
+          <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: (locked || mapaLocked) ? 'none' : 'auto' }}/>
 
           {/* Overlay bloqueado */}
           {locked && (
