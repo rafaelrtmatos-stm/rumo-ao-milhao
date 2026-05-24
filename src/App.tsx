@@ -2305,6 +2305,9 @@ const LotDashboard = ({
   const [mobileSelIds, setMobileSelIds] = useState<Set<string>>(new Set()); // seleção múltipla mobile
   const [mobileSelMode, setMobileSelMode] = useState(false); // modo seleção ativo
   const longPressTimer = useRef<any>(null); // timer do toque longo
+  const [mobileDragId, setMobileDragId] = useState<string | null>(null); // bolinha sendo arrastada no mobile
+  const mobileDragStart = useRef<{touchX:number;touchY:number;xPct:number;yPct:number;initialPositions:Record<string,{x:number;y:number}>} | null>(null);
+  const [mobileSelectedId, setMobileSelectedId] = useState<string | null>(null); // bolinha selecionada para arrastar
   const [showMobileColar, setShowMobileColar] = useState(false);
   const [mobileColarQuadra, setMobileColarQuadra] = useState("");
   const [mobileClipboard, setMobileClipboard] = useState<any[]>([]);
@@ -4616,6 +4619,8 @@ const LotDashboard = ({
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isMobileSel = mobileSelIds.has(ponto.id);
+                const isMobileSelected = mobileSelectedId === ponto.id; // selecionada para arrastar
+                const isMobileDragging = mobileDragId === ponto.id;
                 const isDragging = draggingId === ponto.id;
                 return (
                   <button
@@ -4625,21 +4630,74 @@ const LotDashboard = ({
                     onTouchStart={(ev) => {
                       ev.stopPropagation();
                       if (!isEditingMap) return;
-                      // Toque longo (500ms) → modo seleção múltipla mobile
+                      const touch = ev.touches[0];
+                      // Se bolinha já está selecionada → iniciar drag imediatamente
+                      if (mobileSelectedId === ponto.id || mobileSelIds.has(ponto.id)) {
+                        const rect = mapContainerRef.current?.getBoundingClientRect();
+                        if (!rect) return;
+                        const scale = mapZoomRef.current || 1;
+                        const initPositions: Record<string,{x:number;y:number}> = {};
+                        const cp = ((localDev as any).mapaPontos || []) as any[];
+                        // Incluir fileira ou grupo
+                        const gid = gruposMap[ponto.id];
+                        const fid = ponto.linhaSeqId;
+                        cp.forEach((p: any) => {
+                          if (p.id === ponto.id || (gid && gruposMap[p.id] === gid) || (fid && p.linhaSeqId === fid)) {
+                            initPositions[p.id] = { x: p.xPercent, y: p.yPercent };
+                          }
+                        });
+                        setMobileDragId(ponto.id);
+                        mobileDragStart.current = { touchX: touch.clientX, touchY: touch.clientY, xPct: ponto.xPercent, yPct: ponto.yPercent, initialPositions: initPositions };
+                        setMapUndoStack(prev => [...prev.slice(-29), { pontos: cp, markerSize: Number(markerSizePercent) }]);
+                        return;
+                      }
+                      // Toque longo (500ms) → modo seleção múltipla
                       longPressTimer.current = setTimeout(() => {
                         setMobileSelMode(true);
                         setMobileSelIds(prev => { const n = new Set(prev); n.add(ponto.id); return n; });
                       }, 500);
                     }}
-                    onTouchEnd={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
-                    onTouchMove={() => { if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; } }}
+                    onTouchMove={(ev) => {
+                      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+                      if (!mobileDragId || mobileDragId !== ponto.id || !mobileDragStart.current || !mapContainerRef.current) return;
+                      ev.stopPropagation(); ev.preventDefault();
+                      const touch = ev.touches[0];
+                      const rect = mapContainerRef.current.getBoundingClientRect();
+                      const scale = mapZoomRef.current || 1;
+                      const dx = ((touch.clientX - mobileDragStart.current.touchX) / (rect.width / scale)) * 100 / scale;
+                      const dy = ((touch.clientY - mobileDragStart.current.touchY) / (rect.height / scale)) * 100 / scale;
+                      const cp = ((localDev as any).mapaPontos || []) as any[];
+                      const initPos = mobileDragStart.current.initialPositions;
+                      const next = cp.map((p: any) => {
+                        if (!initPos[p.id]) return p;
+                        return { ...p, xPercent: Math.max(0,Math.min(100,initPos[p.id].x+dx)), yPercent: Math.max(0,Math.min(100,initPos[p.id].y+dy)) };
+                      });
+                      setLocalDev(prev => ({ ...prev, mapaPontos: next } as any));
+                    }}
+                    onTouchEnd={(ev) => {
+                      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
+                      if (mobileDragId === ponto.id) {
+                        persistDev(localDev);
+                        setMobileDragId(null);
+                        mobileDragStart.current = null;
+                      }
+                    }}
                     onClick={(ev) => {
                       if (draggingId) return;
                       ev.stopPropagation();
-                      // Mobile modo seleção: toggle
+                      // Mobile modo seleção múltipla: toggle
                       if (isMobile && mobileSelMode && isEditingMap) {
                         setMobileSelIds(prev => { const n = new Set(prev); n.has(ponto.id) ? n.delete(ponto.id) : n.add(ponto.id); return n; });
                         return;
+                      }
+                      // Mobile modo edição: 1º toque seleciona para arrastar, 2º toque abre modal
+                      if (isMobile && isEditingMap) {
+                        if (mobileSelectedId === ponto.id) {
+                          setMobileSelectedId(null); // deseleciona no 2º toque (abre modal abaixo)
+                        } else {
+                          setMobileSelectedId(ponto.id);
+                          return; // apenas seleciona, não abre modal
+                        }
                       }
                       // CTRL seleção múltipla no modo edição: também alimenta a edição em massa.
                       if (isEditingMap && ev.ctrlKey) {
@@ -4650,7 +4708,7 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
                   >
                     {isEditingMap ? ponto.lote : null}
@@ -5689,6 +5747,14 @@ const LotDashboard = ({
               setMobileFileiraQuadra(""); setMobileFileiraIni(""); setMobileFileiraFim("");
             }
           }}>
+          {/* Toque no mapa fora de bolinha → deselecionar */}
+          {isEditingMap && mobileSelectedId && (
+            <div className="absolute inset-0 z-10"
+              onClick={() => setMobileSelectedId(null)}
+              style={{ pointerEvents: mobileDragId ? 'none' : 'auto', background: 'transparent' }}
+            />
+          )}
+
           {/* Balão flutuante mobile */}
           {isEditingMap && lotesConfigSemBolinha > 0 && (
             <div className="absolute top-2 left-2 right-12 z-30">
@@ -5722,6 +5788,15 @@ const LotDashboard = ({
             </div>
           )}
           {renderMapa()}
+          {/* Dica arrastar bolinha selecionada */}
+          {isEditingMap && mobileSelectedId && !mobileDragId && (
+            <div className="absolute top-2 left-2 right-14 z-30 pointer-events-none">
+              <div className="bg-yellow-500 text-white rounded-xl px-3 py-2 text-xs font-black text-center shadow-lg">
+                ✋ Toque e arraste para mover
+              </div>
+            </div>
+          )}
+
           {/* Botões flutuantes direita */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
             {([
@@ -5969,57 +6044,10 @@ const LotDashboard = ({
                       )}
                     </div>
 
-                    {/* Editar status por quadra */}
-                    <div>
-                      <p className="text-sm font-black text-slate-800 mb-1">Editar status de lotes</p>
-                      <p className="text-xs text-slate-400 mb-3">Selecione os lotes no mapa e altere o status.</p>
-                      <div className="space-y-2">
-                        {quadraList.map(q => {
-                          const lotes = getLotesQuadra(q);
-                          const isOpen = quadraAberta === q;
-                          return (
-                            <div key={q} className="border border-slate-100 rounded-2xl overflow-hidden bg-white">
-                              <button className="w-full flex items-center justify-between px-4 py-3.5 active:bg-slate-50"
-                                onClick={() => (setQuadraAberta as any)(isOpen ? "" : q)}>
-                                <span className="text-sm font-black text-slate-800">Quadra {q}</span>
-                                <div className="flex items-center gap-2">
-                                  <span className="text-xs text-slate-400 font-medium">{lotes.length} lotes</span>
-                                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5"
-                                    style={{transform: isOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s'}}>
-                                    <polyline points="6 9 12 15 18 9"/>
-                                  </svg>
-                                </div>
-                              </button>
-                              {isOpen && (
-                                <div className="px-4 pb-4 pt-1 border-t border-slate-50">
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    {lotes.map(l => {
-                                      const st = getLoteStatus(q, l);
-                                      const isVendido = st === "vendido" || st === "indisponivel";
-                                      const isReservado = !isVendido && st === "reservado";
-                                      const bg = isVendido ? "#fee2e2" : isReservado ? "#fef3c7" : "#dbeafe";
-                                      const tc = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
-                                      const bc = isVendido ? "#fca5a5" : isReservado ? "#fcd34d" : "#93c5fd";
-                                      return (
-                                        <button key={l}
-                                          onClick={() => {
-                                            if (isVendido) return;
-                                            const next: MapaLoteStatus = st === "disponivel" ? "reservado" : st === "reservado" ? "indisponivel" : "disponivel";
-                                            setLoteStatusMobile(q, l, next);
-                                          }}
-                                          style={{background:bg,color:tc,borderColor:bc,width:44,height:44,borderRadius:12,border:'2px solid',fontSize:12,fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,opacity:isVendido?0.6:1}}>
-                                          {String(l).padStart(2,"0")}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+                    {/* Lista de lotes removida daqui — disponível no Gerenciador de Lotes */}
+                    <p className="text-xs text-slate-400 text-center py-2">
+                      Toque nas bolinhas no mapa para alterar o status individualmente.
+                    </p>
                   </>
                 )}
               </div>
