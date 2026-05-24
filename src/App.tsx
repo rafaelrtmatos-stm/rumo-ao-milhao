@@ -5781,7 +5781,12 @@ const LotDashboard = ({
                             ? `⚠️ Lote Q${quadra}:${lote} tem venda vinculada. Excluir?`
                             : `Excluir lote Q${quadra}:${lote}?`;
                           if (!window.confirm(msg)) return;
-                          persistDev(deleteLotFromEmpreendimento(localDev as Empreendimento, `${quadra}-${lote}`, sales));
+                          setLocalDev(prev => {
+                            const updated = deleteLotFromEmpreendimento(prev as Empreendimento, `${quadra}-${lote}`, sales);
+                            const recalc = recalcularEstatisticasEmpreendimento(updated, sales);
+                            onSaveDev(recalc);
+                            return recalc;
+                          });
                         }}
                         className="text-[9px] font-black px-1.5 py-0.5 bg-white/20 text-white rounded border border-white/30 whitespace-nowrap hover:bg-red-500/60 transition-colors flex items-center gap-0.5"
                         title="Excluir lote">
@@ -6331,8 +6336,12 @@ const LotDashboard = ({
                         ? `⚠️ O lote Q${quadra}:${lote} tem venda vinculada (${(venda as any)?.clienteNome || "cliente"}). Excluir mesmo assim?`
                         : `Excluir lote Q${quadra}:${lote} do gerenciador?`;
                       if (!window.confirm(msg)) return;
-                      const devAtualizado = deleteLotFromEmpreendimento(localDev as Empreendimento, `${quadra}-${lote}`, sales);
-                      persistDev(devAtualizado);
+                      setLocalDev(prev => {
+                        const updated = deleteLotFromEmpreendimento(prev as Empreendimento, `${quadra}-${lote}`, sales);
+                        const recalc = recalcularEstatisticasEmpreendimento(updated, sales);
+                        onSaveDev(recalc);
+                        return recalc;
+                      });
                     }}
                     className="text-[10px] font-black px-2 py-0.5 bg-white/20 text-white rounded-lg whitespace-nowrap border border-white/30 hover:bg-red-500/60 hover:border-red-300 transition-colors cursor-pointer flex items-center gap-1"
                     title="Clique para excluir este lote">
