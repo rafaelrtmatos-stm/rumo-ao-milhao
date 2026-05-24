@@ -6487,14 +6487,10 @@ const EmpreendimentosSection = ({
           String(v.numeroLote) === String(lote)
         );
 
-        let aviso = `O lote Q${quadra}:${lote} não está no script.`;
-        if (temBolinha) aviso += "
-⚠️ Este lote TEM BOLINHA no mapa.";
-        if (venda) aviso += `
-🔴 Este lote tem VENDA vinculada (${(venda as any)?.clienteNome || "cliente"}).`;
-        aviso += "
-
-Deseja EXCLUIR este lote do gerenciador?";
+        let aviso = "O lote Q" + quadra + ":" + lote + " nao esta no script.";
+        if (temBolinha) aviso += "\n\u26A0 Este lote TEM BOLINHA no mapa.";
+        if (venda) aviso += "\n\uD83D\uDD34 Tem VENDA vinculada (" + ((venda as any)?.clienteNome || "cliente") + ").";
+        aviso += "\n\nDeseja EXCLUIR este lote do gerenciador?";
 
         const excluir = window.confirm(aviso);
         if (excluir) {
