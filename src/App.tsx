@@ -3469,6 +3469,15 @@ const LotDashboard = ({
     try {
       const url = await uploadMapaImagem(file, localDev.id, (pct) => setMapUploadProgress(pct));
       precacheMapaUrl(url); // pré-cacheia para offline
+      // Salvar largura nativa da imagem como referência A4
+      const imgRef = new Image();
+      imgRef.onload = () => {
+        const isLandscape = imgRef.naturalWidth > imgRef.naturalHeight;
+        // A4 a 96dpi: 794px portrait, 1123px landscape
+        const a4RefWidth = isLandscape ? 1123 : 794;
+        persistDev({ ...localDev, mapaMarkerReferenceWidth: a4RefWidth, mapaImagemUrl: url } as any);
+      };
+      imgRef.src = url;
       persistDev({
         ...localDev,
         mapaImagemUrl: url,
@@ -3512,19 +3521,31 @@ const LotDashboard = ({
   // Cache causava bug: não atualizava ao rotacionar o celular
   const getBallPixelSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-    // Largura real da imagem no zoom=1 (sem considerar o scale do container)
+
+    // Largura atual do mapa na tela
     const imgEl = mapImageRef.current;
-    const mapW = (imgEl?.offsetWidth || 0)
+    const mapWAtual = (imgEl?.offsetWidth || 0)
       || (mapContainerRef.current?.offsetWidth || 0)
       || (mapViewportRef.current?.offsetWidth || 0)
       || (getActiveViewport()?.offsetWidth || 0)
       || 600;
-    // 2.8% da largura do mapa — proporcional, acompanha rotação automaticamente
-    // No celular: dividir pelo zoom para compensar (bolinhas menores quando zoom baixo)
+
+    // Âncora A4: largura de referência salva no cadastro do mapa
+    // Se não tiver, usa 794px (A4 portrait a 96dpi)
+    const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
+
+    // fatorEscala: quanto o mapa cresceu/encolheu em relação ao A4 original
+    const fatorEscala = mapWAtual / refWidth;
+
+    // Tamanho base fixo em px no A4 (794px de largura a 96dpi = ~8px por bolinha)
+    const BASE_SIZE_A4 = 8;
+    const scaledSize = Math.round(BASE_SIZE_A4 * fatorEscala * pct);
+
+    // No celular: reduzir quando zoom baixo (mapa afastado)
     const currentZoom = mapZoomRef.current || 1;
     const zoomScale = isMobile ? Math.max(0.5, Math.min(1, currentZoom)) : 1;
-    const size = Math.round(mapW * 0.0037 * pct * zoomScale);
-    const safeSz = Math.max(8, Math.min(80, size));
+
+    const safeSz = Math.max(6, Math.min(80, scaledSize * zoomScale));
     return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
   };
 
@@ -6538,155 +6559,152 @@ const LotDashboard = ({
           </div>
         )}
 
-        {/* CORPO PRINCIPAL — layout premium desktop */}
+        {/* CORPO PRINCIPAL — layout fiel à imagem */}
         {mode === "mapa" && mapaImagem ? (
-          <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4 bg-[#f4f6f8]">
+          <>
+          {/* DESKTOP — grid 75/25 */}
+          <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4" style={{background:'#f4f6f8'}}>
 
-            {/* MAPA PRINCIPAL — 75% */}
+            {/* COLUNA ESQUERDA — MAPA 75% */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
 
-              {/* Título + legenda topo */}
-              <div className="flex-shrink-0 pt-4 pb-2 px-6 text-center border-b border-slate-50">
-                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">Empreendimento {localDev.nome}</p>
-                <div className="flex items-center justify-center gap-5 mt-2">
+              {/* Título + legenda horizontal */}
+              <div className="flex-shrink-0 pt-4 pb-2 px-4 text-center">
+                <p className="text-sm font-black text-slate-800 uppercase tracking-wide mb-2">Empreendimento {localDev.nome}</p>
+                <div className="flex items-center justify-center gap-6">
                   {[{c:'#22c55e',l:'Disponível'},{c:'#f59e0b',l:'Reservado'},{c:'#ef4444',l:'Indisponível'}].map(i=>(
                     <div key={i.l} className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:i.c}}/>
-                      <span className="text-[11px] text-slate-500 font-medium">{i.l}</span>
+                      <span className="w-2.5 h-2.5 rounded-full" style={{background:i.c}}/>
+                      <span className="text-[11px] text-slate-500">{i.l}</span>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* Rosa dos ventos */}
-              <div className="absolute top-14 right-5 z-10 pointer-events-none select-none">
-                <svg width="52" height="52" viewBox="0 0 100 100" fill="none">
-                  <polygon points="50,5 55,45 50,40 45,45" fill="#1a4a1a"/>
-                  <polygon points="50,95 55,55 50,60 45,55" fill="#94a3b8"/>
-                  <polygon points="5,50 45,45 40,50 45,55" fill="#94a3b8"/>
-                  <polygon points="95,50 55,45 60,50 55,55" fill="#94a3b8"/>
-                  <circle cx="50" cy="50" r="6" fill="white" stroke="#1a4a1a" strokeWidth="2"/>
-                  <text x="50" y="2" textAnchor="middle" fontSize="12" fontWeight="900" fill="#1a4a1a">N</text>
-                  <text x="50" y="98" textAnchor="middle" fontSize="10" fill="#94a3b8" dominantBaseline="auto">S</text>
-                  <text x="2" y="54" textAnchor="start" fontSize="10" fill="#94a3b8">O</text>
-                  <text x="93" y="54" textAnchor="end" fontSize="10" fill="#94a3b8">L</text>
+              {/* Rosa dos ventos — canto sup direito */}
+              <div className="absolute top-4 right-4 z-10 pointer-events-none select-none opacity-80">
+                <svg width="56" height="56" viewBox="0 0 100 100" fill="none">
+                  <polygon points="50,4 55,44 50,38 45,44" fill="#1a4a1a"/>
+                  <polygon points="50,96 55,56 50,62 45,56" fill="#94a3b8"/>
+                  <polygon points="4,50 44,45 38,50 44,55" fill="#94a3b8"/>
+                  <polygon points="96,50 56,45 62,50 56,55" fill="#94a3b8"/>
+                  <circle cx="50" cy="50" r="7" fill="white" stroke="#1a4a1a" strokeWidth="2.5"/>
+                  <text x="50" y="1" textAnchor="middle" fontSize="13" fontWeight="900" fill="#1a4a1a">N</text>
+                  <text x="50" y="99" textAnchor="middle" fontSize="11" fill="#94a3b8">S</text>
+                  <text x="1" y="54" fontSize="11" fill="#94a3b8">O</text>
+                  <text x="92" y="54" fontSize="11" fill="#94a3b8">L</text>
                 </svg>
               </div>
 
-              {/* Controles flutuantes esquerda */}
-              <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
-                <button onClick={() => setMapZoomAtPoint(Math.min(10, mapZoom + 0.5), (getActiveViewport()?.offsetWidth||800)/2, (getActiveViewport()?.offsetHeight||600)/2)}
-                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all font-black text-lg">+</button>
-                <button onClick={() => setMapZoomAtPoint(Math.max(1, mapZoom - 0.5), (getActiveViewport()?.offsetWidth||800)/2, (getActiveViewport()?.offsetHeight||600)/2)}
-                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all font-black text-xl leading-none">−</button>
+              {/* Controles flutuantes esquerda — +, −, localizar, minimapa */}
+              <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 items-center">
+                <button onClick={() => setMapZoomAtPoint(Math.min(10,mapZoom+0.5),(getActiveViewport()?.offsetWidth||800)/2,(getActiveViewport()?.offsetHeight||600)/2)}
+                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-90 font-black text-lg transition-all">+</button>
+                <button onClick={() => setMapZoomAtPoint(Math.max(1,mapZoom-0.5),(getActiveViewport()?.offsetWidth||800)/2,(getActiveViewport()?.offsetHeight||600)/2)}
+                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-90 font-black text-xl leading-none transition-all">−</button>
                 <button onClick={() => fitMapToScreen()}
                   className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-50 active:scale-90 transition-all">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
                 </button>
                 {/* Minimapa */}
-                {(localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl ? (
-                  <div className="mt-2 w-20 h-16 rounded-xl overflow-hidden shadow-md border border-slate-100 bg-slate-100">
+                {((localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl) && (
+                  <div className="mt-1 w-[72px] rounded-xl overflow-hidden shadow-md border border-slate-100 bg-slate-100">
                     <img src={(localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl}
-                      className="w-full h-full object-cover opacity-80" alt="minimapa"/>
-                    <div className="absolute inset-0 flex items-end justify-center pb-1 pointer-events-none">
-                      <span className="text-[8px] text-white font-bold bg-black/40 px-1 rounded">Minimapa</span>
-                    </div>
+                      className="w-full h-14 object-cover opacity-80" alt="minimapa"/>
+                    <p className="text-center text-[8px] text-slate-400 font-bold py-0.5">Minimapa</p>
                   </div>
-                ) : null}
+                )}
               </div>
 
               {/* Área do mapa */}
-              <div className="relative flex-1 min-h-0">
-                {renderMapa()}
-              </div>
+              <div className="relative flex-1 min-h-0">{renderMapa()}</div>
 
-              {/* Pill rodapé */}
-              <div className="flex-shrink-0 flex items-center justify-center py-3 bg-[#f4f6f8]">
-                <div className="flex items-center gap-2 px-5 py-2 bg-white rounded-full shadow-sm border border-slate-100">
-                  <span className="text-slate-400">🖐</span>
-                  <span className="text-[11px] text-slate-400 font-medium">Scroll para zoom • Arraste para mover o mapa • Clique no lote para ver detalhes</span>
-                </div>
+              {/* Rodapé instrucional */}
+              <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-t border-slate-50">
+                <span className="text-base">🖐</span>
+                <span className="text-[10px] text-slate-400">Scroll para zoom • Arraste para mover o mapa • Clique no lote para ver detalhes</span>
               </div>
               <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
             </div>
 
-            {/* SIDEBAR DIREITA — premium */}
-            <div className="w-60 xl:w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+            {/* COLUNA DIREITA — sidebar 25% */}
+            <div className="w-56 xl:w-60 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
 
-              {/* CARD RESUMO */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Resumo</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="rounded-xl p-3 bg-emerald-50">
-                    <p className="text-2xl font-black text-emerald-600 leading-none">{statsDisponiveis}</p>
-                    <p className="text-[10px] text-emerald-500 font-bold mt-1">Disponíveis</p>
-                  </div>
-                  <div className="rounded-xl p-3 bg-amber-50">
-                    <p className="text-2xl font-black text-amber-500 leading-none">{statsReservados}</p>
-                    <p className="text-[10px] text-amber-400 font-bold mt-1">Reservados</p>
-                  </div>
-                  <div className="rounded-xl p-3 bg-red-50">
-                    <p className="text-2xl font-black text-red-500 leading-none">{statsIndisponiveis}</p>
-                    <p className="text-[10px] text-red-400 font-bold mt-1">Vendidos</p>
-                  </div>
-                  <div className="rounded-xl p-3 bg-slate-50">
-                    <p className="text-2xl font-black text-slate-700 leading-none">{statsTotal}</p>
-                    <p className="text-[10px] text-slate-400 font-bold mt-1">Total de lotes</p>
-                  </div>
+              {/* RESUMO */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Resumo</p>
+                <div className="grid grid-cols-2 gap-2 mb-3">
+                  {[
+                    {v:statsDisponiveis, l:'Disponíveis', color:'#22c55e', bg:'#f0fdf4'},
+                    {v:statsReservados,  l:'Reservados',  color:'#f59e0b', bg:'#fffbeb'},
+                    {v:statsIndisponiveis, l:'Vendidos',  color:'#ef4444', bg:'#fef2f2'},
+                    {v:statsTotal,        l:'Total de lotes', color:'#64748b', bg:'#f8fafc'},
+                  ].map(s=>(
+                    <div key={s.l} className="rounded-xl p-2.5" style={{background:s.bg}}>
+                      <p className="text-xl font-black leading-none" style={{color:s.color}}>{s.v}</p>
+                      <p className="text-[9px] font-bold mt-1" style={{color:s.color+'99'}}>{s.l}</p>
+                    </div>
+                  ))}
                 </div>
-                <div className="mt-4 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{width:`${100-statsPct}%`}}/>
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full" style={{width:`${statsPct}%`, background:'#22c55e'}}/>
                 </div>
-                <p className="text-[10px] text-slate-400 text-right mt-1">{statsPct}% ocupado</p>
+                <p className="text-[9px] text-slate-400 text-right mt-1">{statsPct}% ocupado</p>
               </div>
 
-              {/* CARD LEGENDA */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Legenda</p>
+              {/* LEGENDA */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Legenda</p>
                 <div className="space-y-3">
                   {[
-                    {c:'#22c55e',l:'Disponível',d:'Livre para venda'},
-                    {c:'#f59e0b',l:'Reservado',d:'Aguardando'},
-                    {c:'#ef4444',l:'Indisponível',d:'Vendido/bloqueado'},
+                    {c:'#22c55e', l:'Disponível',   d:'Livre para venda'},
+                    {c:'#f59e0b', l:'Reservado',    d:'Aguardando'},
+                    {c:'#ef4444', l:'Indisponível', d:'Vendido/bloqueado'},
                   ].map(i=>(
-                    <div key={i.l} className="flex items-center gap-3">
-                      <span className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm" style={{background:i.c}}/>
+                    <div key={i.l} className="flex items-center gap-2.5">
+                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{background:i.c}}/>
                       <div>
-                        <p className="text-xs font-bold text-slate-700">{i.l}</p>
-                        <p className="text-[10px] text-slate-400">{i.d}</p>
+                        <p className="text-[11px] font-bold text-slate-700">{i.l}</p>
+                        <p className="text-[9px] text-slate-400">{i.d}</p>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              {/* CARD AÇÕES RÁPIDAS */}
-              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Ações Rápidas</p>
+              {/* AÇÕES RÁPIDAS */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Ações Rápidas</p>
                 <div className="grid grid-cols-2 gap-2 mb-2">
                   <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToScreen(0),200);}}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                    <span className="text-[10px] font-bold">Fullscreen</span>
+                    className="flex flex-col items-center gap-1.5 py-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                    <span className="text-[9px] font-bold">Fullscreen</span>
                   </button>
                   <button onClick={()=>fitMapToScreen()}
-                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-                    <span className="text-[10px] font-bold">Centralizar</span>
+                    className="flex flex-col items-center gap-1.5 py-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                    <span className="text-[9px] font-bold">Centralizar</span>
                   </button>
                 </div>
                 <button onClick={baixarMapaInterativoImagem}
-                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span className="text-[10px] font-bold">Download</span>
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span className="text-[9px] font-bold">Download</span>
                 </button>
               </div>
             </div>
           </div>
 
-        ) : mode === "mapa" && mapaImagem ? null : mode === "mapa" ? (
-          /* Mobile mapa */
-          <div className="sm:hidden flex-1 overflow-y-auto p-4 relative">
+          {/* MOBILE mapa */}
+          <div className="sm:hidden flex-1 overflow-y-auto p-3 relative">
+            {renderMapa()}
+            <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
+          </div>
+          </>
+
+        ) : mode === "mapa" ? (
+          <div className="flex-1 overflow-y-auto p-3 relative">
             {renderMapa()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
