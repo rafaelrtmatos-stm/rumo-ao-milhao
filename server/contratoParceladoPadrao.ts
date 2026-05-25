@@ -139,15 +139,29 @@ function xmlEscape(s: string): string {
  * Substitui texto que pode estar fragmentado em múltiplos <w:r> runs.
  * Cria um regex onde entre cada caractere pode haver tags XML arbitrárias.
  */
+function sanitizeForXml(s: string): string {
+  // Remove caracteres de controle inválidos em XML (exceto tab, LF, CR)
+  return String(s || "")
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
 function rep(xml: string, search: string, replacement: string): string {
   if (!search) return corrigirEspacosSimplesmente(xml);
-  const safe = xmlEscape(replacement);
+  // Sanitizar o valor de substituição para garantir XML válido
+  const safe = sanitizeForXml(replacement);
   const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
   const pattern = chars.join("(?:<[^>]*>\\s*)*");
   try {
     return xml.replace(new RegExp(pattern, "g"), safe);
   } catch {
-    return xml.split(search).join(safe);
+    // Fallback: substituição literal escapada
+    const escapedSearch = xmlEscape(search);
+    return xml.split(escapedSearch).join(safe);
   }
 }
 
@@ -159,11 +173,22 @@ function escapeRegExpLocal(texto: string): string {
 function aplicarNegritoDocx(xml: string, texto: string): string {
   const alvo = xmlEscape(String(texto || "").trim());
   if (!alvo) return xml;
-  const pattern = new RegExp(`(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)`, "g");
-  return xml.replace(
-    pattern,
-    `</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>$2</w:t></w:r><w:r><w:t>`
+
+  // Captura o run completo: <w:r>...<w:rPr>...</w:rPr>...<w:t ...>TEXTO</w:t></w:r>
+  // Para não quebrar tags, só aplica negrito se o texto aparece isolado num <w:t>
+  const pattern = new RegExp(
+    `(<w:r(?:\\s[^>]*)?>)((?:<w:rPr>[^]*?</w:rPr>)?)((?:<[^>]+>)*?)` +
+    `(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)` +
+    `((?:<[^>]+>)*?)(</w:r>)`,
+    "g"
   );
+
+  return xml.replace(pattern, (match, rOpen, rPr, preT, tOpen, txt, tClose, postT, rClose) => {
+    // Extrair rPr existente (sem o <w:b/> se já tiver)
+    const rPrInner = rPr ? rPr.replace(/<w:rPr>|<\/w:rPr>/g, "").replace(/<w:b\s*\/>|<w:bCs\s*\/>/g, "") : "";
+    const newRPr = `<w:rPr>${rPrInner}<w:b/><w:bCs/></w:rPr>`;
+    return `${rOpen}${newRPr}${preT}${tOpen}${txt}${tClose}${postT}${rClose}`;
+  });
 }
 
 function aplicarNegritosContratoParcelado(xml: string, vendedorNome: string, compradorNome: string, vendedorPapel: string, compradorPapel: string): string {

@@ -353,7 +353,7 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
           <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: (locked || mapaLocked) ? 'none' : 'auto' }}/>
 
           {/* CONTROLES FLUTUANTES — canto superior direito, estilo Google Maps */}
-          <div style={{ position:'absolute', top:10, right:10, zIndex:1000, display:'flex', flexDirection:'column', gap:6 }}>
+          <div style={{ position:'absolute', top:10, right:10, zIndex:1010, display:'flex', flexDirection:'column', gap:6 }}>
 
             {/* Camadas */}
             <div style={{ position:'relative' }}>
