@@ -95,6 +95,26 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // DECLARADOS ANTES DOS HOOKS (evita TDZ no bundle minificado)
+  const empreendimentosRef = useRef(empreendimentos);
+
+  const devsComLoc = useMemo(() =>
+    empreendimentosFiltrados.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
+    [empreendimentosFiltrados]
+  );
+
+  const devsFiltrados = useMemo(() => {
+    let list = devsComLoc;
+    if (filtro === "com_mapa") list = list.filter(d => d.mapaImagemBase64 || d.mapaPdfOriginalBase64 || d.mapaImagemUrl);
+    if (filtro === "mais_vendidos") list = [...list].sort((a, b) => (b.lotesVendidos ?? 0) - (a.lotesVendidos ?? 0)).slice(0, 10);
+    if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
+    if (busca.trim()) {
+      const q = busca.toLowerCase();
+      list = list.filter(d => d.nome.toLowerCase().includes(q) || d.cidade?.toLowerCase().includes(q));
+    }
+    return list;
+  }, [devsComLoc, filtro, busca]);
+
   // Auto-fit bounds ao redimensionar
   useEffect(() => {
     if (!containerRef.current || !leafletRef.current) return;
@@ -138,26 +158,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     },
   }), [devsComLoc]);
 
-  // Ref sempre atualizado com empreendimentos atuais (evita closure stale)
-  const empreendimentosRef = useRef(empreendimentos);
-  useEffect(() => { empreendimentosRef.current = empreendimentos; }, [empreendimentos]);
-
-  const devsComLoc = useMemo(() =>
-    empreendimentosFiltrados.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
-    [empreendimentosFiltrados]
-  );
-
-  const devsFiltrados = useMemo(() => {
-    let list = devsComLoc;
-    if (filtro === "com_mapa") list = list.filter(d => d.mapaImagemBase64 || d.mapaPdfOriginalBase64 || d.mapaImagemUrl);
-    if (filtro === "mais_vendidos") list = [...list].sort((a, b) => (b.lotesVendidos ?? 0) - (a.lotesVendidos ?? 0)).slice(0, 10);
-    if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
-    if (busca.trim()) {
-      const q = busca.toLowerCase();
-      list = list.filter(d => d.nome.toLowerCase().includes(q) || d.cidade?.toLowerCase().includes(q));
-    }
-    return list;
-  }, [devsComLoc, filtro, busca]);
+  // devsComLoc e devsFiltrados declarados abaixo — movidos para antes dos hooks
 
   // Inicializar Leaflet
   useEffect(() => {
