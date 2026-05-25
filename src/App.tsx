@@ -2548,6 +2548,14 @@ const LotDashboard = ({
   const [novaQuadraSel, setNovaQuadraSel] = useState("");
   const [editFileiraNovo, setEditFileiraNovo] = useState<string>(""); // novo lote extremo da fileira
   const [clipboard, setClipboard] = useState<any[]>([]); // bolinhas copiadas
+  // Estados aba Global
+  const [camadasGlobal, setCamadasGlobal] = useState({ satelite: true, hibrido: false, ruas: true, terreno: false });
+  // Estados aba Lotes
+  const [loteBusca, setLoteBusca] = useState("");
+  const [loteQuadraFiltro, setLoteQuadraFiltro] = useState("todas");
+  const [loteStatusFiltro, setLoteStatusFiltro] = useState<string[]>([]);
+  const [loteOrdem, setLoteOrdem] = useState("numero");
+  const [loteView, setLoteView] = useState<"grid"|"lista">("grid");
   const [showModalColar, setShowModalColar] = useState(false); // modal de quadra ao colar
   const [colarQuadra, setColarQuadra] = useState("");
   const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
@@ -6596,7 +6604,6 @@ const LotDashboard = ({
           const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
           const gmapsUrl = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : `https://www.google.com/maps/search/${encodeURIComponent(cidade)}`;
           const acessos = (localDev as any).acessos as string[] | undefined;
-          const [camadas, setCamadas] = React.useState({ satelite: true, hibrido: false, ruas: true, terreno: false });
           return (
           <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4" style={{background:'#f4f6f8'}}>
 
@@ -6629,12 +6636,12 @@ const LotDashboard = ({
                   {k:'hibrido'  as const, icon:'🌍', l:'Híbrido'},
                   {k:'ruas'    as const, icon:'🛣', l:'Ruas'},
                 ].map(({k,icon,l}) => (
-                  <button key={k} onClick={() => setCamadas(p=>({...p,[k]:!p[k]}))}
+                  <button key={k} onClick={() => setCamadasGlobal(p=>({...p,[k]:!p[k]}))}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition-all border"
                     style={{
-                      background: camadas[k] ? '#1a4a1a' : 'rgba(255,255,255,0.95)',
-                      color: camadas[k] ? 'white' : '#374151',
-                      borderColor: camadas[k] ? '#1a4a1a' : 'rgba(0,0,0,0.08)',
+                      background: camadasGlobal[k] ? '#1a4a1a' : 'rgba(255,255,255,0.95)',
+                      color: camadasGlobal[k] ? 'white' : '#374151',
+                      borderColor: camadasGlobal[k] ? '#1a4a1a' : 'rgba(0,0,0,0.08)',
                     }}>
                     {icon} {l}
                   </button>
@@ -6743,10 +6750,10 @@ const LotDashboard = ({
                     {k:'terreno' as const, l:'Terreno'},
                   ]).map(({k,l}) => (
                     <label key={k} className="flex items-center gap-2.5 cursor-pointer group">
-                      <div onClick={() => setCamadas(p=>({...p,[k]:!p[k]}))}
+                      <div onClick={() => setCamadasGlobal(p=>({...p,[k]:!p[k]}))}
                         className="w-4 h-4 rounded-md border-2 flex items-center justify-center transition-all flex-shrink-0"
-                        style={{ borderColor: camadas[k] ? '#1a4a1a' : '#d1d5db', background: camadas[k] ? '#1a4a1a' : 'white' }}>
-                        {camadas[k] && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                        style={{ borderColor: camadasGlobal[k] ? '#1a4a1a' : '#d1d5db', background: camadasGlobal[k] ? '#1a4a1a' : 'white' }}>
+                        {camadasGlobal[k] && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
                       </div>
                       <span className="text-[11px] font-medium text-slate-600 group-hover:text-slate-800">{l}</span>
                     </label>
@@ -6926,11 +6933,6 @@ const LotDashboard = ({
           </div>
         ) : mode === "quadradinhos" ? (() => {
           // ── ABA LOTES PREMIUM ──────────────────────────────────────────────
-          const [loteBusca, setLoteBusca] = React.useState("");
-          const [loteQuadraFiltro, setLoteQuadraFiltro] = React.useState("todas");
-          const [loteStatusFiltro, setLoteStatusFiltro] = React.useState<string[]>([]);
-          const [loteOrdem, setLoteOrdem] = React.useState("numero");
-          const [loteView, setLoteView] = React.useState<"grid"|"lista">("grid");
 
           const toggleStatusFiltro = (s: string) => setLoteStatusFiltro(prev =>
             prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
