@@ -10112,8 +10112,8 @@ const VendasSection = ({
     if (empNome) {
       const match = devList.find(
         (d) =>
-          d.nome.toLowerCase().includes(empNome) ||
-          empNome.includes(d.nome.toLowerCase())
+          String(d.nome ?? '').toLowerCase().includes(empNome) ||
+          empNome.includes(String(d.nome ?? '').toLowerCase())
       );
       if (match) empreendimentoId = match.id;
     }
@@ -10290,8 +10290,8 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     if (nomeLower) {
       const match = devs.find(
         (d) =>
-          d.nome.toLowerCase().includes(nomeLower) ||
-          nomeLower.includes(d.nome.toLowerCase())
+          String(d.nome ?? '').toLowerCase().includes(nomeLower) ||
+          nomeLower.includes(String(d.nome ?? '').toLowerCase())
       );
       if (match) empreendimentoId = match.id;
     }
@@ -13383,13 +13383,13 @@ VENDEDOR: ${vendedorLabel}`;
     let list = sales.filter((venda) => {
       const query = searchTerm.toLowerCase();
       const matchesSearch = !query || (
-        venda.clienteNome.toLowerCase().includes(query) ||
-        venda.empreendimentoNome.toLowerCase().includes(query) ||
-        venda.numeroLote.toLowerCase().includes(query) ||
-        venda.quadra.toLowerCase().includes(query) ||
-        venda.numeroContrato.toLowerCase().includes(query) ||
-        venda.rua?.toLowerCase().includes(query) ||
-        venda.vendedor?.toLowerCase().includes(query)
+        String(venda.clienteNome ?? '').toLowerCase().includes(query) ||
+        String(venda.empreendimentoNome ?? '').toLowerCase().includes(query) ||
+        String(venda.numeroLote ?? '').toLowerCase().includes(query) ||
+        String(venda.quadra ?? '').toLowerCase().includes(query) ||
+        String(venda.numeroContrato ?? '').toLowerCase().includes(query) ||
+        String(venda.rua ?? '').toLowerCase().includes(query) ||
+        String(venda.vendedor ?? '').toLowerCase().includes(query)
       );
       const matchesCorretor = !corretorFilter || venda.vendedor === corretorFilter;
       const matchesEmp = !empFilter || venda.empreendimentoId === empFilter;

@@ -14,6 +14,14 @@ interface Props {
 type Camada = "satelite" | "hibrido" | "ruas";
 type Filtro = "todos" | "com_mapa" | "mais_vendidos" | "disponiveis";
 
+/** Valida se lat/lng são números reais — evita NaN no flyTo */
+function validLatLng(lat: unknown, lng: unknown): lat is number {
+  return typeof lat === 'number' && typeof lng === 'number'
+    && isFinite(lat) && isFinite(lng)
+    && lat !== 0 && lng !== 0
+    && Math.abs(lat) <= 90 && Math.abs(lng) <= 180;
+}
+
 function calcularStats(dev: Empreendimento, sales: Venda[]) {
   const vendas = sales.filter(s => s.empreendimentoId === dev.id && s.status !== "cancelado");
   const vendidos = dev.lotesVendidos ?? vendas.length;
@@ -99,7 +107,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   const empreendimentosRef = useRef(empreendimentos);
 
   const devsComLoc = useMemo(() =>
-    empreendimentosFiltrados.filter(d => d.lat != null && d.lng != null && d.lat !== 0 && d.lng !== 0),
+    empreendimentosFiltrados.filter(d => validLatLng(d.lat, d.lng)),
     [empreendimentosFiltrados]
   );
 
@@ -110,7 +118,11 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
     if (busca.trim()) {
       const q = busca.toLowerCase();
-      list = list.filter(d => d.nome.toLowerCase().includes(q) || d.cidade?.toLowerCase().includes(q));
+      list = list.filter(d => {
+        const nome = String(d.nome ?? '').toLowerCase();
+        const cidade = String(d.cidade ?? '').toLowerCase();
+        return nome.includes(q) || cidade.includes(q);
+      });
     }
     return list;
   }, [devsComLoc, filtro, busca]);
@@ -128,10 +140,12 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       import("leaflet").then(L => {
         // Double-check após import assíncrono
         if (!leafletRef.current) return;
-        if (devsSnapshot.length === 1) {
-          leafletRef.current.flyTo([devsSnapshot[0].lat!, devsSnapshot[0].lng!], 15, { animate: false });
+        const validDevs = devsSnapshot.filter(d => validLatLng(d.lat, d.lng));
+        if (validDevs.length === 0) return;
+        if (validDevs.length === 1) {
+          leafletRef.current.flyTo([validDevs[0].lat!, validDevs[0].lng!], 15, { animate: false });
         } else {
-          const bounds = L.latLngBounds(devsSnapshot.map(d => [d.lat!, d.lng!] as [number,number]));
+          const bounds = L.latLngBounds(validDevs.map(d => [d.lat!, d.lng!] as [number,number]));
           leafletRef.current.fitBounds(bounds, { padding: [50,50], maxZoom: 14, animate: false });
         }
       });
@@ -144,11 +158,10 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     centralizar: () => {
       // Guard completo antes de qualquer operação assíncrona
       if (!leafletRef.current) return;
-      const devs = Array.isArray(devsComLoc) ? devsComLoc : [];
+      const devs = (Array.isArray(devsComLoc) ? devsComLoc : []).filter(d => validLatLng(d.lat, d.lng));
       if (!devs.length) return;
       const mapInst = leafletRef.current;
       import("leaflet").then(L => {
-        // Verificar após import assíncrono — mapa pode ter desmontado
         if (!mapInst || !leafletRef.current) return;
         if (devs.length === 1) mapInst.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
         else {
@@ -326,6 +339,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
         if (cluster.isCluster) {
           marker.on("click", () => {
+            if (!validLatLng(cluster.lat, cluster.lng)) return;
             leafletRef.current!.flyTo([cluster.lat, cluster.lng],
               Math.min(leafletRef.current!.getZoom() + 3, 15), { animate: true, duration: 0.8 });
           });
@@ -339,7 +353,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   }, [devsFiltrados, mapZoom, mapReady, sales]);
 
   function centralizarEm(dev: Empreendimento) {
-    if (!leafletRef.current || !dev.lat || !dev.lng) return;
+    if (!leafletRef.current || !validLatLng(dev.lat, dev.lng)) return;
     leafletRef.current.flyTo([dev.lat, dev.lng], 15, { animate: true, duration: 0.8 });
     setSelectedDev(dev);
     setActiveDevId(dev.id);
