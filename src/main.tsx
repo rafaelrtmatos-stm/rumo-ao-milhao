@@ -47,6 +47,22 @@ export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────
 const TOKEN_KEY = "rumo_auth_token";
+const OFFLINE_USER_KEY = "rumo_offline_user";
+
+function saveOfflineUser(user: { id: string; email: string; isAdmin: boolean; permissions: Record<string, boolean> }) {
+  try { localStorage.setItem(OFFLINE_USER_KEY, JSON.stringify(user)); } catch {}
+}
+
+function getOfflineUser(): { id: string; email: string; isAdmin: boolean; permissions: Record<string, boolean> } | null {
+  try {
+    const raw = localStorage.getItem(OFFLINE_USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch { return null; }
+}
+
+function isOffline(): boolean {
+  return typeof navigator !== 'undefined' && !navigator.onLine;
+}
 
 export function getAuthToken(): string | null {
   try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
@@ -107,10 +123,40 @@ function Root() {
   const [auth, setAuth] = useState<AuthState>({ status: "loading" });
 
   const checkAuth = async () => {
+    const token = getAuthToken();
+    const offlineUser = getOfflineUser();
+
+    // ── BYPASS OFFLINE ────────────────────────────────────────────────────────
+    // Se estiver offline E tiver sessão salva → acesso imediato sem pedir senha
+    if (isOffline()) {
+      if (token && offlineUser) {
+        console.log("[auth] Offline com sessão salva — acesso direto");
+        setAuth({
+          status: "authenticated",
+          isAdmin: offlineUser.isAdmin,
+          userId: offlineUser.id,
+          email: offlineUser.email,
+          permissions: offlineUser.permissions,
+        });
+        return;
+      }
+      // Offline sem sessão → mostra login (não pode autenticar sem internet)
+      setAuth({ status: "login" });
+      return;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
+
     try {
-      // 1. Verificar se precisa de setup
-      const setupRes = await fetch("/api/auth/setup");
-      if (setupRes.ok) {
+      // 1. Verificar se precisa de setup (com timeout curto)
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 5000);
+      let setupRes: Response | null = null;
+      try {
+        setupRes = await fetch("/api/auth/setup", { signal: controller.signal });
+      } catch { /* rede lenta ou offline — ignorar setup check */ }
+      clearTimeout(timeout);
+
+      if (setupRes?.ok) {
         const { needsSetup } = await setupRes.json();
         if (needsSetup) {
           setAuth({ status: "setup" });
@@ -118,8 +164,7 @@ function Root() {
         }
       }
 
-      // 2. Token JWT salvo no localStorage
-      const token = getAuthToken();
+      // 2. Sem token → login
       if (!token) {
         setAuth({ status: "login" });
         return;
@@ -135,6 +180,8 @@ function Root() {
       if (userRes.ok) {
         const user = await userRes.json();
         if (user?.id) {
+          // Salvar perfil para uso offline futuro
+          saveOfflineUser({ id: user.id, email: user.email ?? "", isAdmin: user.isAdmin ?? false, permissions: user.permissions ?? {} });
           setAuth({
             status: "authenticated",
             isAdmin: user.isAdmin ?? false,
@@ -153,16 +200,34 @@ function Root() {
         return;
       }
 
-      // Erro de rede ou 5xx → não deslogar, tentar manter sessão
+      // 5xx ou erro de rede → se tem sessão offline salva, usar
+      if (token && offlineUser) {
+        console.log("[auth] Erro de servidor — usando sessão offline salva");
+        setAuth({
+          status: "authenticated",
+          isAdmin: offlineUser.isAdmin,
+          userId: offlineUser.id,
+          email: offlineUser.email,
+          permissions: offlineUser.permissions,
+        });
+        return;
+      }
+
       setAuth({ status: "login" });
     } catch {
-      // Erro de rede — se tinha token, não deslogar
-      const token = getAuthToken();
-      if (token) {
-        setAuth({ status: "login" });
-      } else {
-        setAuth({ status: "login" });
+      // Erro de rede — usar sessão offline se disponível
+      if (token && offlineUser) {
+        console.log("[auth] Sem rede — usando sessão offline salva");
+        setAuth({
+          status: "authenticated",
+          isAdmin: offlineUser.isAdmin,
+          userId: offlineUser.id,
+          email: offlineUser.email,
+          permissions: offlineUser.permissions,
+        });
+        return;
       }
+      setAuth({ status: "login" });
     }
   };
 
@@ -180,6 +245,8 @@ function Root() {
       const res = await authFetch("/api/auth/user");
       if (res.ok) {
         const user = await res.json();
+        // Salvar perfil para uso offline
+        saveOfflineUser({ id: user.id, email: user.email ?? "", isAdmin: user.isAdmin ?? false, permissions: user.permissions ?? {} });
         setAuth({
           status: "authenticated",
           isAdmin: user.isAdmin ?? false,
@@ -192,6 +259,7 @@ function Root() {
     } catch {}
     // Fallback: usa os dados que vieram do login diretamente
     if (loginData?.id) {
+      saveOfflineUser({ id: loginData.id, email: loginData.email ?? "", isAdmin: loginData.isAdmin ?? false, permissions: loginData.permissions ?? {} });
       setAuth({
         status: "authenticated",
         isAdmin: loginData.isAdmin ?? false,
@@ -209,6 +277,7 @@ function Root() {
       await authFetch("/api/auth/logout", { method: "POST" });
     } catch {}
     clearAuthToken();
+    try { localStorage.removeItem(OFFLINE_USER_KEY); } catch {}
     setAuth({ status: "login" });
   };
 

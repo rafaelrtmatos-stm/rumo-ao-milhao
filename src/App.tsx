@@ -17493,12 +17493,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   });
   const [userProfile, setUserProfile] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl?: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
+  const [showOfflineBanner, setShowOfflineBanner] = useState(!navigator.onLine);
   const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
 
   useEffect(() => {
     const refreshOnlineState = () => {
       setIsOnline(navigator.onLine);
       setOfflineDraftCount(readOfflineVendaDrafts().length);
+      if (!navigator.onLine) setShowOfflineBanner(true);
+      else setShowOfflineBanner(false);
     };
     window.addEventListener("online", refreshOnlineState);
     window.addEventListener("offline", refreshOnlineState);
@@ -18469,6 +18472,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
   return (
     <div className="min-h-screen bg-surface-bg flex w-full max-w-full overflow-x-hidden">
+      {/* BANNER MODO OFFLINE */}
+      {showOfflineBanner && (
+        <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:99999, background:'linear-gradient(90deg,#92400e,#b45309)', color:'white', padding:'7px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, fontWeight:700, boxShadow:'0 2px 12px rgba(0,0,0,0.3)' }}>
+          <span>📵 Modo Offline Ativo — Dados locais. Sync pausado. Mapas e lotes disponíveis.</span>
+          <button onClick={()=>setShowOfflineBanner(false)} style={{background:'none',border:'none',color:'white',cursor:'pointer',fontSize:18}}>×</button>
+        </div>
+      )}
       {/* BARRA DE PROGRESSO GLOBAL — topo da tela */}
       {loadProgress > 0 && loadProgress < 100 && (
         <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-slate-200">
