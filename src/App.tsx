@@ -6879,7 +6879,261 @@ const LotDashboard = ({
             {renderMapa()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
-        ) : (
+        ) : mode === "quadradinhos" ? (() => {
+          // ── ABA LOTES PREMIUM ──────────────────────────────────────────────
+          const [loteBusca, setLoteBusca] = React.useState("");
+          const [loteQuadraFiltro, setLoteQuadraFiltro] = React.useState("todas");
+          const [loteStatusFiltro, setLoteStatusFiltro] = React.useState<string[]>([]);
+          const [loteOrdem, setLoteOrdem] = React.useState("numero");
+          const [loteView, setLoteView] = React.useState<"grid"|"lista">("grid");
+
+          const toggleStatusFiltro = (s: string) => setLoteStatusFiltro(prev =>
+            prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
+          );
+
+          // Coletar todos os lotes
+          const todosLotes: {quadra:string;lote:string;status:string;venda:any;lotInfo:any}[] = [];
+          quadras.forEach(q => {
+            const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
+            const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter(k => k.startsWith(q.toUpperCase()+"-")).map(k=>k.split("-")[1]);
+            const extraLots = extraLotsByQuadra(q);
+            const displayLots = Array.from(new Set([...configuredLots,...lotesInfoKeys,...extraLots])).sort((a,b)=>Number(a)-Number(b));
+            displayLots.forEach(l => {
+              const venda = vendaDoLote(q, l);
+              const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q,l)];
+              const status = venda ? "indisponivel" : lotInfo?.status === "reservado" ? "reservado" : lotInfo?.status === "indisponivel" ? "indisponivel" : "disponivel";
+              todosLotes.push({ quadra:q, lote:l, status, venda, lotInfo });
+            });
+          });
+
+          // Filtrar
+          const lotesFiltrados = todosLotes.filter(item => {
+            if (loteBusca && !item.lote.includes(loteBusca) && !item.quadra.toLowerCase().includes(loteBusca.toLowerCase())) return false;
+            if (loteQuadraFiltro !== "todas" && item.quadra !== loteQuadraFiltro) return false;
+            if (loteStatusFiltro.length > 0 && !loteStatusFiltro.includes(item.status)) return false;
+            return true;
+          });
+
+          // Ordenar
+          if (loteOrdem === "numero") lotesFiltrados.sort((a,b)=>Number(a.lote)-Number(b.lote));
+          else if (loteOrdem === "status") lotesFiltrados.sort((a,b)=>a.status.localeCompare(b.status));
+
+          // Agrupar por quadra
+          const porQuadra: Record<string,typeof lotesFiltrados> = {};
+          lotesFiltrados.forEach(item => { if(!porQuadra[item.quadra]) porQuadra[item.quadra]=[]; porQuadra[item.quadra].push(item); });
+
+          const totalDisp = todosLotes.filter(l=>l.status==="disponivel").length;
+          const totalRes  = todosLotes.filter(l=>l.status==="reservado").length;
+          const totalInd  = todosLotes.filter(l=>l.status==="indisponivel").length;
+
+          const statusCfg: Record<string,{label:string;color:string;bg:string;border:string}> = {
+            disponivel:   {label:"Disponível",   color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0"},
+            reservado:    {label:"Reservado",    color:"#d97706", bg:"#fffbeb", border:"#fde68a"},
+            indisponivel: {label:"Indisponível", color:"#dc2626", bg:"#fef2f2", border:"#fecaca"},
+          };
+
+          return (
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden" style={{background:"#f4f6f8"}}>
+
+            {/* BARRA DE FILTROS */}
+            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3 bg-white border-b border-slate-100 flex-wrap">
+              {/* Busca */}
+              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px]">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                <input value={loteBusca} onChange={e=>setLoteBusca(e.target.value)}
+                  placeholder="Buscar lote por número..."
+                  className="bg-transparent text-xs text-slate-700 outline-none placeholder-slate-400 w-full"/>
+              </div>
+
+              {/* Filtro quadras */}
+              <select value={loteQuadraFiltro} onChange={e=>setLoteQuadraFiltro(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
+                <option value="todas">Todas as quadras</option>
+                {quadras.map(q=><option key={q} value={q}>Quadra {q}</option>)}
+              </select>
+
+              {/* Pills status */}
+              {[
+                {k:"disponivel",  l:"Disponíveis",   c:"#16a34a", bc:"#bbf7d0", bg:"#f0fdf4"},
+                {k:"reservado",   l:"Reservados",    c:"#d97706", bc:"#fde68a", bg:"#fffbeb"},
+                {k:"indisponivel",l:"Indisponíveis", c:"#dc2626", bc:"#fecaca", bg:"#fef2f2"},
+              ].map(({k,l,c,bc,bg}) => (
+                <button key={k} onClick={()=>toggleStatusFiltro(k)}
+                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
+                  style={{
+                    color: c, borderColor: bc,
+                    background: loteStatusFiltro.includes(k) ? bg : "white",
+                    fontWeight: loteStatusFiltro.includes(k) ? 900 : 600,
+                  }}>
+                  {l}
+                </button>
+              ))}
+
+              <div className="flex-1"/>
+
+              {/* Ordenação */}
+              <select value={loteOrdem} onChange={e=>setLoteOrdem(e.target.value)}
+                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
+                <option value="numero">Ordenar: Número</option>
+                <option value="status">Ordenar: Status</option>
+              </select>
+
+              {/* Toggle view */}
+              <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white">
+                <button onClick={()=>setLoteView("grid")}
+                  className={`p-1.5 rounded-lg transition-all ${loteView==="grid"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </button>
+                <button onClick={()=>setLoteView("lista")}
+                  className={`p-1.5 rounded-lg transition-all ${loteView==="lista"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                </button>
+              </div>
+            </div>
+
+            {/* LISTA POR QUADRAS */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 space-y-8">
+              {Object.keys(porQuadra).length === 0 ? (
+                <div className="text-center py-16 text-slate-400 text-sm">Nenhum lote encontrado.</div>
+              ) : Object.entries(porQuadra).map(([q, lotes]) => (
+                <div key={q}>
+                  {/* Header quadra */}
+                  <div className="flex items-center gap-3 mb-4">
+                    <h4 className="text-base font-black text-slate-800">Quadra {q}</h4>
+                    <span className="px-2.5 py-0.5 bg-slate-100 text-slate-500 rounded-full text-xs font-bold">{lotes.length} lotes</span>
+                  </div>
+
+                  {/* Grid cards */}
+                  {loteView === "grid" ? (
+                    <div className="grid gap-3" style={{gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))"}}>
+                      {lotes.map(item => {
+                        const cfg = statusCfg[item.status];
+                        const entrada = item.lotInfo?.valorEntrada || localDev.valorEntrada;
+                        const parcela = item.lotInfo?.valorParcela || localDev.valorParcela;
+                        return (
+                          <div key={item.lote}
+                            className="bg-white rounded-2xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-all cursor-pointer relative group"
+                            style={{borderColor: item.status === "disponivel" ? "#e2e8f0" : cfg.border+"66"}}
+                            onClick={() => { if(item.venda) setSelectedLotSale(item.venda); else if(item.status==="disponivel") onStartSale({empreendimentoId:localDev.id,quadra:q,numeroLote:item.lote}); }}>
+
+                            {/* Header card */}
+                            <div className="flex items-start justify-between mb-1">
+                              <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Lote</span>
+                              <button onClick={e=>{e.stopPropagation();}} className="opacity-0 group-hover:opacity-100 p-0.5 rounded text-slate-400 hover:text-slate-600 transition-all">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="5" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="12" cy="19" r="1.5"/></svg>
+                              </button>
+                            </div>
+
+                            {/* Número */}
+                            <p className="text-2xl font-black leading-none mb-2" style={{color:cfg.color}}>
+                              {String(item.lote).padStart(2,"0")}
+                            </p>
+
+                            {/* Badge status */}
+                            <span className="inline-block px-2 py-0.5 rounded-lg text-[9px] font-black mb-3"
+                              style={{background:cfg.bg, color:cfg.color}}>
+                              {cfg.label}
+                            </span>
+
+                            {/* Info financeira */}
+                            <div className="space-y-1">
+                              {entrada && (
+                                <div className="flex items-center gap-1.5">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                  <span className="text-[9px] text-slate-400">Entrada: <strong className="text-slate-600">R$ {Number(entrada).toLocaleString("pt-BR")}</strong></span>
+                                </div>
+                              )}
+                              {parcela && (
+                                <div className="flex items-center gap-1.5">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
+                                  <span className="text-[9px] text-slate-400">Parcelas: <strong className="text-slate-600">R$ {Number(parcela).toLocaleString("pt-BR")}</strong></span>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Hover overlay vender */}
+                            {item.status === "disponivel" && (
+                              <div className="absolute inset-0 rounded-2xl bg-[#1a4a1a]/90 text-white opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
+                                <span className="text-[10px] font-black uppercase tracking-widest">Vender</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    /* LISTA VIEW */
+                    <div className="space-y-2">
+                      {lotes.map(item => {
+                        const cfg = statusCfg[item.status];
+                        const entrada = item.lotInfo?.valorEntrada || localDev.valorEntrada;
+                        const parcela = item.lotInfo?.valorParcela || localDev.valorParcela;
+                        return (
+                          <div key={item.lote}
+                            className="bg-white rounded-xl border border-slate-100 px-4 py-3 flex items-center gap-4 hover:shadow-sm transition-all cursor-pointer"
+                            onClick={() => { if(item.venda) setSelectedLotSale(item.venda); else if(item.status==="disponivel") onStartSale({empreendimentoId:localDev.id,quadra:q,numeroLote:item.lote}); }}>
+                            <span className="text-lg font-black w-10" style={{color:cfg.color}}>{String(item.lote).padStart(2,"0")}</span>
+                            <span className="px-2 py-0.5 rounded-lg text-[9px] font-black w-24 text-center" style={{background:cfg.bg,color:cfg.color}}>{cfg.label}</span>
+                            <div className="flex gap-6 flex-1">
+                              {entrada && <span className="text-xs text-slate-400">Entrada: <strong className="text-slate-600">R$ {Number(entrada).toLocaleString("pt-BR")}</strong></span>}
+                              {parcela && <span className="text-xs text-slate-400">Parcelas: <strong className="text-slate-600">R$ {Number(parcela).toLocaleString("pt-BR")}</strong></span>}
+                            </div>
+                            {item.venda && <span className="text-xs text-slate-400 truncate max-w-[120px]">{item.venda.clienteNome}</span>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* BARRA RESUMO INFERIOR */}
+            <div className="flex-shrink-0 flex items-center gap-6 px-4 py-3 bg-white border-t border-slate-100">
+              {/* Total */}
+              <div className="flex items-center gap-2">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
+                <span className="text-xs font-black text-slate-600">Total de lotes: {todosLotes.length}</span>
+              </div>
+
+              <div className="flex-1"/>
+
+              {/* Contadores por status */}
+              <div className="flex items-center gap-5">
+                {[
+                  {v:totalDisp, l:"Disponíveis",   c:"#22c55e"},
+                  {v:totalRes,  l:"Reservados",    c:"#f59e0b"},
+                  {v:totalInd,  l:"Indisponíveis", c:"#ef4444"},
+                ].map(({v,l,c}) => (
+                  <div key={l} className="flex items-center gap-1.5">
+                    <span className="w-2.5 h-2.5 rounded-full" style={{background:c}}/>
+                    <span className="text-sm font-black" style={{color:c}}>{v}</span>
+                    <span className="text-xs text-slate-400">{l}</span>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex-1"/>
+
+              {/* Exportar */}
+              <button
+                onClick={() => {
+                  const csv = ["Quadra,Lote,Status,Entrada,Parcelas",
+                    ...todosLotes.map(i=>`${i.quadra},${i.lote},${i.status},${i.lotInfo?.valorEntrada||""},${i.lotInfo?.valorParcela||""}`)
+                  ].join("
+");
+                  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
+                  a.download = `lotes_${localDev.nome.replace(/\s+/g,"_")}.csv`; a.click();
+                }}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Exportar lista
+              </button>
+              <button className="w-7 h-7 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:bg-slate-50 text-xs font-black">?</button>
+            </div>
+          </div>
+          );
+        })() : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
             {renderQuadradinhos()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
