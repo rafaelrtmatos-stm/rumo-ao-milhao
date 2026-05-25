@@ -1145,7 +1145,7 @@ app.post("/api/resolve-maps-url", isAuthenticated, async (req: any, res: any) =>
       /\?q=(-?\d+\.\d+),(-?\d+\.\d+)/,
       /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
       /!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/,
-      /place\/[^/]+\/@(-?\d+\.\d+),(-?\d+\.\d+)/,
+      new RegExp('place/[^/]+/@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)'),
     ];
 
     for (const pat of patterns) {
@@ -1187,7 +1187,7 @@ app.post("/api/resolve-maps-url", isAuthenticated, async (req: any, res: any) =>
           /"lat":(-?\d+\.\d+),"lng":(-?\d+\.\d+)/,
           /\["",(-?\d+\.\d+),(-?\d+\.\d+)\]/,
           /ll=(-?\d+\.\d+),(-?\d+\.\d+)/,
-          /place\/[^@]+@(-?\d+\.\d+),(-?\d+\.\d+)/,
+          new RegExp('place/[^@]+@(-?\\d+\\.\\d+),(-?\\d+\\.\\d+)'),
         ];
         for (const pat of htmlPatterns) {
           const m = html.match(pat);
