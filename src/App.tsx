@@ -2278,6 +2278,26 @@ const DashboardSection = ({
   );
 };
 
+
+/** Formata nome próprio: primeira letra maiúscula, preposições minúsculas */
+function formatarNomeProprio(nome: string): string {
+  if (!nome) return '';
+  const preps = new Set(['de','da','do','das','dos','e','em','na','no','nas','nos','a','o','as','os']);
+  return String(nome).toLowerCase().split(' ').map((w, i) => {
+    if (i > 0 && preps.has(w)) return w;
+    return w.charAt(0).toUpperCase() + w.slice(1);
+  }).join(' ');
+}
+
+/** Formata quadra sempre maiúscula */
+function formatarQuadra(q: string): string {
+  return String(q || '').toUpperCase();
+}
+
+/** Formata rua sempre maiúscula */
+function formatarRua(r: string): string {
+  return String(r || '').toUpperCase();
+}
 const LotDashboard = ({
   dev,
   sales,
@@ -5727,7 +5747,7 @@ const LotDashboard = ({
     const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
     const gmapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : `https://www.google.com/maps/search/${encodeURIComponent(cidade)}`;
     const acessos = (localDev as any).acessos as string[] | undefined;
-    const iframeUrl = hasCoords ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed` : '';
+    const iframeUrl = hasCoords ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&t=k&output=embed` : '';
           return (
           <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4" style={{background:'#f4f6f8'}}>
 
@@ -5905,7 +5925,7 @@ const LotDashboard = ({
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden" style={{background:"#f4f6f8"}}>
 
             {/* BARRA DE FILTROS */}
-            <div className="flex-shrink-0 flex items-center gap-2 px-4 py-3 bg-white border-b border-slate-100 flex-wrap">
+            <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-100 overflow-x-auto" style={{WebkitOverflowScrolling:'touch', scrollbarWidth:'none'}}>
               {/* Busca */}
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px]">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -5942,13 +5962,13 @@ const LotDashboard = ({
 
               {/* Ordenação */}
               <select value={abLoteOrdem} onChange={e=>setAbLoteOrdem(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
+                className="hidden sm:block bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer flex-shrink-0">
                 <option value="numero">Ordenar: Número</option>
                 <option value="status">Ordenar: Status</option>
               </select>
 
               {/* Toggle view */}
-              <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white">
+              <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white flex-shrink-0">
                 <button onClick={()=>setAbLoteView("grid")}
                   className={`p-1.5 rounded-lg transition-all ${abLoteView==="grid"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
@@ -5974,7 +5994,7 @@ const LotDashboard = ({
 
                   {/* Grid cards */}
                   {abLoteView === "grid" ? (
-                    <div className="grid gap-3" style={{gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))"}}>
+                    <div className="grid gap-3" style={{gridTemplateColumns:"repeat(auto-fill,minmax(min(130px,45vw),1fr))"}}>
                       {lotes.map(item => {
                         const cfg = statusCfg[item.status];
                         const entrada = item.lotInfo?.valorEntrada || localDev.valorEntrada;
@@ -5994,7 +6014,7 @@ const LotDashboard = ({
                             </div>
 
                             {/* Número */}
-                            <p className="text-2xl font-black leading-none mb-2" style={{color:cfg.color}}>
+                            <p className="text-xl sm:text-2xl font-black leading-none mb-1.5" style={{color:cfg.color}}>
                               {String(item.lote).padStart(2,"0")}
                             </p>
 
@@ -6058,7 +6078,7 @@ const LotDashboard = ({
             </div>
 
             {/* BARRA RESUMO INFERIOR */}
-            <div className="flex-shrink-0 flex items-center gap-6 px-4 py-3 bg-white border-t border-slate-100">
+            <div className="flex-shrink-0 flex flex-wrap items-center gap-3 px-3 py-2 bg-white border-t border-slate-100">
               {/* Total */}
               <div className="flex items-center gap-2">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="12" y1="8" x2="12" y2="16"/></svg>
@@ -6997,7 +7017,7 @@ const LotDashboard = ({
                 style={{ border: 0, minHeight: '70vh' }}
                 loading="lazy"
                 allowFullScreen
-                src={`https://maps.google.com/maps?q=${(localDev as any).lat},${(localDev as any).lng}&z=16&output=embed`}
+                src={`https://maps.google.com/maps?q=${(localDev as any).lat},${(localDev as any).lng}&z=16&t=k&output=embed`}
               />
             ) : (
               <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2 p-8">

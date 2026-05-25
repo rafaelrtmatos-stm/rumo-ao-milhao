@@ -164,13 +164,19 @@ function xmlEscape(s: string): string {
  */
 function sanitizeForXml(s: string): string {
   // Remove caracteres de controle inválidos em XML (exceto tab, LF, CR)
+  // e garante que o resultado é XML válido
   return String(s || "")
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .normalize("NFC")  // normalizar Unicode
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\uFFFD\uFFFE\uFFFF]/g, "") // ctrl + surrogates
+    .replace(/[\uD800-\uDFFF]/g, "") // surrogates isolados
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;");
+    .replace(/'/g, "&apos;")
+    .replace(/
+||
+/g, " "); // quebras de linha viram espaço no XML inline
 }
 
 function rep(xml: string, search: string, replacement: string): string {
@@ -538,6 +544,14 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   xml = corrigirSimplesmenteNoXml(xml);
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
+  // Validação final: remover qualquer caractere inválido que tenha escapado
+  xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  // Verificar balance básico de tags
+  const openCount = (xml.match(/<w:r[ >]/g) || []).length;
+  const closeCount = (xml.match(/<\/w:r>/g) || []).length;
+  if (Math.abs(openCount - closeCount) > 50) {
+    console.warn(`[contrato] XML possivelmente desbalanceado: ${openCount} opens vs ${closeCount} closes`);
+  }
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
   return zip.toBuffer();
 }
