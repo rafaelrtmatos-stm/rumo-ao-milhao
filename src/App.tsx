@@ -7120,8 +7120,7 @@ const LotDashboard = ({
                 onClick={() => {
                   const csv = ["Quadra,Lote,Status,Entrada,Parcelas",
                     ...todosLotes.map(i=>`${i.quadra},${i.lote},${i.status},${i.lotInfo?.valorEntrada||""},${i.lotInfo?.valorParcela||""}`)
-                  ].join("
-");
+                  ].join("\n");
                   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv],{type:"text/csv"}));
                   a.download = `lotes_${localDev.nome.replace(/\s+/g,"_")}.csv`; a.click();
                 }}
