@@ -3,12 +3,35 @@ function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
     // Caso 1: simplesmente + espaco(s) + papel (normal)
     .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    // Caso 2: simplesmente + de + espaco(s) + papel ("simplesmente de VENDEDOR")
+    // Caso 2: simplesmente + de + espaco(s) + papel
     .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
     // Caso 3: simplesmente colado ao papel (sem espaco — bug de fragmentacao)
     .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
     // Caso 4: espaco duplo apos simplesmente
     .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+}
+
+/**
+ * Corrige "simplesmente" fragmentado entre múltiplos runs XML.
+ * O Word frequentemente parte "simplesmente VENDEDOR" em dois <w:r> separados,
+ * resultando em "simplesmente</w:t></w:r><w:r>...<w:t>VENDEDOR" no XML.
+ * Este regex unifica o texto dentro do mesmo run.
+ */
+function corrigirSimplesmenteNoXml(xml: string): string {
+  const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
+  // Substitui: "simplesmente" (em <w:t>) + qualquer XML intermediário + papel (em outro <w:t>)
+  // por: "simplesmente PAPEL" tudo num mesmo run
+  return xml.replace(
+    new RegExp(
+      `(simplesmente)(?:de\\s*)?</w:t>(?:</w:r>)?(?:<[^>]+>)*?<w:t(?:\\s[^>]*)?>(?:de\\s*)?(${papeis})`,
+      "g"
+    ),
+    "simplesmente $2"
+  ).replace(
+    // Caso mais simples: colado sem espaço no mesmo <w:t>
+    new RegExp(`simplesmente(?:de\\s*)?(${papeis})`, "g"),
+    "simplesmente $1"
+  );
 }
 
 import AdmZip from "adm-zip";
@@ -498,9 +521,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
     generoComprador.papel
   );
 
+  // ── Correção final de fragmentacao no XML (entre runs diferentes) ──────────
+  xml = corrigirSimplesmenteNoXml(xml);
+
   // ── Correção final de fragmentacao do Word: "simplesmente de VENDEDOR/COMPRADOR" ──
-  // O Word pode fragmentar "simplesmente de VENDEDOR" em runs separados
-  // Rep() sabe lidar com XML fragmentado
   xml = rep(xml, `simplesmente de ${generoVendedor.papel}`, `simplesmente ${generoVendedor.papel}`);
   xml = rep(xml, `simplesmente de ${generoComprador.papel}`, `simplesmente ${generoComprador.papel}`);
   xml = rep(xml, "simplesmente de VENDEDOR", `simplesmente ${generoVendedor.papel}`);
@@ -508,8 +532,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   xml = rep(xml, "simplesmente de COMPRADOR", `simplesmente ${generoComprador.papel}`);
   xml = rep(xml, "simplesmente de COMPRADORA", `simplesmente ${generoComprador.papel}`);
 
-  // ── Correção final de espaços grudados ──────────────────────────────────────
+  // ── Correção final de espaços grudados no texto plano ───────────────────────
   xml = corrigirEspacosSimplesmente(xml);
+  // Segunda passagem no XML para pegar casos residuais entre runs
+  xml = corrigirSimplesmenteNoXml(xml);
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
