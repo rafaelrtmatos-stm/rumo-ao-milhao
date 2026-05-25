@@ -7438,13 +7438,13 @@ const EmpreendimentosSection = ({
   const isMapaMobile = window.innerWidth < 768;
   const [mapaGlobalBloqueado, setMapaGlobalBloqueado] = useState(true);
   const mapaGlobalRef = useRef<MapaGlobalHandle>(null);
-  // Auto-centralizar ao expandir o mapa
+  const [mapaGlobalExpandido, setMapaGlobalExpandido] = useState(false);
+  // Auto-centralizar ao expandir o mapa — APÓS declaração do estado
   useEffect(() => {
     if (mapaGlobalExpandido && mapaGlobalRef.current) {
       setTimeout(() => mapaGlobalRef.current?.centralizar(), 500);
     }
   }, [mapaGlobalExpandido]);
-  const [mapaGlobalExpandido, setMapaGlobalExpandido] = useState(false);
   const [mapaFlashLock, setMapaFlashLock] = useState(false);
   const [mapaFiltroDevs, setMapaFiltroDevs] = useState<Set<string>>(() => new Set());
   const [mapaFiltroAberto, setMapaFiltroAberto] = useState(false);
