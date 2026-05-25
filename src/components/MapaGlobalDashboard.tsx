@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useMemo } from "react";
 import type { Empreendimento, Venda } from "../types";
 
 interface Props {
@@ -63,7 +63,7 @@ export interface MapaGlobalHandle {
   minhaLocalizacao: () => void;
 }
 
-const MapaGlobalDashboard = React.forwardRef<MapaGlobalHandle, Props>(function MapaGlobalDashboard(
+const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlobalDashboard(
   { empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick },
   ref
 ) {
@@ -96,7 +96,7 @@ const MapaGlobalDashboard = React.forwardRef<MapaGlobalHandle, Props>(function M
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Auto-fit bounds ao redimensionar
-  React.useEffect(() => {
+  useEffect(() => {
     if (!containerRef.current || !leafletRef.current) return;
     const ro = new ResizeObserver(() => {
       leafletRef.current?.invalidateSize?.();
@@ -115,7 +115,7 @@ const MapaGlobalDashboard = React.forwardRef<MapaGlobalHandle, Props>(function M
     return () => ro.disconnect();
   }, [devsComLoc, mapReady]);
 
-  React.useImperativeHandle(ref, () => ({
+  useImperativeHandle(ref, () => ({
     centralizar: () => {
       if (!leafletRef.current) return;
       const devs = devsComLoc;

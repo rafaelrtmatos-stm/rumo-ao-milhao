@@ -1,4 +1,4 @@
-import React from 'react';
+import type { FC } from 'react';
 import { motion } from 'motion/react';
 
 interface MarkerProps {
@@ -12,7 +12,7 @@ interface MarkerProps {
   onClick?: () => void;
 }
 
-export const Marker: React.FC<MarkerProps> = ({
+export const Marker: FC<MarkerProps> = ({
   id,
   x,
   y,

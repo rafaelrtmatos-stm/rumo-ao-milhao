@@ -8,7 +8,7 @@
  *   <OfflineStatusBar />
  */
 
-import React from 'react';
+
 import { Wifi, WifiOff, RefreshCw, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useSyncStatus } from '../hooks/useSyncStatus';
 
