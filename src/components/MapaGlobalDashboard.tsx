@@ -115,18 +115,23 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     return list;
   }, [devsComLoc, filtro, busca]);
 
-  // Auto-fit bounds ao redimensionar
+  // Auto-fit bounds ao redimensionar — com guards completos
   useEffect(() => {
     if (!containerRef.current || !leafletRef.current) return;
+    // Capturar snapshot dos dados NO MOMENTO do efeito (evita TDZ no closure)
+    const devsSnapshot = devsComLoc;
     const ro = new ResizeObserver(() => {
-      leafletRef.current?.invalidateSize?.();
-      if (devsComLoc.length === 0) return;
+      // Guard: verificar se mapa ainda está montado quando o observer dispara
+      if (!leafletRef.current) return;
+      leafletRef.current.invalidateSize?.();
+      if (!devsSnapshot || devsSnapshot.length === 0) return;
       import("leaflet").then(L => {
+        // Double-check após import assíncrono
         if (!leafletRef.current) return;
-        if (devsComLoc.length === 1) {
-          leafletRef.current.flyTo([devsComLoc[0].lat!, devsComLoc[0].lng!], 15, { animate: false });
+        if (devsSnapshot.length === 1) {
+          leafletRef.current.flyTo([devsSnapshot[0].lat!, devsSnapshot[0].lng!], 15, { animate: false });
         } else {
-          const bounds = L.latLngBounds(devsComLoc.map(d => [d.lat!, d.lng!] as [number,number]));
+          const bounds = L.latLngBounds(devsSnapshot.map(d => [d.lat!, d.lng!] as [number,number]));
           leafletRef.current.fitBounds(bounds, { padding: [50,50], maxZoom: 14, animate: false });
         }
       });
@@ -137,15 +142,18 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
   useImperativeHandle(ref, () => ({
     centralizar: () => {
+      // Guard completo antes de qualquer operação assíncrona
       if (!leafletRef.current) return;
-      const devs = devsComLoc;
+      const devs = Array.isArray(devsComLoc) ? devsComLoc : [];
       if (!devs.length) return;
+      const mapInst = leafletRef.current;
       import("leaflet").then(L => {
-        if (!leafletRef.current) return;
-        if (devs.length === 1) leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
+        // Verificar após import assíncrono — mapa pode ter desmontado
+        if (!mapInst || !leafletRef.current) return;
+        if (devs.length === 1) mapInst.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
         else {
           const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
-          leafletRef.current.fitBounds(bounds, { padding: [40,40], maxZoom: 14, animate: true });
+          mapInst.fitBounds(bounds, { padding: [40,40], maxZoom: 14, animate: true });
         }
       });
     },
@@ -349,14 +357,17 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       setPainelAberto(localStorage.getItem('mapGlobal_painel') !== 'false');
       try { (screen.orientation as any).unlock?.(); } catch {}
     }
-    setTimeout(() => { leafletRef.current?.invalidateSize?.(); }, 300);
+    // Guard: só invalida se o mapa ainda estiver montado
+    const mapRef_ = leafletRef.current;
+    if (mapRef_) setTimeout(() => { mapRef_?.invalidateSize?.(); }, 300);
   }
 
   function togglePainel() {
     const next = !painelAberto;
     setPainelAberto(next);
     localStorage.setItem('mapGlobal_painel', String(next));
-    setTimeout(() => { leafletRef.current?.invalidateSize?.(); }, 350);
+    const mapRef_ = leafletRef.current;
+    if (mapRef_) setTimeout(() => { mapRef_?.invalidateSize?.(); }, 350);
   }
 
   function startResizeDrag(e: React.MouseEvent | React.TouchEvent) {
@@ -387,6 +398,9 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   const totalDisponiveis = devsComLoc.reduce((s,d) => s + Math.max(0,(d.totalLotes??0)-(d.lotesVendidos??0)), 0);
   const totalVendidos = devsComLoc.reduce((s,d) => s + (d.lotesVendidos??0), 0);
   const totalLotes = devsComLoc.reduce((s,d) => s + (d.totalLotes??0), 0);
+
+  // Guard de segurança: não renderizar se empreendimentos não carregou
+  if (!empreendimentos) return null;
 
   return (
     <div ref={containerRef} className="flex flex-col w-full overflow-hidden"
