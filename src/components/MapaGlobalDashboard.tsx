@@ -58,7 +58,12 @@ function clusterPins(devs: Empreendimento[], zoom: number) {
   return devs.map(d => ({ devs: [d], lat: d.lat!, lng: d.lng!, isCluster: false }));
 }
 
-export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick }: Props) {
+export interface MapaGlobalHandle {
+  centralizar: () => void;
+  minhaLocalizacao: () => void;
+}
+
+const MapaGlobalDashboard = React.forwardRef<MapaGlobalHandle, Props>(function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick }, ref) {
   const mapRef = useRef<HTMLDivElement>(null);
   const leafletRef = useRef<any>(null);
   const tileRef = useRef<any>(null);
@@ -86,6 +91,30 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
   const [activeDevId, setActiveDevId] = useState<string | null>(null);
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // Expor funções para o wrapper mobile
+  React.useImperativeHandle(ref, () => ({
+    centralizar: () => {
+      if (!leafletRef.current) return;
+      const devs = devsComLoc;
+      if (!devs.length) return;
+      import("leaflet").then(L => {
+        if (!leafletRef.current) return;
+        if (devs.length === 1) leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
+        else {
+          const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
+          leafletRef.current.fitBounds(bounds, { padding: [40,40], maxZoom: 14, animate: true });
+        }
+      });
+    },
+    minhaLocalizacao: () => {
+      navigator.geolocation.getCurrentPosition(
+        pos => { leafletRef.current?.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 1 }); },
+        err => { const m: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."}; alert(m[err.code]||err.message); },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    },
+  }), [devsComLoc]);
 
   // Ref sempre atualizado com empreendimentos atuais (evita closure stale)
   const empreendimentosRef = useRef(empreendimentos);
@@ -325,277 +354,6 @@ export default function MapaGlobalDashboard({ empreendimentos, sales, onAbrirEmp
       window.removeEventListener('mouseup', onUp);
       window.removeEventListener('touchmove', onMove as any);
       window.removeEventListener('touchend', onUp);
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove as any, { passive: false });
-    window.addEventListener('touchend', onUp);
-  }
+    });
 
-  const totalDisponiveis = devsComLoc.reduce((s,d) => s + Math.max(0,(d.totalLotes??0)-(d.lotesVendidos??0)), 0);
-  const totalVendidos = devsComLoc.reduce((s,d) => s + (d.lotesVendidos??0), 0);
-  const totalLotes = devsComLoc.reduce((s,d) => s + (d.totalLotes??0), 0);
-
-  return (
-    <div ref={containerRef} className="flex flex-col w-full overflow-hidden"
-      style={{
-        borderRadius: 20,
-        background: 'transparent',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}>
-
-
-      {/* ── CORPO: painel + mapa ── */}
-      <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300, position:'relative' }}>
-
-        {/* ── MAPA ── */}
-        <div style={{ flex:1, position:'relative', minWidth:0 }}>
-          <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: (locked || mapaLocked) ? 'none' : 'auto' }}/>
-
-          {/* CONTROLES FLUTUANTES — canto superior direito, ACIMA do overlay */}
-          <div style={{ position:'absolute', top:10, right:10, zIndex:1020, display:'flex', flexDirection:'column', gap:6 }}>
-
-            {/* Camadas */}
-            <div style={{ position:'relative' }}>
-              <button title="Camadas" onClick={() => setCamadasAberto(v => !v)}
-                style={{
-                  width:36, height:36, borderRadius:10, cursor:'pointer',
-                  background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
-                  border:'1px solid rgba(0,0,0,0.08)',
-                  boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
-                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1,
-                  color: camadasAberto ? '#1a4a1a' : '#374151',
-                }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-                </svg>
-              </button>
-              {camadasAberto && (
-                <div style={{
-                  position:'absolute', top:0, right:44, zIndex:9999,
-                  background:'rgba(255,255,255,0.97)', backdropFilter:'blur(16px)',
-                  border:'1px solid rgba(0,0,0,0.08)', borderRadius:12,
-                  padding:'4px', minWidth:130, boxShadow:'0 4px 20px rgba(0,0,0,0.15)',
-                }}>
-                  {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as [Camada,string,string][]).map(([c,icon,label]) => (
-                    <button key={c} onClick={() => { setCamada(c); setCamadasAberto(false); }}
-                      style={{
-                        width:'100%', padding:'7px 10px', borderRadius:8, fontSize:12, fontWeight:700,
-                        cursor:'pointer', border:'none', textAlign:'left', display:'flex', alignItems:'center', gap:8,
-                        background: camada === c ? 'rgba(26,74,26,0.1)' : 'transparent',
-                        color: camada === c ? '#1a4a1a' : '#374151',
-                      }}>
-                      {icon} {label}
-                      {camada === c && <svg style={{marginLeft:'auto'}} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Centralizar */}
-            <button title="Centralizar" onClick={() => {
-              if (!leafletRef.current) return;
-              const devs = devsComLoc;
-              if (!devs.length) return;
-              import("leaflet").then(L => {
-                if (!leafletRef.current) return;
-                if (devs.length === 1) leafletRef.current.flyTo([devs[0].lat!, devs[0].lng!], 15, { animate: true, duration: 1 });
-                else {
-                  const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
-                  leafletRef.current.fitBounds(bounds, { padding: [60,60], maxZoom: 14, animate: true });
-                }
-              });
-            }} style={{
-              width:36, height:36, borderRadius:10, cursor:'pointer',
-              background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
-              border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
-              display:'flex', alignItems:'center', justifyContent:'center', color:'#374151',
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/>
-              </svg>
-            </button>
-
-            {/* Minha localização */}
-            <button title="Minha localização" onClick={() => {
-              navigator.geolocation.getCurrentPosition(
-                pos => {
-                  leafletRef.current?.flyTo([pos.coords.latitude, pos.coords.longitude], 15, { animate: true, duration: 1 });
-                  import("leaflet").then(L => {
-                    L.circleMarker([pos.coords.latitude, pos.coords.longitude], {
-                      radius: 10, color: "#3b82f6", fillColor: "#3b82f6", fillOpacity: 0.8, weight: 3,
-                    }).addTo(leafletRef.current!).bindPopup("📍 Você está aqui").openPopup();
-                  });
-                },
-                err => { const m: Record<number,string> = {1:"Permissão negada.",2:"GPS indisponível.",3:"Tempo esgotado."}; alert(m[err.code]||err.message); },
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-              );
-            }} style={{
-              width:36, height:36, borderRadius:10, cursor:'pointer',
-              background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
-              border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
-              display:'flex', alignItems:'center', justifyContent:'center', color:'#3b82f6',
-            }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/>
-              </svg>
-            </button>
-
-            {/* Cadeado — único, pisca quando bloqueado e mapa é clicado */}
-            <button title={mapaLocked ? "Desbloquear mapa" : "Bloquear mapa"}
-              onClick={() => setMapaLocked(v => !v)}
-              style={{
-                width:36, height:36, borderRadius:10, cursor:'pointer',
-                background: mapaLocked
-                  ? (flashLock ? 'rgba(239,68,68,0.9)' : 'rgba(239,68,68,0.12)')
-                  : 'rgba(74,222,128,0.12)',
-                backdropFilter:'blur(8px)',
-                border: mapaLocked
-                  ? (flashLock ? '2px solid rgba(239,68,68,0.8)' : '1px solid rgba(239,68,68,0.3)')
-                  : '1px solid rgba(74,222,128,0.3)',
-                boxShadow: flashLock ? '0 0 16px rgba(239,68,68,0.5)' : '0 2px 10px rgba(0,0,0,0.12)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color: mapaLocked ? (flashLock ? 'white' : '#ef4444') : '#16a34a',
-                transition:'all 0.15s',
-              }}>
-              {mapaLocked
-                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
-            </button>
-
-            {/* Fullscreen */}
-            <button title="Tela cheia" onClick={toggleFullscreen}
-              style={{
-                width:36, height:36, borderRadius:10, cursor:'pointer',
-                background: isFullscreen ? 'rgba(26,74,26,0.15)' : 'rgba(255,255,255,0.95)',
-                backdropFilter:'blur(8px)',
-                border: isFullscreen ? '1px solid rgba(26,74,26,0.3)' : '1px solid rgba(0,0,0,0.08)',
-                boxShadow:'0 2px 10px rgba(0,0,0,0.12)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                color: isFullscreen ? '#16a34a' : '#374151',
-              }}>
-              {isFullscreen
-                ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 0 2-2h3M3 16h3a2 2 0 0 0 2 2v3"/></svg>
-                : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>}
-            </button>
-          </div>
-
-          {/* Overlay bloqueado — locked ou mapaLocked */}
-          {(locked || mapaLocked) && (
-            <div style={{
-              position:'absolute', inset:0, zIndex:1009, cursor:'not-allowed',
-              background: flashLock ? 'rgba(239,68,68,0.08)' : 'transparent',
-              transition:'background 0.15s',
-            }}
-              onClick={() => { setFlashLock(true); setTimeout(() => setFlashLock(false), 600); }}
-              onWheel={e => e.stopPropagation()}/>
-          )}
-
-
-
-          {/* Instrução localização */}
-          {!locked && onLocationPick && (
-            <div style={{
-              position:'absolute', bottom:12, left:'50%', transform:'translateX(-50%)',
-              zIndex:1001, background:'rgba(10,15,26,0.85)', backdropFilter:'blur(12px)',
-              color:'white', padding:'8px 16px', borderRadius:10, fontSize:11, fontWeight:700,
-              whiteSpace:'nowrap', pointerEvents:'none', border:'1px solid rgba(255,255,255,0.1)',
-              boxShadow:'0 4px 20px rgba(0,0,0,0.4)',
-            }}>
-              📍 Clique no mapa para definir a localização
-            </div>
-          )}
-
-          {/* Card stats flutuante inferior esquerdo — só desktop */}
-          {!focusDevId && !locked && devsComLoc.length > 0 && typeof window !== 'undefined' && window.innerWidth >= 768 && (
-            <div style={{
-              position:'absolute', bottom:12, left:12, zIndex:1000,
-              background:'rgba(10,15,26,0.82)', backdropFilter:'blur(16px)',
-              border:'1px solid rgba(255,255,255,0.08)', borderRadius:12,
-              padding:'8px 12px', display:'flex', gap:12,
-              boxShadow:'0 4px 24px rgba(0,0,0,0.4)',
-            }}>
-              {[
-                { label:'Empreend.', value:devsComLoc.length, color:'#94a3b8' },
-                { label:'Disponíveis', value:totalDisponiveis, color:'#4ade80' },
-                { label:'Vendidos', value:totalVendidos, color:'#f87171' },
-              ].map(s => (
-                <div key={s.label} style={{ textAlign:'center' }}>
-                  <p style={{ fontSize:14, fontWeight:900, color:s.color, margin:0, lineHeight:1 }}>{s.value}</p>
-                  <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:'2px 0 0', textTransform:'uppercase', letterSpacing:0.5 }}>{s.label}</p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {/* Popup empreendimento premium */}
-          {selectedDev && (() => {
-            const stats = calcularStats(selectedDev, sales);
-            const statusColor = stats.pct >= 90 ? '#ef4444' : stats.pct >= 60 ? '#f59e0b' : '#4ade80';
-            return (
-              <div style={{
-                position:'absolute', top:12, left: painelAberto ? 12 : 12, zIndex:1002,
-                width:220, background:'rgba(10,15,26,0.92)', backdropFilter:'blur(20px)',
-                border:'1px solid rgba(255,255,255,0.1)', borderRadius:16,
-                boxShadow:'0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
-                overflow:'hidden',
-              }}>
-                {((selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl) && (
-                  <div style={{ height:80, overflow:'hidden', position:'relative' }}>
-                    <img src={(selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl}
-                      style={{ width:'100%', height:'100%', objectFit:'cover', opacity:0.7 }} alt=""/>
-                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent, rgba(10,15,26,0.9))' }}/>
-                  </div>
-                )}
-                <div style={{ padding:'12px' }}>
-                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
-                    <div style={{ flex:1 }}>
-                      <p style={{ fontSize:12, fontWeight:900, color:'white', margin:'0 0 2px', lineHeight:1.2 }}>{selectedDev.nome}</p>
-                      {selectedDev.cidade && <p style={{ fontSize:10, color:'rgba(255,255,255,0.4)', margin:0 }}>📍 {selectedDev.cidade}</p>}
-                    </div>
-                    <button onClick={() => setSelectedDev(null)}
-                      style={{ background:'rgba(255,255,255,0.08)', border:'none', color:'rgba(255,255,255,0.5)', borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
-                  </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, marginBottom:8 }}>
-                    {[['Total',stats.total,'#94a3b8'],['Disp.',stats.disponiveis,'#4ade80'],['Vend.',stats.vendidos,'#f87171']].map(([l,v,c]) => (
-                      <div key={String(l)} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'5px 4px', textAlign:'center', border:'1px solid rgba(255,255,255,0.05)' }}>
-                        <p style={{ fontSize:13, fontWeight:900, color:String(c), margin:0 }}>{v}</p>
-                        <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:'1px 0 0', textTransform:'uppercase' }}>{l}</p>
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ height:3, background:'rgba(255,255,255,0.08)', borderRadius:2, overflow:'hidden', marginBottom:10 }}>
-                    <div style={{ height:'100%', width:`${stats.pct}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}99)`, borderRadius:2 }}/>
-                  </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-                    <button onClick={() => onVerMapa(selectedDev.id)}
-                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(74,222,128,0.15)', border:'1px solid rgba(74,222,128,0.3)', color:'#4ade80', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
-                      VER MAPA
-                    </button>
-                    <button onClick={() => onAbrirEmpreendimento(selectedDev.id)}
-                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
-                      EDITAR
-                    </button>
-                  </div>
-                </div>
-              </div>
-            );
-          })()}
-        </div>
-      </div>
-
-      {/* BARRA RESIZE */}
-      {!focusDevId && !isFullscreen && (
-        <div onMouseDown={startResizeDrag} onTouchStart={startResizeDrag}
-          style={{
-            flexShrink:0, height:10, background:'rgba(255,255,255,0.03)',
-            borderTop:'1px solid rgba(255,255,255,0.05)', cursor:'row-resize',
-            display:'flex', alignItems:'center', justifyContent:'center',
-          }}>
-          <div style={{ width:32, height:2, background:'rgba(255,255,255,0.15)', borderRadius:2 }}/>
-        </div>
-      )}
-    </div>
-  );
-}
+export default MapaGlobalDashboard;

@@ -98,7 +98,7 @@ import { dbService, setCurrentUser } from "./dbService";
 import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
-import MapaGlobalDashboard from "./components/MapaGlobalDashboard";
+import MapaGlobalDashboard, { MapaGlobalHandle } from "./components/MapaGlobalDashboard";
 import PickLocationMap from "./components/PickLocationMap";
 import { uploadMapaImagem, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
@@ -6938,6 +6938,13 @@ const EmpreendimentosSection = ({
   // Mobile mapa global
   const isMapaMobile = window.innerWidth < 768;
   const [mapaGlobalBloqueado, setMapaGlobalBloqueado] = useState(true);
+  const mapaGlobalRef = useRef<MapaGlobalHandle>(null);
+  // Auto-centralizar ao expandir o mapa
+  useEffect(() => {
+    if (mapaGlobalExpandido && mapaGlobalRef.current) {
+      setTimeout(() => mapaGlobalRef.current?.centralizar(), 500);
+    }
+  }, [mapaGlobalExpandido]);
   const [mapaGlobalExpandido, setMapaGlobalExpandido] = useState(false);
   const [mapaFlashLock, setMapaFlashLock] = useState(false);
   const [mapaFiltroDevs, setMapaFiltroDevs] = useState<Set<string>>(() => new Set());
@@ -7490,6 +7497,7 @@ const EmpreendimentosSection = ({
                 {/* Mapa */}
                 <div style={{ position: 'absolute', inset: 0, pointerEvents: mapaGlobalBloqueado ? 'none' : 'auto' }}>
                   <MapaGlobalDashboard
+                    ref={mapaGlobalRef}
                     empreendimentos={devsVisiveis}
                     sales={sales}
                     visible={showMapaGlobal}
@@ -7535,10 +7543,15 @@ const EmpreendimentosSection = ({
                   </div>
                 )}
 
-                {/* BOTÕES FLUTUANTES — canto direito, estilo Google Maps */}
-                <div style={{ position:'absolute', top:10, right:10, zIndex:20, display:'flex', flexDirection:'column', gap:6 }}>
+                {/* BOTÕES FLUTUANTES — adaptativo vertical/horizontal */}
+                <div style={{
+                  position:'absolute', right:10, bottom: mapaGlobalExpandido ? 16 : 10,
+                  zIndex:20, display:'flex',
+                  flexDirection: mapaGlobalExpandido ? 'column' : 'row',
+                  gap:6, alignItems:'center',
+                }}>
 
-                  {/* Camadas dropdown */}
+                  {/* Camadas + Filtro */}
                   <div style={{ position:'relative' }}>
                     <button onClick={e => { e.stopPropagation(); setMapaFiltroAberto(v => !v); }}
                       style={{
@@ -7601,15 +7614,27 @@ const EmpreendimentosSection = ({
                       : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
                   </button>
 
+                  {/* Centralizar */}
+                  <button onClick={e => { e.stopPropagation(); mapaGlobalRef.current?.centralizar(); }}
+                    style={{ width:34, height:34, borderRadius:10, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'#374151' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                  </button>
+
+                  {/* Minha localização */}
+                  <button onClick={e => { e.stopPropagation(); mapaGlobalRef.current?.minhaLocalizacao(); }}
+                    style={{ width:34, height:34, borderRadius:10, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'#3b82f6' }}>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+                  </button>
+
+                  {/* Tela cheia */}
+                  <button onClick={e => { e.stopPropagation(); if(document.fullscreenElement){document.exitFullscreen();}else{document.documentElement.requestFullscreen();} }}
+                    style={{ width:34, height:34, borderRadius:10, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'#374151' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                  </button>
+
                   {/* Expandir/recolher */}
                   <button onClick={e => { e.stopPropagation(); setMapaGlobalExpandido(v => !v); }}
-                    style={{
-                      width:34, height:34, borderRadius:10, border:'none', cursor:'pointer',
-                      background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
-                      boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
-                      display:'flex', alignItems:'center', justifyContent:'center', color:'#374151',
-                      transition:'all 0.2s',
-                    }}>
+                    style={{ width:34, height:34, borderRadius:10, border:'none', cursor:'pointer', background:'rgba(26,74,26,0.9)', backdropFilter:'blur(8px)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', transition:'all 0.2s' }}>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                       style={{ transform: mapaGlobalExpandido ? 'rotate(180deg)' : 'none', transition:'transform 0.3s' }}>
                       <polyline points="6 9 12 15 18 9"/>
