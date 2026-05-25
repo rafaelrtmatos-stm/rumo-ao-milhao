@@ -2550,12 +2550,12 @@ const LotDashboard = ({
   const [clipboard, setClipboard] = useState<any[]>([]); // bolinhas copiadas
   // Estados aba Global
   const [camadasGlobal, setCamadasGlobal] = useState({ satelite: true, hibrido: false, ruas: true, terreno: false });
-  // Estados aba Lotes
-  const [loteBusca, setLoteBusca] = useState("");
-  const [loteQuadraFiltro, setLoteQuadraFiltro] = useState("todas");
-  const [loteStatusFiltro, setLoteStatusFiltro] = useState<string[]>([]);
-  const [loteOrdem, setLoteOrdem] = useState("numero");
-  const [loteView, setLoteView] = useState<"grid"|"lista">("grid");
+  // Estados aba Lotes premium
+  const [abLoteBusca, setAbLoteBusca] = useState("");
+  const [abLoteQuadraFiltro, setAbLoteQuadraFiltro] = useState("todas");
+  const [abLoteStatusFiltro, setAbLoteStatusFiltro] = useState<string[]>([]);
+  const [abLoteOrdem, setAbLoteOrdem] = useState("numero");
+  const [abLoteView, setAbLoteView] = useState<"grid"|"lista">("grid");
   const [showModalColar, setShowModalColar] = useState(false); // modal de quadra ao colar
   const [colarQuadra, setColarQuadra] = useState("");
   const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
@@ -6934,7 +6934,7 @@ const LotDashboard = ({
         ) : mode === "quadradinhos" ? (() => {
           // ── ABA LOTES PREMIUM ──────────────────────────────────────────────
 
-          const toggleStatusFiltro = (s: string) => setLoteStatusFiltro(prev =>
+          const toggleStatusFiltro = (s: string) => setAbLoteStatusFiltro(prev =>
             prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
           );
 
@@ -6956,14 +6956,14 @@ const LotDashboard = ({
           // Filtrar
           const lotesFiltrados = todosLotes.filter(item => {
             if (loteBusca && !item.lote.includes(loteBusca) && !item.quadra.toLowerCase().includes(loteBusca.toLowerCase())) return false;
-            if (loteQuadraFiltro !== "todas" && item.quadra !== loteQuadraFiltro) return false;
-            if (loteStatusFiltro.length > 0 && !loteStatusFiltro.includes(item.status)) return false;
+            if (abLoteQuadraFiltro !== "todas" && item.quadra !== abLoteQuadraFiltro) return false;
+            if (abLoteStatusFiltro.length > 0 && !abLoteStatusFiltro.includes(item.status)) return false;
             return true;
           });
 
           // Ordenar
-          if (loteOrdem === "numero") lotesFiltrados.sort((a,b)=>Number(a.lote)-Number(b.lote));
-          else if (loteOrdem === "status") lotesFiltrados.sort((a,b)=>a.status.localeCompare(b.status));
+          if (abLoteOrdem === "numero") lotesFiltrados.sort((a,b)=>Number(a.lote)-Number(b.lote));
+          else if (abLoteOrdem === "status") lotesFiltrados.sort((a,b)=>a.status.localeCompare(b.status));
 
           // Agrupar por quadra
           const porQuadra: Record<string,typeof lotesFiltrados> = {};
@@ -6987,13 +6987,13 @@ const LotDashboard = ({
               {/* Busca */}
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px]">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input value={loteBusca} onChange={e=>setLoteBusca(e.target.value)}
+                <input value={loteBusca} onChange={e=>setAbLoteBusca(e.target.value)}
                   placeholder="Buscar lote por número..."
                   className="bg-transparent text-xs text-slate-700 outline-none placeholder-slate-400 w-full"/>
               </div>
 
               {/* Filtro quadras */}
-              <select value={loteQuadraFiltro} onChange={e=>setLoteQuadraFiltro(e.target.value)}
+              <select value={abLoteQuadraFiltro} onChange={e=>setAbLoteQuadraFiltro(e.target.value)}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
                 <option value="todas">Todas as quadras</option>
                 {quadras.map(q=><option key={q} value={q}>Quadra {q}</option>)}
@@ -7009,8 +7009,8 @@ const LotDashboard = ({
                   className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
                   style={{
                     color: c, borderColor: bc,
-                    background: loteStatusFiltro.includes(k) ? bg : "white",
-                    fontWeight: loteStatusFiltro.includes(k) ? 900 : 600,
+                    background: abLoteStatusFiltro.includes(k) ? bg : "white",
+                    fontWeight: abLoteStatusFiltro.includes(k) ? 900 : 600,
                   }}>
                   {l}
                 </button>
@@ -7019,7 +7019,7 @@ const LotDashboard = ({
               <div className="flex-1"/>
 
               {/* Ordenação */}
-              <select value={loteOrdem} onChange={e=>setLoteOrdem(e.target.value)}
+              <select value={abLoteOrdem} onChange={e=>setAbLoteOrdem(e.target.value)}
                 className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
                 <option value="numero">Ordenar: Número</option>
                 <option value="status">Ordenar: Status</option>
@@ -7027,12 +7027,12 @@ const LotDashboard = ({
 
               {/* Toggle view */}
               <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white">
-                <button onClick={()=>setLoteView("grid")}
-                  className={`p-1.5 rounded-lg transition-all ${loteView==="grid"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
+                <button onClick={()=>setAbLoteView("grid")}
+                  className={`p-1.5 rounded-lg transition-all ${abLoteView==="grid"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                 </button>
-                <button onClick={()=>setLoteView("lista")}
-                  className={`p-1.5 rounded-lg transition-all ${loteView==="lista"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
+                <button onClick={()=>setAbLoteView("lista")}
+                  className={`p-1.5 rounded-lg transition-all ${abLoteView==="lista"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 </button>
               </div>
@@ -7051,7 +7051,7 @@ const LotDashboard = ({
                   </div>
 
                   {/* Grid cards */}
-                  {loteView === "grid" ? (
+                  {abLoteView === "grid" ? (
                     <div className="grid gap-3" style={{gridTemplateColumns:"repeat(auto-fill,minmax(130px,1fr))"}}>
                       {lotes.map(item => {
                         const cfg = statusCfg[item.status];
