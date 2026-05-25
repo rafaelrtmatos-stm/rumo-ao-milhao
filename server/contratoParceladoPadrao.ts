@@ -174,7 +174,7 @@ function sanitizeForXml(s: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;")
-    .replace(/\r\n|\r|\n/g, " "); // quebras de linha viram espaco no XML inline
+    .replace(/\r\n|\r|\n/g, " "); // quebras de linha
 }
 
 function rep(xml: string, search: string, replacement: string): string {
