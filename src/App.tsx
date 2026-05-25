@@ -2372,6 +2372,8 @@ const LotDashboard = ({
   // Retorna o viewport ativo (fullscreen ou normal)
   const getActiveViewport = () => mapFullscreen ? mapViewportFullscreenRef.current : mapViewportRef.current;
   const mapImageRef = useRef<HTMLImageElement>(null);
+  const [mapRenderWidth, setMapRenderWidth] = useState<number>(0); // largura real do mapa na tela
+  const mapResizeObserverRef = useRef<ResizeObserver | null>(null);
   // Canvas de renderização direta do PDF (opção C — qualidade vetorial infinita)
   const pdfCanvasRef = useRef<HTMLCanvasElement>(null);
   const pdfCanvasFullscreenRef = useRef<HTMLCanvasElement>(null);
@@ -3241,6 +3243,9 @@ const LotDashboard = ({
       scheduleMapScaleUpdate(false);
       // Re-renderiza o PDF com a nova largura do container (rotação, resize)
       if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+      // Atualizar largura real do mapa para cálculo A4 das bolinhas
+      const vp = getActiveViewport() || mapViewportRef.current || mapContainerRef.current;
+      if (vp && vp.offsetWidth > 0) setMapRenderWidth(vp.offsetWidth);
     });
 
     observed.forEach((el) => observer.observe(el));
@@ -3268,6 +3273,12 @@ const LotDashboard = ({
       window.removeEventListener("orientationchange", handleOrientationChange);
     };
   }, [mapaImagem, mode, mapFullscreen, mapZoom]);
+
+  // Capturar largura inicial do mapa após render
+  useEffect(() => {
+    const vp = getActiveViewport() || mapViewportRef.current || mapContainerRef.current;
+    if (vp && vp.offsetWidth > 0) setMapRenderWidth(vp.offsetWidth);
+  }, [mapaImagem, mapFullscreen, mode]);
 
   // Encaixar mapa ao abrir no modo visualização
   useEffect(() => {
@@ -3469,13 +3480,23 @@ const LotDashboard = ({
     try {
       const url = await uploadMapaImagem(file, localDev.id, (pct) => setMapUploadProgress(pct));
       precacheMapaUrl(url); // pré-cacheia para offline
-      // Salvar largura nativa da imagem como referência A4
+      // Detectar orientação real da imagem e salvar referência A4
       const imgRef = new Image();
       imgRef.onload = () => {
-        const isLandscape = imgRef.naturalWidth > imgRef.naturalHeight;
-        // A4 a 96dpi: 794px portrait, 1123px landscape
+        const nw = imgRef.naturalWidth;
+        const nh = imgRef.naturalHeight;
+        const isLandscape = nw > nh;
+        // A4 a 96dpi: portrait=794×1123px, landscape=1123×794px
+        // Usamos a largura como âncora pois o mapa sempre ocupa 100% da largura
         const a4RefWidth = isLandscape ? 1123 : 794;
-        persistDev({ ...localDev, mapaMarkerReferenceWidth: a4RefWidth, mapaImagemUrl: url } as any);
+        persistDev({
+          ...localDev,
+          mapaImagemUrl: url,
+          mapaMarkerReferenceWidth: a4RefWidth,
+          mapaOrientacao: isLandscape ? "landscape" : "portrait",
+          mapaImagemNaturalWidth: nw,
+          mapaImagemNaturalHeight: nh,
+        } as any);
       };
       imgRef.src = url;
       persistDev({
@@ -3519,34 +3540,50 @@ const LotDashboard = ({
   // Tamanho das bolinhas — calculado a cada render, sem cache
   // O cálculo é trivial (uma multiplicação) então não precisa de cache
   // Cache causava bug: não atualizava ao rotacionar o celular
+  /**
+   * getBallPixelSize — âncora no A4
+   * 
+   * Tamanho da bolinha = tamanhoPadraoPDF × fatorEscala
+   * fatorEscala = larguraAtualDoMapaNaTela / larguraBaseA4
+   * 
+   * Assim a bolinha tem SEMPRE a mesma proporção visual do PDF exportado,
+   * independente de fullscreen, mobile, rotação ou zoom do navegador.
+   */
   const getBallPixelSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
 
-    // Largura atual do mapa na tela
+    // Largura real do mapa na tela — prioriza o ResizeObserver (mais preciso)
+    // Fallback para refs se ResizeObserver ainda não atualizou
     const imgEl = mapImageRef.current;
-    const mapWAtual = (imgEl?.offsetWidth || 0)
+    const mapWAtual = (mapRenderWidth > 0 ? mapRenderWidth : 0)
+      || (imgEl?.offsetWidth || 0)
+      || (getActiveViewport()?.offsetWidth || 0)
       || (mapContainerRef.current?.offsetWidth || 0)
       || (mapViewportRef.current?.offsetWidth || 0)
-      || (getActiveViewport()?.offsetWidth || 0)
-      || 600;
+      || 794; // fallback = largura A4 portrait (sem escala)
 
-    // Âncora A4: largura de referência salva no cadastro do mapa
-    // Se não tiver, usa 794px (A4 portrait a 96dpi)
+    // Âncora A4: detecta orientação pela proporção da imagem salva
+    // mapaMarkerReferenceWidth é salvo no upload (794 portrait, 1123 landscape)
     const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
 
-    // fatorEscala: quanto o mapa cresceu/encolheu em relação ao A4 original
+    // fatorEscala: relação entre tela atual e documento A4 original
     const fatorEscala = mapWAtual / refWidth;
 
-    // Tamanho base fixo em px no A4 (794px de largura a 96dpi = ~8px por bolinha)
-    const BASE_SIZE_A4 = 8;
-    const scaledSize = Math.round(BASE_SIZE_A4 * fatorEscala * pct);
+    // Tamanho base no A4 — calibrado para coincidir com o PDF exportado
+    // No PDF: 794px de largura, bolinha ~10px = 1.26% da largura
+    // BASE_SIZE_A4 = 10px equivale ao tamanho padrão ouro do PDF
+    const BASE_SIZE_A4 = 10;
+    const scaledSize = BASE_SIZE_A4 * fatorEscala * pct;
 
-    // No celular: reduzir quando zoom baixo (mapa afastado)
+    // No mobile com zoom baixo: escalar proporcionalmente ao zoom
+    // (mapa afastado = bolinhas menores para não poluir visualmente)
     const currentZoom = mapZoomRef.current || 1;
-    const zoomScale = isMobile ? Math.max(0.5, Math.min(1, currentZoom)) : 1;
+    const zoomCompensation = isMobile ? Math.max(0.5, Math.min(1.2, currentZoom)) : 1;
 
-    const safeSz = Math.max(6, Math.min(80, scaledSize * zoomScale));
-    return { size: safeSz, font: Math.max(5, Math.round(safeSz * 0.42)), border: Math.max(1.5, safeSz * 0.14) };
+    const safeSz = Math.max(6, Math.min(80, Math.round(scaledSize * zoomCompensation)));
+    const font = Math.max(5, Math.round(safeSz * 0.40));
+    const border = Math.max(1, Math.round(safeSz * 0.12));
+    return { size: safeSz, font, border };
   };
 
   const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
@@ -4742,7 +4779,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
