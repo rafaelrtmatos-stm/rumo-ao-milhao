@@ -33,24 +33,38 @@ app.get("/api/debug", (_req: any, res: any) => {
   });
 });
 
-// Configurar session store adequado para produção
+// Configurar session store — PgSession se DATABASE_URL disponível, senão MemoryStore
 const PgSession = connectPgSimple(session);
 const sessionTtl = 7 * 24 * 60 * 60 * 1000;
 
-// Criar pool do PostgreSQL para sessões
-const pgPool = new pg.Pool({
+const pgPool = process.env.DATABASE_URL ? new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false }
-});
+  ssl: process.env.DATABASE_URL?.includes('localhost') ? false : { rejectUnauthorized: false },
+  max: 5,
+  connectionTimeoutMillis: 5000,
+}) : null;
+
+// Testar conexão e logar claramente
+if (pgPool) {
+  pgPool.query('SELECT 1').then(() => {
+    console.log('[db] Pool PostgreSQL conectado com sucesso');
+  }).catch((e: any) => {
+    console.error('[db] ERRO na conexão PostgreSQL:', e.message);
+  });
+} else {
+  console.warn('[db] DATABASE_URL não definida — usando MemoryStore para sessões');
+}
+
+const sessionStore = pgPool ? new PgSession({
+  pool: pgPool,
+  tableName: 'session',
+  createTableIfMissing: true,
+}) : undefined; // undefined = MemoryStore padrão do express-session
 
 app.use(
   session({
-    store: new PgSession({
-      pool: pgPool,
-      tableName: 'session',
-      createTableIfMissing: true,
-    }),
-    secret: process.env.SESSION_SECRET || "dev-secret-rumo-ao-milhao",
+    ...(sessionStore ? { store: sessionStore } : {}),
+    secret: process.env.SESSION_SECRET || "dev-secret-rumo-ao-milhao-2025",
     resave: false,
     saveUninitialized: false,
     cookie: {
@@ -414,7 +428,12 @@ app.post("/api/auth/login", async (req: any, res) => {
       token,
     });
   } catch (e: any) {
-    res.status(500).json({ error: e?.message || "Erro ao entrar." });
+    console.error('[auth/login] Erro:', e?.message, e?.code, e?.stack?.split('\n')[1]);
+    res.status(500).json({ 
+      error: e?.message || "Erro ao entrar.",
+      code: e?.code,
+      hint: !process.env.DATABASE_URL ? "DATABASE_URL não configurada na Vercel" : undefined
+    });
   }
 });
 
