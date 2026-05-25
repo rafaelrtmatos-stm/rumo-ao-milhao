@@ -6337,7 +6337,7 @@ const LotDashboard = ({
               <button
                 onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); setDrawerOpen(true); }}
                 className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
-                🌍 Global
+                🧭 Como Chegar
               </button>
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
@@ -6954,8 +6954,8 @@ const LotDashboard = ({
               )}
               <button onClick={() => setMode("global")}
                 className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
-                Global
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                Como Chegar
               </button>
               <button onClick={() => setMode("quadradinhos")}
                 className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
@@ -6975,7 +6975,7 @@ const LotDashboard = ({
               )}
               <button onClick={() => setMode("global")}
                 className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
-                🌍 Global
+                🧭 Como Chegar
               </button>
               <button onClick={() => setMode("quadradinhos")}
                 className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
@@ -6986,15 +6986,15 @@ const LotDashboard = ({
 
         {mode === "global" && renderAbaGlobal()}
 
-        {/* ABA GLOBAL mobile */}
+        {/* ABA COMO CHEGAR mobile */}
         {mode === "global" && (
-          <div className="sm:hidden flex-1 overflow-hidden">
+          <div className="sm:hidden flex-1 overflow-hidden" style={{minHeight:'calc(100vh - 200px)'}}>
             {(localDev as any).lat && (localDev as any).lng ? (
               <iframe
-                title="Mapa Global"
+                title="Como Chegar"
                 width="100%"
                 height="100%"
-                style={{ border: 0, minHeight: 400 }}
+                style={{ border: 0, minHeight: '70vh' }}
                 loading="lazy"
                 allowFullScreen
                 src={`https://maps.google.com/maps?q=${(localDev as any).lat},${(localDev as any).lng}&z=16&output=embed`}
