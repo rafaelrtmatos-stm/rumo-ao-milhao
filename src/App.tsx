@@ -7419,50 +7419,7 @@ const EmpreendimentosSection = ({
           {isMapaMobile ? (
             <div style={{ position: 'relative', margin: '0 0 8px' }}>
 
-              {/* Barra superior mobile — pills de camada + filtro + fullscreen */}
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 6,
-                padding: '10px 12px 8px',
-                background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(12px)',
-                borderRadius: '20px 20px 0 0',
-                borderBottom: '1px solid rgba(0,0,0,0.06)',
-                boxShadow: '0 2px 12px rgba(0,0,0,0.06)',
-              }}>
-                {/* Botão filtro de empreendimentos */}
-                <button onClick={() => setMapaFiltroAberto(v => !v)}
-                  style={{
-                    width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: mapaFiltroDevs.size > 0 ? '#1a4a1a' : 'rgba(0,0,0,0.06)',
-                    color: mapaFiltroDevs.size > 0 ? 'white' : '#374151',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
-                </button>
 
-                {/* Pills camadas */}
-                <div style={{ display: 'flex', gap: 4, flex: 1, overflowX: 'auto' }}>
-                  {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as any[]).map(([c,icon,label]) => (
-                    <button key={c}
-                      style={{
-                        padding: '5px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer',
-                        whiteSpace: 'nowrap', border: 'none', transition: 'all 0.2s',
-                        background: 'rgba(0,0,0,0.06)', color: '#374151',
-                      }}>
-                      {icon} {label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Fullscreen */}
-                <button
-                  style={{
-                    width: 34, height: 34, borderRadius: 10, border: 'none', cursor: 'pointer',
-                    background: 'rgba(0,0,0,0.06)', color: '#374151',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                  }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                </button>
-              </div>
 
               {/* Dropdown filtro de empreendimentos */}
               {mapaFiltroAberto && (
@@ -7512,7 +7469,7 @@ const EmpreendimentosSection = ({
                   height: mapaGlobalExpandido ? Math.min(window.innerHeight * 0.6, 420) : 220,
                   transition: 'height 0.4s cubic-bezier(0.4,0,0.2,1), outline 0.15s',
                   position: 'relative', overflow: 'hidden',
-                  borderRadius: '0 0 20px 20px',
+                  borderRadius: 20,
                   boxShadow: '0 4px 20px rgba(0,0,0,0.12)',
                   outline: mapaFlashLock ? '2px solid rgba(239,68,68,0.6)' : 'none',
 
@@ -7578,42 +7535,90 @@ const EmpreendimentosSection = ({
                   </div>
                 )}
 
-                {/* Botão desbloquear (cadeado) */}
-                <button
-                  onClick={e => { e.stopPropagation(); setMapaGlobalBloqueado(v => !v); }}
-                  style={{
-                    position: 'absolute', top: 10, right: 10, zIndex: 20,
-                    width: 32, height: 32, borderRadius: 10,
-                    background: mapaGlobalBloqueado ? 'rgba(255,255,255,0.92)' : 'rgba(26,74,26,0.9)',
-                    backdropFilter: 'blur(8px)', border: 'none', cursor: 'pointer',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    boxShadow: '0 2px 10px rgba(0,0,0,0.15)',
-                    transition: 'all 0.2s',
-                  }}>
-                  {mapaGlobalBloqueado
-                    ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
-                </button>
+                {/* BOTÕES FLUTUANTES — canto direito, estilo Google Maps */}
+                <div style={{ position:'absolute', top:10, right:10, zIndex:20, display:'flex', flexDirection:'column', gap:6 }}>
+
+                  {/* Camadas dropdown */}
+                  <div style={{ position:'relative' }}>
+                    <button onClick={e => { e.stopPropagation(); setMapaFiltroAberto(v => !v); }}
+                      style={{
+                        width:34, height:34, borderRadius:10, border:'none', cursor:'pointer',
+                        background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
+                        boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
+                        display:'flex', alignItems:'center', justifyContent:'center',
+                        color: mapaFiltroAberto ? '#1a4a1a' : '#374151',
+                      }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
+                      </svg>
+                    </button>
+                    {mapaFiltroAberto && (
+                      <div style={{
+                        position:'absolute', top:0, right:42, zIndex:100,
+                        background:'white', borderRadius:12, boxShadow:'0 4px 20px rgba(0,0,0,0.15)',
+                        border:'1px solid rgba(0,0,0,0.08)', padding:'4px', minWidth:130,
+                      }}>
+                        {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as any[]).map(([cam,icon,label]) => (
+                          <button key={cam}
+                            onClick={e => { e.stopPropagation(); }}
+                            style={{
+                              width:'100%', padding:'7px 10px', borderRadius:8, fontSize:12, fontWeight:700,
+                              cursor:'pointer', border:'none', textAlign:'left', display:'flex', alignItems:'center', gap:8,
+                              background:'transparent', color:'#374151',
+                            }}>
+                            {icon} {label}
+                          </button>
+                        ))}
+                        <div style={{ borderTop:'1px solid #f1f5f9', margin:'4px 0' }}/>
+                        <p style={{ fontSize:10, fontWeight:800, color:'#94a3b8', padding:'4px 10px', textTransform:'uppercase' }}>Filtrar</p>
+                        {developments.map(dev => {
+                          const ativo = mapaFiltroDevs.size === 0 || mapaFiltroDevs.has(dev.id);
+                          return (
+                            <button key={dev.id}
+                              onClick={e => { e.stopPropagation(); setMapaFiltroDevs(prev => { const next = new Set(prev.size === 0 ? developments.map(d => d.id) : prev); if(next.has(dev.id)) next.delete(dev.id); else next.add(dev.id); if(next.size===developments.length) return new Set(); return next; }); }}
+                              style={{ width:'100%', padding:'6px 10px', borderRadius:8, fontSize:11, fontWeight:600, cursor:'pointer', border:'none', textAlign:'left', display:'flex', alignItems:'center', gap:8, background:'transparent', color:'#374151' }}>
+                              <span style={{ width:14, height:14, borderRadius:4, border:'2px solid', borderColor: ativo ? '#1a4a1a' : '#d1d5db', background: ativo ? '#1a4a1a' : 'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+                                {ativo && <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                              </span>
+                              <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{dev.nome}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Cadeado */}
+                  <button onClick={e => { e.stopPropagation(); setMapaGlobalBloqueado(v => !v); }}
+                    style={{
+                      width:34, height:34, borderRadius:10, border:'none', cursor:'pointer',
+                      background: mapaGlobalBloqueado ? (mapaFlashLock ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.95)') : 'rgba(26,74,26,0.9)',
+                      backdropFilter:'blur(8px)', boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
+                      display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s',
+                    }}>
+                    {mapaGlobalBloqueado
+                      ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={mapaFlashLock ? 'white' : '#1a4a1a'} strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                      : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
+                  </button>
+
+                  {/* Expandir/recolher */}
+                  <button onClick={e => { e.stopPropagation(); setMapaGlobalExpandido(v => !v); }}
+                    style={{
+                      width:34, height:34, borderRadius:10, border:'none', cursor:'pointer',
+                      background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
+                      boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
+                      display:'flex', alignItems:'center', justifyContent:'center', color:'#374151',
+                      transition:'all 0.2s',
+                    }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+                      style={{ transform: mapaGlobalExpandido ? 'rotate(180deg)' : 'none', transition:'transform 0.3s' }}>
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                  </button>
+                </div>
               </div>
 
-              {/* Handle expandir/recolher */}
-              <button
-                onClick={() => setMapaGlobalExpandido(v => !v)}
-                style={{
-                  width: '100%', padding: '6px 0', border: 'none', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.9)', borderRadius: '0 0 20px 20px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                  marginTop: -1, boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
-                }}>
-                <div style={{ width: 32, height: 3, background: '#d1d5db', borderRadius: 2 }}/>
-                <span style={{ fontSize: 10, fontWeight: 700, color: '#9ca3af' }}>
-                  {mapaGlobalExpandido ? 'Recolher' : 'Expandir mapa'}
-                </span>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2.5"
-                  style={{ transform: mapaGlobalExpandido ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }}>
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
-              </button>
+
             </div>
 
           ) : (
