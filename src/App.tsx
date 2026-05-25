@@ -6479,20 +6479,43 @@ const LotDashboard = ({
           )}
 
           {/* ABAS */}
-          <div className="px-6 pt-3 pb-0 border-b border-slate-100 flex-shrink-0">
+          {/* ABAS PREMIUM — desktop only */}
+          <div className="hidden sm:block px-6 pt-4 pb-0 flex-shrink-0">
+            <div className="flex gap-2 bg-slate-100/80 p-1.5 rounded-2xl">
+              {mapaImagem && (
+                <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
+                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "mapa" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+                  Mapa
+                </button>
+              )}
+              <button onClick={() => setMode("global")}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                Global
+              </button>
+              <button onClick={() => setMode("quadradinhos")}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                Lotes
+              </button>
+            </div>
+          </div>
+          {/* ABAS MOBILE */}
+          <div className="sm:hidden px-4 pt-3 pb-0 flex-shrink-0 border-b border-slate-100">
             <div className="flex gap-0.5">
               {mapaImagem && (
                 <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
-                  className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
                   🗺 Mapa
                 </button>
               )}
               <button onClick={() => setMode("global")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "global" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
                 🌍 Global
               </button>
               <button onClick={() => setMode("quadradinhos")}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
                 ⊞ Lotes
               </button>
             </div>
@@ -6515,98 +6538,157 @@ const LotDashboard = ({
           </div>
         )}
 
-        {/* CORPO PRINCIPAL — 2 colunas no desktop */}
+        {/* CORPO PRINCIPAL — layout premium desktop */}
         {mode === "mapa" && mapaImagem ? (
-          <div className="flex flex-1 min-h-0 overflow-hidden">
-            {/* COLUNA ESQUERDA — MAPA (70%) */}
-            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-[#f5f7fb]">
+          <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4 bg-[#f4f6f8]">
+
+            {/* MAPA PRINCIPAL — 75% */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
+
+              {/* Título + legenda topo */}
+              <div className="flex-shrink-0 pt-4 pb-2 px-6 text-center border-b border-slate-50">
+                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">Empreendimento {localDev.nome}</p>
+                <div className="flex items-center justify-center gap-5 mt-2">
+                  {[{c:'#22c55e',l:'Disponível'},{c:'#f59e0b',l:'Reservado'},{c:'#ef4444',l:'Indisponível'}].map(i=>(
+                    <div key={i.l} className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{background:i.c}}/>
+                      <span className="text-[11px] text-slate-500 font-medium">{i.l}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Rosa dos ventos */}
+              <div className="absolute top-14 right-5 z-10 pointer-events-none select-none">
+                <svg width="52" height="52" viewBox="0 0 100 100" fill="none">
+                  <polygon points="50,5 55,45 50,40 45,45" fill="#1a4a1a"/>
+                  <polygon points="50,95 55,55 50,60 45,55" fill="#94a3b8"/>
+                  <polygon points="5,50 45,45 40,50 45,55" fill="#94a3b8"/>
+                  <polygon points="95,50 55,45 60,50 55,55" fill="#94a3b8"/>
+                  <circle cx="50" cy="50" r="6" fill="white" stroke="#1a4a1a" strokeWidth="2"/>
+                  <text x="50" y="2" textAnchor="middle" fontSize="12" fontWeight="900" fill="#1a4a1a">N</text>
+                  <text x="50" y="98" textAnchor="middle" fontSize="10" fill="#94a3b8" dominantBaseline="auto">S</text>
+                  <text x="2" y="54" textAnchor="start" fontSize="10" fill="#94a3b8">O</text>
+                  <text x="93" y="54" textAnchor="end" fontSize="10" fill="#94a3b8">L</text>
+                </svg>
+              </div>
+
+              {/* Controles flutuantes esquerda */}
+              <div className="absolute left-4 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2">
+                <button onClick={() => setMapZoomAtPoint(Math.min(10, mapZoom + 0.5), (getActiveViewport()?.offsetWidth||800)/2, (getActiveViewport()?.offsetHeight||600)/2)}
+                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all font-black text-lg">+</button>
+                <button onClick={() => setMapZoomAtPoint(Math.max(1, mapZoom - 0.5), (getActiveViewport()?.offsetWidth||800)/2, (getActiveViewport()?.offsetHeight||600)/2)}
+                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50 active:scale-90 transition-all font-black text-xl leading-none">−</button>
+                <button onClick={() => fitMapToScreen()}
+                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-50 active:scale-90 transition-all">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                </button>
+                {/* Minimapa */}
+                {(localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl ? (
+                  <div className="mt-2 w-20 h-16 rounded-xl overflow-hidden shadow-md border border-slate-100 bg-slate-100">
+                    <img src={(localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl}
+                      className="w-full h-full object-cover opacity-80" alt="minimapa"/>
+                    <div className="absolute inset-0 flex items-end justify-center pb-1 pointer-events-none">
+                      <span className="text-[8px] text-white font-bold bg-black/40 px-1 rounded">Minimapa</span>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               {/* Área do mapa */}
               <div className="relative flex-1 min-h-0">
-              {renderMapa()}
+                {renderMapa()}
               </div>
-              {/* Barra inferior */}
-              <div className="flex-shrink-0 border-t border-slate-200 bg-slate-50 px-4 py-2 flex items-center gap-3">
-                <span className="text-[10px] text-slate-400 flex-1 truncate">💡 {isEditingMap ? "Clique no mapa para adicionar marcadores" : "Scroll = zoom • Arraste para mover • Clique na bolinha"}</span>
-                <div className="flex items-center gap-2 w-36 flex-shrink-0">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400 flex-shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
-                  <div className="flex-1 relative h-5 flex items-center cursor-pointer"
-                    onPointerDown={(e) => {
-                      e.preventDefault();
-                      const track = e.currentTarget;
-                      const upd = (cx: number) => { const r=track.getBoundingClientRect(); const pct=Math.max(0,Math.min(1,(cx-r.left)/r.width)); const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(1,Math.min(10,1+pct*9)),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); };
-                      upd(e.clientX);
-                      const om=(ev:PointerEvent)=>upd(ev.clientX); const ou=()=>{window.removeEventListener('pointermove',om);window.removeEventListener('pointerup',ou);};
-                      window.addEventListener('pointermove',om); window.addEventListener('pointerup',ou);
-                    }}
-                  >
-                    <div className="w-full h-1 bg-slate-200 rounded-full" />
-                    <div className="absolute left-0 h-1 bg-slate-500 rounded-full pointer-events-none" style={{ width: `${Math.min(100,((mapZoom-1)/9)*100)}%` }} />
-                    <div className="absolute h-3 w-3 bg-slate-700 rounded-full shadow pointer-events-none border border-white" style={{ left: `calc(${Math.min(100,((mapZoom-1)/9)*100)}% - 6px)` }} />
-                  </div>
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-slate-400 flex-shrink-0"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+
+              {/* Pill rodapé */}
+              <div className="flex-shrink-0 flex items-center justify-center py-3 bg-[#f4f6f8]">
+                <div className="flex items-center gap-2 px-5 py-2 bg-white rounded-full shadow-sm border border-slate-100">
+                  <span className="text-slate-400">🖐</span>
+                  <span className="text-[11px] text-slate-400 font-medium">Scroll para zoom • Arraste para mover o mapa • Clique no lote para ver detalhes</span>
                 </div>
-                <span className="text-[10px] font-black text-slate-500 w-7 text-right flex-shrink-0">{mapZoom.toFixed(1)}x</span>
               </div>
               <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
             </div>
 
-            {/* COLUNA DIREITA — PAINEL LATERAL */}
-            <div className="w-64 xl:w-72 flex-shrink-0 border-l border-slate-100 flex flex-col bg-white overflow-y-auto">
-              <div className="p-4 border-b border-slate-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Resumo</p>
-                <div className="grid grid-cols-2 gap-2 mb-3">
-                  {([
-                    {label:'Disponíveis',value:statsDisponiveis,bg:'bg-blue-50',text:'text-blue-700',dot:'bg-blue-500'},
-                    {label:'Reservados',value:statsReservados,bg:'bg-amber-50',text:'text-amber-700',dot:'bg-amber-400'},
-                    {label:'Vendidos',value:statsIndisponiveis,bg:'bg-red-50',text:'text-red-600',dot:'bg-red-500'},
-                    {label:'Total',value:statsTotal,bg:'bg-slate-50',text:'text-slate-700',dot:'bg-slate-400'},
-                  ] as {label:string;value:number;bg:string;text:string;dot:string}[]).map(s=>(
-                    <div key={s.label} className={`rounded-xl p-2.5 ${s.bg} ${s.text}`}>
-                      <p className="text-lg font-black leading-none mb-1">{s.value}</p>
-                      <div className="flex items-center gap-1"><span className={`w-1.5 h-1.5 rounded-full ${s.dot}`}/><p className="text-[9px] font-bold opacity-70">{s.label}</p></div>
-                    </div>
-                  ))}
+            {/* SIDEBAR DIREITA — premium */}
+            <div className="w-60 xl:w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+
+              {/* CARD RESUMO */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Resumo</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="rounded-xl p-3 bg-emerald-50">
+                    <p className="text-2xl font-black text-emerald-600 leading-none">{statsDisponiveis}</p>
+                    <p className="text-[10px] text-emerald-500 font-bold mt-1">Disponíveis</p>
+                  </div>
+                  <div className="rounded-xl p-3 bg-amber-50">
+                    <p className="text-2xl font-black text-amber-500 leading-none">{statsReservados}</p>
+                    <p className="text-[10px] text-amber-400 font-bold mt-1">Reservados</p>
+                  </div>
+                  <div className="rounded-xl p-3 bg-red-50">
+                    <p className="text-2xl font-black text-red-500 leading-none">{statsIndisponiveis}</p>
+                    <p className="text-[10px] text-red-400 font-bold mt-1">Vendidos</p>
+                  </div>
+                  <div className="rounded-xl p-3 bg-slate-50">
+                    <p className="text-2xl font-black text-slate-700 leading-none">{statsTotal}</p>
+                    <p className="text-[10px] text-slate-400 font-bold mt-1">Total de lotes</p>
+                  </div>
                 </div>
-                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                  <div className="h-full bg-gradient-to-r from-red-400 to-red-500 rounded-full" style={{width:`${statsPct}%`}} />
+                <div className="mt-4 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-500" style={{width:`${100-statsPct}%`}}/>
                 </div>
                 <p className="text-[10px] text-slate-400 text-right mt-1">{statsPct}% ocupado</p>
               </div>
-              <div className="p-4 border-b border-slate-100">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Legenda</p>
-                <div className="space-y-2">
-                  {([{c:'bg-blue-500',l:'Disponível',d:'Livre para venda'},{c:'bg-amber-400',l:'Reservado',d:'Aguardando'},{c:'bg-red-500',l:'Indisponível',d:'Vendido/bloqueado'}] as {c:string;l:string;d:string}[]).map(i=>(
-                    <div key={i.l} className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${i.c}`}/><div><p className="text-[11px] font-bold text-slate-700">{i.l}</p><p className="text-[10px] text-slate-400">{i.d}</p></div></div>
+
+              {/* CARD LEGENDA */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Legenda</p>
+                <div className="space-y-3">
+                  {[
+                    {c:'#22c55e',l:'Disponível',d:'Livre para venda'},
+                    {c:'#f59e0b',l:'Reservado',d:'Aguardando'},
+                    {c:'#ef4444',l:'Indisponível',d:'Vendido/bloqueado'},
+                  ].map(i=>(
+                    <div key={i.l} className="flex items-center gap-3">
+                      <span className="w-3 h-3 rounded-full flex-shrink-0 shadow-sm" style={{background:i.c}}/>
+                      <div>
+                        <p className="text-xs font-bold text-slate-700">{i.l}</p>
+                        <p className="text-[10px] text-slate-400">{i.d}</p>
+                      </div>
+                    </div>
                   ))}
                 </div>
               </div>
-              <div className="p-4 space-y-2">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Ações</p>
-                <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToScreen(0),200);}}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-700 active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                  Tela cheia
-                </button>
+
+              {/* CARD AÇÕES RÁPIDAS */}
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-4">Ações Rápidas</p>
+                <div className="grid grid-cols-2 gap-2 mb-2">
+                  <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToScreen(0),200);}}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                    <span className="text-[10px] font-bold">Fullscreen</span>
+                  </button>
+                  <button onClick={()=>fitMapToScreen()}
+                    className="flex flex-col items-center gap-1.5 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                    <span className="text-[10px] font-bold">Centralizar</span>
+                  </button>
+                </div>
                 <button onClick={baixarMapaInterativoImagem}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-[#1a4a1a] text-white text-xs font-bold hover:bg-[#245424] active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  Baixar Imagem
+                  className="w-full flex items-center justify-center gap-2 p-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span className="text-[10px] font-bold">Download</span>
                 </button>
-                <button onClick={baixarMapaInterativoPdf}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  Gerar PDF
-                </button>
-                <button onClick={()=>fitMapToScreen()}
-                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold hover:bg-slate-200 active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-                  Centralizar
-                </button>
-              </div>
-              <div className="mt-auto p-4 border-t border-slate-100">
-                <p className="text-[10px] text-slate-300 text-center">Scroll = zoom • Ctrl+drag = pan</p>
               </div>
             </div>
+          </div>
+
+        ) : mode === "mapa" && mapaImagem ? null : mode === "mapa" ? (
+          /* Mobile mapa */
+          <div className="sm:hidden flex-1 overflow-y-auto p-4 relative">
+            {renderMapa()}
+            <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
         ) : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
