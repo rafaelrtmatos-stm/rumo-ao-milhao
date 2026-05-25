@@ -5719,84 +5719,46 @@ const LotDashboard = ({
 
   const renderAbaGlobal = () => {
     if (!localDev?.id) return null;
-          const lat = (localDev as any).lat;
-          const lng = (localDev as any).lng;
-          const cidade = localDev.cidade || "–";
-          const latStr = lat ? `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? 'S' : 'N'}` : '–';
-          const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
-          const gmapsUrl = lat && lng ? `https://www.google.com/maps?q=${lat},${lng}` : `https://www.google.com/maps/search/${encodeURIComponent(cidade)}`;
-          const acessos = (localDev as any).acessos as string[] | undefined;
+    const lat = (localDev as any).lat as number | undefined;
+    const lng = (localDev as any).lng as number | undefined;
+    const hasCoords = lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0;
+    const cidade = String(localDev.cidade || '');
+    const latStr = lat ? `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? 'S' : 'N'}` : '–';
+    const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
+    const gmapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : `https://www.google.com/maps/search/${encodeURIComponent(cidade)}`;
+    const acessos = (localDev as any).acessos as string[] | undefined;
+    const iframeUrl = hasCoords ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&output=embed` : '';
           return (
           <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4" style={{background:'#f4f6f8'}}>
 
             {/* COLUNA ESQUERDA — MAPA GLOBAL 75% */}
             <div className="flex-1 relative rounded-2xl overflow-hidden shadow-sm border border-slate-100 bg-slate-900 min-h-0">
 
-              {/* Mapa Leaflet */}
-              <MapaGlobalDashboard
-                empreendimentos={[localDev]}
-                sales={sales}
-                visible={true}
-                focusDevId={localDev.id}
-                onAbrirEmpreendimento={() => {}}
-                onVerMapa={() => {}}
-                onLocationPick={canEditMap ? (lt, lg) => persistDev({ ...localDev, lat: lt, lng: lg } as any) : undefined}
-              />
-
-              {/* Barra de busca — topo esquerdo */}
-              <div className="absolute top-3 left-3 z-[1100]">
-                <div className="flex items-center gap-2 bg-white rounded-xl shadow-md px-3 py-2 w-64 border border-slate-100">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                  <input placeholder="Buscar endereço ou lugar" className="flex-1 text-xs text-slate-700 bg-transparent outline-none placeholder-slate-400" style={{minWidth:0}}/>
+              {/* Mapa Google Maps via iframe — limpo, sem cadeado */}
+              {hasCoords ? (
+                <iframe
+                  title={`Mapa ${String(localDev.nome || '')}`}
+                  src={iframeUrl}
+                  width="100%" height="100%"
+                  style={{ border: 0, position: 'absolute', inset: 0 }}
+                  loading="lazy"
+                  allowFullScreen
+                />
+              ) : (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-slate-400 p-8 text-center">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <p className="text-sm font-medium">Localização não cadastrada</p>
+                  <p className="text-xs max-w-xs">Edite o empreendimento e adicione as coordenadas para ver o mapa</p>
                 </div>
-              </div>
-
-              {/* Pills camadas — topo centro */}
-              <div className="absolute top-3 left-1/2 -translate-x-1/2 z-[1100] flex gap-1">
-                {[
-                  {k:'satelite' as const, icon:'🛰', l:'Satélite'},
-                  {k:'hibrido'  as const, icon:'🌍', l:'Híbrido'},
-                  {k:'ruas'    as const, icon:'🛣', l:'Ruas'},
-                ].map(({k,icon,l}) => (
-                  <button key={k} onClick={() => setCamadasGlobal(p=>({...p,[k]:!p[k]}))}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold shadow-md transition-all border"
-                    style={{
-                      background: camadasGlobal[k] ? '#1a4a1a' : 'rgba(255,255,255,0.95)',
-                      color: camadasGlobal[k] ? 'white' : '#374151',
-                      borderColor: camadasGlobal[k] ? '#1a4a1a' : 'rgba(0,0,0,0.08)',
-                    }}>
-                    {icon} {l}
-                  </button>
-                ))}
-              </div>
-
-              {/* Fullscreen — topo direito */}
-              <button onClick={() => { if(document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen(); }}
-                className="absolute top-3 right-3 z-[1100] w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-              </button>
-
-              {/* Controles esquerda — zoom + minha loc + minimapa */}
-              <div className="absolute left-3 top-1/2 -translate-y-1/2 z-[1100] flex flex-col gap-2">
-                <button onClick={() => {}} className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 font-black text-lg hover:bg-slate-50">+</button>
-                <button onClick={() => {}} className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 font-black text-xl leading-none hover:bg-slate-50">−</button>
-                <button onClick={() => { navigator.geolocation.getCurrentPosition(pos => { console.log(pos); }); }}
-                  className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-50">
-                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-                </button>
-                {((localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl) && (
-                  <div className="mt-1 w-[72px] rounded-xl overflow-hidden shadow-md border border-slate-100 bg-slate-100">
-                    <img src={(localDev as any).mapaImagemLeveBase64 || (localDev as any).mapaImagemUrl}
-                      className="w-full h-14 object-cover opacity-80" alt="minimapa"/>
-                    <p className="text-center text-[8px] text-slate-400 font-bold py-0.5">Minimapa</p>
-                  </div>
-                )}
-              </div>
-
-              {/* Botão camadas — canto inferior direito */}
-              <button className="absolute bottom-4 right-4 z-[1100] w-10 h-10 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-600 hover:bg-slate-50">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-              </button>
+              )}
+              {/* Botão abrir no Google Maps */}
+              {hasCoords && (
+                <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+                  className="absolute bottom-4 right-4 z-10 flex items-center gap-2 px-3 py-2 bg-white rounded-xl shadow-md border border-slate-100 text-xs font-bold text-slate-600 hover:bg-slate-50">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  Abrir no Google Maps
+                </a>
+              )}
             </div>
 
             {/* COLUNA DIREITA — 25% */}
@@ -7026,18 +6988,24 @@ const LotDashboard = ({
 
         {/* ABA GLOBAL mobile */}
         {mode === "global" && (
-          <div className="sm:hidden space-y-3 p-3">
-            <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 300 }}>
-              <MapaGlobalDashboard
-                empreendimentos={[localDev]}
-                sales={sales}
-                visible={true}
-                focusDevId={localDev.id}
-                onAbrirEmpreendimento={() => {}}
-                onVerMapa={() => {}}
+          <div className="sm:hidden flex-1 overflow-hidden">
+            {(localDev as any).lat && (localDev as any).lng ? (
+              <iframe
+                title="Mapa Global"
+                width="100%"
+                height="100%"
+                style={{ border: 0, minHeight: 400 }}
+                loading="lazy"
+                allowFullScreen
+                src={`https://maps.google.com/maps?q=${(localDev as any).lat},${(localDev as any).lng}&z=16&output=embed`}
               />
-            </div>
-            <p className="text-xs text-slate-400 text-center">Mapa de satélite — localização do empreendimento</p>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2 p-8">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                <p className="text-sm font-medium text-center">Localização não cadastrada</p>
+                <p className="text-xs text-slate-300 text-center">Edite o empreendimento para adicionar as coordenadas</p>
+              </div>
+            )}
           </div>
         )}
 
