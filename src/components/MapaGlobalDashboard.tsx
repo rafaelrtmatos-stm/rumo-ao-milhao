@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import type { Empreendimento, Venda } from "../types";
 
 interface Props {
