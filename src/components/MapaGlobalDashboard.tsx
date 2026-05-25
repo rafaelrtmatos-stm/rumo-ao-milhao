@@ -95,6 +95,26 @@ const MapaGlobalDashboard = React.forwardRef<MapaGlobalHandle, Props>(function M
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // Auto-fit bounds ao redimensionar
+  React.useEffect(() => {
+    if (!containerRef.current || !leafletRef.current) return;
+    const ro = new ResizeObserver(() => {
+      leafletRef.current?.invalidateSize?.();
+      if (devsComLoc.length === 0) return;
+      import("leaflet").then(L => {
+        if (!leafletRef.current) return;
+        if (devsComLoc.length === 1) {
+          leafletRef.current.flyTo([devsComLoc[0].lat!, devsComLoc[0].lng!], 15, { animate: false });
+        } else {
+          const bounds = L.latLngBounds(devsComLoc.map(d => [d.lat!, d.lng!] as [number,number]));
+          leafletRef.current.fitBounds(bounds, { padding: [50,50], maxZoom: 14, animate: false });
+        }
+      });
+    });
+    ro.observe(containerRef.current);
+    return () => ro.disconnect();
+  }, [devsComLoc, mapReady]);
+
   React.useImperativeHandle(ref, () => ({
     centralizar: () => {
       if (!leafletRef.current) return;
