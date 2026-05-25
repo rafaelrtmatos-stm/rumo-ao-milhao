@@ -2666,12 +2666,14 @@ const LotDashboard = ({
     if (focalX === undefined || focalY === undefined) {
       newPan = clampMapPan(prevPan, clamped);
     } else {
-      // transformOrigin "0 0": pan é o offset do canto superior esquerdo da imagem
-      // focalX/focalY são relativos ao viewport (0,0 = canto superior esquerdo do viewport)
-      // Fórmula: newPan = focal - (focal - oldPan) * (newZoom / oldZoom)
-      const ratio = oldZoom > 0 ? clamped / oldZoom : 1;
+      // Fórmula de zoom ancorado:
+      // newPan = focal - (focal - oldPan) × (newZoom / oldZoom)
+      // O ponto focal permanece fixo na tela enquanto o conteúdo escala ao redor dele.
+      // Com oldZoom ≈ 0 (edge case), evitar divisão por zero.
+      const ratio = oldZoom > 0.01 ? clamped / oldZoom : 1;
       const newPanX = focalX - (focalX - prevPan.x) * ratio;
       const newPanY = focalY - (focalY - prevPan.y) * ratio;
+      // Aplicar clamp apenas no sentido que limita (não forçar o mapa para longe do focal)
       newPan = clampMapPan({ x: newPanX, y: newPanY }, clamped);
     }
 
@@ -2865,15 +2867,23 @@ const LotDashboard = ({
     setMapActive(true);
     if (e.touches.length >= 2) {
       e.preventDefault();
-      // Usar REFS para evitar closure stale
+      // Calcular ponto médio dos dois dedos RELATIVO ao viewport (não à página)
+      // Isso garante que o focal não derive se a página scrollou
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      // Focal relativo ao viewport — âncora fixa para todo o gesto
+      const focalX = rect ? midClientX - rect.left : midClientX;
+      const focalY = rect ? midClientY - rect.top  : midClientY;
       mapTouchRef.current = {
         mode: "pinch",
         startDistance: getTouchDistance(e.touches),
         startZoom: mapZoomRef.current,
         startPanX: mapPanRef.current.x,
         startPanY: mapPanRef.current.y,
-        startX: (e.touches[0].clientX + e.touches[1].clientX) / 2,
-        startY: (e.touches[0].clientY + e.touches[1].clientY) / 2,
+        startX: focalX,  // focal fixo no viewport
+        startY: focalY,
       };
       return;
     }
@@ -2898,27 +2908,25 @@ const LotDashboard = ({
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
+      // Zoom calculado a partir da distância inicial (gesture.startZoom é o zoom no momento do touchStart)
       const nextZoom = Math.max(1, Math.min(10,
         gesture.startZoom * (distance / Math.max(1, gesture.startDistance))
       ));
 
-      // Centro dos dois dedos relativo ao viewport
-      const viewport = mapViewportRef.current;
-      const rect = viewport?.getBoundingClientRect();
-      const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-      const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      const focalX = rect ? midClientX - rect.left : midClientX;
-      const focalY = rect ? midClientY - rect.top : midClientY;
+      // ÂNCORA FIXA: usar o ponto médio calculado no touchStart (gesture.startX/Y)
+      // Isso evita o bug de "fuga" onde o focal deriva a cada frame porque o rect muda
+      // O ponto focal é relativo ao viewport e fixo durante todo o gesto de pinch
+      const focalX = gesture.startX;
+      const focalY = gesture.startY;
 
       zoomingRef.current = true;
       clearTimeout((window as any).__zoomEndTimer);
       (window as any).__zoomEndTimer = setTimeout(() => {
         zoomingRef.current = false;
-        // Carregar alta resolução só quando parar o pinch
         if (!((localDev as any).mapaPdfOriginalBase64)) void requestHighResolutionMap();
       }, 400);
 
-      // Usar rAF para não bloquear o thread principal durante pinch
+      // rAF — não bloquear thread principal durante pinch
       cancelAnimationFrame((window as any).__pinchRaf);
       (window as any).__pinchRaf = requestAnimationFrame(() => {
         if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
