@@ -7431,7 +7431,7 @@ const EmpreendimentosSection = ({
               {/* Dropdown filtro de empreendimentos */}
               {mapaFiltroAberto && (
                 <div style={{
-                  position: 'absolute', top: 54, left: 0, right: 0, zIndex: 100,
+                  position: 'absolute', top: 10, right: 52, left: 'auto', zIndex: 100, minWidth: 200,
                   background: 'white', borderRadius: 12, boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
                   border: '1px solid rgba(0,0,0,0.08)', padding: '8px 0', maxHeight: 200, overflowY: 'auto',
                 }}>
