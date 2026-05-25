@@ -100,7 +100,16 @@ async function apiDelete(path: string): Promise<void> {
 async function getEmpreendimentos(): Promise<Empreendimento[]> {
   if (navigator.onLine) {
     try {
-      const items = await apiGet<Empreendimento[]>('/api/empreendimentos');
+      // Timeout de 8s para evitar pending infinito
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 8000);
+      const res = await fetch('/api/empreendimentos', {
+        headers: (() => { const t = localStorage.getItem('rumo_auth_token'); return t ? { Authorization: `Bearer ${t}` } : {}; })(),
+        signal: controller.signal,
+        cache: 'no-store',
+      }).finally(() => clearTimeout(timer));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const items: Empreendimento[] = await res.json();
       const now = Date.now();
       for (const item of items) {
         const local = await db.empreendimentos.get(item.id);
@@ -229,7 +238,15 @@ function stripHeavy(item: Empreendimento): Empreendimento {
 async function getClientes(): Promise<Cliente[]> {
   if (navigator.onLine) {
     try {
-      const items = await apiGet<Cliente[]>('/api/clientes');
+      const controller2 = new AbortController();
+      const timer2 = setTimeout(() => controller2.abort(), 8000);
+      const res2 = await fetch('/api/clientes', {
+        headers: (() => { const t = localStorage.getItem('rumo_auth_token'); return t ? { Authorization: `Bearer ${t}` } : {}; })(),
+        signal: controller2.signal,
+        cache: 'no-store',
+      }).finally(() => clearTimeout(timer2));
+      if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+      const items: Cliente[] = await res2.json();
       const now = Date.now();
       for (const item of items) {
         const local = await db.clientes.get(item.id);
