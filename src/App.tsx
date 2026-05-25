@@ -5718,6 +5718,7 @@ const LotDashboard = ({
 
 
   const renderAbaGlobal = () => {
+    if (!localDev?.id) return null;
           const lat = (localDev as any).lat;
           const lng = (localDev as any).lng;
           const cidade = localDev.cidade || "–";
@@ -5887,6 +5888,7 @@ const LotDashboard = ({
           };
 
   const renderAbaLotes = () => {
+    if (!localDev?.id) return null;
     const toggleStatusFiltro = (s: string) => setAbLoteStatusFiltro(prev =>
       prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s]
     );
@@ -18110,17 +18112,21 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           if (semCoords.length > 0) void geocodificar();
         }
       } catch (e: unknown) {
-        console.error('Erro ao carregar dados:', e);
-        alert('Erro crítico ao carregar dados:\n' + JSON.stringify(e));
-        setIsLoaded(true);
+        console.error('[init] Erro ao carregar dados:', e);
+        // NÃO usar alert — trava o app. Apenas finaliza o loading com dados locais.
+        setLoadProgress(100);
+        setTimeout(() => { setLoadProgress(0); setIsLoaded(true); }, 500);
       }
     };
     load();
 
-    // Recarrega dados quando a janela/aba volta ao foco — garante sincronização
-    // entre navegadores, abas e celular sem precisar de WebSocket.
+    // Recarrega dados quando a janela/aba volta ao foco — com debounce para evitar loop
+    let visibilityDebounce: ReturnType<typeof setTimeout> | null = null;
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
+      if (document.visibilityState !== 'visible') return;
+      if (visibilityDebounce) clearTimeout(visibilityDebounce);
+      visibilityDebounce = setTimeout(() => {
+        if (!navigator.onLine) return; // não tentar se offline
         Promise.allSettled([
           dbService.getEmpreendimentos(),
           dbService.getClientes(),
@@ -18132,7 +18138,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           if (results[2].status === 'fulfilled') setSales(results[2].value);
           if (results[3].status === 'fulfilled') setConfig(results[3].value);
         }).catch(() => {});
-      }
+      }, 2000); // espera 2s antes de refetch
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
@@ -18141,6 +18147,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       subClientes?.unsubscribe();
       subVendas?.unsubscribe();
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      if (visibilityDebounce) clearTimeout(visibilityDebounce);
     };
   }, []);
 

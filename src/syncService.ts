@@ -36,13 +36,21 @@ let isSyncing = false;
 
 export async function processSyncQueue(): Promise<{ synced: number; errors: number }> {
   if (isSyncing || !navigator.onLine) return { synced: 0, errors: 0 };
+  // Timeout de segurança — se o sync travar por mais de 30s, libera
+  const syncTimeout = setTimeout(() => { isSyncing = false; }, 30000);
 
   isSyncing = true;
   let synced = 0;
   let errors = 0;
 
   try {
-    const items = await db.syncQueue.orderBy('createdAt').toArray();
+    const allItems = await db.syncQueue.orderBy('createdAt').toArray();
+    // Ignorar itens com muitas tentativas (evita loop infinito de falhas)
+    const MAX_ATTEMPTS = 5;
+    const items = allItems.filter(item => item.attempts < MAX_ATTEMPTS);
+    if (allItems.length > items.length) {
+      console.warn(`[sync] ${allItems.length - items.length} item(s) ignorados por exceder ${MAX_ATTEMPTS} tentativas`);
+    }
 
     for (const item of items) {
       try {
@@ -109,6 +117,7 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
       }
     }
   } finally {
+    clearTimeout(syncTimeout);
     isSyncing = false;
   }
 
