@@ -1832,14 +1832,14 @@ const DashboardSection = ({
     (s) =>
       s.quantidadeParcelas === 0 ||
       (typeof s.formaPagamento === "string" &&
-        s.formaPagamento.toLowerCase().includes("vista")),
+        String(s.formaPagamento || "").toLowerCase().includes("vista")),
   );
   const vendasParceladas = sales.filter(
     (s) =>
       (s.quantidadeParcelas ?? 0) > 0 &&
       !(
         typeof s.formaPagamento === "string" &&
-        s.formaPagamento.toLowerCase().includes("vista")
+        String(s.formaPagamento || "").toLowerCase().includes("vista")
       ),
   );
   const totalAvistaValor = vendasAvista.reduce((acc, s) => acc + s.valorLote, 0);
@@ -2183,7 +2183,7 @@ const DashboardSection = ({
           if (s.contratoGerado || s.numeroContrato) rankMap[nome].totalContratos += 1;
           const isAvista =
             s.quantidadeParcelas === 0 ||
-            (typeof s.formaPagamento === "string" && s.formaPagamento.toLowerCase().includes("vista"));
+            (typeof s.formaPagamento === "string" && String(s.formaPagamento || "").toLowerCase().includes("vista"));
           if (isAvista) rankMap[nome].avista += 1;
           else rankMap[nome].parcelado += 1;
         });
@@ -5914,7 +5914,8 @@ const LotDashboard = ({
 
           // Filtrar
           const lotesFiltrados = todosLotes.filter(item => {
-            if (loteBusca && !item.lote.includes(loteBusca) && !item.quadra.toLowerCase().includes(loteBusca.toLowerCase())) return false;
+            const _busca = String(abLoteBusca || '').toLowerCase();
+    if (_busca && !String(item.lote || '').toLowerCase().includes(_busca) && !String(item.quadra || '').toLowerCase().includes(_busca)) return false;
             if (abLoteQuadraFiltro !== "todas" && item.quadra !== abLoteQuadraFiltro) return false;
             if (abLoteStatusFiltro.length > 0 && !abLoteStatusFiltro.includes(item.status)) return false;
             return true;
@@ -11182,7 +11183,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                   />
                   {showNameDropdown && clientData.nome.length >= 2 && (() => {
                     const matches = clients.filter((c) =>
-                      c.nome?.toLowerCase().includes(clientData.nome.toLowerCase())
+                      String(c.nome || "").toLowerCase().includes(String(clientData.nome || "").toLowerCase())
                     ).slice(0, 6);
                     if (!matches.length) return null;
                     return (
@@ -12392,7 +12393,7 @@ const ContratosSection = ({
       if (!contratoData.rua) {
         setContratoData((prev) => ({ ...prev, rua: ruaSistema }));
         setRuaWarning(null);
-      } else if (contratoData.rua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase()) {
+      } else if (String(contratoData.rua || "").trim().toLowerCase() !== String(ruaSistema || "").trim().toLowerCase()) {
         setRuaWarning(`A rua do sistema para este lote é "${ruaSistema}". Verifique se está correta.`);
       } else {
         setRuaWarning(null);
@@ -12750,7 +12751,7 @@ const ContratosSection = ({
     if (!validarGenerosAntesDeGerar(vendedorAtivo, cliente)) return;
 
     const isAvista = selectedVenda.quantidadeParcelas === 0 ||
-      (typeof selectedVenda.formaPagamento === "string" && selectedVenda.formaPagamento.toLowerCase().includes("vista"));
+      (typeof selectedVenda.formaPagamento === "string" && String(selectedVenda.formaPagamento || "").toLowerCase().includes("vista"));
 
     const endpoint = isAvista
       ? "/api/contrato/avista-padrao-pdf"
@@ -13381,7 +13382,7 @@ VENDEDOR: ${vendedorLabel}`;
 
   const filteredSales = (() => {
     let list = sales.filter((venda) => {
-      const query = searchTerm.toLowerCase();
+      const query = String(searchTerm || "").toLowerCase();
       const matchesSearch = !query || (
         String(venda.clienteNome ?? '').toLowerCase().includes(query) ||
         String(venda.empreendimentoNome ?? '').toLowerCase().includes(query) ||
@@ -13843,7 +13844,7 @@ VENDEDOR: ${vendedorLabel}`;
                         const key = `${contratoData.quadra}-${contratoData.numeroLote}`.toUpperCase();
                         const lotInfo = dev?.lotesInfo?.[key];
                         const ruaSistema = lotInfo?.rua;
-                        const isConfirmed = ruaSistema && contratoData.rua && contratoData.rua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                        const isConfirmed = ruaSistema && contratoData.rua && String(contratoData.rua || "").trim().toLowerCase() === String(ruaSistema || "").trim().toLowerCase();
                         const isNew = !ruaSistema && contratoData.rua && contratoData.rua.trim() !== "";
                         return (
                           <>
@@ -14050,8 +14051,8 @@ VENDEDOR: ${vendedorLabel}`;
                       const lotInfo = dev?.lotesInfo?.[key];
                       const ruaSistema = lotInfo?.rua;
                       const currentRua = editVendaForm.rua || "";
-                      const isDivergent = ruaSistema && currentRua.trim() !== "" && currentRua.trim().toLowerCase() !== ruaSistema.trim().toLowerCase();
-                      const isConfirmed = ruaSistema && currentRua.trim().toLowerCase() === ruaSistema.trim().toLowerCase();
+                      const isDivergent = ruaSistema && currentRua.trim() !== "" && String(currentRua || "").trim().toLowerCase() !== String(ruaSistema || "").trim().toLowerCase();
+                      const isConfirmed = ruaSistema && String(currentRua || "").trim().toLowerCase() === String(ruaSistema || "").trim().toLowerCase();
                       const isNew = !ruaSistema && currentRua.trim() !== "";
                       return (
                         <>
@@ -17761,7 +17762,7 @@ const HistoricoExclusoesSection = ({
   };
 
   const filtered = vendasExcluidas.filter((item) => {
-    const q = search.toLowerCase();
+    const q = String(search || "").toLowerCase();
     return (
       !q ||
       (item.venda.clienteNome || "").toLowerCase().includes(q) ||

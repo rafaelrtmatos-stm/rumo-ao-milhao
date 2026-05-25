@@ -117,7 +117,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     if (filtro === "mais_vendidos") list = [...list].sort((a, b) => (b.lotesVendidos ?? 0) - (a.lotesVendidos ?? 0)).slice(0, 10);
     if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
     if (busca.trim()) {
-      const q = busca.toLowerCase();
+      const q = String(busca || "").toLowerCase();
       list = list.filter(d => {
         const nome = String(d.nome ?? '').toLowerCase();
         const cidade = String(d.cidade ?? '').toLowerCase();
