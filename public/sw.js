@@ -7,7 +7,7 @@
  * - API: Network First com fallback
  */
 
-const CACHE_VERSION = 'v3';
+const CACHE_VERSION = 'v4';
 const CACHE_SHELL = `ra1m-shell-${CACHE_VERSION}`;
 const CACHE_MAPAS = `ra1m-mapas-${CACHE_VERSION}`;
 const CACHE_TILES = `ra1m-tiles-${CACHE_VERSION}`;
