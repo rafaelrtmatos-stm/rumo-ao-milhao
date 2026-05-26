@@ -7469,22 +7469,10 @@ const EmpreendimentosSection = ({
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
 
-  // Bloquear scroll do body sempre que LotDashboard estiver aberto
+  // Bloquear scroll quando LotDashboard aberto
   useEffect(() => {
-    if (selectedDevForMap) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-    } else {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-    }
-    return () => {
-      document.body.style.overflow = '';
-      document.body.style.position = '';
-      document.body.style.width = '';
-    };
+    document.body.style.overflow = selectedDevForMap ? 'hidden' : '';
+    return () => { document.body.style.overflow = ''; };
   }, [selectedDevForMap]);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
@@ -8945,8 +8933,6 @@ const EmpreendimentosSection = ({
       <AnimatePresence>
         {selectedDevForMap && (
           <>
-          {/* Backdrop que bloqueia a aba de trás */}
-          <div className="fixed inset-0 z-[499] bg-black/60" onClick={() => { document.body.style.overflow = ""; setSelectedDevForMap(null); }}/>
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
