@@ -1524,7 +1524,8 @@ const Sidebar = ({
             onClick={() => setIsOpen(false)}
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] lg:hidden"
           />
-        )}
+          );
+        })()}
       </AnimatePresence>
 
       <div
@@ -7963,7 +7964,7 @@ const EmpreendimentosSection = ({
           })));
         }
         return (
-        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none' }}>
+        {(showMapaGlobal && !isAdding) && <div>
 
           {/* ── WRAPPER MOBILE DO MAPA GLOBAL ── */}
           {isMapaMobile ? (
@@ -8960,7 +8961,10 @@ const EmpreendimentosSection = ({
       </div>
 
       <AnimatePresence>
-        {selectedDevForMap && (
+        {selectedDevForMap && (() => {
+          // Bloquear scroll do body quando popup está aberto
+          if (typeof document !== 'undefined') document.body.style.overflow = 'hidden';
+          return (
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
@@ -8969,7 +8973,7 @@ const EmpreendimentosSection = ({
               onStartSale(v);
               setSelectedDevForMap(null);
             }}
-            onClose={() => setSelectedDevForMap(null)}
+            onClose={() => { if (typeof document !== "undefined") document.body.style.overflow = ""; setSelectedDevForMap(null); }}
             onViewContract={onViewContract}
             onSaveDev={(updatedDev) => {
               onSave(updatedDev);
