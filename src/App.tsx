@@ -5977,59 +5977,51 @@ const LotDashboard = ({
           return (
           <div className="flex flex-col flex-1 min-h-0 overflow-hidden" style={{background:"#f4f6f8"}}>
 
-            {/* BARRA DE FILTROS */}
-            <div className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white border-b border-slate-100 overflow-x-auto" style={{WebkitOverflowScrolling:'touch', scrollbarWidth:'none'}}>
-              {/* Busca */}
-              <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px]">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input value={abLoteBusca} onChange={e=>setAbLoteBusca(e.target.value)}
-                  placeholder="Buscar lote por número..."
-                  className="bg-transparent text-xs text-slate-700 outline-none placeholder-slate-400 w-full"/>
+            {/* BARRA DE FILTROS — linha 1: busca + quadra */}
+            <div className="flex-shrink-0 bg-white border-b border-slate-100">
+              <div className="flex items-center gap-2 px-3 pt-2 pb-1">
+                {/* Busca */}
+                <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 flex-1 min-w-0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" style={{flexShrink:0}}><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                  <input value={abLoteBusca} onChange={e=>setAbLoteBusca(e.target.value)}
+                    placeholder="Buscar lote..."
+                    className="bg-transparent text-xs text-slate-700 outline-none placeholder-slate-400 w-full min-w-0"/>
+                </div>
+                {/* Filtro quadras */}
+                <select value={abLoteQuadraFiltro} onChange={e=>setAbLoteQuadraFiltro(e.target.value)}
+                  className="flex-shrink-0 bg-white border border-slate-200 rounded-xl px-2 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
+                  <option value="todas">Todas</option>
+                  {quadras.map(q=><option key={q} value={q}>Q {q}</option>)}
+                </select>
+                {/* Toggle view */}
+                <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white flex-shrink-0">
+                  <button onClick={()=>setAbLoteView("grid")}
+                    className={`p-1.5 rounded-lg transition-all ${abLoteView==="grid"?"bg-slate-900 text-white":"text-slate-400"}`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  </button>
+                  <button onClick={()=>setAbLoteView("lista")}
+                    className={`p-1.5 rounded-lg transition-all ${abLoteView==="lista"?"bg-slate-900 text-white":"text-slate-400"}`}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  </button>
+                </div>
               </div>
-
-              {/* Filtro quadras */}
-              <select value={abLoteQuadraFiltro} onChange={e=>setAbLoteQuadraFiltro(e.target.value)}
-                className="bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer">
-                <option value="todas">Todas as quadras</option>
-                {quadras.map(q=><option key={q} value={q}>Quadra {q}</option>)}
-              </select>
-
-              {/* Pills status */}
-              {[
-                {k:"disponivel",  l:"Disponíveis",   c:"#16a34a", bc:"#bbf7d0", bg:"#f0fdf4"},
-                {k:"reservado",   l:"Reservados",    c:"#d97706", bc:"#fde68a", bg:"#fffbeb"},
-                {k:"indisponivel",l:"Indisponíveis", c:"#dc2626", bc:"#fecaca", bg:"#fef2f2"},
-              ].map(({k,l,c,bc,bg}) => (
-                <button key={k} onClick={()=>toggleStatusFiltro(k)}
-                  className="px-3 py-1.5 rounded-xl text-xs font-bold border transition-all"
-                  style={{
-                    color: c, borderColor: bc,
-                    background: abLoteStatusFiltro.includes(k) ? bg : "white",
-                    fontWeight: abLoteStatusFiltro.includes(k) ? 900 : 600,
-                  }}>
-                  {l}
-                </button>
-              ))}
-
-              <div className="flex-1"/>
-
-              {/* Ordenação */}
-              <select value={abLoteOrdem} onChange={e=>setAbLoteOrdem(e.target.value)}
-                className="hidden sm:block bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-600 outline-none cursor-pointer flex-shrink-0">
-                <option value="numero">Ordenar: Número</option>
-                <option value="status">Ordenar: Status</option>
-              </select>
-
-              {/* Toggle view */}
-              <div className="flex gap-1 border border-slate-200 rounded-xl p-1 bg-white flex-shrink-0">
-                <button onClick={()=>setAbLoteView("grid")}
-                  className={`p-1.5 rounded-lg transition-all ${abLoteView==="grid"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                </button>
-                <button onClick={()=>setAbLoteView("lista")}
-                  className={`p-1.5 rounded-lg transition-all ${abLoteView==="lista"?"bg-slate-900 text-white":"text-slate-400 hover:text-slate-600"}`}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                </button>
+              {/* Linha 2: pills status */}
+              <div className="flex items-center gap-2 px-3 pb-2 overflow-x-auto" style={{scrollbarWidth:'none'}}>
+                {[
+                  {k:"disponivel",  l:"Disponível",   c:"#16a34a", bc:"#bbf7d0", bg:"#f0fdf4"},
+                  {k:"reservado",   l:"Reservado",    c:"#d97706", bc:"#fde68a", bg:"#fffbeb"},
+                  {k:"indisponivel",l:"Indisponível", c:"#dc2626", bc:"#fecaca", bg:"#fef2f2"},
+                ].map(({k,l,c,bc,bg}) => (
+                  <button key={k} onClick={()=>toggleStatusFiltro(k)}
+                    className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs border transition-all whitespace-nowrap"
+                    style={{
+                      color: c, borderColor: bc,
+                      background: abLoteStatusFiltro.includes(k) ? bg : "white",
+                      fontWeight: abLoteStatusFiltro.includes(k) ? 900 : 600,
+                    }}>
+                    {l}
+                  </button>
+                ))}
               </div>
             </div>
 
