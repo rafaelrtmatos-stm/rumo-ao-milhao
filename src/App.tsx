@@ -7944,23 +7944,19 @@ const EmpreendimentosSection = ({
 
 
 
-              {/* HUD FLUTUANTE — dropdown camadas/filtro */}
+              {/* Botão filtro — topo direito */}
+              <button onClick={e => { e.stopPropagation(); setMapaFiltroAberto(v => !v); }}
+                style={{ position:'absolute', top:10, right:10, zIndex:1025, width:36, height:36, borderRadius:10, border:'none', cursor:'pointer', background: mapaFiltroAberto ? '#1a4a1a' : 'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color: mapaFiltroAberto ? 'white' : '#374151' }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="4" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="11" y1="18" x2="13" y2="18"/></svg>
+              </button>
+
+              {/* HUD FLUTUANTE — dropdown filtro */}
               {mapaFiltroAberto && (
                 <div onClick={e => e.stopPropagation()} style={{
-                  position:'absolute', top:10, right:56, zIndex:1000,
+                  position:'absolute', top:52, right:10, zIndex:1024,
                   background:'white', borderRadius:16, boxShadow:'0 8px 32px rgba(0,0,0,0.18)',
                   border:'1px solid rgba(0,0,0,0.07)', padding:'8px', minWidth:160,
                 }}>
-                  {/* Camadas */}
-                  <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, padding:'2px 8px 6px' }}>Camadas</p>
-                  {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as any[]).map(([cam,icon,label]) => (
-                    <button key={cam}
-                      onClick={e => { e.stopPropagation(); e.preventDefault(); setMapaFiltroAberto(false); }}
-                      style={{ width:'100%', padding:'8px 10px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer', border:'none', textAlign:'left', display:'flex', alignItems:'center', gap:8, background:'transparent', color:'#374151', minHeight:40 }}>
-                      {icon} {label}
-                    </button>
-                  ))}
-                  <div style={{ height:1, background:'#f1f5f9', margin:'4px 0' }}/>
                   {/* Filtro de empreendimentos */}
                   <p style={{ fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, padding:'4px 8px 6px' }}>Empreendimentos</p>
                   {developments.map(dev => {

@@ -386,18 +386,15 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   }
 
   function toggleFullscreen() {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen?.().catch(() => {});
+    if (!isFullscreen) {
       setIsFullscreen(true);
-      setPainelAberto(false);
+      document.body.style.overflow = 'hidden';
       try { (screen.orientation as any).lock?.('landscape').catch(() => {}); } catch {}
     } else {
-      document.exitFullscreen?.().catch(() => {});
       setIsFullscreen(false);
-      setPainelAberto(localStorage.getItem('mapGlobal_painel') !== 'false');
+      document.body.style.overflow = '';
       try { (screen.orientation as any).unlock?.(); } catch {}
     }
-    // Guard: só invalida se o mapa ainda estiver montado
     const mapRef_ = leafletRef.current;
     if (mapRef_) setTimeout(() => { mapRef_?.invalidateSize?.(); }, 300);
   }
@@ -444,6 +441,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
   return (
     <div ref={containerRef} className="flex flex-col w-full overflow-hidden"
+      style={isFullscreen ? {position:'fixed', inset:0, zIndex:9999, width:'100vw', height:'100vh'} : {}}
       style={{
         borderRadius: 20,
         background: 'transparent',
@@ -452,7 +450,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
 
       {/* ── CORPO: painel + mapa ── */}
-      <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100vh' : mapHeight, minHeight: 300, position:'relative' }}>
+      <div style={{ display:'flex', height: focusDevId ? '100%' : isFullscreen ? '100%' : mapHeight, minHeight: 300, position:'relative' }}>
 
         {/* ── MAPA ── */}
         <div style={{ flex:1, position:'relative', minWidth:0 }}>
