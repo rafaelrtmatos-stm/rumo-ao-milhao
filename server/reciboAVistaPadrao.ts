@@ -1,10 +1,22 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
-    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
     .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
     .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
     .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+}
+
+function corrigirSimplesmenteNoXml(xml: string): string {
+  const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
+  xml = xml.replace(
+    new RegExp(`(simplesmente)(?:\s*de\s*)?</w:t>(?:</w:r>)?(?:<[^>]{0,200}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`, "g"),
+    "simplesmente $2"
+  );
+  xml = xml.replace(new RegExp(`simplesmente(?:de\s*)?(${papeis})`, "g"), "simplesmente $1");
+  xml = xml.replace(new RegExp(`simplesmente\s+de\s+(${papeis})`, "g"), "simplesmente $1");
+  xml = xml.replace(new RegExp(`simplesmente\s{2,}(${papeis})`, "g"), "simplesmente $1");
+  return xml;
 }
 
 import AdmZip from "adm-zip";
@@ -336,6 +348,11 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = corrigirEspacosSimplesmente(xml);
 
   // ── Reempacotar ───────────────────────────────────────────────────────────
+  // Correção final XML
+  xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
+  xml = xml.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;");
+  xml = corrigirSimplesmenteNoXml(xml);
+  xml = corrigirEspacosSimplesmente(xml);
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
   return zip.toBuffer();
 }

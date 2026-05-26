@@ -19,19 +19,35 @@ function corrigirEspacosSimplesmente(texto: string): string {
  */
 function corrigirSimplesmenteNoXml(xml: string): string {
   const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
-  // Substitui: "simplesmente" (em <w:t>) + qualquer XML intermediário + papel (em outro <w:t>)
-  // por: "simplesmente PAPEL" tudo num mesmo run
-  return xml.replace(
+  
+  // Passo 1: fragmentado entre runs — "simplesmente</w:t>...</w:t>VENDEDOR"
+  xml = xml.replace(
     new RegExp(
-      `(simplesmente)(?:de\\s*)?</w:t>(?:</w:r>)?(?:<[^>]+>)*?<w:t(?:\\s[^>]*)?>(?:de\\s*)?(${papeis})`,
+      `(simplesmente)(?:\s*de\s*)?</w:t>(?:</w:r>)?(?:<[^>]{0,200}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`,
       "g"
     ),
     "simplesmente $2"
-  ).replace(
-    // Caso mais simples: colado sem espaço no mesmo <w:t>
-    new RegExp(`simplesmente(?:de\\s*)?(${papeis})`, "g"),
+  );
+  
+  // Passo 2: colado no mesmo run sem espaço — "simplesmenteVENDEDOR"
+  xml = xml.replace(
+    new RegExp(`simplesmente(?:de\s*)?(${papeis})`, "g"),
     "simplesmente $1"
   );
+
+  // Passo 3: com "de " extra — "simplesmente de VENDEDOR"  
+  xml = xml.replace(
+    new RegExp(`simplesmente\s+de\s+(${papeis})`, "g"),
+    "simplesmente $1"
+  );
+
+  // Passo 4: espaços duplos — "simplesmente  VENDEDOR"
+  xml = xml.replace(
+    new RegExp(`simplesmente\s{2,}(${papeis})`, "g"),
+    "simplesmente $1"
+  );
+
+  return xml;
 }
 
 import AdmZip from "adm-zip";
@@ -542,14 +558,13 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   xml = corrigirSimplesmenteNoXml(xml);
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
-  // Validação final: remover qualquer caractere inválido que tenha escapado
+  // Validação final: remover caracteres de controle inválidos em XML
   xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-  // Verificar balance básico de tags
-  const openCount = (xml.match(/<w:r[ >]/g) || []).length;
-  const closeCount = (xml.match(/<\/w:r>/g) || []).length;
-  if (Math.abs(openCount - closeCount) > 50) {
-    console.warn(`[contrato] XML possivelmente desbalanceado: ${openCount} opens vs ${closeCount} closes`);
-  }
+  // Corrigir & solto que não é entidade XML (causa "O nome na marca de fim do elemento...")
+  xml = xml.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;");
+  // Última passagem simplesmente
+  xml = corrigirSimplesmenteNoXml(xml);
+  xml = corrigirEspacosSimplesmente(xml);
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
   return zip.toBuffer();
 }
