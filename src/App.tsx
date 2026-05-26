@@ -9408,8 +9408,7 @@ const EmpreendimentosSection = ({
                   linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
                   linhas.push("REGRA2: Q2:1,2,3. VALOR:18000 ENTRADA:500 PARCELAS:48");
                   linhas.push("PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50");
-                  const txt = linhas.join("
-");
+                  const txt = linhas.join("\n");
                   try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
                 };
