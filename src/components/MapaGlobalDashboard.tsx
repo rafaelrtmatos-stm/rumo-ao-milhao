@@ -349,7 +349,12 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           });
         } else {
           const dev = cluster.devs[0];
-          const nome = dev.nome.length > 18 ? dev.nome.slice(0,18)+'…' : dev.nome;
+          // Primeira letra maiúscula, preposições minúsculas
+          const fmtNome = (n: string) => {
+            const preps = new Set(['de','da','do','das','dos','e','em','na','no']);
+            return n.toLowerCase().split(' ').map((w,i) => i>0 && preps.has(w) ? w : w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+          };
+          const nome = fmtNome(dev.nome.length > 18 ? dev.nome.slice(0,18)+'…' : dev.nome);
           // Estilo Google Maps: pino vermelho + label branco ao lado
           icon = L.divIcon({
             className: "",

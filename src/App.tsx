@@ -2292,6 +2292,11 @@ function formatarNomeProprio(nome: string): string {
   }).join(' ');
 }
 
+/** Formata nome de empreendimento para exibição: primeira letra maiúscula, preposições minúsculas exceto no início */
+function fmtEmp(nome: string): string {
+  return formatarNomeProprio(nome);
+}
+
 /** Formata quadra sempre maiúscula */
 function formatarQuadra(q: string): string {
   return String(q || '').toUpperCase();
@@ -5777,7 +5782,7 @@ const LotDashboard = ({
         {/* Barra topo fullscreen */}
         <div style={{position:'absolute', top:12, left:12, right:12, zIndex:10000, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, pointerEvents:'auto'}}>
           <div style={{background:'rgba(255,255,255,0.92)', backdropFilter:'blur(8px)', borderRadius:14, padding:'8px 14px', boxShadow:'0 4px 20px rgba(0,0,0,0.2)'}}>
-            <p style={{fontSize:11, fontWeight:900, color:'#1a4a1a', margin:0}}>{String(localDev.nome||'')}</p>
+            <p style={{fontSize:11, fontWeight:900, color:'#1a4a1a', margin:0}}>{fmtEmp(String(localDev.nome||''))}</p>
             <p style={{fontSize:9, color:'#94a3b8', margin:0}}>{latStr}, {lngStr}</p>
           </div>
           <button onClick={() => { setGlobalFullscreen(false); try{(screen as any).orientation?.unlock?.();}catch{} }}
@@ -6919,7 +6924,7 @@ const LotDashboard = ({
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
               </div>
               <div className="min-w-0">
-                <h2 className="text-base font-black text-slate-900 truncate leading-tight tracking-tight">{localDev.nome}</h2>
+                <h2 className="text-base font-black text-slate-900 truncate leading-tight tracking-tight">{fmtEmp(localDev.nome)}</h2>
                 <p className="text-[11px] text-slate-400 font-medium">
                   {[localDev.cidade, localDev.estado].filter(Boolean).join(', ') || 'Mapa e lotes do empreendimento'}
                 </p>
@@ -7978,7 +7983,7 @@ const EmpreendimentosSection = ({
                         <span style={{ width:16, height:16, borderRadius:5, border:'2px solid', borderColor: ativo ? '#1a4a1a' : '#d1d5db', background: ativo ? '#1a4a1a' : 'white', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
                           {ativo && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
                         </span>
-                        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{dev.nome}</span>
+                        <span style={{ overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', flex:1 }}>{fmtEmp(dev.nome)}</span>
                       </button>
                     );
                   })}
@@ -8810,7 +8815,7 @@ const EmpreendimentosSection = ({
             <div className="px-5 pt-5 pb-4">
               <div className="flex items-start justify-between gap-2 mb-3">
                 <div className="min-w-0 flex-1">
-                  <h4 className="text-lg font-black text-slate-900 leading-tight truncate">{dev.nome}</h4>
+                  <h4 className="text-lg font-black text-slate-900 leading-tight truncate">{fmtEmp(dev.nome)}</h4>
                   <p className="text-xs text-slate-400 mt-0.5 truncate">
                     {[dev.comunidade, dev.cidade, dev.estado].filter(Boolean).join(" • ")}
                   </p>
@@ -14428,7 +14433,7 @@ VENDEDOR: ${vendedorLabel}`;
                             )}
                           </div>
                           <div className="flex items-center gap-3 mt-0.5">
-                            {dev && <span className="text-xs text-slate-400">{dev.nome}</span>}
+                            {dev && <span className="text-xs text-slate-400">{fmtEmp(dev.nome)}</span>}
                             {v.quadra && v.numeroLote && <span className="text-xs text-slate-400">Q{v.quadra}:L{v.numeroLote}</span>}
                             {v.dataVenda && <span className="text-xs text-slate-400">{v.dataVenda}</span>}
                           </div>
