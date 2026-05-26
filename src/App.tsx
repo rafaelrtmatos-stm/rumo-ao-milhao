@@ -3347,21 +3347,39 @@ const LotDashboard = ({
   const copyScriptForChatGPT = async () => {
     const scriptAtual = formatLotScriptFromEmpreendimento(localDev, sales);
     const payload = [
+      "MAPA_AI_ULTRA_V32:",
+      "",
+      "  saida_final:",
+      "    formato: Q1:1D,2I,3R.",
+      "    obrigatorio:",
+      "      - somente_script",
+      "      - sem_explicacoes",
+      "      - ordenar_lotes",
+      "      - nao_inventar_status",
+      "      - nao_assumir_por_texto",
+      "      - manter_consistencia_global",
+      "      - validar_visualmente_antes_de_marcar",
+      "      - ignorar_tipografia_estilizada",
+      "      - nao_converter_numero_colorido_em_status",
+      "    legenda:",
+      "      D: disponivel",
+      "      I: indisponivel",
+      "      R: reservado",
+      "    prioridade: bolinha > preenchimento > marcador_visual > legenda > padrao_global > cor_texto",
+      "    regra: lote_com_apenas_numero_colorido: manter_disponivel",
+      "    regra: lote_sem_confirmacao_visual: status_padrao D",
+      "",
       `EMPREENDIMENTO: ${localDev.nome}`,
-      "REGRA: devolver somente no padrão Q1:1D,2I,3R.",
-      "STATUS: D=DISPONÍVEL; I=INDISPONÍVEL; R=RESERVADO.",
-      "CHAVE: empreendimento + quadra + lote. Não duplicar.",
       "",
       "SCRIPT_ATUAL:",
       scriptAtual || "Q1:.",
       "",
-      "ORIENTAÇÃO:",
-      "Analise o mapa enviado e devolva o script corrigido por quadra.",
+      "Analise o mapa e devolva apenas o script corrigido no formato Q1:1D,2I,3R.",
     ].join("\n");
 
     try {
       await navigator.clipboard?.writeText(payload);
-      setLotScriptMsg("Script copiado. Envie junto com o mapa para o ChatGPT.");
+      setLotScriptMsg("Script V32 copiado. Envie junto com o mapa para o ChatGPT.");
     } catch {
       setLotScriptText(payload);
       setLotScriptMsg("Copie o texto abaixo e envie ao ChatGPT.");
@@ -8932,6 +8950,9 @@ const EmpreendimentosSection = ({
 
       <AnimatePresence>
         {selectedDevForMap && (
+          <>
+          {/* Backdrop que bloqueia a aba de trás */}
+          <div className="fixed inset-0 z-[99] bg-black/60" onClick={() => { document.body.style.overflow = ""; setSelectedDevForMap(null); }}/>
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
@@ -8954,6 +8975,7 @@ const EmpreendimentosSection = ({
               setLotRegTab("lotes");
             }}
           />
+          </>
         )}
       </AnimatePresence>
 
@@ -9528,23 +9550,18 @@ const EmpreendimentosSection = ({
                   </div>
                 )}
                 {/* Campo para colar resposta do ChatGPT */}
-                {scriptPasteText ? (
-                  <div>
+                <div>
                     <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Resposta do ChatGPT</p>
                     <textarea
                       className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed"
                       value={scriptPasteText}
                       onChange={(e) => setScriptPasteText(e.target.value)}
-                      placeholder="Cole aqui ou use o botão Colar acima"
+                      placeholder="Cole aqui o script do ChatGPT (ex: Q1:1D,2I,3R.)"
+                      inputMode="text"
+                      autoFocus
+                      onFocus={(e) => e.target.select()}
                     />
                   </div>
-                ) : (
-                  !scriptGerado && (
-                    <div className="min-h-[60px] flex items-center justify-center rounded-xl border-2 border-dashed border-slate-200 text-slate-400 text-xs font-medium">
-                      Clique em "Colar" para pegar do clipboard
-                    </div>
-                  )
-                )}
                 <button
                   disabled={!scriptPasteText.trim()}
                   onClick={importarScriptFromModal}
