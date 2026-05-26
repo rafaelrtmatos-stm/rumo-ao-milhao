@@ -2574,6 +2574,7 @@ const LotDashboard = ({
   const [camadasGlobal, setCamadasGlobal] = useState({ satelite: true, hibrido: false, ruas: true, terreno: false });
   // Estados aba Lotes premium
   const [abLoteBusca, setAbLoteBusca] = useState("");
+  const [globalFullscreen, setGlobalFullscreen] = useState(false);
   const [abLoteQuadraFiltro, setAbLoteQuadraFiltro] = useState("todas");
   const [abLoteStatusFiltro, setAbLoteStatusFiltro] = useState<string[]>([]);
   const [abLoteOrdem, setAbLoteOrdem] = useState("numero");
@@ -5752,6 +5753,33 @@ const LotDashboard = ({
     const latStr = lat ? `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? 'S' : 'N'}` : '–';
     const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
 
+    if (globalFullscreen) return (
+      <div style={{position:'fixed', inset:0, zIndex:9999, background:'black', display:'flex', flexDirection:'column'}}>
+        {/* Barra topo fullscreen */}
+        <div style={{position:'absolute', top:12, left:12, right:12, zIndex:10000, display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, pointerEvents:'auto'}}>
+          <div style={{background:'rgba(255,255,255,0.92)', backdropFilter:'blur(8px)', borderRadius:14, padding:'8px 14px', boxShadow:'0 4px 20px rgba(0,0,0,0.2)'}}>
+            <p style={{fontSize:11, fontWeight:900, color:'#1a4a1a', margin:0}}>{String(localDev.nome||'')}</p>
+            <p style={{fontSize:9, color:'#94a3b8', margin:0}}>{latStr}, {lngStr}</p>
+          </div>
+          <button onClick={() => { setGlobalFullscreen(false); try{(screen as any).orientation?.unlock?.();}catch{} }}
+            style={{background:'rgba(255,255,255,0.92)', backdropFilter:'blur(8px)', border:'none', borderRadius:14, padding:'10px 18px', fontSize:11, fontWeight:900, color:'#374151', cursor:'pointer', boxShadow:'0 4px 20px rgba(0,0,0,0.2)'}}>
+            ✕ Fechar
+          </button>
+        </div>
+        {/* Iframe fullscreen */}
+        <iframe
+          title="Como Chegar Fullscreen"
+          src={iframeUrl}
+          width="100%" height="100%"
+          style={{border:0, flex:1}}
+          loading="lazy" allowFullScreen
+        />
+        {/* Sol e bússola */}
+        <SolOeste />
+        <BussolaInterativa />
+      </div>
+    );
+
     if (!hasCoords) return (
       <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,color:'#94a3b8',background:'#f8fafc'}}>
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
@@ -5803,7 +5831,7 @@ const LotDashboard = ({
           </div>
 
           {/* Fullscreen — topo direito */}
-          <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}
+          <button onClick={() => { setGlobalFullscreen(true); try { (screen as any).orientation?.lock?.('landscape').catch?.(()=>{}); } catch {} }}
             style={{position:'absolute', top:12, right:12, zIndex:10, width:36, height:36, background:'rgba(255,255,255,0.95)', border:'1px solid rgba(0,0,0,0.07)', borderRadius:10, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(0,0,0,0.12)'}}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
           </button>
