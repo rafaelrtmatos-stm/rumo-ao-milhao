@@ -99,6 +99,7 @@ import { authFetch } from "./lib/authFetch";
 import { maskCPF, maskRG, maskCEP, maskPhone, validateCPF } from "./lib/masks";
 import { geminiService } from "./geminiService";
 import BussolaInterativa from "./components/BussolaInterativa";
+import ClimaCard from "./components/ClimaCard";
 import SolOeste from "./components/SolOeste";
 import MapaGlobalDashboard, { MapaGlobalHandle } from "./components/MapaGlobalDashboard";
 import PickLocationMap from "./components/PickLocationMap";
@@ -5814,21 +5815,7 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* Pills camadas — topo centro */}
-          <div style={{position:'absolute', top:12, left:'50%', transform:'translateX(-50%)', zIndex:10, display:'flex', gap:6}}>
-            {([['k','🛰','Satélite'],['','🌍','Híbrido'],['m','🗺','Ruas']] as [string,string,string][]).map(([t,icon,label]) => (
-              <a key={t} href={`https://maps.google.com/maps?q=${lat},${lng}&z=16&t=${t}&output=embed`}
-                style={{
-                  display:'flex', alignItems:'center', gap:5,
-                  padding:'6px 12px', borderRadius:12, fontSize:11, fontWeight:700,
-                  background:'rgba(255,255,255,0.95)', color:'#374151',
-                  boxShadow:'0 2px 8px rgba(0,0,0,0.12)', border:'1px solid rgba(0,0,0,0.07)',
-                  textDecoration:'none', cursor:'pointer',
-                }}>
-                {icon} {label}
-              </a>
-            ))}
-          </div>
+
 
           {/* Fullscreen — topo direito */}
           <button onClick={() => { setGlobalFullscreen(true); try { (screen as any).orientation?.lock?.('landscape').catch?.(()=>{}); } catch {} }}
@@ -5841,8 +5828,8 @@ const LotDashboard = ({
           {/* Bússola — topo direito */}
           <BussolaInterativa />
 
-          {/* Controles zoom — esquerda centro */}
-          <div style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', zIndex:10, display:'flex', flexDirection:'column', gap:6}}>
+          {/* Controles zoom — direita centro */}
+          <div style={{position:'absolute', right:56, top:'50%', transform:'translateY(-50%)', zIndex:10, display:'flex', flexDirection:'column', gap:6}}>
             {[
               {icon:'+', action:'zoom_in'},
               {icon:'−', action:'zoom_out'},
@@ -5868,10 +5855,7 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* Botão camadas — direita inferior */}
-          <button style={{position:'absolute', right:12, bottom:12, zIndex:10, width:40, height:40, background:'rgba(255,255,255,0.95)', border:'1px solid rgba(0,0,0,0.07)', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 12px rgba(0,0,0,0.12)'}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-          </button>
+
         </div>
 
         {/* SIDEBAR DIREITA — oculta no mobile */}
@@ -5929,22 +5913,8 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* CAMADAS */}
-          <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
-            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-              <p style={{fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, margin:0}}>Camadas</p>
-            </div>
-            {[{k:'satelite' as const,l:'Satélite'},{k:'hibrido' as const,l:'Híbrido'},{k:'ruas' as const,l:'Ruas'},{k:'terreno' as const,l:'Terreno'}].map(({k,l}) => (
-              <label key={k} style={{display:'flex', alignItems:'center', gap:10, marginBottom:8, cursor:'pointer'}}>
-                <div onClick={() => setCamadasGlobal(p=>({...p,[k]:!p[k]}))}
-                  style={{width:16,height:16,borderRadius:5,border:'2px solid',borderColor:camadasGlobal[k]?'#1a4a1a':'#d1d5db',background:camadasGlobal[k]?'#1a4a1a':'white',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
-                  {camadasGlobal[k] && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-                </div>
-                <span style={{fontSize:11, fontWeight:500, color:'#374151'}}>{l}</span>
-              </label>
-            ))}
-          </div>
+          {/* CLIMA */}
+          <ClimaCard lat={lat} lng={lng} cidade={cidade} />
         </div>
       </div>
     );
