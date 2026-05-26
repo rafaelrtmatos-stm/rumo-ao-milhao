@@ -1101,7 +1101,7 @@ async function convertDocxToPdfILovePDF(docxBuffer: Buffer, filename: string, se
   const formData = new FormData();
   formData.append("task", task);
   formData.append("file", new Blob([docxBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), filename);
-  const uploadRes = await fetch(\`https://\${server}/v1/upload\`, {
+  const uploadRes = await fetch(`https://${server}/v1/upload`, {
     method: "POST",
     headers: { Authorization: "Bearer " + token },
     body: formData,
@@ -1110,7 +1110,7 @@ async function convertDocxToPdfILovePDF(docxBuffer: Buffer, filename: string, se
   const { server_filename } = await uploadRes.json() as { server_filename: string };
 
   // 4. Processar conversão
-  const processRes = await fetch(\`https://\${server}/v1/process\`, {
+  const processRes = await fetch(`https://${server}/v1/process`, {
     method: "POST",
     headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1122,7 +1122,7 @@ async function convertDocxToPdfILovePDF(docxBuffer: Buffer, filename: string, se
   if (!processRes.ok) throw new Error("ILovePDF process failed: " + processRes.status);
 
   // 5. Download do PDF
-  const downloadRes = await fetch(\`https://\${server}/v1/download/\${task}\`, {
+  const downloadRes = await fetch(`https://${server}/v1/download/${task}`, {
     headers: { Authorization: "Bearer " + token },
   });
   if (!downloadRes.ok) throw new Error("ILovePDF download failed: " + downloadRes.status);
