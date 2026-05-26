@@ -7963,8 +7963,8 @@ const EmpreendimentosSection = ({
           })));
         }
         return (
-        <>{(showMapaGlobal && !isAdding) && (
-          <div>
+        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none', visibility: (showMapaGlobal && !isAdding) ? 'visible' : 'hidden', pointerEvents: (showMapaGlobal && !isAdding) ? 'auto' : 'none' }}>
+
           {/* ── WRAPPER MOBILE DO MAPA GLOBAL ── */}
           {isMapaMobile ? (
             <div style={{ position: 'relative', margin: '0 0 8px' }}>
@@ -8027,7 +8027,7 @@ const EmpreendimentosSection = ({
                     visible={showMapaGlobal}
                     focusDevId={isAdding && editingDev ? editingDev.id : null}
                     onAbrirEmpreendimento={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); } }}
-                    onVerMapa={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) setSelectedDevForMap(dev); }}
+                    onVerMapa={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; } }}
                   />
                 </div>
 
@@ -8140,8 +8140,8 @@ const EmpreendimentosSection = ({
           </div>
           )} {/* fim ternário isMapaMobile */}
         </div>
-          </div>
-        )}</>
+        );
+      })()}
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
@@ -8779,7 +8779,7 @@ const EmpreendimentosSection = ({
                 </div>
                 {/* Botões — uma linha, sem quebra */}
                 <div className="flex items-center gap-1 flex-shrink-0">
-                  <button onClick={() => setSelectedDevForMap(dev)}
+                  <button onClick={() => { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; }}
                     className="flex items-center gap-1 px-2 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-primary-main transition-colors">
                     <MapPin size={11} /><span>Mapa</span>
                   </button>
@@ -8960,7 +8960,7 @@ const EmpreendimentosSection = ({
       </div>
 
       <AnimatePresence>
-        {selectedDevForMap && (() => { document.body.style.overflow = "hidden"; return (
+        {selectedDevForMap && (
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
@@ -8983,7 +8983,7 @@ const EmpreendimentosSection = ({
               setLotRegTab("lotes");
             }}
           />
-        ); })()}
+        )}
       </AnimatePresence>
 
       {/* Modal: Cadastrar / Gerenciar Lotes */}
