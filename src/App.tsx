@@ -14517,6 +14517,15 @@ VENDEDOR: ${vendedorLabel}`;
                     {downloadingDocx ? "Gerando..." : <><FileDown size={17} /> DOCX</>}
                   </button>
                   <button
+                    onClick={handleDownloadPdfContrato}
+                    disabled={downloadingPdf}
+                    className="btn-primary h-11 px-4 text-sm font-semibold disabled:opacity-50 flex items-center justify-center gap-2"
+                    style={{background: downloadingPdf ? undefined : '#1a4a1a'}}
+                    title="Baixar PDF do contrato via ILovePDF"
+                  >
+                    {downloadingPdf ? "Gerando PDF..." : <><FileDown size={17} /> PDF</>}
+                  </button>
+                  <button
                     onClick={() => { setReciboObservacao((selectedVenda as any)?.reciboObservacao || ""); setShowReciboModal(true); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Gerar recibo"
