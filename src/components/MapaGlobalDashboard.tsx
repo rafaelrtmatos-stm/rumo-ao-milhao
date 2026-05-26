@@ -454,8 +454,11 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
   return (
     <div ref={containerRef} className="flex flex-col w-full overflow-hidden"
-      style={isFullscreen ? {position:'fixed', inset:0, zIndex:9999, width:'100vw', height:'100vh'} : {}}
-      style={{
+      style={isFullscreen ? {
+        position:'fixed', inset:0, zIndex:9999, width:'100vw', height:'100vh',
+        borderRadius: 0, background: '#000',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      } : {
         borderRadius: 20,
         background: 'transparent',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',

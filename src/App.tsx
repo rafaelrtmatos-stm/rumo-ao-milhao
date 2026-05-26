@@ -6191,7 +6191,7 @@ const LotDashboard = ({
 
     return (
       <>
-      <div className="fixed inset-0 z-[100] flex flex-col overflow-hidden"
+      <div className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
         style={{ background: '#f5f7fb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
 
         {/* ── HEADER ── */}
@@ -8941,7 +8941,7 @@ const EmpreendimentosSection = ({
         {selectedDevForMap && (
           <>
           {/* Backdrop que bloqueia a aba de trás */}
-          <div className="fixed inset-0 z-[99] bg-black/60" onClick={() => { document.body.style.overflow = ""; setSelectedDevForMap(null); }}/>
+          <div className="fixed inset-0 z-[499] bg-black/60" onClick={() => { document.body.style.overflow = ""; setSelectedDevForMap(null); }}/>
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
