@@ -7963,7 +7963,7 @@ const EmpreendimentosSection = ({
           })));
         }
         return (
-        {(showMapaGlobal && !isAdding) && (
+        <>{(showMapaGlobal && !isAdding) && (
 
           {/* ── WRAPPER MOBILE DO MAPA GLOBAL ── */}
           {isMapaMobile ? (
@@ -8140,7 +8140,7 @@ const EmpreendimentosSection = ({
           </div>
           )} {/* fim ternário isMapaMobile */}
         </div>
-        )}
+        )}</>
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
