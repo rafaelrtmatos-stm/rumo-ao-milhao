@@ -3516,7 +3516,7 @@ const LotDashboard = ({
           // Contar páginas do primeiro PDF
           if (i === 0) {
             try {
-              const pdfjsLib = await loadPdfjsLib();
+              const pdfjsLib = await loadPdfJsIfNeeded();
               const doc = await pdfjsLib.getDocument({ data: buf }).promise;
               numPages = doc.numPages;
             } catch {}
