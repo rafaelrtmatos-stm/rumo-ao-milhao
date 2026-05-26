@@ -215,6 +215,25 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       leafletRef.current = map;
       setMapReady(true);
 
+      // Auto-centralizar nos pinos após mapa pronto
+      setTimeout(() => {
+        if (!leafletRef.current) return;
+        const devs = empreendimentos.filter(d =>
+          typeof d.lat === 'number' && typeof d.lng === 'number' &&
+          isFinite(d.lat!) && isFinite(d.lng!) && d.lat !== 0 && d.lng !== 0
+        );
+        if (!devs.length) return;
+        import("leaflet").then(L => {
+          if (!leafletRef.current) return;
+          if (devs.length === 1) {
+            leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 14, { animate: false });
+          } else {
+            const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
+            leafletRef.current.fitBounds(bounds, { padding: [40,40], maxZoom: 14, animate: false });
+          }
+        });
+      }, 100);
+
       // Centralização feita no useEffect separado abaixo
     });
 

@@ -8041,45 +8041,7 @@ const EmpreendimentosSection = ({
                   </div>
                 )}
 
-                {/* HUD — coluna de botões canto superior direito */}
-                <div style={{ position:'absolute', top:10, right:10, zIndex:1020, display:'flex', flexDirection:'column', gap:6 }}>
 
-
-
-                  {/* Cadeado */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); setMapaGlobalBloqueado(v => !v); }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background: mapaGlobalBloqueado ? (mapaFlashLock ? 'rgba(239,68,68,0.9)' : 'rgba(255,255,255,0.96)') : 'rgba(26,74,26,0.92)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', transition:'all 0.2s', pointerEvents:'auto' }}>
-                    {mapaGlobalBloqueado
-                      ? <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={mapaFlashLock ? 'white' : '#1a4a1a'} strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                      : <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 0 10 0"/></svg>}
-                  </button>
-
-                  {/* Centralizar */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); mapaGlobalRef.current?.centralizar(); }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color:'#374151', pointerEvents:'auto' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-                  </button>
-
-                  {/* Minha localização */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); mapaGlobalRef.current?.minhaLocalizacao(); }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color:'#3b82f6', pointerEvents:'auto' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-                  </button>
-
-                  {/* Fullscreen */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); if(document.fullscreenElement){document.exitFullscreen();}else{document.documentElement.requestFullscreen().catch(()=>{});try{(screen.orientation as any).lock?.('landscape').catch(()=>{});}catch{}} }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color:'#374151', pointerEvents:'auto' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
-                  </button>
-
-                  {/* Expandir/recolher */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); setMapaGlobalExpandido(v => !v); }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background:'rgba(26,74,26,0.92)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color:'white', transition:'all 0.2s', pointerEvents:'auto' }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ transform: mapaGlobalExpandido ? 'rotate(180deg)' : 'none', transition:'transform 0.3s' }}>
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                </div>
               </div>
 
             </div>
