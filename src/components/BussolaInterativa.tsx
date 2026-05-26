@@ -13,7 +13,7 @@ export default function BussolaInterativa() {
 
   return (
     <div style={{
-      position: 'absolute', bottom: 80, right: 12, zIndex: 20,
+      position: 'absolute', top: 60, right: 12, zIndex: 20,
       background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(10px)',
       borderRadius: 18, padding: '10px 12px 8px',
       boxShadow: '0 4px 20px rgba(0,0,0,0.15)',

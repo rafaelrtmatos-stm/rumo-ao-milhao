@@ -5743,55 +5743,178 @@ const LotDashboard = ({
     const lat = (localDev as any).lat as number | undefined;
     const lng = (localDev as any).lng as number | undefined;
     const hasCoords = !!(lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0);
-    const iframeUrl = hasCoords ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&t=k&output=embed` : '';
+    const iframeUrl = hasCoords
+      ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&t=k&output=embed`
+      : '';
     const gmapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : '';
+    const cidade = String(localDev.cidade || '');
+    const latStr = lat ? `${Math.abs(lat).toFixed(4)}° ${lat < 0 ? 'S' : 'N'}` : '–';
+    const lngStr = lng ? `${Math.abs(lng).toFixed(4)}° ${lng < 0 ? 'W' : 'E'}` : '–';
 
-    // Layout idêntico desktop e mobile — iframe ocupa 100%, botões flutuantes simétricos
+    if (!hasCoords) return (
+      <div style={{flex:1,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:12,color:'#94a3b8',background:'#f8fafc'}}>
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        <p style={{fontSize:14,fontWeight:600,margin:0}}>Localização não cadastrada</p>
+        <p style={{fontSize:12,color:'#cbd5e1',margin:0}}>Edite o empreendimento e adicione as coordenadas</p>
+      </div>
+    );
+
     return (
-      <div className="flex flex-1 min-h-0 relative overflow-hidden" style={{minHeight: 0}}>
-        {hasCoords ? (
-          <>
-            {/* Iframe satélite — 100% */}
-            <iframe
-              title="Como Chegar"
-              src={iframeUrl}
-              width="100%" height="100%"
-              style={{ border: 0, position: 'absolute', inset: 0 }}
-              loading="lazy"
-              allowFullScreen
-            />
+      <div className="flex flex-1 min-h-0 overflow-hidden" style={{background:'#f4f6f8', gap:16, padding:16}}>
 
-            {/* HUD inferior — botões simétricos, nunca espremidos */}
-            <div style={{
-              position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
-              zIndex: 10, display: 'flex', alignItems: 'center', gap: 10,
-              background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)',
-              borderRadius: 16, padding: '8px 14px',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
-              border: '1px solid rgba(0,0,0,0.07)',
-              whiteSpace: 'nowrap',
-            }}>
-              <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
-                style={{display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#1a4a1a', textDecoration:'none'}}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                Abrir no Google Maps
-              </a>
-              <div style={{width:1, height:18, background:'#e2e8f0'}}/>
-              <span style={{fontSize:11, color:'#94a3b8', fontWeight:500}}>
-                {(lat as number).toFixed(4)}°, {(lng as number).toFixed(4)}°
-              </span>
+        {/* COLUNA ESQUERDA — MAPA 100% menos sidebar */}
+        <div style={{flex:1, position:'relative', borderRadius:20, overflow:'hidden', boxShadow:'0 2px 16px rgba(0,0,0,0.12)', minHeight:0}}>
+
+          {/* Iframe satélite */}
+          <iframe
+            title="Como Chegar"
+            src={iframeUrl}
+            width="100%" height="100%"
+            style={{border:0, position:'absolute', inset:0}}
+            loading="lazy" allowFullScreen
+          />
+
+          {/* Barra de busca — topo esquerdo */}
+          <div style={{position:'absolute', top:12, left:12, zIndex:10}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.97)', borderRadius:12, padding:'8px 12px', width:220, boxShadow:'0 2px 12px rgba(0,0,0,0.12)', border:'1px solid rgba(0,0,0,0.06)'}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+              <input placeholder="Buscar endereço ou lugar"
+                style={{flex:1, fontSize:12, color:'#374151', background:'transparent', outline:'none', border:'none'}}
+                onKeyDown={e => { if(e.key==='Enter') window.open(`https://www.google.com/maps/search/${encodeURIComponent((e.target as HTMLInputElement).value)}`,'_blank'); }}
+              />
             </div>
-
-            {/* Bússola — canto inferior direito */}
-            <BussolaInterativa />
-          </>
-        ) : (
-          <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, color:'#94a3b8', background:'#f8fafc', width:'100%'}}>
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <p style={{fontSize:14, fontWeight:600, margin:0}}>Localização não cadastrada</p>
-            <p style={{fontSize:12, color:'#cbd5e1', margin:0, textAlign:'center'}}>Edite o empreendimento e adicione as coordenadas</p>
           </div>
-        )}
+
+          {/* Pills camadas — topo centro */}
+          <div style={{position:'absolute', top:12, left:'50%', transform:'translateX(-50%)', zIndex:10, display:'flex', gap:6}}>
+            {([['k','🛰','Satélite'],['','🌍','Híbrido'],['m','🗺','Ruas']] as [string,string,string][]).map(([t,icon,label]) => (
+              <a key={t} href={`https://maps.google.com/maps?q=${lat},${lng}&z=16&t=${t}&output=embed`}
+                style={{
+                  display:'flex', alignItems:'center', gap:5,
+                  padding:'6px 12px', borderRadius:12, fontSize:11, fontWeight:700,
+                  background:'rgba(255,255,255,0.95)', color:'#374151',
+                  boxShadow:'0 2px 8px rgba(0,0,0,0.12)', border:'1px solid rgba(0,0,0,0.07)',
+                  textDecoration:'none', cursor:'pointer',
+                }}>
+                {icon} {label}
+              </a>
+            ))}
+          </div>
+
+          {/* Fullscreen — topo direito */}
+          <button onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}
+            style={{position:'absolute', top:12, right:12, zIndex:10, width:36, height:36, background:'rgba(255,255,255,0.95)', border:'1px solid rgba(0,0,0,0.07)', borderRadius:10, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 8px rgba(0,0,0,0.12)'}}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+          </button>
+
+          {/* Bússola — topo direito (abaixo do fullscreen) */}
+          <BussolaInterativa />
+
+          {/* Controles zoom — esquerda centro */}
+          <div style={{position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', zIndex:10, display:'flex', flexDirection:'column', gap:6}}>
+            {[
+              {icon:'+', action:'zoom_in'},
+              {icon:'−', action:'zoom_out'},
+            ].map(({icon}) => (
+              <button key={icon}
+                style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.07)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.12)',fontSize:18,fontWeight:900,color:'#374151'}}>
+                {icon}
+              </button>
+            ))}
+            <button
+              onClick={() => navigator.geolocation.getCurrentPosition(p => window.open(`https://maps.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}&z=16`,'_blank'))}
+              style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.07)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.12)'}}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+            </button>
+          </div>
+
+          {/* Minimapa — esquerda inferior */}
+          {((localDev as any).mapaImagemUrl || (localDev as any).mapaImagemLeveBase64) && (
+            <div style={{position:'absolute', left:12, bottom:12, zIndex:10, borderRadius:12, overflow:'hidden', boxShadow:'0 2px 12px rgba(0,0,0,0.2)', border:'2px solid rgba(255,255,255,0.8)', width:100, background:'#1a1a1a'}}>
+              <img src={(localDev as any).mapaImagemUrl || (localDev as any).mapaImagemLeveBase64}
+                style={{width:'100%', height:80, objectFit:'cover', display:'block', opacity:0.85}}/>
+              <p style={{fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.8)', textAlign:'center', padding:'3px 0', margin:0, background:'rgba(0,0,0,0.4)'}}>Minimapa</p>
+            </div>
+          )}
+
+          {/* Botão camadas — direita inferior */}
+          <button style={{position:'absolute', right:12, bottom:12, zIndex:10, width:40, height:40, background:'rgba(255,255,255,0.95)', border:'1px solid rgba(0,0,0,0.07)', borderRadius:12, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', boxShadow:'0 2px 12px rgba(0,0,0,0.12)'}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+          </button>
+        </div>
+
+        {/* SIDEBAR DIREITA */}
+        <div style={{width:220, flexShrink:0, display:'flex', flexDirection:'column', gap:12, overflowY:'auto'}}>
+
+          {/* LOCALIZAÇÃO */}
+          <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:12}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <p style={{fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, margin:0}}>Localização</p>
+            </div>
+            <p style={{fontSize:13, fontWeight:800, color:'#1e293b', margin:'0 0 4px'}}>{cidade}{localDev.estado ? `, ${localDev.estado}` : ''}</p>
+            <p style={{fontSize:10, color:'#94a3b8', margin:'0 0 10px'}}>{latStr}, {lngStr}</p>
+            <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+              style={{display:'flex', alignItems:'center', justifyContent:'center', gap:6, padding:'7px 0', borderRadius:10, border:'1px solid #e2e8f0', fontSize:11, fontWeight:700, color:'#374151', textDecoration:'none', background:'#f8fafc'}}>
+              Ver no Google Maps
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+
+          {/* ACESSOS */}
+          {(localDev as any).acessos?.length > 0 && (
+            <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
+              <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><rect x="1" y="3" width="15" height="13"/><polygon points="16 8 20 8 23 11 23 16 16 16 16 8"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>
+                <p style={{fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, margin:0}}>Acessos</p>
+              </div>
+              {((localDev as any).acessos as string[]).map((a:string,i:number) => (
+                <div key={i} style={{display:'flex', alignItems:'center', gap:8, marginBottom:6}}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  <span style={{fontSize:11, color:'#374151'}}>{a}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* RESUMO */}
+          <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+              <p style={{fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, margin:0}}>Resumo do Empreendimento</p>
+            </div>
+            <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:8}}>
+              {[
+                {v:statsDisponiveis, l:'Disponíveis', color:'#16a34a', bg:'#f0fdf4'},
+                {v:statsReservados,  l:'Reservados',  color:'#d97706', bg:'#fffbeb'},
+                {v:statsIndisponiveis,l:'Vendidos',   color:'#dc2626', bg:'#fef2f2'},
+                {v:statsTotal,       l:'Total lotes', color:'#475569', bg:'#f8fafc'},
+              ].map(s => (
+                <div key={s.l} style={{background:s.bg, borderRadius:10, padding:'10px 8px'}}>
+                  <p style={{fontSize:20, fontWeight:900, color:s.color, margin:0, lineHeight:1}}>{s.v}</p>
+                  <p style={{fontSize:9, fontWeight:700, color:s.color+'99', margin:'3px 0 0'}}>{s.l}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* CAMADAS */}
+          <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, marginBottom:10}}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#1a4a1a" strokeWidth="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+              <p style={{fontSize:9, fontWeight:900, color:'#94a3b8', textTransform:'uppercase', letterSpacing:1.5, margin:0}}>Camadas</p>
+            </div>
+            {[{k:'satelite' as const,l:'Satélite'},{k:'hibrido' as const,l:'Híbrido'},{k:'ruas' as const,l:'Ruas'},{k:'terreno' as const,l:'Terreno'}].map(({k,l}) => (
+              <label key={k} style={{display:'flex', alignItems:'center', gap:10, marginBottom:8, cursor:'pointer'}}>
+                <div onClick={() => setCamadasGlobal(p=>({...p,[k]:!p[k]}))}
+                  style={{width:16,height:16,borderRadius:5,border:'2px solid',borderColor:camadasGlobal[k]?'#1a4a1a':'#d1d5db',background:camadasGlobal[k]?'#1a4a1a':'white',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0}}>
+                  {camadasGlobal[k] && <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
+                </div>
+                <span style={{fontSize:11, fontWeight:500, color:'#374151'}}>{l}</span>
+              </label>
+            ))}
+          </div>
+        </div>
       </div>
     );
   };
