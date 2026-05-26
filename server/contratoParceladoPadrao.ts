@@ -182,7 +182,6 @@ const T = {
   VEND_CIVIL:  "solteiro",
   VEND_RG:     "3215776",
   VEND_CPF:    "63293900291",
-  // Endereço vendedor - contexto completo para evitar matches errados
   VEND_ADDR:   "Travessa Maranhão, n° 353, Aeroporto Velho, Santarém, PA, CEP 68020-070",
 
   // Comprador
@@ -193,26 +192,25 @@ const T = {
   COMP_RG:     "5746450",
   COMP_CPF:    "031.044.532-92",
   COMP_FONES:  "(93) 99238-6266",
-  // Endereço comprador - contexto completo
   COMP_ADDR:   "Beco Basílio Antunes, n° 68, Santa Clara, Santarém, PA, CEP 68005-630",
 
   // Imóvel
-  EMP_NOME:    "DEUS DA PAZ",
-  EMP_COM:     "Caranazal",
-  EMP_SLASH:   "Santarém/PA",          // formato "Cidade/UF" no corpo
-  LOTE_QUADRA: "Lote 35 da Quadra (C)",
-  RUA:         "Rua Existente",
-  DIM:         "10,54 metros de frente, lateral direita medindo 42,07 metros, pela lateral esquerda medindo 45,39 e medindo 10,00 metros de fundos, com área total de 437,31 metros quadrados",
+  EMP_NOME:    "CINCO IRMÃOS",
+  EMP_COM:     "Santa Maria",
+  EMP_SLASH:   "/",
+  LOTE_QUADRA: "Lote 26 da Quadra 3",
+  RUA:         "",
+  DIM:         "10,00 metros de frente, lateral direita medindo 27,98 metros, pela lateral esquerda medindo 28,36 e medindo 10,00 metros de fundos, com área total de 279,10 metros quadrados",
 
-  // Financeiro (número + extenso sem "R$ " — o "R$" está em run separado)
-  VALOR_NUM:   "38.800,00 (Trinta e oito mil e oitocentos Reais)",
-  ENT_NUM:     "1.000,00 (Mil Reais)",
-  SALDO_NUM:   "37.800,00 (Trinta e sete mil e oitocentos Reais)",
-  PARC_CTX:    "63 (Sessenta e três)",   // contexto p/ evitar match em outros nºs
-  VALPAR_NUM:  "600,00 (Seiscentos Reais)",
-  DIA_CTX:     "vencimento no dia 20 de cada mês",
-  PRIMEIRA:    "20/06/2026",
-  CORR_NUM:    "3.104,00 (Três mil cento e quatro Reais)",
+  // Financeiro
+  VALOR_NUM:   "21.500,00 (Vinte e um mil e quinhentos Reais)",
+  ENT_NUM:     "500,00 (Quinhentos Reais)",
+  SALDO_NUM:   "21.000,00 (Vinte e um mil Reais)",
+  PARC_CTX:    "70 (Setenta)",
+  VALPAR_NUM:  "300,00 (Trezentos Reais)",
+  DIA_CTX:     "vencimento no dia 05 de cada mês",
+  PRIMEIRA:    "05/05/2026",
+  CORR_NUM:    "1.720,00 (Mil setecentos e vinte Reais)",
 
   // Fórum / data
   FORUM:       "Santarém-PA",
