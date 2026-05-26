@@ -20,28 +20,38 @@ function corrigirEspacosSimplesmente(texto: string): string {
 function corrigirSimplesmenteNoXml(xml: string): string {
   const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
   
-  // Passo 1: fragmentado entre runs — "simplesmente</w:t>...</w:t>VENDEDOR"
+  // Passo 1: fragmentado em runs diferentes com qualquer estrutura XML entre eles
+  // "simplesmente</w:t></w:r><w:r><w:rPr>...</w:rPr><w:t>VENDEDOR"
   xml = xml.replace(
     new RegExp(
-      `(simplesmente)(?:\s*de\s*)?</w:t>(?:</w:r>)?(?:<[^>]{0,200}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`,
+      `(simplesmente)(?:\s*(?:de)?\s*)</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>(?:de\s*)?(${papeis})`,
       "g"
     ),
     "simplesmente $2"
   );
-  
-  // Passo 2: colado no mesmo run sem espaço — "simplesmenteVENDEDOR"
+
+  // Passo 2: fragmentado com </w:t> mas sem </w:r>
+  xml = xml.replace(
+    new RegExp(
+      `(simplesmente)(?:\s*de\s*)?</w:t>(?:<[^>]{0,300}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`,
+      "g"
+    ),
+    "simplesmente $2"
+  );
+
+  // Passo 3: colado sem espaço — "simplesmenteVENDEDOR"
   xml = xml.replace(
     new RegExp(`simplesmente(?:de\s*)?(${papeis})`, "g"),
     "simplesmente $1"
   );
 
-  // Passo 3: com "de " extra — "simplesmente de VENDEDOR"  
+  // Passo 4: com "de " extra
   xml = xml.replace(
     new RegExp(`simplesmente\s+de\s+(${papeis})`, "g"),
     "simplesmente $1"
   );
 
-  // Passo 4: espaços duplos — "simplesmente  VENDEDOR"
+  // Passo 5: espaços duplos
   xml = xml.replace(
     new RegExp(`simplesmente\s{2,}(${papeis})`, "g"),
     "simplesmente $1"
@@ -193,16 +203,55 @@ function sanitizeForXml(s: string): string {
     .replace(/\r\n|\r|\n/g, " "); // quebras de linha
 }
 
+/**
+ * Extrai texto plano de um bloco de runs XML (w:r), preservando a estrutura.
+ * Usada para identificar texto fragmentado entre múltiplos runs.
+ */
+function extrairTextoRuns(xml: string): string {
+  return xml.replace(/<w:t[^>]*>([^<]*)<\/w:t>/g, "$1")
+            .replace(/<[^>]+>/g, "");
+}
+
+/**
+ * rep() — substitui texto no XML mesmo que fragmentado em múltiplos runs.
+ * Estratégia:
+ * 1. Tenta substituição simples no texto plano dentro de <w:t>
+ * 2. Se não achar, usa regex que pula tags XML entre caracteres
+ * 3. Nunca quebra a estrutura de tags existente
+ */
 function rep(xml: string, search: string, replacement: string): string {
   if (!search) return corrigirEspacosSimplesmente(xml);
-  // Sanitizar o valor de substituição para garantir XML válido
   const safe = sanitizeForXml(replacement);
-  const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const pattern = chars.join("(?:<[^>]*>\\s*)*");
+
+  // Estratégia 1: substituição direta dentro de <w:t> (caso mais comum)
+  // O texto está num único run — simples e seguro
+  const simpleResult = xml.replace(
+    new RegExp(`(<w:t(?:\s[^>]*)?>)([^<]*)${
+      search.replace(/[.*+?^${}()|[\]\]/g, "\$&")
+    }([^<]*)(</w:t>)`, "g"),
+    (_, open, before, after, close) => `${open}${before}${safe}${after}${close}`
+  );
+  if (simpleResult !== xml) return simpleResult;
+
+  // Estratégia 2: texto fragmentado entre runs — regex que pula tags
+  // Cada caractere pode ter tags XML entre ele e o próximo
+  const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\]/g, "\$&"));
+  // Padrão mais conservador: só pula tags de fechamento/abertura simples
+  const pattern = chars.join("(?:</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>|(?:<[^>]*>)*)");
   try {
-    return xml.replace(new RegExp(pattern, "g"), safe);
+    const result = xml.replace(new RegExp(pattern, "g"), safe);
+    // Validar que não quebramos o XML (heurística básica)
+    const openR = (result.match(/<w:r[ >]/g) || []).length;
+    const closeR = (result.match(/<\/w:r>/g) || []).length;
+    if (Math.abs(openR - closeR) > Math.abs(
+      (xml.match(/<w:r[ >]/g) || []).length - (xml.match(/<\/w:r>/g) || []).length
+    ) + 5) {
+      // Substituição quebrou XML — usar fallback seguro
+      const escapedSearch = xmlEscape(search);
+      return xml.split(escapedSearch).join(safe);
+    }
+    return result;
   } catch {
-    // Fallback: substituição literal escapada
     const escapedSearch = xmlEscape(search);
     return xml.split(escapedSearch).join(safe);
   }
