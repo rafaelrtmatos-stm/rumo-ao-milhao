@@ -6429,8 +6429,8 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* Conteúdo scrollável */}
-          <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5">
+          {/* Conteúdo scrollável — oculto na aba Como Chegar */}
+          <div className={mode === "global" ? "hidden" : "flex-1 overflow-y-auto px-4 pb-8 space-y-5"}>
 
 
 
