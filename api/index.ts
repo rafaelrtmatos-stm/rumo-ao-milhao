@@ -1119,7 +1119,12 @@ async function convertDocxToPdfILovePDF(docxBuffer: Buffer, filename: string, se
       files: [{ server_filename, filename }],
     }),
   });
-  if (!processRes.ok) throw new Error("ILovePDF process failed: " + processRes.status);
+  if (!processRes.ok) {
+    let errDetail = '';
+    try { errDetail = JSON.stringify(await processRes.json()); } catch {}
+    console.error('[ILovePDF] process error:', processRes.status, errDetail);
+    throw new Error("ILovePDF process failed: " + processRes.status + ' ' + errDetail);
+  }
 
   // 5. Download do PDF
   const downloadRes = await fetch(`https://${server}/v1/download/${task}`, {
