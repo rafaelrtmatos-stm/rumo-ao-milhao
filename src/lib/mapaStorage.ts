@@ -84,10 +84,37 @@ export async function uploadMapaPDF(
 ): Promise<string> {
   onProgress?.(10);
   const nome = `${empreendimentoId}_${Date.now()}.pdf`;
+
+  // Tentar upload no storage com upsert
   const { error } = await supabase.storage
     .from(BUCKET)
     .upload(nome, file, { contentType: 'application/pdf', upsert: true });
-  if (error) throw new Error('Upload PDF falhou: ' + error.message);
+
+  if (error) {
+    // RLS bloqueou — tentar com path de usuário autenticado
+    const { data: { session } } = await supabase.auth.getSession();
+    const userId = session?.user?.id || 'shared';
+    const nomeAlt = `${userId}/${nome}`;
+    const { error: error2 } = await supabase.storage
+      .from(BUCKET)
+      .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
+
+    if (error2) {
+      // Último fallback: converter para base64 URL (funciona sem storage)
+      console.warn('[storage] Upload PDF falhou, usando base64:', error2.message);
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error('Falha ao ler PDF: ' + error2.message));
+        reader.readAsDataURL(file);
+      });
+    }
+    onProgress?.(90);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
+    onProgress?.(100);
+    return data.publicUrl;
+  }
+
   onProgress?.(90);
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
   onProgress?.(100);

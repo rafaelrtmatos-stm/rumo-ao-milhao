@@ -1058,10 +1058,77 @@ async function convertDocxToPdfExternal(docxBuffer: Buffer, filename: string): P
 }
 
 async function convertDocxToPdfViaLibreOffice(docxBuffer: Buffer, filename: string): Promise<Buffer> {
+  // 1. ILovePDF — método principal na Vercel
+  const ilovepdfKey = process.env.ILOVEPDF_SECRET_KEY;
+  console.log('[pdf] ILOVEPDF_SECRET_KEY configurada:', !!ilovepdfKey, ilovepdfKey ? '('+ilovepdfKey.slice(0,8)+'...)' : 'NÃO CONFIGURADA');
+  if (ilovepdfKey) {
+    try {
+      return await convertDocxToPdfILovePDF(docxBuffer, filename, ilovepdfKey);
+    } catch (e: any) {
+      console.warn("[pdf] ILovePDF falhou:", e?.message);
+      // Não tentar LibreOffice — não existe na Vercel
+      throw new Error("Falha na conversão PDF via ILovePDF: " + e?.message);
+    }
+  }
+  // 2. API externa configurada
   if (process.env.PDF_CONVERTER_API_URL) {
     return convertDocxToPdfExternal(docxBuffer, filename);
   }
+  // 3. LibreOffice local — só funciona em servidores com LibreOffice instalado
+  // Na Vercel isso vai falhar com ENOENT — configure ILOVEPDF_SECRET_KEY
+  console.warn("[pdf] ILOVEPDF_SECRET_KEY não configurada — tentando LibreOffice local (vai falhar na Vercel)");
   return convertDocxToPdfLocal(docxBuffer, filename);
+}
+
+async function convertDocxToPdfILovePDF(docxBuffer: Buffer, filename: string, secretKey: string): Promise<Buffer> {
+  // 1. Autenticar e obter token JWT
+  const authRes = await fetch("https://api.ilovepdf.com/v1/auth", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ public_key: secretKey }),
+  });
+  if (!authRes.ok) throw new Error("ILovePDF auth failed: " + authRes.status);
+  const { token } = await authRes.json() as { token: string };
+
+  // 2. Iniciar task de office2pdf
+  const taskRes = await fetch("https://api.ilovepdf.com/v1/start/officepdf", {
+    headers: { Authorization: "Bearer " + token },
+  });
+  if (!taskRes.ok) throw new Error("ILovePDF start task failed: " + taskRes.status);
+  const { server, task } = await taskRes.json() as { server: string; task: string };
+
+  // 3. Upload do DOCX
+  const formData = new FormData();
+  formData.append("task", task);
+  formData.append("file", new Blob([docxBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" }), filename);
+  const uploadRes = await fetch(\`https://\${server}/v1/upload\`, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token },
+    body: formData,
+  });
+  if (!uploadRes.ok) throw new Error("ILovePDF upload failed: " + uploadRes.status);
+  const { server_filename } = await uploadRes.json() as { server_filename: string };
+
+  // 4. Processar conversão
+  const processRes = await fetch(\`https://\${server}/v1/process\`, {
+    method: "POST",
+    headers: { Authorization: "Bearer " + token, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task,
+      tool: "officepdf",
+      files: [{ server_filename, filename }],
+    }),
+  });
+  if (!processRes.ok) throw new Error("ILovePDF process failed: " + processRes.status);
+
+  // 5. Download do PDF
+  const downloadRes = await fetch(\`https://\${server}/v1/download/\${task}\`, {
+    headers: { Authorization: "Bearer " + token },
+  });
+  if (!downloadRes.ok) throw new Error("ILovePDF download failed: " + downloadRes.status);
+  const pdfBuffer = Buffer.from(await downloadRes.arrayBuffer());
+  console.log("[pdf] ILovePDF converteu com sucesso:", pdfBuffer.length, "bytes");
+  return pdfBuffer;
 }
 
 // API externa de conversão. Use esta rota no Replit/Railway/Render, onde há LibreOffice.
