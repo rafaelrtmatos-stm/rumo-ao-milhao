@@ -1,63 +1,8 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
-    // Caso 1: simplesmente + espaco(s) + papel (normal)
-    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    // Caso 2: simplesmente + de + espaco(s) + papel
-    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    // Caso 3: simplesmente colado ao papel (sem espaco — bug de fragmentacao)
-    .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    // Caso 4: espaco duplo apos simplesmente
-    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
-}
-
-/**
- * Corrige "simplesmente" fragmentado entre múltiplos runs XML.
- * O Word frequentemente parte "simplesmente VENDEDOR" em dois <w:r> separados,
- * resultando em "simplesmente</w:t></w:r><w:r>...<w:t>VENDEDOR" no XML.
- * Este regex unifica o texto dentro do mesmo run.
- */
-function corrigirSimplesmenteNoXml(xml: string): string {
-  const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
-  
-  // Passo 1: fragmentado em runs diferentes com qualquer estrutura XML entre eles
-  // "simplesmente</w:t></w:r><w:r><w:rPr>...</w:rPr><w:t>VENDEDOR"
-  xml = xml.replace(
-    new RegExp(
-      `(simplesmente)(?:\s*(?:de)?\s*)</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>(?:de\s*)?(${papeis})`,
-      "g"
-    ),
-    "simplesmente $2"
-  );
-
-  // Passo 2: fragmentado com </w:t> mas sem </w:r>
-  xml = xml.replace(
-    new RegExp(
-      `(simplesmente)(?:\s*de\s*)?</w:t>(?:<[^>]{0,300}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`,
-      "g"
-    ),
-    "simplesmente $2"
-  );
-
-  // Passo 3: colado sem espaço — "simplesmenteVENDEDOR"
-  xml = xml.replace(
-    new RegExp(`simplesmente(?:de\s*)?(${papeis})`, "g"),
-    "simplesmente $1"
-  );
-
-  // Passo 4: com "de " extra
-  xml = xml.replace(
-    new RegExp(`simplesmente\s+de\s+(${papeis})`, "g"),
-    "simplesmente $1"
-  );
-
-  // Passo 5: espaços duplos
-  xml = xml.replace(
-    new RegExp(`simplesmente\s{2,}(${papeis})`, "g"),
-    "simplesmente $1"
-  );
-
-  return xml;
+    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
 }
 
 import AdmZip from "adm-zip";
@@ -188,67 +133,16 @@ function xmlEscape(s: string): string {
  * Substitui texto que pode estar fragmentado em múltiplos <w:r> runs.
  * Cria um regex onde entre cada caractere pode haver tags XML arbitrárias.
  */
-function sanitizeForXml(s: string): string {
-  // Remove caracteres de controle inválidos em XML (exceto tab, LF, CR)
-  // e garante que o resultado é XML válido
-  return String(s || "")
-    .normalize("NFC")  // normalizar Unicode
-    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F\uFFFD\uFFFE\uFFFF]/g, "") // ctrl + surrogates
-    .replace(/[\uD800-\uDFFF]/g, "") // surrogates isolados
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&apos;")
-    .replace(/\r\n|\r|\n/g, " "); // quebras de linha
-}
-
-/**
- * Extrai texto plano de um bloco de runs XML (w:r), preservando a estrutura.
- * Usada para identificar texto fragmentado entre múltiplos runs.
- */
-function extrairTextoRuns(xml: string): string {
-  return xml.replace(/<w:t[^>]*>([^<]*)<\/w:t>/g, "$1")
-            .replace(/<[^>]+>/g, "");
-}
-
-/**
- * rep() — substitui texto no XML mesmo que fragmentado em múltiplos runs.
- * Estratégia:
- * 1. Tenta substituição simples no texto plano dentro de <w:t>
- * 2. Se não achar, usa regex que pula tags XML entre caracteres
- * 3. Nunca quebra a estrutura de tags existente
- */
 function rep(xml: string, search: string, replacement: string): string {
   if (!search) return corrigirEspacosSimplesmente(xml);
-  const safe = sanitizeForXml(replacement);
-  const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-
-  // Estratégia 1: texto num único run <w:t>
-  const wt_open = "(<w:t(?:\\s[^>]*)?>)([^<]*)";
-  const wt_close = "([^<]*)(</w:t>)";
-  try {
-    const pat1 = new RegExp(wt_open + escapedSearch + wt_close, "g");
-    const r1 = xml.replace(pat1, (_m, open, before, after, close) => open + before + safe + after + close);
-    if (r1 !== xml) return r1;
-  } catch { /* continua */ }
-
-  // Estratégia 2: texto fragmentado entre runs
+  const safe = xmlEscape(replacement);
   const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
-  const runJoin = "(?:</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>|(?:<[^>]*>)*)";
-  const pattern = chars.join(runJoin);
+  const pattern = chars.join("(?:<[^>]*>\\s*)*");
   try {
-    const r2 = xml.replace(new RegExp(pattern, "g"), safe);
-    if (r2 !== xml) {
-      // Verificar se não quebramos o XML
-      const diff = Math.abs((r2.match(/<w:r[ >]/g)||[]).length - (r2.match(/<\/w:r>/g)||[]).length);
-      const origDiff = Math.abs((xml.match(/<w:r[ >]/g)||[]).length - (xml.match(/<\/w:r>/g)||[]).length);
-      if (diff <= origDiff + 5) return r2;
-    }
-  } catch { /* continua */ }
-
-  // Fallback: substituição literal
-  return xml.split(xmlEscape(search)).join(safe);
+    return xml.replace(new RegExp(pattern, "g"), safe);
+  } catch {
+    return xml.split(search).join(safe);
+  }
 }
 
 
@@ -259,22 +153,11 @@ function escapeRegExpLocal(texto: string): string {
 function aplicarNegritoDocx(xml: string, texto: string): string {
   const alvo = xmlEscape(String(texto || "").trim());
   if (!alvo) return xml;
-
-  // Captura o run completo: <w:r>...<w:rPr>...</w:rPr>...<w:t ...>TEXTO</w:t></w:r>
-  // Para não quebrar tags, só aplica negrito se o texto aparece isolado num <w:t>
-  const pattern = new RegExp(
-    `(<w:r(?:\\s[^>]*)?>)((?:<w:rPr>[^]*?</w:rPr>)?)((?:<[^>]+>)*?)` +
-    `(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)` +
-    `((?:<[^>]+>)*?)(</w:r>)`,
-    "g"
+  const pattern = new RegExp(`(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)`, "g");
+  return xml.replace(
+    pattern,
+    `</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>$2</w:t></w:r><w:r><w:t>`
   );
-
-  return xml.replace(pattern, (match, rOpen, rPr, preT, tOpen, txt, tClose, postT, rClose) => {
-    // Extrair rPr existente (sem o <w:b/> se já tiver)
-    const rPrInner = rPr ? rPr.replace(/<w:rPr>|<\/w:rPr>/g, "").replace(/<w:b\s*\/>|<w:bCs\s*\/>/g, "") : "";
-    const newRPr = `<w:rPr>${rPrInner}<w:b/><w:bCs/></w:rPr>`;
-    return `${rOpen}${newRPr}${preT}${tOpen}${txt}${tClose}${postT}${rClose}`;
-  });
 }
 
 function aplicarNegritosContratoParcelado(xml: string, vendedorNome: string, compradorNome: string, vendedorPapel: string, compradorPapel: string): string {
@@ -584,30 +467,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
     generoComprador.papel
   );
 
-  // ── Correção final de fragmentacao no XML (entre runs diferentes) ──────────
-  xml = corrigirSimplesmenteNoXml(xml);
-
-  // ── Correção final de fragmentacao do Word: "simplesmente de VENDEDOR/COMPRADOR" ──
-  xml = rep(xml, `simplesmente de ${generoVendedor.papel}`, `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, `simplesmente de ${generoComprador.papel}`, `simplesmente ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmente de VENDEDOR", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmente de VENDEDORA", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmente de COMPRADOR", `simplesmente ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmente de COMPRADORA", `simplesmente ${generoComprador.papel}`);
-
-  // ── Correção final de espaços grudados no texto plano ───────────────────────
+  // ── Correção final de espaços grudados ──────────────────────────────────────
   xml = corrigirEspacosSimplesmente(xml);
-  // Segunda passagem no XML para pegar casos residuais entre runs
-  xml = corrigirSimplesmenteNoXml(xml);
 
   // ── Gravar XML modificado e retornar buffer ──────────────────────────────────
-  // Validação final: remover caracteres de controle inválidos em XML
-  xml = xml.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "");
-  // Corrigir & solto que não é entidade XML (causa "O nome na marca de fim do elemento...")
-  xml = xml.replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)/g, "&amp;");
-  // Última passagem simplesmente
-  xml = corrigirSimplesmenteNoXml(xml);
-  xml = corrigirEspacosSimplesmente(xml);
   zip.updateFile("word/document.xml", Buffer.from(xml, "utf-8"));
   return zip.toBuffer();
 }
