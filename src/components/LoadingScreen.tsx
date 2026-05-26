@@ -53,8 +53,8 @@ export default function LoadingScreen({ progress }: Props) {
   const pct = Math.max(progress, animDone ? 100 : Math.round((displayValue / TARGET) * 100));
 
   return (
-    <div ref={revealRef} className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-[#0d200d]"
-      style={{ fontFamily: "'Inter', sans-serif" }}>
+    <div ref={revealRef} className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
+      style={{ fontFamily: "'Inter', sans-serif", backdropFilter: "blur(12px)", WebkitBackdropFilter: "blur(12px)", background: "rgba(0,0,0,0.45)" }}>
 
       {/* Partículas de dinheiro */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -99,7 +99,7 @@ export default function LoadingScreen({ progress }: Props) {
         <div className="flex flex-col items-center gap-3">
           <img src="/logo-transparent.png" alt="RA1M" className="w-28 h-28 drop-shadow-2xl" />
           <div className="text-center">
-            <h1 className="text-2xl font-black text-white italic tracking-tight">Rumo ao Milhão</h1>
+            <h1 className="text-2xl font-black text-white italic tracking-tight" style={{textShadow:"0 0 20px rgba(74,222,128,0.6)"}}>Rumo ao Milhão</h1>
             <p className="text-[11px] text-emerald-400/70 uppercase tracking-widest font-bold mt-0.5">Sistema Imobiliário</p>
           </div>
         </div>
@@ -114,6 +114,8 @@ export default function LoadingScreen({ progress }: Props) {
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               animation: "shimmer 1.5s linear infinite, pulse-glow 2s ease-in-out infinite",
+              filter: "drop-shadow(0 0 8px rgba(74,222,128,0.8))",
+              WebkitTextStroke: "1px rgba(74,222,128,0.6)",
             }}
           >
             {formatBRL(displayValue)}
