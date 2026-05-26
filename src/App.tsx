@@ -5822,9 +5822,9 @@ const LotDashboard = ({
             loading="lazy" allowFullScreen
           />
 
-          {/* Barra de busca — topo esquerdo */}
-          <div style={{position:'absolute', top:12, left:12, zIndex:10}}>
-            <div style={{display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.97)', borderRadius:12, padding:'8px 12px', width:220, boxShadow:'0 2px 12px rgba(0,0,0,0.12)', border:'1px solid rgba(0,0,0,0.06)'}}>
+          {/* Barra de busca — inferior centro, alinhada com minimapa */}
+          <div style={{position:'absolute', bottom:12, left:'50%', transform:'translateX(-50%)', zIndex:10}}>
+            <div style={{display:'flex', alignItems:'center', gap:8, background:'rgba(255,255,255,0.97)', borderRadius:12, padding:'8px 14px', width:200, boxShadow:'0 2px 12px rgba(0,0,0,0.15)', border:'1px solid rgba(0,0,0,0.06)'}}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
               <input placeholder="Buscar endereço ou lugar"
                 style={{flex:1, fontSize:12, color:'#374151', background:'transparent', outline:'none', border:'none'}}
@@ -5846,23 +5846,7 @@ const LotDashboard = ({
           {/* Bússola — topo direito */}
           <BussolaInterativa />
 
-          {/* Controles zoom — direita centro */}
-          <div style={{position:'absolute', right:56, top:'50%', transform:'translateY(-50%)', zIndex:10, display:'flex', flexDirection:'column', gap:6}}>
-            {[
-              {icon:'+', action:'zoom_in'},
-              {icon:'−', action:'zoom_out'},
-            ].map(({icon}) => (
-              <button key={icon}
-                style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.07)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.12)',fontSize:18,fontWeight:900,color:'#374151'}}>
-                {icon}
-              </button>
-            ))}
-            <button
-              onClick={() => navigator.geolocation.getCurrentPosition(p => window.open(`https://maps.google.com/maps?q=${p.coords.latitude},${p.coords.longitude}&z=16`,'_blank'))}
-              style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.07)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.12)'}}>
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
-            </button>
-          </div>
+
 
           {/* Minimapa — esquerda inferior */}
           {((localDev as any).mapaImagemUrl || (localDev as any).mapaImagemLeveBase64) && (
