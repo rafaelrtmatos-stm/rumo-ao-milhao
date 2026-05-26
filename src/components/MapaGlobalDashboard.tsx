@@ -201,7 +201,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       tileRef.current = L.tileLayer(TILES.satelite.url, TILES.satelite.options).addTo(map);
 
       // Zoom control
-      L.control.zoom({ position: "bottomright" }).addTo(map);
+      // zoom control desativado — botoes customizados no canto inferior direito
 
       map.on("zoomend", () => setMapZoom(map.getZoom()));
 
