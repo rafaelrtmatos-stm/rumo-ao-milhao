@@ -233,9 +233,10 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
             // padding maior garante que todos os pinos ficam visíveis no centro
             const mapSize = leafletRef.current.getSize();
-            const padY = Math.max(50, Math.round(mapSize.y * 0.22));
-            const padX = Math.max(40, Math.round(mapSize.x * 0.10));
-            leafletRef.current.fitBounds(bounds, { paddingTopLeft: [padX, padY], paddingBottomRight: [padX, padY], maxZoom: 11, animate: false });
+            const padTop = Math.max(60, Math.round(mapSize.y * 0.28));
+            const padBottom = Math.max(60, Math.round(mapSize.y * 0.28));
+            const padX = Math.max(30, Math.round(mapSize.x * 0.08));
+            leafletRef.current.fitBounds(bounds, { paddingTopLeft: [padX, padTop], paddingBottomRight: [padX, padBottom], maxZoom: 12, animate: false });
           }
         });
       }, 100);
