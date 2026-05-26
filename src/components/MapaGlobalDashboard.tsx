@@ -218,7 +218,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       leafletRef.current = map;
       setMapReady(true);
 
-      // Auto-centralizar nos pinos — múltiplas tentativas para garantir que o mapa já tem altura correta
+      // Auto-centralizar nos pinos — esperar mapa ter altura real
       const centralizarPinos = (tentativa = 0) => {
         if (!leafletRef.current) return;
         const devs = empreendimentos.filter(d =>
@@ -228,28 +228,31 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         if (!devs.length) return;
         import("leaflet").then(L => {
           if (!leafletRef.current) return;
+          leafletRef.current.invalidateSize({ animate: false });
           const mapSize = leafletRef.current.getSize();
-          // Se o mapa ainda não tem altura real, tentar de novo
-          if (mapSize.y < 50 && tentativa < 10) {
-            setTimeout(() => centralizarPinos(tentativa + 1), 150);
+          if (mapSize.y < 100 && tentativa < 15) {
+            setTimeout(() => centralizarPinos(tentativa + 1), 200);
             return;
           }
           if (devs.length === 1) {
             leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 13, { animate: false });
           } else {
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
-            const padV = Math.max(50, Math.round(mapSize.y * 0.25));
-            const padH = Math.max(30, Math.round(mapSize.x * 0.08));
+            // Padding maior em cima para compensar labels dos pinos
+            const padTop    = Math.max(60, Math.round(mapSize.y * 0.30));
+            const padBottom = Math.max(60, Math.round(mapSize.y * 0.30));
+            const padH      = Math.max(30, Math.round(mapSize.x * 0.08));
             leafletRef.current.fitBounds(bounds, {
-              paddingTopLeft: [padH, padV],
-              paddingBottomRight: [padH, padV],
+              paddingTopLeft:     [padH, padTop],
+              paddingBottomRight: [padH, padBottom],
               maxZoom: 12,
               animate: false
             });
           }
         });
       };
-      setTimeout(() => centralizarPinos(), 300);
+      // Primeira tentativa após 500ms — garante que o container já tem layout
+      setTimeout(() => centralizarPinos(), 500);
 
       // Centralização feita no useEffect separado abaixo
     });
