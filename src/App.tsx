@@ -7963,7 +7963,7 @@ const EmpreendimentosSection = ({
           })));
         }
         return (
-        {(showMapaGlobal && !isAdding) && <div>
+        {(showMapaGlobal && !isAdding) && (
 
           {/* ── WRAPPER MOBILE DO MAPA GLOBAL ── */}
           {isMapaMobile ? (
@@ -8140,8 +8140,7 @@ const EmpreendimentosSection = ({
           </div>
           )} {/* fim ternário isMapaMobile */}
         </div>
-        );
-      })()}
+        )}
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
@@ -8960,10 +8959,7 @@ const EmpreendimentosSection = ({
       </div>
 
       <AnimatePresence>
-        {selectedDevForMap && (() => {
-          // Bloquear scroll do body quando popup está aberto
-          if (typeof document !== 'undefined') document.body.style.overflow = 'hidden';
-          return (
+        {selectedDevForMap && (() => { document.body.style.overflow = "hidden"; return (
           <LotDashboard
             dev={selectedDevForMap}
             sales={sales}
@@ -8972,7 +8968,7 @@ const EmpreendimentosSection = ({
               onStartSale(v);
               setSelectedDevForMap(null);
             }}
-            onClose={() => { if (typeof document !== "undefined") document.body.style.overflow = ""; setSelectedDevForMap(null); }}
+            onClose={() => { document.body.style.overflow = ""; setSelectedDevForMap(null); }}
             onViewContract={onViewContract}
             onSaveDev={(updatedDev) => {
               onSave(updatedDev);
@@ -8986,7 +8982,7 @@ const EmpreendimentosSection = ({
               setLotRegTab("lotes");
             }}
           />
-        )}
+        ); })()}
       </AnimatePresence>
 
       {/* Modal: Cadastrar / Gerenciar Lotes */}
