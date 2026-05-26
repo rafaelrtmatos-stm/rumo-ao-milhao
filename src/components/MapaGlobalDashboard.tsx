@@ -229,7 +229,10 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 14, { animate: false });
           } else {
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
-            leafletRef.current.fitBounds(bounds, { padding: [40,40], maxZoom: 14, animate: false });
+            // padding maior garante que todos os pinos ficam visíveis no centro
+            const mapH = leafletRef.current.getSize().y;
+            const pad = Math.max(30, Math.round(mapH * 0.12));
+            leafletRef.current.fitBounds(bounds, { padding: [pad, pad], maxZoom: 13, animate: false });
           }
         });
       }, 100);
