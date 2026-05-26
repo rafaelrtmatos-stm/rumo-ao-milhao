@@ -222,39 +222,33 @@ function extrairTextoRuns(xml: string): string {
 function rep(xml: string, search: string, replacement: string): string {
   if (!search) return corrigirEspacosSimplesmente(xml);
   const safe = sanitizeForXml(replacement);
+  const escapedSearch = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
-  // Estratégia 1: substituição direta dentro de <w:t> (caso mais comum)
-  // O texto está num único run — simples e seguro
-  const simpleResult = xml.replace(
-    new RegExp(`(<w:t(?:\s[^>]*)?>)([^<]*)${
-      search.replace(/[.*+?^${}()|[\]\]/g, "\$&")
-    }([^<]*)(</w:t>)`, "g"),
-    (_, open, before, after, close) => `${open}${before}${safe}${after}${close}`
-  );
-  if (simpleResult !== xml) return simpleResult;
-
-  // Estratégia 2: texto fragmentado entre runs — regex que pula tags
-  // Cada caractere pode ter tags XML entre ele e o próximo
-  const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\]/g, "\$&"));
-  // Padrão mais conservador: só pula tags de fechamento/abertura simples
-  const pattern = chars.join("(?:</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>|(?:<[^>]*>)*)");
+  // Estratégia 1: texto num único run <w:t>
+  const wt_open = "(<w:t(?:\\s[^>]*)?>)([^<]*)";
+  const wt_close = "([^<]*)(</w:t>)";
   try {
-    const result = xml.replace(new RegExp(pattern, "g"), safe);
-    // Validar que não quebramos o XML (heurística básica)
-    const openR = (result.match(/<w:r[ >]/g) || []).length;
-    const closeR = (result.match(/<\/w:r>/g) || []).length;
-    if (Math.abs(openR - closeR) > Math.abs(
-      (xml.match(/<w:r[ >]/g) || []).length - (xml.match(/<\/w:r>/g) || []).length
-    ) + 5) {
-      // Substituição quebrou XML — usar fallback seguro
-      const escapedSearch = xmlEscape(search);
-      return xml.split(escapedSearch).join(safe);
+    const pat1 = new RegExp(wt_open + escapedSearch + wt_close, "g");
+    const r1 = xml.replace(pat1, (_m, open, before, after, close) => open + before + safe + after + close);
+    if (r1 !== xml) return r1;
+  } catch { /* continua */ }
+
+  // Estratégia 2: texto fragmentado entre runs
+  const chars = [...search].map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  const runJoin = "(?:</w:t></w:r>(?:<[^>]+>)*<w:r(?:[^>]*)?>(?:<w:rPr>[^]*?</w:rPr>)?<w:t(?:[^>]*)?>|(?:<[^>]*>)*)";
+  const pattern = chars.join(runJoin);
+  try {
+    const r2 = xml.replace(new RegExp(pattern, "g"), safe);
+    if (r2 !== xml) {
+      // Verificar se não quebramos o XML
+      const diff = Math.abs((r2.match(/<w:r[ >]/g)||[]).length - (r2.match(/<\/w:r>/g)||[]).length);
+      const origDiff = Math.abs((xml.match(/<w:r[ >]/g)||[]).length - (xml.match(/<\/w:r>/g)||[]).length);
+      if (diff <= origDiff + 5) return r2;
     }
-    return result;
-  } catch {
-    const escapedSearch = xmlEscape(search);
-    return xml.split(escapedSearch).join(safe);
-  }
+  } catch { /* continua */ }
+
+  // Fallback: substituição literal
+  return xml.split(xmlEscape(search)).join(safe);
 }
 
 
