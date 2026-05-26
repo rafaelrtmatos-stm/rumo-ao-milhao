@@ -6010,7 +6010,7 @@ const LotDashboard = ({
               {/* Busca */}
               <div className="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 min-w-[180px]">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-                <input value={loteBusca} onChange={e=>setAbLoteBusca(e.target.value)}
+                <input value={abLoteBusca} onChange={e=>setAbLoteBusca(e.target.value)}
                   placeholder="Buscar lote por número..."
                   className="bg-transparent text-xs text-slate-700 outline-none placeholder-slate-400 w-full"/>
               </div>
