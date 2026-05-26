@@ -147,8 +147,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           const bounds = L.latLngBounds(validDevs.map(d => [d.lat!, d.lng!] as [number,number]));
           // Padding proporcional à altura atual do mapa — recalcula quando barra sobe/desce
           const mapSize = leafletRef.current.getSize();
-          const pad = Math.max(40, Math.round(Math.min(mapSize.x, mapSize.y) * 0.15));
-          leafletRef.current.fitBounds(bounds, { padding: [pad, pad], maxZoom: 12, animate: false });
+          leafletRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12, animate: false });
         }
       });
     });
@@ -238,8 +237,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           } else {
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
             // Padding maior em cima para compensar labels dos pinos
-            const pad = Math.max(40, Math.round(Math.min(mapSize.x, mapSize.y) * 0.15));
-            leafletRef.current.fitBounds(bounds, { padding: [pad, pad], maxZoom: 12, animate: false });
+            leafletRef.current.fitBounds(bounds, { padding: [50, 50], maxZoom: 12, animate: false });
           }
         });
       };
