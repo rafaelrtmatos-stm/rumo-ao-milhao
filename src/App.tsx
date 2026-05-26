@@ -6942,17 +6942,9 @@ const LotDashboard = ({
             {/* COLUNA ESQUERDA — MAPA 75% */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
 
-              {/* Título + legenda horizontal */}
-              <div className="flex-shrink-0 pt-4 pb-2 px-4 text-center">
-                <p className="text-sm font-black text-slate-800 uppercase tracking-wide mb-2">Empreendimento {localDev.nome}</p>
-                <div className="flex items-center justify-center gap-6">
-                  {[{c:'#22c55e',l:'Disponível'},{c:'#f59e0b',l:'Reservado'},{c:'#ef4444',l:'Indisponível'}].map(i=>(
-                    <div key={i.l} className="flex items-center gap-1.5">
-                      <span className="w-2.5 h-2.5 rounded-full" style={{background:i.c}}/>
-                      <span className="text-[11px] text-slate-500">{i.l}</span>
-                    </div>
-                  ))}
-                </div>
+              {/* Título */}
+              <div className="flex-shrink-0 pt-3 pb-1 px-4 text-center">
+                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">Empreendimento {localDev.nome}</p>
               </div>
 
               {/* Rosa dos ventos — canto sup direito */}
@@ -7026,23 +7018,40 @@ const LotDashboard = ({
                 <p className="text-[9px] text-slate-400 text-right mt-1">{statsPct}% ocupado</p>
               </div>
 
-              {/* LEGENDA */}
+              {/* HISTÓRICO DE VENDAS/ALTERAÇÕES */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
-                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Legenda</p>
-                <div className="space-y-3">
-                  {[
-                    {c:'#22c55e', l:'Disponível',   d:'Livre para venda'},
-                    {c:'#f59e0b', l:'Reservado',    d:'Aguardando'},
-                    {c:'#ef4444', l:'Indisponível', d:'Vendido/bloqueado'},
-                  ].map(i=>(
-                    <div key={i.l} className="flex items-center gap-2.5">
-                      <span className="w-3 h-3 rounded-full flex-shrink-0" style={{background:i.c}}/>
-                      <div>
-                        <p className="text-[11px] font-bold text-slate-700">{i.l}</p>
-                        <p className="text-[9px] text-slate-400">{i.d}</p>
+                <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Histórico</p>
+                <div className="space-y-2 max-h-48 overflow-y-auto">
+                  {(() => {
+                    const vendas = sales
+                      .filter(s => s.empreendimentoId === localDev.id)
+                      .sort((a,b) => new Date(b.dataVenda||b.createdAt||0).getTime() - new Date(a.dataVenda||a.createdAt||0).getTime())
+                      .slice(0, 8);
+                    if (!vendas.length) return (
+                      <p className="text-[10px] text-slate-300 text-center py-3">Nenhuma venda registrada</p>
+                    );
+                    return vendas.map((v,i) => (
+                      <div key={v.id||i} className="flex items-start gap-2 pb-2 border-b border-slate-50 last:border-0">
+                        <span className="w-2 h-2 rounded-full mt-1 flex-shrink-0"
+                          style={{background: v.status==='vendido'||v.status==='indisponivel' ? '#ef4444' : v.status==='reservado' ? '#f59e0b' : '#22c55e'}}/>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-bold text-slate-700 truncate">
+                            {String(v.clienteNome||'—').split(' ').slice(0,2).join(' ')}
+                          </p>
+                          <p className="text-[9px] text-slate-400">
+                            Q{v.quadra} · L{v.numeroLote} · {v.dataVenda ? new Date(v.dataVenda+'T12:00:00').toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—'}
+                          </p>
+                        </div>
+                        <span className="text-[8px] font-black px-1.5 py-0.5 rounded-md flex-shrink-0"
+                          style={{
+                            background: v.status==='vendido'||v.status==='indisponivel' ? '#fef2f2' : v.status==='reservado' ? '#fffbeb' : '#f0fdf4',
+                            color: v.status==='vendido'||v.status==='indisponivel' ? '#ef4444' : v.status==='reservado' ? '#f59e0b' : '#22c55e',
+                          }}>
+                          {v.status==='vendido'||v.status==='indisponivel' ? 'Vendido' : v.status==='reservado' ? 'Reservado' : 'Disponível'}
+                        </span>
                       </div>
-                    </div>
-                  ))}
+                    ));
+                  })()}
                 </div>
               </div>
 
@@ -7062,9 +7071,14 @@ const LotDashboard = ({
                   </button>
                 </div>
                 <button onClick={baixarMapaInterativoImagem}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600 mb-2">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span className="text-[9px] font-bold">Download</span>
+                  <span className="text-[9px] font-bold">PNG Alta Res.</span>
+                </button>
+                <button onClick={baixarMapaInterativoPdf}
+                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1a4a1a] text-white hover:bg-[#245424] active:scale-95 transition-all">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                  <span className="text-[9px] font-bold">PDF Alta Res.</span>
                 </button>
               </div>
             </div>
