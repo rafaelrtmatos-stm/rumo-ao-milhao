@@ -8272,28 +8272,61 @@ const EmpreendimentosSection = ({
                     <span className="text-[10px] text-emerald-600 font-bold ml-1">✓ Definida</span>
                   )}
                 </label>
-                {/* Quando editando empreendimento existente: usa MapaGlobal focado e bloqueado */}
-                {editingDev ? (
-                  <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 300 }}>
-                    <MapaGlobalDashboard
-                      empreendimentos={developments}
-                      sales={sales}
-                      visible={true}
-                      focusDevId={editingDev.id}
-                      onAbrirEmpreendimento={() => {}}
-                      onVerMapa={() => {}}
-                      onLocationPick={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
-                    />
-                  </div>
-                ) : (
-                  <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 280 }}>
-                    <PickLocationMap
-                      lat={(formData as any).lat ?? null}
-                      lng={(formData as any).lng ?? null}
-                      onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
-                    />
-                  </div>
-                )}
+                {/* Mapa Google Maps iframe — satélite, sem cadeado */}
+                {(() => {
+                  const _lat = (formData as any).lat || (editingDev as any)?.lat;
+                  const _lng = (formData as any).lng || (editingDev as any)?.lng;
+                  const _hasCoords = !!(_lat && _lng && !isNaN(_lat) && !isNaN(_lng) && _lat !== 0 && _lng !== 0);
+                  return (
+                    <div style={{position:'relative', borderRadius:16, overflow:'hidden', border:'1px solid #e2e8f0', height:300, background:'#1a1a2e'}}>
+                      {_hasCoords ? (
+                        <>
+                          <iframe
+                            title="Localização do empreendimento"
+                            src={`https://maps.google.com/maps?q=${_lat},${_lng}&z=17&t=k&output=embed`}
+                            width="100%" height="100%"
+                            style={{border:0, position:'absolute', inset:0}}
+                            loading="lazy" allowFullScreen
+                          />
+                          {/* Botões flutuantes direita */}
+                          <div style={{position:'absolute', right:10, top:10, zIndex:10, display:'flex', flexDirection:'column', gap:6}}>
+                            {/* Camadas */}
+                            <button style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.08)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.15)'}}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+                            </button>
+                            {/* Zoom + */}
+                            <button style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.08)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.15)',fontSize:18,fontWeight:900,color:'#374151'}}>+</button>
+                            {/* GPS */}
+                            <button style={{width:36,height:36,background:'rgba(26,74,26,0.9)',border:'none',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.15)'}}
+                              onClick={() => navigator.geolocation.getCurrentPosition(p => setFormData((prev:any) => ({...prev, lat:p.coords.latitude, lng:p.coords.longitude})))}>
+                              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2"/></svg>
+                            </button>
+                            {/* Zoom - */}
+                            <button style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.08)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.15)',fontSize:22,fontWeight:900,color:'#374151',lineHeight:1}}>−</button>
+                            {/* Fullscreen */}
+                            <button style={{width:36,height:36,background:'rgba(255,255,255,0.95)',border:'1px solid rgba(0,0,0,0.08)',borderRadius:10,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,0.15)'}}
+                              onClick={() => document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen()}>
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#374151" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
+                            </button>
+                          </div>
+                          {/* Pin do empreendimento no centro */}
+                          <div style={{position:'absolute', inset:0, pointerEvents:'none', display:'flex', alignItems:'center', justifyContent:'center', zIndex:5}}>
+                            <div style={{background:'rgba(26,74,26,0.9)', color:'white', borderRadius:20, padding:'4px 10px', fontSize:10, fontWeight:800, boxShadow:'0 2px 12px rgba(0,0,0,0.3)', whiteSpace:'nowrap'}}>
+                              📍 {String(formData.nome || editingDev?.nome || '').toUpperCase()}
+                            </div>
+                          </div>
+                        </>
+                      ) : (
+                        /* Sem coordenadas — mostrar PickLocationMap para definir */
+                        <PickLocationMap
+                          lat={(formData as any).lat ?? null}
+                          lng={(formData as any).lng ?? null}
+                          onChange={(lat, lng) => setFormData((prev: any) => ({ ...prev, lat, lng }))}
+                        />
+                      )}
+                    </div>
+                  );
+                })()}
                 {!(formData as any).lat && (
                   <p className="text-[10px] text-slate-400 mt-1">Clique no mapa para definir a localização do empreendimento.</p>
                 )}
