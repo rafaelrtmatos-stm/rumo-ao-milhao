@@ -8044,11 +8044,7 @@ const EmpreendimentosSection = ({
                 {/* HUD — coluna de botões canto superior direito */}
                 <div style={{ position:'absolute', top:10, right:10, zIndex:1020, display:'flex', flexDirection:'column', gap:6 }}>
 
-                  {/* Camadas + Filtro */}
-                  <button onClick={e => { e.stopPropagation(); e.preventDefault(); setMapaFiltroAberto(v => !v); }}
-                    style={{ width:42, height:42, borderRadius:12, border:'none', cursor:'pointer', background: mapaFiltroAberto ? '#1a4a1a' : 'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', boxShadow:'0 2px 12px rgba(0,0,0,0.18)', display:'flex', alignItems:'center', justifyContent:'center', color: mapaFiltroAberto ? 'white' : '#374151', transition:'all 0.2s', pointerEvents:'auto' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
-                  </button>
+
 
                   {/* Cadeado */}
                   <button onClick={e => { e.stopPropagation(); e.preventDefault(); setMapaGlobalBloqueado(v => !v); }}

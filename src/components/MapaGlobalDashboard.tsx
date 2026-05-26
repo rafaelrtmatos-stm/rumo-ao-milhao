@@ -432,46 +432,20 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         <div style={{ flex:1, position:'relative', minWidth:0 }}>
           <div ref={mapRef} style={{ position:'absolute', inset:0, pointerEvents: (locked || mapaLocked) ? 'none' : 'auto' }}/>
 
+          {/* ZOOM — canto inferior direito */}
+          <div style={{ position:'absolute', bottom:16, right:10, zIndex:1020, display:'flex', flexDirection:'column', gap:4 }}>
+            <button onClick={() => leafletRef.current?.zoomIn()}
+              style={{ width:32, height:32, borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 8px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, fontWeight:900, color:'#374151', lineHeight:1 }}>
+              +
+            </button>
+            <button onClick={() => leafletRef.current?.zoomOut()}
+              style={{ width:32, height:32, borderRadius:8, cursor:'pointer', background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)', border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 8px rgba(0,0,0,0.15)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:22, fontWeight:900, color:'#374151', lineHeight:1 }}>
+              −
+            </button>
+          </div>
+
           {/* CONTROLES FLUTUANTES — canto superior direito, ACIMA do overlay */}
           <div style={{ position:'absolute', top:10, right:10, zIndex:1020, display:'flex', flexDirection:'column', gap:6 }}>
-
-            {/* Camadas */}
-            <div style={{ position:'relative' }}>
-              <button title="Camadas" onClick={() => setCamadasAberto(v => !v)}
-                style={{
-                  width:36, height:36, borderRadius:10, cursor:'pointer',
-                  background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
-                  border:'1px solid rgba(0,0,0,0.08)',
-                  boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
-                  display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:1,
-                  color: camadasAberto ? '#1a4a1a' : '#374151',
-                }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/>
-                </svg>
-              </button>
-              {camadasAberto && (
-                <div style={{
-                  position:'absolute', top:0, right:44, zIndex:9999,
-                  background:'rgba(255,255,255,0.97)', backdropFilter:'blur(16px)',
-                  border:'1px solid rgba(0,0,0,0.08)', borderRadius:12,
-                  padding:'4px', minWidth:130, boxShadow:'0 4px 20px rgba(0,0,0,0.15)',
-                }}>
-                  {([['satelite','🛰','Satélite'],['hibrido','🌍','Híbrido'],['ruas','🗺','Ruas']] as [Camada,string,string][]).map(([c,icon,label]) => (
-                    <button key={c} onClick={() => { setCamada(c); setCamadasAberto(false); }}
-                      style={{
-                        width:'100%', padding:'7px 10px', borderRadius:8, fontSize:12, fontWeight:700,
-                        cursor:'pointer', border:'none', textAlign:'left', display:'flex', alignItems:'center', gap:8,
-                        background: camada === c ? 'rgba(26,74,26,0.1)' : 'transparent',
-                        color: camada === c ? '#1a4a1a' : '#374151',
-                      }}>
-                      {icon} {label}
-                      {camada === c && <svg style={{marginLeft:'auto'}} width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
 
             {/* Centralizar */}
             <button title="Centralizar" onClick={() => {
