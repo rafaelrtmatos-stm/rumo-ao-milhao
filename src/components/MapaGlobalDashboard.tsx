@@ -147,13 +147,29 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           const bounds = L.latLngBounds(validDevs.map(d => [d.lat!, d.lng!] as [number,number]));
           // Padding proporcional à altura atual do mapa — recalcula quando barra sobe/desce
           const mapSize = leafletRef.current.getSize();
-          leafletRef.current.fitBounds(bounds, { paddingTopLeft: [50, 20], paddingBottomRight: [50, 80], maxZoom: 12, animate: false });
+          leafletRef.current.fitBounds(bounds, { paddingTopLeft: [50, 10], paddingBottomRight: [50, 120], maxZoom: 12, animate: false });
         }
       });
     });
     ro.observe(containerRef.current);
     return () => ro.disconnect();
   }, [devsComLoc, mapReady]);
+
+  const centralizarTodos = () => {
+    if (!leafletRef.current) return;
+    const devs = (Array.isArray(devsComLoc) ? devsComLoc : []).filter((d: any) => validLatLng(d.lat, d.lng));
+    if (!devs.length) return;
+    import('leaflet').then(L => {
+      if (!leafletRef.current) return;
+      leafletRef.current.invalidateSize({ animate: false });
+      if (devs.length === 1) {
+        leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 13, { animate: true });
+      } else {
+        const bounds = L.latLngBounds(devs.map((d: any) => [d.lat!, d.lng!] as [number,number]));
+        leafletRef.current.fitBounds(bounds, { paddingTopLeft: [50, 10], paddingBottomRight: [50, 120], maxZoom: 12, animate: true });
+      }
+    });
+  };
 
   useImperativeHandle(ref, () => ({
     centralizar: () => {
@@ -237,7 +253,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           } else {
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
             // Padding maior em cima para compensar labels dos pinos
-            leafletRef.current.fitBounds(bounds, { paddingTopLeft: [50, 20], paddingBottomRight: [50, 80], maxZoom: 12, animate: false });
+            leafletRef.current.fitBounds(bounds, { paddingTopLeft: [50, 10], paddingBottomRight: [50, 120], maxZoom: 12, animate: false });
           }
         });
       };
@@ -532,6 +548,18 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             </button>
 
             {/* Cadeado — único, pisca quando bloqueado e mapa é clicado */}
+            <button title="Centralizar pinos" onClick={centralizarTodos}
+              style={{
+                width:36, height:36, borderRadius:10, cursor:'pointer',
+                background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
+                border:'1px solid rgba(0,0,0,0.08)',
+                boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                color:'#374151',
+              }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            </button>
+
             <button title={mapaLocked ? "Desbloquear mapa" : "Bloquear mapa"}
               onClick={() => setMapaLocked(v => !v)}
               style={{
