@@ -7463,6 +7463,24 @@ const EmpreendimentosSection = ({
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
+
+  // Bloquear scroll do body sempre que LotDashboard estiver aberto
+  useEffect(() => {
+    if (selectedDevForMap) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+    } else {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.position = '';
+      document.body.style.width = '';
+    };
+  }, [selectedDevForMap]);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa">("cadastrar");
