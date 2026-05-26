@@ -94,7 +94,12 @@ function diaDoMes(dateStr: string): number {
 type GeneroBinario = "M" | "F";
 
 function genderizeEstadoCivil(raw: string, genero: GeneroBinario): string {
-  const base = (raw || "").toLowerCase().replace(/[()]/g, "").replace(/\ba\b/g, "").trim();
+  // Normalizar: remover sufixos de gênero como (a), (o), espaços extras
+  const base = (raw || "").toLowerCase()
+    .replace(/\(a\)/g, "").replace(/\(o\)/g, "")  // remove (a) e (o) primeiro
+    .replace(/[()]/g, "")                              // remove parênteses restantes
+    .replace(/\ba\b/g, "").trim()                   // remove "a" isolado
+    .replace(/a$/, "").trim();                         // remove "a" final (solteiroa -> solteiro)
   const masc: Record<string, string> = { solteiro: "solteiro", solteira: "solteiro", casado: "casado", casada: "casado", divorciado: "divorciado", divorciada: "divorciado", "viúvo": "viúvo", viuvo: "viúvo", "viúva": "viúvo", viuva: "viúvo" };
   const fem: Record<string, string> = { solteiro: "solteira", solteira: "solteira", casado: "casada", casada: "casada", divorciado: "divorciada", divorciada: "divorciada", "viúvo": "viúva", viuvo: "viúva", "viúva": "viúva", viuva: "viúva" };
   const map = genero === "F" ? fem : masc;
@@ -346,7 +351,14 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
 
   // ── 2. Comprador ────────────────────────────────────────────────────────────
   const compIntroOriginal = `de outro o Sr. ${T.COMP_NOME} , ${T.COMP_NAC}, ${T.COMP_CIVIL}, portador da carteira de identidade nº ${T.COMP_RG} e do CPF nº ${T.COMP_CPF}, Telefone ${T.COMP_FONES}, residente e domiciliado na ${T.COMP_ADDR}, ora em diante chamado simplesmente de COMPRADOR`;
-  const compAddr = `${cliente.endereco}, n° ${cliente.numero}, ${cliente.bairro}, ${cliente.cidade}, ${cliente.estado}, CEP ${cliente.cep}`;
+  const compAddr = [
+    cliente.endereco,
+    cliente.numero ? `n° ${cliente.numero}` : null,
+    cliente.bairro || null,
+    cliente.cidade || null,
+    cliente.estado || null,
+    cliente.cep ? `CEP ${cliente.cep}` : null,
+  ].filter(Boolean).join(', ');
   const compIntroNovo = `de outro ${generoComprador.artigo} ${generoComprador.tratamento} ${cliente.nome.toUpperCase()}, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg || "___"} e do CPF nº ${cliente.cpf || "___"}${phones ? `, Telefone ${phones}` : ""}, residente e ${generoComprador.domiciliado} na ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}`;
   xml = rep(xml, compIntroOriginal, compIntroNovo);
   xml = rep(xml, T.COMP_INTRO, `${generoComprador.artigo} ${generoComprador.tratamento} `);
@@ -406,10 +418,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   // ── 4. Imóvel / Empreendimento ───────────────────────────────────────────────
   xml = rep(xml, T.EMP_NOME, empreendimento.nome.toUpperCase());
   if (empreendimento.comunidade) {
-    xml = rep(xml, T.EMP_COM, empreendimento.comunidade);
+    xml = rep(xml, T.EMP_COM, String(empreendimento.comunidade).trim());
   }
   xml = rep(xml, T.EMP_SLASH, `no município de ${empSlash},`);
-  xml = rep(xml, T.LOTE_QUADRA, `Lote ${vendaSegura.numeroLote} da Quadra (${vendaSegura.quadra})`);
+  xml = rep(xml, T.LOTE_QUADRA, `Lote ${vendaSegura.numeroLote} da Quadra (${String(vendaSegura.quadra).toUpperCase()})`);
   if (vendaSegura.rua) {
     xml = rep(xml, T.RUA, vendaSegura.rua);
   }
