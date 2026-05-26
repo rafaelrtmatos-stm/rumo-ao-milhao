@@ -7949,7 +7949,7 @@ const EmpreendimentosSection = ({
             lat: d.lat, lng: d.lng
           })));
         }
-        if (!showMapaGlobal || isAdding) return null;
+        if (!showMapaGlobal || isAdding || !!selectedDevForMap) return null;
         return (
         <div>
 
