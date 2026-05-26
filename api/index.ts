@@ -734,17 +734,24 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
   try {
     const item = req.body;
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
-    // Preserva mapaImagemBase64 existente se o payload não trouxer
+    // Preservar campos pesados existentes que não vêm no payload base (stripHeavy os remove)
     let dataToSave = item;
-    if (!item.mapaImagemBase64) {
-      const [existing] = await db
-        .select()
-        .from(empreendimentos)
-        .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
-      if (existing?.data) {
-        const existingBase64 = (existing.data as any).mapaImagemBase64;
-        if (existingBase64) dataToSave = { ...item, mapaImagemBase64: existingBase64 };
-      }
+    const [existing] = await db
+      .select()
+      .from(empreendimentos)
+      .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
+    if (existing?.data) {
+      const prev = existing.data as any;
+      dataToSave = {
+        ...item,
+        // Preservar imagens se não vieram no payload
+        ...((!item.mapaImagemBase64 && prev.mapaImagemBase64) ? { mapaImagemBase64: prev.mapaImagemBase64 } : {}),
+        ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
+        ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
+        // CRÍTICO: preservar mapaPontos e lotesInfo — nunca apagar bolinhas!
+        ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
+        ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
+      };
     }
     await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_USER, data: dataToSave })
       .onConflictDoUpdate({ target: empreendimentos.id, set: { data: dataToSave } });
