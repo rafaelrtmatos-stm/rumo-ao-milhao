@@ -138,15 +138,17 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       leafletRef.current.invalidateSize?.();
       if (!devsSnapshot || devsSnapshot.length === 0) return;
       import("leaflet").then(L => {
-        // Double-check após import assíncrono
         if (!leafletRef.current) return;
         const validDevs = devsSnapshot.filter(d => validLatLng(d.lat, d.lng));
         if (validDevs.length === 0) return;
         if (validDevs.length === 1) {
-          leafletRef.current.flyTo([validDevs[0].lat!, validDevs[0].lng!], 15, { animate: false });
+          leafletRef.current.setView([validDevs[0].lat!, validDevs[0].lng!], 14, { animate: false });
         } else {
           const bounds = L.latLngBounds(validDevs.map(d => [d.lat!, d.lng!] as [number,number]));
-          leafletRef.current.fitBounds(bounds, { padding: [50,50], maxZoom: 14, animate: false });
+          // Padding proporcional à altura atual do mapa — recalcula quando barra sobe/desce
+          const mapH = leafletRef.current.getSize().y;
+          const pad = Math.max(30, Math.round(mapH * 0.12));
+          leafletRef.current.fitBounds(bounds, { padding: [pad, pad], maxZoom: 13, animate: false });
         }
       });
     });
