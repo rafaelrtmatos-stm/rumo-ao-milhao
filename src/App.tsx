@@ -2427,6 +2427,15 @@ const LotDashboard = ({
   const [painelRecolhido, setPainelRecolhido] = useState(false);
   const [mapUploadProgress, setMapUploadProgress] = useState(0); // 0=idle, 1-99=loading, 100=done
 
+  // Modal de upload de mapa — Preview + seleção de página + múltiplos PDFs
+  const [mapaUploadModal, setMapaUploadModal] = useState(false);
+  const [mapaUploadFiles, setMapaUploadFiles] = useState<File[]>([]);       // arquivos pendentes
+  const [mapaUploadPreviews, setMapaUploadPreviews] = useState<string[]>([]); // previews base64
+  const [mapaUploadPageIdx, setMapaUploadPageIdx] = useState(0);            // arquivo selecionado
+  const [mapaUploadPdfPages, setMapaUploadPdfPages] = useState<number>(1);  // total de páginas do PDF selecionado
+  const [mapaUploadPdfPage, setMapaUploadPdfPage] = useState(1);            // página escolhida
+  const [mapaUploadLoading, setMapaUploadLoading] = useState(false);
+
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
   const MED_RES_ZOOM_THRESHOLD = 1.5;   // zoom > 1.5 → original
@@ -3485,10 +3494,77 @@ const LotDashboard = ({
   };
 
   // ──────────────────────────────────────────────
+  // MODAL DE UPLOAD — Preview antes de confirmar
+  // ──────────────────────────────────────────────
+  const abrirModalUpload = async (files: File[]) => {
+    if (!files.length) return;
+    setMapaUploadFiles(files);
+    setMapaUploadPageIdx(0);
+    setMapaUploadPdfPage(1);
+    setMapaUploadLoading(true);
+    setMapaUploadModal(true);
+    // Gerar previews para cada arquivo
+    const previews: string[] = [];
+    let numPages = 1;
+    for (let i = 0; i < files.length; i++) {
+      const f = files[i];
+      if (f.type === 'application/pdf') {
+        try {
+          const buf = await f.arrayBuffer();
+          const preview = await renderPdfPageToPng(buf, 1.0);
+          previews.push(preview);
+          // Contar páginas do primeiro PDF
+          if (i === 0) {
+            try {
+              const pdfjsLib = await loadPdfjsLib();
+              const doc = await pdfjsLib.getDocument({ data: buf }).promise;
+              numPages = doc.numPages;
+            } catch {}
+          }
+        } catch { previews.push(''); }
+      } else {
+        // Imagem — preview direto
+        const url = await new Promise<string>(res => {
+          const r = new FileReader(); r.onload = () => res(r.result as string); r.readAsDataURL(f);
+        });
+        previews.push(url);
+      }
+    }
+    setMapaUploadPreviews(previews);
+    setMapaUploadPdfPages(numPages);
+    setMapaUploadLoading(false);
+  };
+
+  const cancelarModalUpload = () => {
+    setMapaUploadModal(false);
+    setMapaUploadFiles([]);
+    setMapaUploadPreviews([]);
+    setMapaUploadPageIdx(0);
+    setMapaUploadPdfPage(1);
+  };
+
+  const aplicarMapaUpload = async (fecharModal = true) => {
+    const file = mapaUploadFiles[mapaUploadPageIdx];
+    if (!file) return;
+    if (fecharModal) setMapaUploadModal(false);
+    // Usar handleImageUpload internamente com o arquivo selecionado e página
+    await handleImageUploadFile(file, mapaUploadPdfPage);
+  };
+
+  // ──────────────────────────────────────────────
   // UPLOAD DE IMAGEM
   // ──────────────────────────────────────────────
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    // Abrir modal de preview em vez de processar direto
+    await abrirModalUpload(files);
+    // Resetar input para permitir re-upload do mesmo arquivo
+    event.target.value = '';
+    return;
+  };
+
+  const handleImageUploadFile = async (file: File, pdfPage = 1) => {
     if (!file) return;
     const allowedImages = ["image/png", "image/jpeg", "image/jpg", "image/webp"];
     const isPDF = file.type === "application/pdf";
@@ -8958,6 +9034,112 @@ const EmpreendimentosSection = ({
           </>
         )}
       </AnimatePresence>
+
+      {/* ── MODAL UPLOAD MAPA ── */}
+      {mapaUploadModal && (
+        <div className="fixed inset-0 z-[600] flex items-end sm:items-center justify-center p-0 sm:p-4"
+          style={{background:'rgba(0,0,0,0.7)', backdropFilter:'blur(4px)'}}>
+          <div className="bg-white w-full sm:max-w-lg sm:rounded-2xl rounded-t-2xl overflow-hidden shadow-2xl flex flex-col max-h-[92vh]">
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+              <div>
+                <p className="text-sm font-black text-slate-800">Carregar Mapa</p>
+                <p className="text-xs text-slate-400">{mapaUploadFiles.length} arquivo(s) selecionado(s)</p>
+              </div>
+              <button onClick={cancelarModalUpload} className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+
+            {/* Seletor de arquivo quando múltiplos */}
+            {mapaUploadFiles.length > 1 && (
+              <div className="flex gap-2 px-4 pt-3 overflow-x-auto pb-1" style={{scrollbarWidth:'none'}}>
+                {mapaUploadFiles.map((f, i) => (
+                  <button key={i} onClick={() => setMapaUploadPageIdx(i)}
+                    className={`flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${mapaUploadPageIdx === i ? 'bg-[#1a4a1a] text-white border-[#1a4a1a]' : 'bg-white text-slate-600 border-slate-200'}`}>
+                    {f.type === 'application/pdf' ? '📄' : '🖼️'} {f.name.slice(0,18)}{f.name.length>18?'…':''}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Preview */}
+            <div className="flex-1 overflow-y-auto px-4 py-4 flex flex-col gap-3 min-h-0">
+              {mapaUploadLoading ? (
+                <div className="flex flex-col items-center justify-center h-48 gap-3">
+                  <div className="w-8 h-8 border-3 border-[#1a4a1a] border-t-transparent rounded-full animate-spin"/>
+                  <p className="text-sm text-slate-400 font-medium">Gerando preview...</p>
+                </div>
+              ) : mapaUploadPreviews[mapaUploadPageIdx] ? (
+                <img src={mapaUploadPreviews[mapaUploadPageIdx]}
+                  className="w-full rounded-xl border border-slate-200 object-contain max-h-64"
+                  alt="Preview do mapa"/>
+              ) : (
+                <div className="h-40 flex items-center justify-center bg-slate-50 rounded-xl border-2 border-dashed border-slate-200">
+                  <p className="text-sm text-slate-400">Preview indisponível</p>
+                </div>
+              )}
+
+              {/* Seletor de página para PDF */}
+              {mapaUploadFiles[mapaUploadPageIdx]?.type === 'application/pdf' && mapaUploadPdfPages > 1 && (
+                <div className="bg-slate-50 rounded-xl p-3">
+                  <p className="text-xs font-bold text-slate-600 mb-2">Página do PDF ({mapaUploadPdfPages} páginas)</p>
+                  <div className="flex items-center gap-3">
+                    <button onClick={() => setMapaUploadPdfPage(p => Math.max(1, p-1))}
+                      disabled={mapaUploadPdfPage <= 1}
+                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 disabled:opacity-40">
+                      ‹
+                    </button>
+                    <span className="text-sm font-bold text-slate-800 flex-1 text-center">
+                      {mapaUploadPdfPage} / {mapaUploadPdfPages}
+                    </span>
+                    <button onClick={() => setMapaUploadPdfPage(p => Math.min(mapaUploadPdfPages, p+1))}
+                      disabled={mapaUploadPdfPage >= mapaUploadPdfPages}
+                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center text-slate-600 disabled:opacity-40">
+                      ›
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Info do arquivo */}
+              <div className="text-xs text-slate-400 text-center">
+                {mapaUploadFiles[mapaUploadPageIdx]?.name} · {((mapaUploadFiles[mapaUploadPageIdx]?.size || 0)/1024/1024).toFixed(1)}MB
+              </div>
+            </div>
+
+            {/* Barra de progresso */}
+            {mapUploadProgress > 0 && mapUploadProgress < 100 && (
+              <div className="px-4 pb-2">
+                <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-[#1a4a1a] rounded-full transition-all duration-300"
+                    style={{width:`${mapUploadProgress}%`}}/>
+                </div>
+                <p className="text-xs text-slate-400 text-center mt-1">{mapUploadProgress}%</p>
+              </div>
+            )}
+
+            {/* Botões */}
+            <div className="flex gap-3 px-4 pb-5 pt-2 border-t border-slate-100">
+              <button onClick={cancelarModalUpload}
+                className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600 hover:bg-slate-50 active:scale-95 transition-all">
+                Cancelar
+              </button>
+              <button onClick={() => aplicarMapaUpload(false)}
+                disabled={mapaUploadLoading}
+                className="flex-1 py-3 rounded-xl border border-[#1a4a1a] text-sm font-bold text-[#1a4a1a] hover:bg-[#1a4a1a]/5 active:scale-95 transition-all disabled:opacity-40">
+                Aplicar
+              </button>
+              <button onClick={() => aplicarMapaUpload(true)}
+                disabled={mapaUploadLoading}
+                className="flex-1 py-3 rounded-xl bg-[#1a4a1a] text-sm font-bold text-white hover:bg-[#245424] active:scale-95 transition-all disabled:opacity-40">
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Cadastrar / Gerenciar Lotes */}
       <AnimatePresence>
