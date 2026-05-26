@@ -2387,6 +2387,7 @@ const DashboardSection = ({
           </div>
         </div>
       )}
+    </>
   );
 };
 
