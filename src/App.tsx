@@ -7476,7 +7476,7 @@ const EmpreendimentosSection = ({
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(true);
   const [globalMapHeight, setGlobalMapHeight] = useState<number>(() => {
-    try { return parseInt(localStorage.getItem('globalMapHeight') || '0') || 480; } catch { return 480; }
+    try { return parseInt(localStorage.getItem('globalMapHeight') || '0') || 300; } catch { return 300; }
   });
   // Mobile mapa global
   const isMapaMobile = window.innerWidth < 768;

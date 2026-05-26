@@ -94,7 +94,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   const [camada, setCamada] = useState<Camada>("satelite");
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [camadasAberto, setCamadasAberto] = useState(false);
-  const [mapaLocked, setMapaLocked] = useState(false);
+  const [mapaLocked, setMapaLocked] = useState(true); // bloqueado por padrão
   const [mapHeight, setMapHeight] = useState(() => {
     const saved = localStorage.getItem('mapGlobalHeight');
     return saved ? Math.max(300, Math.min(window.innerHeight, parseInt(saved))) : 480;
