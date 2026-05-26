@@ -1524,8 +1524,7 @@ const Sidebar = ({
             onClick={() => setIsOpen(false)}
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[55] lg:hidden"
           />
-          );
-        })()}
+        )}
       </AnimatePresence>
 
       <div
