@@ -7589,9 +7589,7 @@ const EmpreendimentosSection = ({
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [devSearch, setDevSearch] = useState("");
   const [showMapaGlobal, setShowMapaGlobal] = useState(true);
-  const [globalMapHeight, setGlobalMapHeight] = useState<number>(() => {
-    try { return parseInt(localStorage.getItem('globalMapHeight') || '0') || 300; } catch { return 300; }
-  });
+  const globalMapHeight = 300; // altura fixa — não redimensionável
   // Mobile mapa global
   const isMapaMobile = window.innerWidth < 768;
   const [mapaGlobalBloqueado, setMapaGlobalBloqueado] = useState(true);
@@ -8200,59 +8198,7 @@ const EmpreendimentosSection = ({
               />
               </div>
             )}
-            {/* HANDLE DE RESIZE */}
-            <div
-              className="absolute bottom-0 left-0 right-0 h-5 flex items-center justify-center cursor-ns-resize z-[1001] group select-none"
-              style={{ background: "linear-gradient(transparent, rgba(0,0,0,0.08))" }}
-              onMouseDown={(e) => {
-                e.preventDefault();
-                const startH = globalMapHeight;
-                globalMapResizeRef.current = { dragging: true, startY: e.clientY, startH };
-                const onMove = (ev: MouseEvent) => {
-                  if (!globalMapResizeRef.current.dragging) return;
-                  const delta = ev.clientY - globalMapResizeRef.current.startY;
-                  const newH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
-                  setGlobalMapHeight(newH);
-                };
-                const onUp = (ev: MouseEvent) => {
-                  globalMapResizeRef.current.dragging = false;
-                  window.removeEventListener('mousemove', onMove);
-                  window.removeEventListener('mouseup', onUp);
-                  const delta = ev.clientY - globalMapResizeRef.current.startY;
-                  const finalH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
-                  localStorage.setItem('globalMapHeight', String(Math.round(finalH)));
-                  // Forçar Leaflet a recalcular tiles após resize
-                  setTimeout(() => {
-                    const mapEl = document.querySelector('.leaflet-container') as any;
-                    if (mapEl?._leaflet_id) (window as any).L?.map?.(mapEl)?.invalidateSize?.();
-                  }, 100);
-                };
-                window.addEventListener('mousemove', onMove);
-                window.addEventListener('mouseup', onUp);
-              }}
-              onTouchStart={(e) => {
-                const startH = globalMapHeight;
-                globalMapResizeRef.current = { dragging: true, startY: e.touches[0].clientY, startH };
-                const onMove = (ev: TouchEvent) => {
-                  if (!globalMapResizeRef.current.dragging) return;
-                  const delta = ev.touches[0].clientY - globalMapResizeRef.current.startY;
-                  const newH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
-                  setGlobalMapHeight(newH);
-                };
-                const onEnd = (ev: TouchEvent) => {
-                  globalMapResizeRef.current.dragging = false;
-                  const delta = (ev.changedTouches[0]?.clientY ?? globalMapResizeRef.current.startY) - globalMapResizeRef.current.startY;
-                  const finalH = Math.max(180, Math.min(window.innerHeight * 0.85, startH + delta));
-                  localStorage.setItem('globalMapHeight', String(Math.round(finalH)));
-                  window.removeEventListener('touchmove', onMove);
-                  window.removeEventListener('touchend', onEnd);
-                };
-                window.addEventListener('touchmove', onMove, { passive: true });
-                window.addEventListener('touchend', onEnd);
-              }}
-            >
-              <div className="w-10 h-1 rounded-full bg-white/60 group-hover:bg-white/90 transition-all shadow" />
-            </div>
+
           </div>
           )} {/* fim ternário isMapaMobile */}
         </div>
