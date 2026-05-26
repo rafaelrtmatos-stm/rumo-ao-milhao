@@ -7962,8 +7962,9 @@ const EmpreendimentosSection = ({
             lat: d.lat, lng: d.lng
           })));
         }
+        if (!showMapaGlobal || isAdding) return null;
         return (
-        <div style={{ display: (showMapaGlobal && !isAdding) ? undefined : 'none', visibility: (showMapaGlobal && !isAdding) ? 'visible' : 'hidden', pointerEvents: (showMapaGlobal && !isAdding) ? 'auto' : 'none' }}>
+        <div>
 
           {/* ── WRAPPER MOBILE DO MAPA GLOBAL ── */}
           {isMapaMobile ? (
