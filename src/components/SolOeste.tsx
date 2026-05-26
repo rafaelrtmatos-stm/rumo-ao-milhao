@@ -45,7 +45,7 @@ export default function SolOeste() {
         <ellipse cx="0" cy="100" rx="90" ry="90" fill="url(#solGlow)"/>
 
         {/* Raios solares */}
-        {[−30,−15,0,15,30].map((ang, i) => (
+        {[-30,-15,0,15,30].map((ang, i) => (
           <line key={i}
             x1="0" y1="100"
             x2={40 * Math.cos((ang) * Math.PI/180)}
