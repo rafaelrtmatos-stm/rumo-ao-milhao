@@ -197,7 +197,7 @@ const T = {
   // Imóvel
   EMP_NOME:    "CINCO IRMÃOS",
   EMP_COM:     "Santa Maria",
-  EMP_SLASH:   "/",
+  EMP_SLASH:   "no município de /,",
   LOTE_QUADRA: "Lote 26 da Quadra 3",
   RUA:         "",
   DIM:         "10,00 metros de frente, lateral direita medindo 27,98 metros, pela lateral esquerda medindo 28,36 e medindo 10,00 metros de fundos, com área total de 279,10 metros quadrados",
@@ -208,8 +208,8 @@ const T = {
   SALDO_NUM:   "21.000,00 (Vinte e um mil Reais)",
   PARC_CTX:    "70 (Setenta)",
   VALPAR_NUM:  "300,00 (Trezentos Reais)",
-  DIA_CTX:     "vencimento no dia 05 de cada mês",
-  PRIMEIRA:    "05/05/2026",
+  DIA_CTX:     "com vencimento no dia 05 de cada mês",
+  PRIMEIRA:    "para o dia 05/05/2026,",
   CORR_NUM:    "1.720,00 (Mil setecentos e vinte Reais)",
 
   // Fórum / data
@@ -408,7 +408,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   if (empreendimento.comunidade) {
     xml = rep(xml, T.EMP_COM, empreendimento.comunidade);
   }
-  xml = rep(xml, T.EMP_SLASH, empSlash);
+  xml = rep(xml, T.EMP_SLASH, `no município de ${empSlash},`);
   xml = rep(xml, T.LOTE_QUADRA, `Lote ${vendaSegura.numeroLote} da Quadra (${vendaSegura.quadra})`);
   if (vendaSegura.rua) {
     xml = rep(xml, T.RUA, vendaSegura.rua);
@@ -422,8 +422,8 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   // Parcelas — contexto evita match em outros números do documento
   xml = rep(xml, T.PARC_CTX, `${vendaSegura.quantidadeParcelas} (${parcelasExt})`);
   xml = rep(xml, T.VALPAR_NUM, numExt(vendaSegura.valorParcela));
-  xml = rep(xml, T.DIA_CTX,   `vencimento no dia ${diaVenc} de cada mês`);
-  xml = rep(xml, T.PRIMEIRA,   primeiraPag);
+  xml = rep(xml, T.DIA_CTX,   `com vencimento no dia ${diaVenc} de cada mês`);
+  xml = rep(xml, T.PRIMEIRA,   `para o dia ${primeiraPag},`);
   xml = rep(xml, T.CORR_NUM,   numExt(corretagem));
 
   // ── 6. Fórum e data ──────────────────────────────────────────────────────────
