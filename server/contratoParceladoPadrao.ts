@@ -1,8 +1,8 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
-    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
 }
 
 import AdmZip from "adm-zip";
@@ -341,7 +341,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   // ── 1. Vendedor ─────────────────────────────────────────────────────────────
   const vendAddr = `${vendedor.endereco}, n° ${vendedor.numero}, ${vendedor.bairro}, ${vendedor.cidade}, ${vendedor.estado}, CEP ${vendedor.cep}`;
   const vendIntroOriginal = `o Sr. ${T.VEND_NOME}, ${T.VEND_NAC}, ${T.VEND_CIVIL}, portador da carteira de identidade nº ${T.VEND_RG} e do CPF nº ${T.VEND_CPF}, residente e domiciliado na ${T.VEND_ADDR}, nesta cidade, ora em diante chamado simplesmente de VENDEDOR`;
-  const vendIntroNovo = `${generoVendedor.artigo} ${generoVendedor.tratamento} ${vendedor.nome.toUpperCase()}, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg || "___"} e do CPF nº ${vendedor.cpf || "___"}, residente e ${generoVendedor.domiciliado} na ${vendAddr}, nesta cidade, ora em diante ${generoVendedor.chamado} simplesmente ${generoVendedor.papel}`;
+  const vendIntroNovo = `${generoVendedor.artigo} ${generoVendedor.tratamento} ${vendedor.nome.toUpperCase()}, ${generoVendedor.nacionalidade}, ${generoVendedor.estadoCivil}, ${generoVendedor.portador} da carteira de identidade nº ${vendedor.rg || "___"} e do CPF nº ${vendedor.cpf || "___"}, residente e ${generoVendedor.domiciliado} na ${vendAddr}, nesta cidade, ora em diante ${generoVendedor.chamado} simplesmente de ${generoVendedor.papel}`;
   xml = rep(xml, vendIntroOriginal, vendIntroNovo);
   xml = rep(xml, T.VEND_NOME,  vendedor.nome.toUpperCase());
   // Nacionalidade e estado civil do vendedor já são tratados no bloco completo acima.
@@ -359,7 +359,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
     cliente.estado || null,
     cliente.cep ? `CEP ${cliente.cep}` : null,
   ].filter(Boolean).join(', ');
-  const compIntroNovo = `de outro ${generoComprador.artigo} ${generoComprador.tratamento} ${cliente.nome.toUpperCase()}, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg || "___"} e do CPF nº ${cliente.cpf || "___"}${phones ? `, Telefone ${phones}` : ""}, residente e ${generoComprador.domiciliado} na ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente ${generoComprador.papel}`;
+  const compIntroNovo = `de outro ${generoComprador.artigo} ${generoComprador.tratamento} ${cliente.nome.toUpperCase()}, ${generoComprador.nacionalidade}, ${generoComprador.estadoCivil}, ${generoComprador.portador} da carteira de identidade nº ${cliente.rg || "___"} e do CPF nº ${cliente.cpf || "___"}${phones ? `, Telefone ${phones}` : ""}, residente e ${generoComprador.domiciliado} na ${compAddr}, ora em diante ${generoComprador.chamado} simplesmente de ${generoComprador.papel}`;
   xml = rep(xml, compIntroOriginal, compIntroNovo);
   xml = rep(xml, T.COMP_INTRO, `${generoComprador.artigo} ${generoComprador.tratamento} `);
   xml = rep(xml, T.COMP_NOME,  cliente.nome.toUpperCase());
@@ -404,10 +404,10 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
   xml = rep(xml, "a VENDEDORA", `${generoVendedor.artigo} ${generoVendedor.papel}`);
   xml = rep(xml, "o COMPRADOR", `${generoComprador.artigo} ${generoComprador.papel}`);
   xml = rep(xml, "a COMPRADORA", `${generoComprador.artigo} ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente de ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente de ${generoComprador.papel}`);
   xml = rep(xml, "VENDEDOR -", `${generoVendedor.papel} -`);
   xml = rep(xml, "VENDEDOR-", `${generoVendedor.papel} -`);
   xml = rep(xml, "VENDEDOR –", `${generoVendedor.papel} -`);

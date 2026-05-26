@@ -1,10 +1,10 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
-    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1")
-    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente $1");
+    .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
 }
 
 function corrigirSimplesmenteNoXml(xml: string): string {
@@ -303,10 +303,10 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "à COMPRADORA", `${generoComprador.aoA} ${generoComprador.papel}`);
   xml = rep(xml, "pelo COMPRADOR", `${generoComprador.peloPela} ${generoComprador.papel}`);
   xml = rep(xml, "pela COMPRADORA", `${generoComprador.peloPela} ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDOR", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteVENDEDORA", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADOR", `simplesmente de ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmenteCOMPRADORA", `simplesmente de ${generoComprador.papel}`);
   xml = rep(xml, "[VENDEDOR_TERMO]- [VENDEDOR]", `${generoVendedor.papel} - ${vendedor.nome.toUpperCase()}`);
   xml = rep(xml, "[COMPRADOR_TERMO]- [COMPRADOR]", `${generoComprador.papel} - ${cliente.nome.toUpperCase()}`);
   xml = rep(xml, `${generoVendedor.papel}- ${vendedor.nome.toUpperCase()}`, `${generoVendedor.papel} - ${vendedor.nome.toUpperCase()}`);
@@ -341,10 +341,10 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   }
 
   // ── Corrigir "simplesmente de VENDEDOR/COMPRADOR" fragmentado ────────────
-  xml = rep(xml, "simplesmente de VENDEDOR", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmente de VENDEDORA", `simplesmente ${generoVendedor.papel}`);
-  xml = rep(xml, "simplesmente de COMPRADOR", `simplesmente ${generoComprador.papel}`);
-  xml = rep(xml, "simplesmente de COMPRADORA", `simplesmente ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmente de VENDEDOR", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmente de VENDEDORA", `simplesmente de ${generoVendedor.papel}`);
+  xml = rep(xml, "simplesmente de COMPRADOR", `simplesmente de ${generoComprador.papel}`);
+  xml = rep(xml, "simplesmente de COMPRADORA", `simplesmente de ${generoComprador.papel}`);
   xml = corrigirEspacosSimplesmente(xml);
 
   // ── Reempacotar ───────────────────────────────────────────────────────────
