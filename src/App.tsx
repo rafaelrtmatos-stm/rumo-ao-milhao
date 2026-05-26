@@ -5874,8 +5874,8 @@ const LotDashboard = ({
           </button>
         </div>
 
-        {/* SIDEBAR DIREITA */}
-        <div style={{width:220, flexShrink:0, display:'flex', flexDirection:'column', gap:12, overflowY:'auto'}}>
+        {/* SIDEBAR DIREITA — oculta no mobile */}
+        <div className="hidden sm:flex" style={{width:220, flexShrink:0, flexDirection:'column', gap:12, overflowY:'auto'}}>
 
           {/* LOCALIZAÇÃO */}
           <div style={{background:'white', borderRadius:16, padding:16, boxShadow:'0 1px 8px rgba(0,0,0,0.07)', border:'1px solid #f1f5f9'}}>
