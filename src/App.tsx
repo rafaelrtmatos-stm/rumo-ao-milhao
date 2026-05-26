@@ -5745,12 +5745,13 @@ const LotDashboard = ({
     const hasCoords = !!(lat && lng && !isNaN(lat) && !isNaN(lng) && lat !== 0 && lng !== 0);
     const iframeUrl = hasCoords ? `https://maps.google.com/maps?q=${lat},${lng}&z=16&t=k&output=embed` : '';
     const gmapsUrl = hasCoords ? `https://www.google.com/maps?q=${lat},${lng}` : '';
+
+    // Layout idêntico desktop e mobile — iframe ocupa 100%, botões flutuantes simétricos
     return (
-      <>
-      {/* DESKTOP — iframe 100% */}
-      <div className="hidden sm:flex flex-1 min-h-0 relative overflow-hidden">
+      <div className="flex flex-1 min-h-0 relative overflow-hidden" style={{minHeight: 0}}>
         {hasCoords ? (
           <>
+            {/* Iframe satélite — 100% */}
             <iframe
               title="Como Chegar"
               src={iframeUrl}
@@ -5759,36 +5760,39 @@ const LotDashboard = ({
               loading="lazy"
               allowFullScreen
             />
-            {/* Bússola interativa */}
+
+            {/* HUD inferior — botões simétricos, nunca espremidos */}
+            <div style={{
+              position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
+              zIndex: 10, display: 'flex', alignItems: 'center', gap: 10,
+              background: 'rgba(255,255,255,0.95)', backdropFilter: 'blur(8px)',
+              borderRadius: 16, padding: '8px 14px',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+              border: '1px solid rgba(0,0,0,0.07)',
+              whiteSpace: 'nowrap',
+            }}>
+              <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
+                style={{display:'flex', alignItems:'center', gap:6, fontSize:12, fontWeight:700, color:'#1a4a1a', textDecoration:'none'}}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                Abrir no Google Maps
+              </a>
+              <div style={{width:1, height:18, background:'#e2e8f0'}}/>
+              <span style={{fontSize:11, color:'#94a3b8', fontWeight:500}}>
+                {(lat as number).toFixed(4)}°, {(lng as number).toFixed(4)}°
+              </span>
+            </div>
+
+            {/* Bússola — canto inferior direito */}
             <BussolaInterativa />
-            {/* Botão abrir Google Maps */}
-            <a href={gmapsUrl} target="_blank" rel="noopener noreferrer"
-              className="absolute bottom-4 left-4 z-10 flex items-center gap-2 px-4 py-2 bg-white rounded-xl shadow-lg text-xs font-bold text-slate-700 hover:bg-slate-50 transition-all border border-slate-100">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              Abrir no Google Maps
-            </a>
           </>
         ) : (
-          <div className="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400 bg-slate-50">
+          <div style={{flex:1, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', gap:12, color:'#94a3b8', background:'#f8fafc', width:'100%'}}>
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <p className="text-sm font-medium">Localização não cadastrada</p>
-            <p className="text-xs text-slate-300">Edite o empreendimento para adicionar coordenadas</p>
+            <p style={{fontSize:14, fontWeight:600, margin:0}}>Localização não cadastrada</p>
+            <p style={{fontSize:12, color:'#cbd5e1', margin:0, textAlign:'center'}}>Edite o empreendimento e adicione as coordenadas</p>
           </div>
         )}
       </div>
-      {/* MOBILE */}
-      <div className="sm:hidden flex-1 overflow-hidden" style={{minHeight:'70vh'}}>
-        {hasCoords ? (
-          <iframe title="Como Chegar" src={iframeUrl} width="100%" height="100%"
-            style={{border:0, minHeight:'70vh'}} loading="lazy" allowFullScreen/>
-        ) : (
-          <div className="flex flex-col items-center justify-center h-64 gap-2 text-slate-400 p-8">
-            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-            <p className="text-sm font-medium text-center">Localização não cadastrada</p>
-          </div>
-        )}
-      </div>
-      </>
     );
   };
 
@@ -6302,25 +6306,7 @@ const LotDashboard = ({
           {/* Conteúdo scrollável */}
           <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5">
 
-            {/* ── COMO CHEGAR (mobile inner) ── */}
-            {mode === "global" && (() => {
-              const _lat = (localDev as any).lat;
-              const _lng = (localDev as any).lng;
-              const _hasCoords = !!(_lat && _lng && !isNaN(_lat) && !isNaN(_lng));
-              return _hasCoords ? (
-                <iframe
-                  title="Como Chegar"
-                  src={`https://maps.google.com/maps?q=${_lat},${_lng}&z=16&t=k&output=embed`}
-                  width="100%" style={{border:0, borderRadius:16, display:'block', height:320}}
-                  loading="lazy" allowFullScreen
-                />
-              ) : (
-                <div className="flex flex-col items-center justify-center h-40 text-slate-400 gap-2">
-                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                  <p className="text-xs">Localização não cadastrada</p>
-                </div>
-              );
-            })()}
+
 
             {/* ── VISUALIZAR ── */}
             {(!isEditingMap || mapAction === "visualizar") && mode !== "global" && (
