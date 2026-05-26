@@ -146,9 +146,10 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         } else {
           const bounds = L.latLngBounds(validDevs.map(d => [d.lat!, d.lng!] as [number,number]));
           // Padding proporcional à altura atual do mapa — recalcula quando barra sobe/desce
-          const mapH = leafletRef.current.getSize().y;
-          const pad = Math.max(30, Math.round(mapH * 0.12));
-          leafletRef.current.fitBounds(bounds, { padding: [pad, pad], maxZoom: 13, animate: false });
+          const mapSize = leafletRef.current.getSize();
+          const padV = Math.max(50, Math.round(mapSize.y * 0.25));
+          const padH = Math.max(30, Math.round(mapSize.x * 0.08));
+          leafletRef.current.fitBounds(bounds, { paddingTopLeft: [padH, padV], paddingBottomRight: [padH, padV], maxZoom: 12, animate: false });
         }
       });
     });
@@ -217,8 +218,8 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       leafletRef.current = map;
       setMapReady(true);
 
-      // Auto-centralizar nos pinos após mapa pronto
-      setTimeout(() => {
+      // Auto-centralizar nos pinos — múltiplas tentativas para garantir que o mapa já tem altura correta
+      const centralizarPinos = (tentativa = 0) => {
         if (!leafletRef.current) return;
         const devs = empreendimentos.filter(d =>
           typeof d.lat === 'number' && typeof d.lng === 'number' &&
@@ -227,19 +228,28 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         if (!devs.length) return;
         import("leaflet").then(L => {
           if (!leafletRef.current) return;
+          const mapSize = leafletRef.current.getSize();
+          // Se o mapa ainda não tem altura real, tentar de novo
+          if (mapSize.y < 50 && tentativa < 10) {
+            setTimeout(() => centralizarPinos(tentativa + 1), 150);
+            return;
+          }
           if (devs.length === 1) {
-            leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 14, { animate: false });
+            leafletRef.current.setView([devs[0].lat!, devs[0].lng!], 13, { animate: false });
           } else {
             const bounds = L.latLngBounds(devs.map(d => [d.lat!, d.lng!] as [number,number]));
-            // padding maior garante que todos os pinos ficam visíveis no centro
-            const mapSize = leafletRef.current.getSize();
-            const padTop = Math.max(60, Math.round(mapSize.y * 0.28));
-            const padBottom = Math.max(60, Math.round(mapSize.y * 0.28));
-            const padX = Math.max(30, Math.round(mapSize.x * 0.08));
-            leafletRef.current.fitBounds(bounds, { paddingTopLeft: [padX, padTop], paddingBottomRight: [padX, padBottom], maxZoom: 12, animate: false });
+            const padV = Math.max(50, Math.round(mapSize.y * 0.25));
+            const padH = Math.max(30, Math.round(mapSize.x * 0.08));
+            leafletRef.current.fitBounds(bounds, {
+              paddingTopLeft: [padH, padV],
+              paddingBottomRight: [padH, padV],
+              maxZoom: 12,
+              animate: false
+            });
           }
         });
-      }, 100);
+      };
+      setTimeout(() => centralizarPinos(), 300);
 
       // Centralização feita no useEffect separado abaixo
     });
