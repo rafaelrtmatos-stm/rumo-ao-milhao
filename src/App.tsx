@@ -6302,23 +6302,25 @@ const LotDashboard = ({
           {/* Conteúdo scrollável */}
           <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-5">
 
-            {/* ── GLOBAL ── */}
-            {mode === "global" && (
-              <div className="space-y-3">
-                <p className="text-sm font-black text-slate-800">Localização do empreendimento</p>
-                <div className="rounded-2xl overflow-hidden border border-slate-200" style={{ height: 300 }}>
-                  <MapaGlobalDashboard
-                    empreendimentos={[localDev]}
-                    sales={sales}
-                    visible={true}
-                    focusDevId={localDev.id}
-                    onAbrirEmpreendimento={() => {}}
-                    onVerMapa={() => {}}
-                  />
+            {/* ── COMO CHEGAR (mobile inner) ── */}
+            {mode === "global" && (() => {
+              const _lat = (localDev as any).lat;
+              const _lng = (localDev as any).lng;
+              const _hasCoords = !!(_lat && _lng && !isNaN(_lat) && !isNaN(_lng));
+              return _hasCoords ? (
+                <iframe
+                  title="Como Chegar"
+                  src={`https://maps.google.com/maps?q=${_lat},${_lng}&z=16&t=k&output=embed`}
+                  width="100%" style={{border:0, borderRadius:16, display:'block', height:320}}
+                  loading="lazy" allowFullScreen
+                />
+              ) : (
+                <div className="flex flex-col items-center justify-center h-40 text-slate-400 gap-2">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                  <p className="text-xs">Localização não cadastrada</p>
                 </div>
-                <p className="text-xs text-slate-400 text-center">Mapa de satélite — localização do empreendimento</p>
-              </div>
-            )}
+              );
+            })()}
 
             {/* ── VISUALIZAR ── */}
             {(!isEditingMap || mapAction === "visualizar") && mode !== "global" && (
@@ -6929,28 +6931,7 @@ const LotDashboard = ({
 
         {mode === "global" && renderAbaGlobal()}
 
-        {/* ABA COMO CHEGAR mobile */}
-        {mode === "global" && (
-          <div className="sm:hidden flex-1 overflow-hidden" style={{minHeight:'calc(100vh - 200px)'}}>
-            {(localDev as any).lat && (localDev as any).lng ? (
-              <iframe
-                title="Como Chegar"
-                width="100%"
-                height="100%"
-                style={{ border: 0, minHeight: '70vh' }}
-                loading="lazy"
-                allowFullScreen
-                src={`https://maps.google.com/maps?q=${(localDev as any).lat},${(localDev as any).lng}&z=16&t=k&output=embed`}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center h-64 text-slate-400 gap-2 p-8">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                <p className="text-sm font-medium text-center">Localização não cadastrada</p>
-                <p className="text-xs text-slate-300 text-center">Edite o empreendimento para adicionar as coordenadas</p>
-              </div>
-            )}
-          </div>
-        )}
+
 
         {/* CORPO PRINCIPAL — layout fiel à imagem */}
         {mode === "mapa" && mapaImagem ? (

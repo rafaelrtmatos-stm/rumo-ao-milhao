@@ -65,8 +65,8 @@ export default function BussolaInterativa() {
           <circle cx="50" cy="50" r="5" fill="white" stroke="#1a4a1a" strokeWidth="2"/>
         </g>
 
-        {/* Sol nascendo a Leste */}
-        <g transform="translate(82, 50)">
+        {/* Sol no Oeste */}
+        <g transform="translate(18, 50)">
           <circle cx="0" cy="0" r="5" fill="#f59e0b" opacity="0.9"/>
           {[0,45,90,135,180,225,270,315].map(a => (
             <line key={a}
@@ -88,7 +88,7 @@ export default function BussolaInterativa() {
         </button>
       </div>
       <p style={{fontSize:8, color:'#94a3b8', textAlign:'center', marginTop:4}}>
-        ☀️ L (Leste)
+        ☀️ O (Oeste)
       </p>
     </div>
   );
