@@ -8004,11 +8004,10 @@ const EmpreendimentosSection = ({
                   boxShadow: '0 4px 24px rgba(0,0,0,0.14)',
                   outline: mapaFlashLock ? '2px solid rgba(239,68,68,0.6)' : 'none',
                 }}
-                onClick={e => { if (mapaGlobalBloqueado) { e.stopPropagation(); setMapaFlashLock(true); setTimeout(() => setMapaFlashLock(false), 600); } }}
-                onTouchStart={e => { if (mapaGlobalBloqueado) { setMapaFlashLock(true); setTimeout(() => setMapaFlashLock(false), 600); } }}>
+                >
 
                 {/* Mapa */}
-                <div style={{ position:'absolute', inset:0, pointerEvents: mapaGlobalBloqueado ? 'none' : 'auto' }}>
+                <div style={{ position:'absolute', inset:0 }}>
                   <MapaGlobalDashboard
                     ref={mapaGlobalRef}
                     empreendimentos={devsVisiveis}
