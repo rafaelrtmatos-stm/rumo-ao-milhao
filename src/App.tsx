@@ -10659,28 +10659,21 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     // Value = (Total - Entry) / Count
     // Total = (Value * Count) + Entry
 
-    if (
-      field === "valorLote" ||
-      field === "valorEntrada" ||
-      field === "quantidadeParcelas"
-    ) {
+    // Cálculo bidirecional completo
+    if (field === "valorLote" || field === "valorEntrada" || field === "quantidadeParcelas") {
+      // Total + Entrada + Parcelas → calcula valor da parcela
       const vLote = field === "valorLote" ? value : saleData.valorLote || 0;
-      const vEntrada =
-        field === "valorEntrada" ? value : saleData.valorEntrada || 0;
-      const qParcelas =
-        field === "quantidadeParcelas"
-          ? value
-          : saleData.quantidadeParcelas || 1;
-
-      const calcParcela = Math.max(0, (vLote - vEntrada) / (qParcelas || 1));
-      updatedData.valorParcela = Number(calcParcela.toFixed(2));
+      const vEntrada = field === "valorEntrada" ? value : saleData.valorEntrada || 0;
+      const qParcelas = field === "quantidadeParcelas" ? value : saleData.quantidadeParcelas || 1;
+      if (qParcelas > 0) {
+        updatedData.valorParcela = Number(Math.max(0, (vLote - vEntrada) / qParcelas).toFixed(2));
+      }
     } else if (field === "valorParcela") {
+      // Parcela + Nº Parcelas + Entrada → calcula total
       const vParcela = value;
       const vEntrada = saleData.valorEntrada || 0;
       const qParcelas = saleData.quantidadeParcelas || 1;
-
-      const calcLote = vParcela * qParcelas + vEntrada;
-      updatedData.valorLote = Number(calcLote.toFixed(2));
+      updatedData.valorLote = Number((vParcela * qParcelas + vEntrada).toFixed(2));
     }
 
     setSaleData(updatedData);
