@@ -7322,25 +7322,7 @@ const LotDashboard = ({
               )}
             </div>
           </div>
-          {/* ABAS MOBILE removidas — agora unificadas acima */}
-          <div className="sm:hidden px-4 pt-0 pb-0 flex-shrink-0 border-b border-slate-100">
-            <div className="flex gap-0.5">
-              {mapaImagem && (
-                <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
-                  className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "mapa" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
-                  🗺 Mapa
-                </button>
-              )}
-              <button onClick={() => setMode("global")}
-                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
-                🧭 Como Chegar
-              </button>
-              <button onClick={() => setMode("quadradinhos")}
-                className={`flex-1 py-2 rounded-xl text-xs font-black uppercase transition-all ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500"}`}>
-                ⊞ Lotes
-              </button>
-            </div>
-          </div>
+
 
         {/* CORPO PRINCIPAL — layout fiel à imagem */}
         {mode === "mapa" && mapaImagem ? (
