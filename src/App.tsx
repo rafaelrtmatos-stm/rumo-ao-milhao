@@ -2275,7 +2275,7 @@ const DashboardSection = ({
               })}
             </div>
           </div>
-        )}
+      })()}
     </div>
   );
 };
