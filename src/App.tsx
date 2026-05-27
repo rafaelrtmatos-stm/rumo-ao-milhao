@@ -9534,13 +9534,16 @@ const EmpreendimentosSection = ({
                   const aplicados: string[] = [];
                   precosRegras.forEach(r => {
                     interpretarScript(r.script).forEach(tag => {
-                      const [q, l] = tag.replace("Q","").replace("·L",":").split(":");
+                      // tag = "Q1·L5" → quadra=1, lote=5
+                      const m = tag.match(/Q(\w+)·L(\w+)/);
+                      if (!m) return;
+                      const [, q, l] = m;
                       const key = `${q}:${l}`;
                       if (!info[key]) info[key] = {};
-                      info[key].preco = parseFloat(r.valor) || 0;
-                      info[key].entrada = parseFloat(r.entrada) || 0;
+                      info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
+                      info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].parcelas = parseInt(r.parcelas) || 0;
-                      aplicados.push(tag);
+                      aplicados.push(`Q${q}·L${l}`);
                     });
                   });
                   // Aplicar padrão nos não especificados
@@ -9552,7 +9555,7 @@ const EmpreendimentosSection = ({
                         : (Array.isArray(lts) ? lts : []);
                       lst.forEach((l: string) => {
                         const key = `${q}:${l}`;
-                        if (!aplicados.includes(`Q${q}·L${l}`)) {
+                        if (!aplicados.includes(`Q${q}·L${String(l)}`)) {
                           if (!info[key]) info[key] = {};
                           info[key].preco = parseFloat(precosPadrao.valor) || 0;
                           info[key].entrada = parseFloat(precosPadrao.entrada) || 0;
