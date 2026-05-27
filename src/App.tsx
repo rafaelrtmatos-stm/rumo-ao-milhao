@@ -7203,36 +7203,127 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* ABAS */}
-          {/* ABAS PREMIUM — desktop only */}
-          <div className="hidden sm:block px-6 pt-4 pb-0 flex-shrink-0">
-            <div className="flex gap-2 bg-slate-100/80 p-1.5 rounded-2xl">
+          {/* ABAS UNIFICADAS — mesma ordem em mobile e desktop */}
+          <div className="px-3 pt-2 pb-0 flex-shrink-0">
+            <div className="flex gap-0.5 bg-slate-100 p-1 rounded-2xl overflow-x-auto" style={{scrollbarWidth:'none'}}>
+              {/* Mapa */}
               {mapaImagem && (
                 <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
-                  className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "mapa" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polygon points="3 6 9 3 15 6 21 3 21 18 15 21 9 18 3 21"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${mode === "mapa" && !isEditingMap ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
                   Mapa
                 </button>
               )}
-              <button onClick={() => setMode("precos")}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "precos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              {/* Preços */}
+              <button onClick={() => { setMode("precos"); if (isEditingMap) cancelarEdicaoMapa(); }}
+                className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${mode === "precos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                 Preços
               </button>
-              <button onClick={() => setMode("global")}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-                Como Chegar
+              {/* Como Chegar */}
+              <button onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
+                className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                Chegar
               </button>
+              {/* Lotes */}
               <button onClick={() => setMode("quadradinhos")}
-                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                 Lotes
               </button>
+              {/* Editar bolinhas */}
+              {mapaImagem && (
+                <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
+                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                  {mapaPontos.length === 0 ? "Bolinhas" : "Editar"}
+                </button>
+              )}
+              {/* Faixas */}
+              {mapaImagem && (
+                <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
+                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                  Faixas
+                </button>
+              )}
+              {/* Auto */}
+              {mapaImagem && (
+                <button onClick={async () => {
+                    setDetectandoBolinhas(true);
+                    try {
+                      const imgSrc = (localDev.mapaImagemBase64 || localDev.mapaImagemUrl || '') as string;
+                      await new Promise<void>((resolve, reject) => {
+                        const img = new window.Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                          const canvas = document.createElement('canvas');
+                          canvas.width = img.width; canvas.height = img.height;
+                          const ctx = canvas.getContext('2d')!;
+                          ctx.drawImage(img, 0, 0);
+                          const { width: W, height: H } = canvas;
+                          const data = ctx.getImageData(0, 0, W, H).data;
+                          const bolinhasDetect: any[] = [];
+                          const step = 4;
+                          const yMin = Math.round(H * 0.05), yMax = Math.round(H * 0.95);
+                          const temTextoProximo = (cx: number, cy: number, raio: number) => {
+                            let n = 0;
+                            for (let dy = -raio; dy <= raio; dy += 2)
+                              for (let dx = 4; dx <= raio*3; dx += 2) {
+                                const px = cx+dx, py = cy+dy;
+                                if (px<0||px>=W||py<0||py>=H) continue;
+                                const pi=(py*W+px)*4;
+                                if (data[pi]<80&&data[pi+1]<80&&data[pi+2]<80) n++;
+                              }
+                            return n > 8;
+                          };
+                          for (let y = yMin; y < yMax; y += step) {
+                            for (let x = 0; x < W; x += step) {
+                              const i=(y*W+x)*4, r=data[i], g=data[i+1], b=data[i+2];
+                              const isBlue=b>130&&r<110&&b>g+40, isRed=r>160&&b<80&&r>g+60;
+                              if (!isBlue&&!isRed) continue;
+                              const xp=parseFloat((x/W*100).toFixed(1)), yp=parseFloat((y/H*100).toFixed(1));
+                              const dup=bolinhasDetect.some(b2=>Math.abs(b2.xPercent-xp)<1.5&&Math.abs(b2.yPercent-yp)<1.5);
+                              if (!dup) bolinhasDetect.push({xPercent:xp,yPercent:yp,quadra:'',lote:'',color:isBlue?'azul':'vermelho',_x:x,_y:y});
+                            }
+                          }
+                          const filtradas = bolinhasDetect.filter(b=>!temTextoProximo(b._x,b._y,12)).map(({_x,_y,...rest})=>rest);
+                          setDetectPreview(filtradas);
+                          setShowDetectModal(true);
+                          resolve();
+                          if (filtradas.length > 0) {
+                            const imgPayload = (localDev as any).mapaImagemUrl || imgSrc;
+                            fetch('/api/detectar-bolinhas', {
+                              method:'POST', headers:{'Content-Type':'application/json'},
+                              body:JSON.stringify({imageBase64:imgPayload, bolinhas:filtradas.map((b:any,i:number)=>({index:i,xPercent:b.xPercent,yPercent:b.yPercent}))})
+                            }).then(r=>r.json()).then((d:any)=>{
+                              if (d.resultados?.length) setDetectPreview((prev:any[])=>prev.map((b:any,i:number)=>{
+                                const res=d.resultados.find((r:any)=>r.index===i);
+                                return res?{...b,quadra:res.quadra||'',lote:res.lote||''}:b;
+                              }));
+                            }).catch(()=>{});
+                          }
+                        };
+                        img.onerror = reject;
+                        img.src = imgSrc;
+                      });
+                    } catch(e) { alert('Erro ao detectar: '+(e as any).message); }
+                    setDetectandoBolinhas(false);
+                  }}
+                  disabled={detectandoBolinhas}
+                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 bg-violet-600 text-white disabled:opacity-60`}>
+                  {detectandoBolinhas
+                    ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/>
+                    : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>
+                  }
+                  {detectandoBolinhas ? "IA..." : "Auto"}
+                </button>
+              )}
             </div>
           </div>
-          {/* ABAS MOBILE */}
-          <div className="sm:hidden px-4 pt-3 pb-0 flex-shrink-0 border-b border-slate-100">
+          {/* ABAS MOBILE removidas — agora unificadas acima */}
+          <div className="sm:hidden px-4 pt-0 pb-0 flex-shrink-0 border-b border-slate-100">
             <div className="flex gap-0.5">
               {mapaImagem && (
                 <button onClick={() => { setMode("mapa"); if (!isEditingMap) setMapAction("visualizar"); }}
@@ -7934,10 +8025,13 @@ const EmpreendimentosSection = ({
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
-  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string}[]>([
-    {id:1, script:"", valor:"", entrada:"", parcelas:""}
-  ]);
-  const [precosPadrao, setPrecosPadrao] = useState({valor:"", entrada:"", parcelas:""});
+  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string}[]>(() => {
+    const saved = (lotRegDev as any)?.precosRegras;
+    return saved?.length ? saved : [{id:1, script:"", valor:"", entrada:"", parcelas:""}];
+  });
+  const [precosPadrao, setPrecosPadrao] = useState<{valor:string; entrada:string; parcelas:string}>(() => {
+    return (lotRegDev as any)?.precosPadrao || {valor:"", entrada:"", parcelas:""};
+  });
   const [precosScriptMsg, setPrecosScriptMsg] = useState("");
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [scriptPasteText, setScriptPasteText] = useState("");
@@ -9779,13 +9873,21 @@ const EmpreendimentosSection = ({
                       });
                     });
                   }
-                  // Salvar via onUpdateLotesInfo (mesmo mecanismo do handleSalvarLote)
+                  // Salvar preços nos lotes
                   onUpdateLotesInfo(lotRegDev!.id, info);
-                  setLotRegDev(prev => prev ? {...prev, lotesInfo: info} : prev);
+                  // Persistir as regras no empreendimento para reedição
+                  const devComRegras = {
+                    ...(lotRegDev as any),
+                    lotesInfo: info,
+                    precosRegras: precosRegras,
+                    precosPadrao: precosPadrao,
+                  };
+                  setLotRegDev(devComRegras as any);
+                  onSaveDevExternal && onSaveDevExternal(devComRegras);
                   if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
-                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info} : prev);
+                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao} as any : prev);
                   }
-                  setPrecosScriptMsg("✅ Preços aplicados com sucesso!");
+                  setPrecosScriptMsg("✅ Preços aplicados e salvos!");
                 };
 
                 return (
