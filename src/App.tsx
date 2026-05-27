@@ -5846,6 +5846,81 @@ const LotDashboard = ({
   // ── LAYOUT MOBILE ──────────────────────────────────────────────────────────
 
 
+  // Renderiza o mapa de preços — clone exato do mapa real com cor por faixa de preço
+  const renderMapaPrecos = (getCorLote: (preco: number) => string) => {
+    if (!mapaImagem) return (
+      <div className="flex-1 flex items-center justify-center bg-slate-100 rounded-2xl m-3">
+        <p className="text-xs text-slate-400">Sem imagem de mapa</p>
+      </div>
+    );
+    const ballSize = getBallPixelSize();
+    return (
+      <div
+        ref={mapContainerRef}
+        className="absolute inset-0 overflow-hidden select-none bg-slate-200"
+        style={{cursor: 'grab'}}
+        onWheel={handleMapWheel}
+        onMouseDown={handleMapMousePanStart}
+        onMouseMove={handleMapMouseMoveForDrag}
+        onMouseUp={handleMapMouseUp}
+        onMouseLeave={handleMapMouseUp}
+      >
+        <div
+          ref={mapViewportRef}
+          style={{
+            position: 'absolute', inset: 0,
+            transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`,
+            transformOrigin: '0 0',
+          }}
+        >
+          <div ref={mapImageRef} style={{position:'relative', display:'inline-block', width:'100%'}}>
+            <img
+              src={mapaImagem}
+              style={{display:'block', width:'100%', userSelect:'none', pointerEvents:'none'}}
+              draggable={false}
+              alt="mapa"
+            />
+            {/* Bolinhas coloridas por faixa de preço — mesma posição e tamanho do mapa real */}
+            {mapaPontos.map((ponto, i) => {
+              const key = ponto.quadra && ponto.lote ? `${ponto.quadra}:${ponto.lote}` : null;
+              const info = key ? (localDev.lotesInfo as any)?.[key] : null;
+              const preco = info?.preco || 0;
+              const cor = getCorLote(preco);
+              return (
+                <div key={ponto.id || i} style={{
+                  position: 'absolute',
+                  left: `${ponto.xPercent}%`,
+                  top: `${ponto.yPercent}%`,
+                  width: `${ballSize.size}px`,
+                  height: `${ballSize.size}px`,
+                  borderRadius: '50%',
+                  background: cor,
+                  border: `${ballSize.border ?? 2}px solid rgba(255,255,255,.9)`,
+                  boxShadow: `0 0 6px ${cor}99, 0 1px 4px rgba(0,0,0,.3)`,
+                  transform: 'translate(-50%,-50%)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: `${ballSize.font}px`, fontWeight: 900, color: 'white',
+                  lineHeight: 1, zIndex: 2, cursor: 'default',
+                }}>
+                  {ponto.lote || ''}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* Controles de zoom */}
+        <div style={{position:'absolute', right:10, bottom:10, display:'flex', flexDirection:'column', gap:4, zIndex:10}}>
+          <button onClick={() => setMapZoom(z => Math.min(z*1.3, 8))}
+            style={{width:32,height:32,background:'rgba(255,255,255,.95)',border:'1px solid #e2e8f0',borderRadius:8,fontSize:18,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>+</button>
+          <button onClick={() => setMapZoom(z => Math.max(z/1.3, 0.3))}
+            style={{width:32,height:32,background:'rgba(255,255,255,.95)',border:'1px solid #e2e8f0',borderRadius:8,fontSize:18,fontWeight:900,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>−</button>
+          <button onClick={() => { setMapZoom(1); setMapPan({x:0,y:0}); }}
+            style={{width:32,height:32,background:'rgba(255,255,255,.95)',border:'1px solid #e2e8f0',borderRadius:8,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>⊕</button>
+        </div>
+      </div>
+    );
+  };
+
   const renderAbaGlobal = () => {
     if (!localDev?.id) return null;
     const lat = (localDev as any).lat as number | undefined;
@@ -7572,57 +7647,9 @@ const LotDashboard = ({
           };
           return (
             <div className="flex flex-col" style={{height:'100%'}}>
-              {/* Mapa com bolinhas coloridas por preço */}
-              <div className="flex-1 relative overflow-hidden mx-3 rounded-2xl" style={{minHeight:0}}>
-                <div className="w-full h-full relative">
-                  {/* Mesmo mapa da aba Mapa */}
-                  {mode === "precos" && localDev && (
-                    <div className="w-full h-full">
-                      {(localDev.mapaImagemBase64 || localDev.mapaImagemUrl) ? (
-                        <img src={localDev.mapaImagemBase64 || localDev.mapaImagemUrl} className="w-full h-full object-contain" alt="mapa"/>
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center bg-slate-100">
-                          <p className="text-xs text-slate-400">Sem imagem de mapa</p>
-                        </div>
-                      )}
-                      {/* Bolinhas coloridas por faixa de preço — clone exato das bolinhas do mapa */}
-                      {(() => {
-                        const ballSize = getBallPixelSize();
-                        return mapaPontos.map((pt, i) => {
-                          const key = pt.quadra && pt.lote ? `${pt.quadra}:${pt.lote}` : null;
-                          const info = key ? (localDev.lotesInfo as any)?.[key] : null;
-                          const preco = info?.preco || 0;
-                          const cor = getCorLote(preco);
-                          return (
-                            <div key={i} style={{
-                              position: 'absolute',
-                              left: `${pt.xPercent}%`,
-                              top: `${pt.yPercent}%`,
-                              width: `${ballSize.size}px`,
-                              height: `${ballSize.size}px`,
-                              borderRadius: '50%',
-                              background: cor,
-                              border: `${ballSize.border ?? 2}px solid rgba(255,255,255,.9)`,
-                              boxShadow: `0 0 6px ${cor}99, 0 1px 4px rgba(0,0,0,.35)`,
-                              transform: 'translate(-50%,-50%)',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontSize: `${ballSize.font}px`,
-                              fontWeight: 900,
-                              color: 'white',
-                              cursor: 'pointer',
-                              zIndex: 2,
-                              lineHeight: 1,
-                            }}>
-                              {pt.lote || ''}
-                            </div>
-                          );
-                        });
-                      })()}
-                    </div>
-                  )}
-                </div>
+              {/* Mapa de preços — usa EXATAMENTE o mesmo sistema de renderização da aba Mapa */}
+              <div className="flex-1 relative overflow-hidden" style={{minHeight:0}}>
+                {renderMapaPrecos(getCorLote)}
               </div>
               {/* Cards horizontais de faixas de preço */}
               {precos.length > 0 && (
