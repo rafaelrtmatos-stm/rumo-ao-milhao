@@ -7598,14 +7598,30 @@ const LotDashboard = ({
                           <p className="text-xs text-slate-400">Sem imagem de mapa</p>
                         </div>
                       )}
-                      {/* Bolinhas coloridas por preço */}
+                      {/* Bolinhas coloridas por faixa de preço */}
                       {mapaPontos.map((pt, i) => {
-                        const key = pt.quadra && pt.lote ? pt.quadra+":"+pt.lote : null;
+                        // Coordenadas — suporte a xPercent/yPercent e x/y
+                        const xPct = pt.xPercent ?? pt.x ?? 0;
+                        const yPct = pt.yPercent ?? pt.y ?? 0;
+                        // Buscar preço do lote
+                        const key = pt.quadra && pt.lote ? `${pt.quadra}:${pt.lote}` : null;
                         const info = key ? (localDev.lotesInfo as any)?.[key] : null;
                         const preco = info?.preco || 0;
                         const cor = getCorLote(preco);
                         return (
-                          <div key={i} style={{position:'absolute', left:pt.x+'%', top:pt.y+'%', width:12, height:12, borderRadius:'50%', background:cor, border:'2px solid rgba(255,255,255,.85)', boxShadow:'0 1px 4px rgba(0,0,0,.4)', transform:'translate(-50%,-50%)', cursor:'pointer', zIndex:2}}/>
+                          <div key={i} style={{
+                            position:'absolute',
+                            left: xPct + '%',
+                            top: yPct + '%',
+                            width: 12, height: 12,
+                            borderRadius:'50%',
+                            background: cor,
+                            border:'2px solid rgba(255,255,255,.9)',
+                            boxShadow:`0 0 6px ${cor}88, 0 1px 4px rgba(0,0,0,.35)`,
+                            transform:'translate(-50%,-50%)',
+                            cursor:'pointer',
+                            zIndex:2
+                          }}/>
                         );
                       })}
                     </div>
