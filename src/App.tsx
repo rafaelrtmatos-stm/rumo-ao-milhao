@@ -7747,6 +7747,7 @@ const LotDashboard = ({
           </div>
         )}
 
+
       {/* ── MODAL UPLOAD MAPA ── */}
       {mapaUploadModal && (
         <div className="fixed inset-0 z-[600] flex items-end sm:items-center justify-center p-0 sm:p-4"
