@@ -6226,23 +6226,32 @@ const LotDashboard = ({
                             </p>
 
                             {/* Badge status */}
-                            <span className="inline-block px-2 py-0.5 rounded-lg text-[9px] font-black mb-3"
+                            <span className="inline-block px-2 py-0.5 rounded-lg text-[9px] font-black mb-1.5"
                               style={{background:cfg.bg, color:cfg.color}}>
                               {cfg.label}
                             </span>
 
+                            {/* Preço total */}
+                            {item.lotInfo?.preco > 0 && (
+                              <div className="mb-2">
+                                <span className="text-[10px] font-black text-slate-700">
+                                  R$ {Number(item.lotInfo.preco).toLocaleString("pt-BR")}
+                                </span>
+                              </div>
+                            )}
+
                             {/* Info financeira */}
                             <div className="space-y-1">
-                              {entrada && (
+                              {(item.lotInfo?.entrada || entrada) && (
                                 <div className="flex items-center gap-1.5">
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                                  <span className="text-[9px] text-slate-400">Entrada: <strong className="text-slate-600">R$ {Number(entrada).toLocaleString("pt-BR")}</strong></span>
+                                  <span className="text-[9px] text-slate-400">Entrada: <strong className="text-slate-600">R$ {Number(item.lotInfo?.entrada || entrada).toLocaleString("pt-BR")}</strong></span>
                                 </div>
                               )}
-                              {parcela && (
+                              {(item.lotInfo?.parcelas > 0 || parcela) && (
                                 <div className="flex items-center gap-1.5">
                                   <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>
-                                  <span className="text-[9px] text-slate-400">Parcelas: <strong className="text-slate-600">R$ {Number(parcela).toLocaleString("pt-BR")}</strong></span>
+                                  <span className="text-[9px] text-slate-400">{item.lotInfo?.parcelas > 0 ? item.lotInfo.parcelas + '×' : ''} <strong className="text-slate-600">R$ {item.lotInfo?.parcelas > 0 && item.lotInfo?.preco > 0 ? Number(Math.round((item.lotInfo.preco-(item.lotInfo?.entrada||0))/item.lotInfo.parcelas)).toLocaleString("pt-BR") : Number(parcela).toLocaleString("pt-BR")}</strong></span>
                                 </div>
                               )}
                             </div>
@@ -7632,18 +7641,18 @@ const LotDashboard = ({
           const minPreco = precos.length ? Math.min(...precos) : 0;
           const maxPreco = precos.length ? Math.max(...precos) : 0;
           // Calcular faixas automáticas (4 faixas)
-          const range = maxPreco - minPreco || 1;
-          const step = range / 4;
-          const faixas = [
-            { label: `até R$ ${((minPreco + step)/1000).toFixed(0)}k`, color: '#00d4d4', min: 0, max: minPreco + step },
-            { label: `R$ ${((minPreco+step)/1000).toFixed(0)}k–${((minPreco+step*2)/1000).toFixed(0)}k`, color: '#8b5cf6', min: minPreco+step, max: minPreco+step*2 },
-            { label: `R$ ${((minPreco+step*2)/1000).toFixed(0)}k–${((minPreco+step*3)/1000).toFixed(0)}k`, color: '#22c55e', min: minPreco+step*2, max: minPreco+step*3 },
-            { label: `acima R$ ${((minPreco+step*3)/1000).toFixed(0)}k`, color: '#f97316', min: minPreco+step*3, max: Infinity },
-          ];
+          // Agrupar lotes por preço único — 1 card por faixa de preço distinta
+          const CORES_FAIXAS = ['#00d4d4','#8b5cf6','#22c55e','#f97316','#e11d48','#0ea5e9','#d97706','#7c3aed'];
+          const precosUnicos = Array.from(new Set(lotesComPreco.map(l => l.preco))).sort((a,b) => a-b);
+          const faixas = precosUnicos.map((preco, i) => ({
+            label: `R$ ${Number(preco).toLocaleString('pt-BR')}`,
+            color: CORES_FAIXAS[i % CORES_FAIXAS.length],
+            preco,
+          }));
           const getCorLote = (preco: number) => {
             if (!preco) return '#94a3b8';
-            for (const f of faixas) { if (preco <= f.max) return f.color; }
-            return '#f97316';
+            const faixa = faixas.find(f => f.preco === preco);
+            return faixa ? faixa.color : '#94a3b8';
           };
           return (
             <div className="flex flex-col" style={{height:'100%'}}>
@@ -7656,24 +7665,23 @@ const LotDashboard = ({
                 <div className="flex-shrink-0 pb-3 pt-2">
                   <div className="flex gap-2 overflow-x-auto px-3" style={{scrollbarWidth:'none'}}>
                     {faixas.map((f, fi) => {
-                      const lotesNaFaixa = lotesComPreco.filter(l => l.preco > f.min && l.preco <= f.max);
+                      const lotesNaFaixa = lotesComPreco.filter(l => l.preco === f.preco);
                       if (!lotesNaFaixa.length) return null;
-                      const avgEntrada = Math.round(lotesNaFaixa.reduce((s,l)=>s+l.entrada,0)/lotesNaFaixa.length);
-                      const avgParcelas = Math.round(lotesNaFaixa.reduce((s,l)=>s+l.parcelas,0)/lotesNaFaixa.length);
-                      const avgPreco = Math.round(lotesNaFaixa.reduce((s,l)=>s+l.preco,0)/lotesNaFaixa.length);
-                      const avgParcela = avgParcelas > 0 ? Math.round((avgPreco - avgEntrada) / avgParcelas) : 0;
+                      const entrada = lotesNaFaixa[0]?.entrada || 0;
+                      const parcelas = lotesNaFaixa[0]?.parcelas || 0;
+                      const parcela = parcelas > 0 ? Math.round((f.preco - entrada) / parcelas) : 0;
                       return (
                         <div key={fi} className="flex-shrink-0 rounded-2xl overflow-hidden" style={{width:148, background:`linear-gradient(160deg, ${f.color}22, ${f.color}44)`, border:`1px solid ${f.color}55`}}>
                           <div className="p-3">
                             <div className="flex items-center gap-2 mb-2">
                               <div className="w-6 h-6 rounded-full flex-shrink-0" style={{background:f.color}}/>
                               <div>
-                                <div className="text-xs font-black" style={{color:f.color}}>R$ {(avgPreco/1000).toFixed(0)}k</div>
-                                <div className="text-[8px] font-bold text-slate-500">{lotesNaFaixa.length} lotes</div>
+                                <div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
+                                <div className="text-[8px] font-bold text-slate-500">{lotesNaFaixa.length} lote(s)</div>
                               </div>
                             </div>
-                            {avgEntrada > 0 && <div className="text-[9px] text-slate-500 mb-1">Entrada <span className="font-black text-slate-700">R$ {avgEntrada.toLocaleString('pt-BR')}</span></div>}
-                            {avgParcelas > 0 && <div className="text-[9px] text-slate-500 mb-2">{avgParcelas}× <span className="font-black text-slate-700">R$ {avgParcela.toLocaleString('pt-BR')}</span></div>}
+                            {entrada > 0 && <div className="text-[9px] text-slate-500 mb-1">Entrada <span className="font-black text-slate-700">R$ {entrada.toLocaleString('pt-BR')}</span></div>}
+                            {parcelas > 0 && <div className="text-[9px] text-slate-500 mb-2">{parcelas}× <span className="font-black text-slate-700">R$ {parcela.toLocaleString('pt-BR')}</span></div>}
                             <div className="text-[8px] font-bold mb-1" style={{color:f.color}}>{f.label}</div>
                           </div>
                           <div style={{background:f.color}} className="mx-2 mb-2 rounded-xl py-2 text-center text-white text-[9px] font-black cursor-pointer">
