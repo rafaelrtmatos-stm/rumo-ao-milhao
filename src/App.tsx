@@ -7745,8 +7745,7 @@ const LotDashboard = ({
               </button>
             </div>
           </div>
-        );
-      })()}
+        )}
 
       {/* ── MODAL UPLOAD MAPA ── */}
       {mapaUploadModal && (
