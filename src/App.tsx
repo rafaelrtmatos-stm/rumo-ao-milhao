@@ -2329,6 +2329,27 @@ const LotDashboard = ({
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos" | "precos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
+  // colorMode: "status" = cores por disponível/reservado/indisponível; "preco" = cores por faixa de preço
+  const colorMode = mode === "precos" ? "preco" : "status";
+
+  // Faixas de preço globais — usadas na aba Preços para colorir bolinhas e cards
+  const CORES_FAIXAS_PRECO = ['#00d4d4','#8b5cf6','#22c55e','#f97316','#e11d48','#0ea5e9','#d97706','#7c3aed'];
+  const lotesComPrecoGlobal = Object.entries(localDev.lotesInfo || {})
+    .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0 }))
+    .filter(l => l.preco > 0);
+  const precosUnicosGlobal = Array.from(new Set(lotesComPrecoGlobal.map(l => l.preco))).sort((a,b) => a-b);
+  const faixasPrecoGlobal = precosUnicosGlobal.map((preco, i) => ({
+    preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
+  }));
+  const getCorPorPreco = (quadra: string, lote: string): string => {
+    if (!quadra || !lote) return '#94a3b8';
+    const key = `${quadra}:${lote}`;
+    const info = (localDev.lotesInfo as any)?.[key];
+    const preco = info?.preco || 0;
+    if (!preco) return '#94a3b8';
+    const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
+    return faixa ? faixa.color : '#94a3b8';
+  };
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
   const [mobileSelIds, setMobileSelIds] = useState<Set<string>>(new Set()); // seleção múltipla mobile
@@ -4830,11 +4851,14 @@ const LotDashboard = ({
               {/* BOLINHAS */}
               {mapaPontos.map((ponto) => {
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                const statusClassBase = getMapaStatusColorClass(ponto.status, !!venda);
+                // colorMode: status = cores padrão, preco = cor da faixa de preço
+                const precoColor = colorMode === "preco" ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
+                const statusClass = precoColor ? "" : statusClassBase;
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isMobileSel = mobileSelIds.has(ponto.id);
-                const isMobileSelected = mobileSelectedId === ponto.id; // selecionada para arrastar
+                const isMobileSelected = mobileSelectedId === ponto.id;
                 const isMobileDragging = mobileDragId === ponto.id;
                 const isDragging = draggingId === ponto.id;
                 return (
@@ -4924,6 +4948,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={precoColor ? {background: precoColor, boxShadow: `0 0 8px ${precoColor}99`} : undefined}
                     style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center" }}
                   >
                     {isEditingMap ? ponto.lote : null}
@@ -6340,7 +6365,7 @@ const LotDashboard = ({
         
   };
 
-  if (isMobile && (mode === "mapa" || isEditingMap) && mapaImagem) {
+  if (isMobile && (mode === "mapa" || mode === "precos" || isEditingMap) && mapaImagem) {
     const quadraList = getQuadraList(localDev);
     const getLotesQuadra = (q: string) => getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
     const getLoteStatus = (q: string, l: string) => {
@@ -7470,7 +7495,7 @@ const LotDashboard = ({
 
 
         {/* CORPO PRINCIPAL — layout fiel à imagem */}
-        {mode === "mapa" && mapaImagem ? (
+        {(mode === "mapa" || mode === "precos") && mapaImagem ? (
           <>
           {/* DESKTOP — grid 75/25 */}
           <div className="hidden sm:flex flex-1 min-h-0 overflow-hidden gap-4 p-4" style={{background:'#f4f6f8'}}>
@@ -7638,16 +7663,10 @@ const LotDashboard = ({
             .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0, entrada: info?.entrada || 0, parcelas: info?.parcelas || 0 }))
             .filter(l => l.preco > 0);
           const precos = lotesComPreco.map(l => l.preco);
-          const minPreco = precos.length ? Math.min(...precos) : 0;
-          const maxPreco = precos.length ? Math.max(...precos) : 0;
-          // Calcular faixas automáticas (4 faixas)
-          // Agrupar lotes por preço único — 1 card por faixa de preço distinta
-          const CORES_FAIXAS = ['#00d4d4','#8b5cf6','#22c55e','#f97316','#e11d48','#0ea5e9','#d97706','#7c3aed'];
-          const precosUnicos = Array.from(new Set(lotesComPreco.map(l => l.preco))).sort((a,b) => a-b);
-          const faixas = precosUnicos.map((preco, i) => ({
-            label: `R$ ${Number(preco).toLocaleString('pt-BR')}`,
-            color: CORES_FAIXAS[i % CORES_FAIXAS.length],
-            preco,
+          // Usar faixas globais do componente
+          const faixas = faixasPrecoGlobal.map(f => ({
+            ...f,
+            label: `R$ ${Number(f.preco).toLocaleString('pt-BR')}`,
           }));
           const getCorLote = (preco: number) => {
             if (!preco) return '#94a3b8';
@@ -7657,9 +7676,7 @@ const LotDashboard = ({
           return (
             <div className="flex flex-col" style={{height:'100%'}}>
               {/* Mapa de preços — usa EXATAMENTE o mesmo sistema de renderização da aba Mapa */}
-              <div className="flex-1 relative overflow-hidden" style={{minHeight:0}}>
-                {renderMapaPrecos(getCorLote)}
-              </div>
+  
               {/* Cards horizontais de faixas de preço */}
               {precos.length > 0 && (
                 <div className="flex-shrink-0 pb-3 pt-2">
