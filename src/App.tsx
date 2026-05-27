@@ -7232,12 +7232,7 @@ const LotDashboard = ({
                 <span className="text-xs font-black text-slate-600">{statsPct}%</span>
               </div>
 
-              {canEditMap && mapAction === "visualizar" && mode === "mapa" && mapaImagem && (
-                <button onClick={entrarEdicao} className="flex items-center gap-2 px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-black uppercase hover:bg-[#1a4a1a] active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  Editar mapa
-                </button>
-              )}
+
               {canEditMap && !mapaImagem && (
                 <label className="flex items-center gap-2 px-4 py-2 bg-[#1a4a1a] text-white rounded-xl text-xs font-black uppercase cursor-pointer hover:bg-[#245424] active:scale-95 transition-all">
                   <Upload size={13} />Carregar mapa
@@ -7306,20 +7301,12 @@ const LotDashboard = ({
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                 Lotes
               </button>
-              {/* Editar bolinhas */}
+              {/* Editar — abre modo edição completo */}
               {mapaImagem && (
                 <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
-                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
-                  {mapaPontos.length === 0 ? "Bolinhas" : "Editar"}
-                </button>
-              )}
-              {/* Faixas */}
-              {mapaImagem && (
-                <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
-                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                  Faixas
+                  className={`flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 ${isEditingMap ? "bg-slate-900 text-white shadow-md" : "text-slate-500 hover:text-slate-700"}`}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                  Editar
                 </button>
               )}
               {/* Auto */}
