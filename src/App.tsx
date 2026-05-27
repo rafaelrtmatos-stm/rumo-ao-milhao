@@ -6514,39 +6514,44 @@ const LotDashboard = ({
                   onClick={async () => {
                     setDetectandoBolinhas(true);
                     try {
-                      const imgBase64 = localDev.mapaImagemBase64 || '';
-                      const imgUrl = localDev.mapaImagemUrl || '';
-                      // Chamar Claude API para detectar bolinhas
-                      const prompt = `Analise esta imagem de planta/mapa de loteamento e identifique todas as bolinhas/círculos coloridos que representam lotes.
-Para cada bolinha encontrada, retorne sua posição em porcentagem (xPercent e yPercent) relativa à imagem (0-100), e se possível o número do lote e quadra visíveis próximos a ela.
-Retorne APENAS um JSON válido no formato:
-{"bolinhas": [{"xPercent": 45.2, "yPercent": 32.1, "quadra": "A", "lote": "1"}, ...]}
-Se não conseguir identificar quadra/lote, use "" para esses campos.
-Retorne no mínimo as posições de TODAS as bolinhas visíveis.`;
-                      
-                      const imageContent = imgBase64
-                        ? { type: "image", source: { type: "base64", media_type: "image/png", data: imgBase64.replace(/^data:image\/\w+;base64,/, '') } }
-                        : { type: "image", source: { type: "url", url: imgUrl } };
-                      
-                      const res = await fetch("https://api.anthropic.com/v1/messages", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          model: "claude-sonnet-4-20250514",
-                          max_tokens: 4000,
-                          messages: [{ role: "user", content: [imageContent, { type: "text", text: prompt }] }]
-                        })
+                      // Detecção por cor RGB via Canvas — sem API externa
+                      const imgSrc = localDev.mapaImagemBase64 || localDev.mapaImagemUrl || '';
+                      await new Promise<void>((resolve, reject) => {
+                        const img = new window.Image();
+                        img.crossOrigin = 'anonymous';
+                        img.onload = () => {
+                          const canvas = document.createElement('canvas');
+                          canvas.width = img.width;
+                          canvas.height = img.height;
+                          const ctx = canvas.getContext('2d')!;
+                          ctx.drawImage(img, 0, 0);
+                          const { width: W, height: H } = canvas;
+                          const data = ctx.getImageData(0, 0, W, H).data;
+                          const bolinhasDetect: any[] = [];
+                          const step = 4;
+                          // Só analisar área central da imagem (excluir topo e rodapé com botões)
+                          const yMin = Math.round(H * 0.05);
+                          const yMax = Math.round(H * 0.95);
+                          for (let y = yMin; y < yMax; y += step) {
+                            for (let x = 0; x < W; x += step) {
+                              const i = (y * W + x) * 4;
+                              const r = data[i], g = data[i+1], b = data[i+2];
+                              const isBlue = b > 130 && r < 110 && b > g + 40;
+                              const isRed  = r > 160 && b < 80  && r > g + 60;
+                              if (!isBlue && !isRed) continue;
+                              const xp = parseFloat((x / W * 100).toFixed(1));
+                              const yp = parseFloat((y / H * 100).toFixed(1));
+                              const dup = bolinhasDetect.some(b2 => Math.abs(b2.xPercent - xp) < 1.5 && Math.abs(b2.yPercent - yp) < 1.5);
+                              if (!dup) bolinhasDetect.push({ xPercent: xp, yPercent: yp, quadra: '', lote: '', color: isBlue ? 'azul' : 'vermelho' });
+                            }
+                          }
+                          setDetectPreview(bolinhasDetect);
+                          setShowDetectModal(true);
+                          resolve();
+                        };
+                        img.onerror = reject;
+                        img.src = imgSrc;
                       });
-                      const data = await res.json();
-                      const txt = data.content?.[0]?.text || '';
-                      const jsonMatch = txt.match(/\{[\s\S]*\}/);
-                      if (jsonMatch) {
-                        const parsed = JSON.parse(jsonMatch[0]);
-                        setDetectPreview(parsed.bolinhas || []);
-                        setShowDetectModal(true);
-                      } else {
-                        alert('Não foi possível detectar bolinhas. Tente novamente.');
-                      }
                     } catch(e) {
                       alert('Erro ao detectar: ' + (e as any).message);
                     }
