@@ -10044,9 +10044,7 @@ const EmpreendimentosSection = ({
                         <textarea
                           value={precosScriptInput}
                           onChange={e => setPrecosScriptInput(e.target.value)}
-                          placeholder={"REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60
-REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48
-PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50"}
+                          placeholder="REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50"
                           className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
                           rows={5}
                           autoFocus
