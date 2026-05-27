@@ -6595,11 +6595,13 @@ const LotDashboard = ({
                           resolve();
                           // Em background: pedir ao servidor para identificar quadra/lote
                           if (filtradas.length > 0) {
+                            // Usar URL se disponível, senão base64 (mais leve)
+                            const imgPayload = localDev.mapaImagemUrl || imgSrc;
                             fetch('/api/detectar-bolinhas', {
                               method: 'POST',
                               headers: { 'Content-Type': 'application/json' },
                               body: JSON.stringify({
-                                imageBase64: imgSrc,
+                                imageBase64: imgPayload,
                                 bolinhas: filtradas.map((b: any, i: number) => ({ index: i, xPercent: b.xPercent, yPercent: b.yPercent }))
                               })
                             }).then(r => r.json()).then((data: any) => {

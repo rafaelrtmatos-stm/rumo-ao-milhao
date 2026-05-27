@@ -19,8 +19,8 @@ import { gerarReciboAVistaPadrao } from "../server/reciboAVistaPadrao.js";
 import { localUsersService } from "../server/localUsersService.js";
 
 const app = express();
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "20mb" }));
+app.use(express.urlencoded({ extended: true, limit: "20mb" }));
 
 // Debug endpoint
 app.get("/api/debug", (_req: any, res: any) => {
@@ -916,7 +916,7 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 
 // --- Contrato ---
 // ── DETECÇÃO DE BOLINHAS VIA CLAUDE VISION ──
-app.post("/api/detectar-bolinhas", isAuthenticated, async (req: any, res: any) => {
+app.post("/api/detectar-bolinhas", async (req: any, res: any) => {
   try {
     const { imageBase64, bolinhas } = req.body;
     if (!imageBase64 || !bolinhas?.length) {
