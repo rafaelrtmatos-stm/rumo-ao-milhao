@@ -6479,37 +6479,39 @@ const LotDashboard = ({
               <div className="w-9 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Abas: Visualizar / Global / Adicionar bolinhas / Editar faixas */}
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-3">
-              <button
-                onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mapAction === "visualizar" && !isEditingMap && mode !== "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+            {/* Abas com ícones clipart */}
+            <div className="flex gap-0.5 p-1 bg-slate-100 rounded-2xl mb-3">
+              {/* Mapa */}
+              <button onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
+                className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${mapAction === "visualizar" && !isEditingMap && mode !== "global" && mode !== "precos" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
                 Mapa
               </button>
-              <button
-                onClick={() => { setMode("precos"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "precos" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
-                💰 Preços
+              {/* Preços */}
+              <button onClick={() => { setMode("precos"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); }}
+                className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${mode === "precos" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Preços
               </button>
-              <button
-                onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); setDrawerOpen(true); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
-                🧭 Como Chegar
+              {/* Como Chegar */}
+              <button onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); setDrawerOpen(true); }}
+                className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+                Chegar
               </button>
-              <button
-                onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
-                {mapaPontos.length === 0 ? (
-                  <><span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-black" style={{fontSize:12}}>+</span><span>Adicionar</span></>
-                ) : (
-                  <><span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" /><span>Editar</span></>
-                )}
+              {/* Bolinhas */}
+              <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
+                className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                {mapaPontos.length === 0 ? "Bolinhas" : "Editar"}
               </button>
-              <button
-                onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
-                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
+              {/* Faixas */}
+              <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
+                className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
                 Faixas
               </button>
+              {/* Auto — sempre visível na aba Mapa */}
               {(localDev?.mapaImagemBase64 || localDev?.mapaImagemUrl) && (
                 <button
                   onClick={async () => {
