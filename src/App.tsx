@@ -6333,6 +6333,80 @@ const LotDashboard = ({
           </button>
         </div>
 
+        {/* ── ABAS MOBILE ── */}
+        <div className="flex-shrink-0 px-3 py-2 bg-white border-b border-slate-100">
+          <div className="flex gap-0.5 bg-slate-100 p-1 rounded-2xl overflow-x-auto" style={{scrollbarWidth:'none'}}>
+            {mapaImagem && (
+              <button onClick={() => { setMode("mapa"); if (isEditingMap) cancelarEdicaoMapa(); }}
+                className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${mode === "mapa" ? "bg-[#1a4a1a] text-white shadow" : "text-slate-400"}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+                Mapa
+              </button>
+            )}
+            <button onClick={() => { setMode("precos"); if (isEditingMap) cancelarEdicaoMapa(); }}
+              className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${mode === "precos" ? "bg-[#1a4a1a] text-white shadow" : "text-slate-400"}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Preços
+            </button>
+            <button onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); }}
+              className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow" : "text-slate-400"}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
+              Chegar
+            </button>
+            <button onClick={() => setMode("quadradinhos")}
+              className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${mode === "quadradinhos" ? "bg-[#1a4a1a] text-white shadow" : "text-slate-400"}`}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              Lotes
+            </button>
+            {mapaImagem && (<>
+              <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); }}
+                className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+                {mapaPontos.length === 0 ? "Bolinhas" : "Editar"}
+              </button>
+              <button onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); }}
+                className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/></svg>
+                Faixas
+              </button>
+              <button onClick={async () => {
+                  setDetectandoBolinhas(true);
+                  try {
+                    const imgSrc = (localDev.mapaImagemBase64 || localDev.mapaImagemUrl || '') as string;
+                    await new Promise<void>((resolve, reject) => {
+                      const img = new window.Image();
+                      img.crossOrigin = 'anonymous';
+                      img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.width; canvas.height = img.height;
+                        const ctx = canvas.getContext('2d')!;
+                        ctx.drawImage(img, 0, 0);
+                        const {width:W,height:H} = canvas;
+                        const data = ctx.getImageData(0,0,W,H).data;
+                        const bolinhasDetect: any[] = [];
+                        const step=4, yMin=Math.round(H*.05), yMax=Math.round(H*.95);
+                        const temTexto=(cx:number,cy:number,r:number)=>{let n=0;for(let dy=-r;dy<=r;dy+=2)for(let dx=4;dx<=r*3;dx+=2){const px=cx+dx,py=cy+dy;if(px<0||px>=W||py<0||py>=H)continue;const pi=(py*W+px)*4;if(data[pi]<80&&data[pi+1]<80&&data[pi+2]<80)n++;}return n>8;};
+                        for(let y=yMin;y<yMax;y+=step)for(let x=0;x<W;x+=step){const i=(y*W+x)*4,r=data[i],g=data[i+1],b=data[i+2];const isBlue=b>130&&r<110&&b>g+40,isRed=r>160&&b<80&&r>g+60;if(!isBlue&&!isRed)continue;const xp=parseFloat((x/W*100).toFixed(1)),yp=parseFloat((y/H*100).toFixed(1));const dup=bolinhasDetect.some(b2=>Math.abs(b2.xPercent-xp)<1.5&&Math.abs(b2.yPercent-yp)<1.5);if(!dup)bolinhasDetect.push({xPercent:xp,yPercent:yp,quadra:'',lote:'',color:isBlue?'azul':'vermelho',_x:x,_y:y});}
+                        const filtradas=bolinhasDetect.filter(b=>!temTexto(b._x,b._y,12)).map(({_x,_y,...rest})=>rest);
+                        setDetectPreview(filtradas);
+                        setShowDetectModal(true);
+                        resolve();
+                        if(filtradas.length>0){const imgPayload=(localDev as any).mapaImagemUrl||imgSrc;fetch('/api/detectar-bolinhas',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({imageBase64:imgPayload,bolinhas:filtradas.map((b:any,i:number)=>({index:i,xPercent:b.xPercent,yPercent:b.yPercent}))})}).then(r=>r.json()).then((d:any)=>{if(d.resultados?.length)setDetectPreview((prev:any[])=>prev.map((b:any,i:number)=>{const res=d.resultados.find((r:any)=>r.index===i);return res?{...b,quadra:res.quadra||'',lote:res.lote||''}:b;}));}).catch(()=>{});}
+                      };
+                      img.onerror=reject; img.src=imgSrc;
+                    });
+                  } catch(e){alert('Erro: '+(e as any).message);}
+                  setDetectandoBolinhas(false);
+                }}
+                disabled={detectandoBolinhas}
+                className="flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase bg-violet-600 text-white flex flex-col items-center gap-0.5 disabled:opacity-60">
+                {detectandoBolinhas ? <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"/> : <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/><path d="M11 8v6M8 11h6"/></svg>}
+                Auto
+              </button>
+            </>)}
+          </div>
+        </div>
+
         {/* ── MAPA ou GLOBAL ── */}
         <div className="flex-shrink-0 relative overflow-hidden bg-slate-200" style={{ height: MAP_H }}
           onClick={(e) => {
