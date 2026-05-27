@@ -8155,6 +8155,8 @@ const EmpreendimentosSection = ({
     return (lotRegDev as any)?.precosPadrao || {valor:"", entrada:"", parcelas:""};
   });
   const [precosScriptMsg, setPrecosScriptMsg] = useState("");
+  const [precosScriptInput, setPrecosScriptInput] = useState("");
+  const [showPrecosInput, setShowPrecosInput] = useState(false);
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [scriptPasteText, setScriptPasteText] = useState("");
   const [scriptMsg, setScriptMsg] = useState("");
@@ -10028,12 +10030,54 @@ const EmpreendimentosSection = ({
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                         Copiar para Chat
                       </button>
-                      <button onClick={colarRespostaChat} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-all">
+                      <button onClick={() => setShowPrecosInput(v => !v)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-all">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
                         Colar Resposta
                       </button>
                     </div>
                     {precosScriptMsg && <p className="text-xs text-center font-bold" style={{color: precosScriptMsg.startsWith("✅") ? "#16a34a" : precosScriptMsg.startsWith("⚠️") ? "#d97706" : "#ef4444"}}>{precosScriptMsg}</p>}
+
+                    {/* Campo de texto para colar script do ChatGPT */}
+                    {showPrecosInput && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Cole o script do ChatGPT aqui:</p>
+                        <textarea
+                          value={precosScriptInput}
+                          onChange={e => setPrecosScriptInput(e.target.value)}
+                          placeholder={"REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60
+REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48
+PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50"}
+                          className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
+                          rows={5}
+                          autoFocus
+                        />
+                        <button
+                          onClick={() => {
+                            const txt = precosScriptInput;
+                            if (!txt.trim()) { setPrecosScriptMsg("⚠️ Campo vazio."); return; }
+                            const regras: typeof precosRegras = [];
+                            let id = 1;
+                            const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/gi;
+                            let m;
+                            while ((m = regraRegex.exec(txt)) !== null) {
+                              regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
+                            }
+                            const padM = txt.match(/PADRAO:\s*VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/i);
+                            if (padM) setPrecosPadrao({valor: padM[1], entrada: padM[2], parcelas: padM[3]});
+                            if (regras.length) {
+                              setPrecosRegras(regras);
+                              setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!");
+                              setShowPrecosInput(false);
+                              setPrecosScriptInput("");
+                            } else {
+                              setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
+                            }
+                          }}
+                          className="w-full mt-2 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl active:scale-95 transition-all">
+                          ✓ Interpretar Script
+                        </button>
+                      </div>
+                    )}
 
                     {/* Regras */}
                     <div>
