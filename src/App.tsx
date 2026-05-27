@@ -6532,9 +6532,39 @@ const LotDashboard = ({
                           const data = ctx.getImageData(0, 0, W, H).data;
                           const bolinhasDetect: any[] = [];
                           const step = 4;
-                          // Só analisar área central da imagem (excluir topo e rodapé com botões)
                           const yMin = Math.round(H * 0.05);
                           const yMax = Math.round(H * 0.95);
+
+                          // Função: verifica se há texto preto próximo a um pixel (legenda)
+                          // Texto preto = pixels com r<80, g<80, b<80 em alta densidade
+                          const temTextoProximo = (cx: number, cy: number, raio: number) => {
+                            let pixelsEscuros = 0;
+                            for (let dy = -raio; dy <= raio; dy += 2) {
+                              for (let dx = 4; dx <= raio * 3; dx += 2) { // só à direita (texto fica à direita da bolinha)
+                                const px = cx + dx, py = cy + dy;
+                                if (px < 0 || px >= W || py < 0 || py >= H) continue;
+                                const pi = (py * W + px) * 4;
+                                const pr = data[pi], pg = data[pi+1], pb = data[pi+2];
+                                if (pr < 80 && pg < 80 && pb < 80) pixelsEscuros++;
+                              }
+                            }
+                            return pixelsEscuros > 8; // muitos pixels pretos = texto de legenda
+                          };
+
+                          // Função: verifica se bolinha está alinhada horizontalmente com outra
+                          // (bolinhas de legenda ficam na mesma linha, isoladas)
+                          const estaEmLinhaLegenda = (cx: number, cy: number, todas: any[]) => {
+                            // Se há outra bolinha muito próxima horizontalmente (mesmo Y, X diferente)
+                            // e ambas têm texto à direita = legenda
+                            return todas.some(b2 => {
+                              const bx = Math.round(b2.xPercent / 100 * W);
+                              const by = Math.round(b2.yPercent / 100 * H);
+                              const mesmaLinha = Math.abs(by - cy) < 8;
+                              const ladoALado = Math.abs(bx - cx) > 20 && Math.abs(bx - cx) < W * 0.15;
+                              return mesmaLinha && ladoALado;
+                            });
+                          };
+
                           for (let y = yMin; y < yMax; y += step) {
                             for (let x = 0; x < W; x += step) {
                               const i = (y * W + x) * 4;
@@ -6545,10 +6575,21 @@ const LotDashboard = ({
                               const xp = parseFloat((x / W * 100).toFixed(1));
                               const yp = parseFloat((y / H * 100).toFixed(1));
                               const dup = bolinhasDetect.some(b2 => Math.abs(b2.xPercent - xp) < 1.5 && Math.abs(b2.yPercent - yp) < 1.5);
-                              if (!dup) bolinhasDetect.push({ xPercent: xp, yPercent: yp, quadra: '', lote: '', color: isBlue ? 'azul' : 'vermelho' });
+                              if (!dup) bolinhasDetect.push({ xPercent: xp, yPercent: yp, quadra: '', lote: '', color: isBlue ? 'azul' : 'vermelho', _x: x, _y: y });
                             }
                           }
-                          setDetectPreview(bolinhasDetect);
+
+                          // Filtrar bolinhas de legenda:
+                          // Regra 1: tem texto preto imediatamente à direita
+                          // Regra 2: está alinhada horizontalmente com pouquíssimas outras bolinhas (legenda tem 2-3 bolinhas em linha)
+                          const filtradas = bolinhasDetect.filter(b => {
+                            const cx = b._x, cy = b._y;
+                            // Se tem texto preto à direita = é legenda
+                            if (temTextoProximo(cx, cy, 12)) return false;
+                            return true;
+                          }).map(({ _x, _y, ...rest }) => rest); // remover campos temporários
+
+                          setDetectPreview(filtradas);
                           setShowDetectModal(true);
                           resolve();
                         };
