@@ -6479,8 +6479,8 @@ const LotDashboard = ({
               <div className="w-9 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Abas com ícones clipart */}
-            <div className="flex gap-0.5 p-1 bg-slate-100 rounded-2xl mb-3">
+            {/* Abas movidas para cima — ocultadas aqui */}
+            <div className="hidden">
               {/* Mapa */}
               <button onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
                 className={`flex-1 py-1.5 rounded-xl text-[8px] font-black transition-all flex flex-col items-center gap-0.5 ${mapAction === "visualizar" && !isEditingMap && mode !== "global" && mode !== "precos" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
