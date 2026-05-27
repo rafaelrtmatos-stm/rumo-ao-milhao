@@ -2275,8 +2275,7 @@ const DashboardSection = ({
               })}
             </div>
           </div>
-        );
-      })()}
+        )}
     </div>
   );
 };
@@ -2440,6 +2439,7 @@ const LotDashboard = ({
   const [detectandoBolinhas, setDetectandoBolinhas] = useState(false);
   const [detectPreview, setDetectPreview] = useState<any[]>([]); // bolinhas detectadas para preview
   const [showDetectModal, setShowDetectModal] = useState(false);
+  const [bolinhaSelIdx, setBolinhaSelIdx] = useState<number|null>(null);
 
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
@@ -7642,80 +7642,91 @@ const LotDashboard = ({
 
       {/* ── MODAL DETECÇÃO AUTOMÁTICA DE BOLINHAS ── */}
       {showDetectModal && (
-        <div className="fixed inset-0 z-[700] flex items-end sm:items-center justify-center p-0 sm:p-4"
-          style={{background:'rgba(0,0,0,0.8)', backdropFilter:'blur(4px)'}}>
-          <div className="bg-white w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[85vh]">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <div>
-                <p className="text-sm font-black text-slate-800">🤖 Bolinhas Detectadas pela IA</p>
-                <p className="text-xs text-slate-400">{detectPreview.length} bolinhas encontradas no mapa</p>
-              </div>
-              <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); }}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-400">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-              </button>
+        <div className="fixed inset-0 z-[700] flex flex-col" style={{background:'#000'}}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 bg-black flex-shrink-0">
+            <div>
+              <p className="text-sm font-black text-white">{detectPreview.length} bolinhas detectadas</p>
+              <p className="text-[10px] text-slate-400">Toque numa bolinha para remover · arraste para ver tudo</p>
             </div>
+            <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); }}
+              className="p-2 rounded-xl bg-slate-800 text-slate-300">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
 
-            {/* Preview do mapa com bolinhas detectadas */}
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="relative rounded-xl overflow-hidden border border-slate-200 mb-4" style={{aspectRatio:'16/9'}}>
-                {(localDev?.mapaImagemBase64 || localDev?.mapaImagemUrl) && (
-                  <img src={localDev.mapaImagemBase64 || localDev.mapaImagemUrl}
-                    className="w-full h-full object-contain" alt="mapa"/>
-                )}
-                {/* Bolinhas detectadas em preview */}
-                {detectPreview.map((b, i) => (
-                  <div key={i} style={{
+          {/* Mapa com bolinhas — ocupa toda a tela */}
+          <div className="flex-1 overflow-auto relative" style={{touchAction:'pan-x pan-y'}}>
+            <div className="relative inline-block min-w-full min-h-full">
+              {(localDev?.mapaImagemBase64 || localDev?.mapaImagemUrl) && (
+                <img src={localDev.mapaImagemBase64 || localDev.mapaImagemUrl}
+                  className="block max-w-none" style={{width:'100%', minHeight:'60vh', objectFit:'contain'}} alt="mapa"/>
+              )}
+              {/* Bolinhas clicáveis */}
+              {detectPreview.map((b, i) => (
+                <div key={i}
+                  onClick={() => setBolinhaSelIdx(i === bolinhaSelIdx ? null : i)}
+                  style={{
                     position:'absolute',
                     left: b.xPercent + '%',
                     top: b.yPercent + '%',
-                    width: 14, height: 14,
-                    borderRadius: '50%',
-                    background: '#8b5cf6',
-                    border: '2px solid white',
-                    boxShadow: '0 0 6px rgba(139,92,246,0.7)',
-                    transform: 'translate(-50%,-50%)',
-                    zIndex: 2,
-                  }}/>
-                ))}
-              </div>
-
-              {/* Lista das bolinhas com quadra/lote */}
-              <p className="text-xs font-bold text-slate-500 mb-2">Bolinhas detectadas — edite quadra/lote se necessário:</p>
-              <div className="space-y-1 max-h-48 overflow-y-auto">
-                {detectPreview.map((b, i) => (
-                  <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-xl px-3 py-2">
-                    <div className="w-4 h-4 rounded-full bg-violet-500 flex-shrink-0"/>
-                    <span className="text-xs text-slate-500 w-24 flex-shrink-0">
-                      x:{b.xPercent.toFixed(1)}% y:{b.yPercent.toFixed(1)}%
-                    </span>
-                    <input
-                      placeholder="Quadra"
-                      value={b.quadra || ''}
-                      onChange={e => setDetectPreview(p => p.map((x,j) => j===i ? {...x, quadra: e.target.value} : x))}
-                      className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none text-center"
-                    />
-                    <input
-                      placeholder="Lote"
-                      value={b.lote || ''}
-                      onChange={e => setDetectPreview(p => p.map((x,j) => j===i ? {...x, lote: e.target.value} : x))}
-                      className="flex-1 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold outline-none text-center"
-                    />
-                    <button onClick={() => setDetectPreview(p => p.filter((_,j) => j!==i))}
-                      className="text-red-400 text-lg leading-none flex-shrink-0">×</button>
-                  </div>
-                ))}
-              </div>
+                    width: bolinhaSelIdx === i ? 22 : 16,
+                    height: bolinhaSelIdx === i ? 22 : 16,
+                    borderRadius:'50%',
+                    background: bolinhaSelIdx === i ? '#ef4444' : '#8b5cf6',
+                    border: bolinhaSelIdx === i ? '3px solid white' : '2px solid rgba(255,255,255,0.9)',
+                    boxShadow: bolinhaSelIdx === i ? '0 0 12px rgba(239,68,68,0.8)' : '0 0 6px rgba(139,92,246,0.6)',
+                    transform:'translate(-50%,-50%)',
+                    zIndex: bolinhaSelIdx === i ? 20 : 5,
+                    cursor:'pointer',
+                    transition:'all 0.15s',
+                  }}>
+                  {/* Tooltip da bolinha selecionada */}
+                  {bolinhaSelIdx === i && (
+                    <div style={{
+                      position:'absolute', bottom:'120%', left:'50%', transform:'translateX(-50%)',
+                      background:'rgba(0,0,0,0.9)', borderRadius:10, padding:'6px 10px',
+                      whiteSpace:'nowrap', zIndex:30, minWidth:120,
+                    }}>
+                      {b.quadra ? <p style={{fontSize:10, color:'#a78bfa', fontWeight:800}}>Q{b.quadra} · L{b.lote||'?'}</p>
+                        : <p style={{fontSize:10, color:'#94a3b8'}}>Sem quadra/lote</p>}
+                      <button
+                        onClick={e => { e.stopPropagation(); setDetectPreview(p => p.filter((_,j)=>j!==i)); setBolinhaSelIdx(null); }}
+                        style={{marginTop:4, width:'100%', background:'#ef4444', border:'none', borderRadius:6, color:'white', fontSize:10, fontWeight:900, padding:'4px 8px', cursor:'pointer'}}>
+                        🗑 Remover
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ))}
             </div>
+          </div>
 
-            {/* Botões */}
-            <div className="flex gap-3 px-4 pb-5 pt-3 border-t border-slate-100">
+          {/* Rodapé — editar bolinha selecionada + confirmar */}
+          <div className="flex-shrink-0 bg-black border-t border-slate-800 px-4 py-3">
+            {bolinhaSelIdx !== null && detectPreview[bolinhaSelIdx] && (
+              <div className="flex gap-2 mb-3">
+                <div className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0 mt-1"/>
+                <input
+                  placeholder="Quadra"
+                  value={detectPreview[bolinhaSelIdx]?.quadra || ''}
+                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, quadra: e.target.value} : x))}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"
+                />
+                <input
+                  placeholder="Lote"
+                  value={detectPreview[bolinhaSelIdx]?.lote || ''}
+                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, lote: e.target.value} : x))}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"
+                />
+              </div>
+            )}
+            <div className="flex gap-3">
               <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); }}
-                className="flex-1 py-3 rounded-xl border border-slate-200 text-sm font-bold text-slate-600">
+                className="flex-1 py-3 rounded-2xl border border-slate-700 text-sm font-bold text-slate-300">
                 Cancelar
               </button>
               <button onClick={async () => {
-                  // Confirmar — adicionar bolinhas ao mapaPontos
                   const novosPontos = detectPreview.map(b => ({
                     xPercent: b.xPercent,
                     yPercent: b.yPercent,
@@ -7729,13 +7740,13 @@ const LotDashboard = ({
                   setShowDetectModal(false);
                   setDetectPreview([]);
                 }}
-                className="flex-2 py-3 px-6 rounded-xl bg-violet-600 text-sm font-black text-white active:scale-95 transition-all">
-                ✓ Confirmar {detectPreview.length} Bolinhas
+                className="flex-2 py-3 px-6 rounded-2xl bg-violet-600 text-sm font-black text-white active:scale-95 transition-all">
+                ✓ Confirmar {detectPreview.length}
               </button>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── MODAL UPLOAD MAPA ── */}
       {mapaUploadModal && (
