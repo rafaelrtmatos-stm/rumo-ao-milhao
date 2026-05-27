@@ -9774,8 +9774,12 @@ const EmpreendimentosSection = ({
                       });
                     });
                   }
-                  const updated = {...lotRegDev, lotesInfo: info};
-                  await onSaveDev(updated);
+                  // Salvar via onUpdateLotesInfo (mesmo mecanismo do handleSalvarLote)
+                  onUpdateLotesInfo(lotRegDev!.id, info);
+                  setLotRegDev(prev => prev ? {...prev, lotesInfo: info} : prev);
+                  if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
+                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info} : prev);
+                  }
                   setPrecosScriptMsg("✅ Preços aplicados com sucesso!");
                 };
 
