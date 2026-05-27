@@ -7943,8 +7943,10 @@ const LotDashboard = ({
               </button>
               <button onClick={async () => {
                 const novosPontos = detectPreview.map(b => ({
+                  id: 'auto_' + Date.now() + '_' + Math.random().toString(36).slice(2,8),
                   xPercent: b.xPercent, yPercent: b.yPercent,
                   quadra: b.quadra || '', lote: b.lote || '', status: 'disponivel',
+                  // sem linhaSeqId nem grupoId — cada bolinha é independente
                 }));
                 const pontosAtuais = (localDev as any).mapaPontos || [];
                 const updated = { ...localDev, mapaPontos: [...pontosAtuais, ...novosPontos] };
