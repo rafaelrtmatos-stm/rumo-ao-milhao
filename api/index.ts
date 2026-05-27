@@ -915,6 +915,80 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 });
 
 // --- Contrato ---
+// ── DETECÇÃO DE BOLINHAS VIA CLAUDE VISION ──
+app.post("/api/detectar-bolinhas", isAuthenticated, async (req: any, res: any) => {
+  try {
+    const { imageBase64, bolinhas } = req.body;
+    if (!imageBase64 || !bolinhas?.length) {
+      return res.status(400).json({ error: "imageBase64 e bolinhas são obrigatórios" });
+    }
+
+    const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
+    if (!ANTHROPIC_API_KEY) {
+      return res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada" });
+    }
+
+    // Montar prompt com posições das bolinhas
+    const listaBolinhas = bolinhas.map((b: any, i: number) =>
+      `Bolinha ${i+1}: posição x=${b.xPercent}%, y=${b.yPercent}%`
+    ).join('
+');
+
+    const prompt = `Esta é uma planta de loteamento. Abaixo estão as posições (em % da imagem) de bolinhas coloridas que representam lotes.
+
+Para cada bolinha, identifique o número do LOTE e a QUADRA escritos mais próximos dela na planta.
+
+${listaBolinhas}
+
+Responda APENAS com JSON válido, sem texto extra:
+{"resultados": [{"index": 0, "quadra": "A", "lote": "1"}, {"index": 1, "quadra": "B", "lote": "5"}, ...]}
+
+Se não conseguir identificar, use "" para quadra e lote.
+Analise cuidadosamente os números escritos próximos a cada bolinha.`;
+
+    const mediaType = imageBase64.startsWith('data:image/png') ? 'image/png' : 
+                      imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
+    const base64Data = imageBase64.replace(/^data:image\/\w+;base64,/, '');
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-opus-4-6',
+        max_tokens: 4000,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Data } },
+            { type: 'text', text: prompt }
+          ]
+        }]
+      })
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('[detectar-bolinhas] Claude error:', err);
+      return res.status(500).json({ error: 'Erro na API Claude: ' + response.status });
+    }
+
+    const data = await response.json() as any;
+    const txt = data.content?.[0]?.text || '';
+    const jsonMatch = txt.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) return res.status(500).json({ error: 'Resposta inválida do Claude' });
+
+    const parsed = JSON.parse(jsonMatch[0]);
+    res.json(parsed);
+  } catch (e: any) {
+    console.error('[detectar-bolinhas] erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post("/api/contrato/parcelado-padrao", isAuthenticated, async (req, res) => {
   try {
     const { vendedor, cliente, empreendimento, venda, outputFormat } = req.body;

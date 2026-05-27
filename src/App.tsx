@@ -6589,9 +6589,28 @@ const LotDashboard = ({
                             return true;
                           }).map(({ _x, _y, ...rest }) => rest); // remover campos temporários
 
+                          // Chamar servidor para identificar quadra/lote via Claude Vision
                           setDetectPreview(filtradas);
                           setShowDetectModal(true);
                           resolve();
+                          // Em background: pedir ao servidor para identificar quadra/lote
+                          if (filtradas.length > 0) {
+                            fetch('/api/detectar-bolinhas', {
+                              method: 'POST',
+                              headers: { 'Content-Type': 'application/json' },
+                              body: JSON.stringify({
+                                imageBase64: imgSrc,
+                                bolinhas: filtradas.map((b: any, i: number) => ({ index: i, xPercent: b.xPercent, yPercent: b.yPercent }))
+                              })
+                            }).then(r => r.json()).then((data: any) => {
+                              if (data.resultados?.length) {
+                                setDetectPreview((prev: any[]) => prev.map((b: any, i: number) => {
+                                  const res = data.resultados.find((r: any) => r.index === i);
+                                  return res ? { ...b, quadra: res.quadra || '', lote: res.lote || '' } : b;
+                                }));
+                              }
+                            }).catch(() => {}); // silencioso se falhar
+                          }
                         };
                         img.onerror = reject;
                         img.src = imgSrc;
