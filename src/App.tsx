@@ -7214,6 +7214,11 @@ const LotDashboard = ({
                   Mapa
                 </button>
               )}
+              <button onClick={() => setMode("precos")}
+                className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "precos" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Preços
+              </button>
               <button onClick={() => setMode("global")}
                 className={`flex-1 py-2.5 px-4 rounded-xl text-xs font-black uppercase tracking-wide transition-all flex items-center justify-center gap-2 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow-md" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"}`}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
