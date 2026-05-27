@@ -7598,32 +7598,41 @@ const LotDashboard = ({
                           <p className="text-xs text-slate-400">Sem imagem de mapa</p>
                         </div>
                       )}
-                      {/* Bolinhas coloridas por faixa de preço */}
-                      {mapaPontos.map((pt, i) => {
-                        // Coordenadas — suporte a xPercent/yPercent e x/y
-                        const xPct = pt.xPercent ?? pt.x ?? 0;
-                        const yPct = pt.yPercent ?? pt.y ?? 0;
-                        // Buscar preço do lote
-                        const key = pt.quadra && pt.lote ? `${pt.quadra}:${pt.lote}` : null;
-                        const info = key ? (localDev.lotesInfo as any)?.[key] : null;
-                        const preco = info?.preco || 0;
-                        const cor = getCorLote(preco);
-                        return (
-                          <div key={i} style={{
-                            position:'absolute',
-                            left: xPct + '%',
-                            top: yPct + '%',
-                            width: 12, height: 12,
-                            borderRadius:'50%',
-                            background: cor,
-                            border:'2px solid rgba(255,255,255,.9)',
-                            boxShadow:`0 0 6px ${cor}88, 0 1px 4px rgba(0,0,0,.35)`,
-                            transform:'translate(-50%,-50%)',
-                            cursor:'pointer',
-                            zIndex:2
-                          }}/>
-                        );
-                      })}
+                      {/* Bolinhas coloridas por faixa de preço — clone exato das bolinhas do mapa */}
+                      {(() => {
+                        const ballSize = getBallPixelSize();
+                        return mapaPontos.map((pt, i) => {
+                          const key = pt.quadra && pt.lote ? `${pt.quadra}:${pt.lote}` : null;
+                          const info = key ? (localDev.lotesInfo as any)?.[key] : null;
+                          const preco = info?.preco || 0;
+                          const cor = getCorLote(preco);
+                          return (
+                            <div key={i} style={{
+                              position: 'absolute',
+                              left: `${pt.xPercent}%`,
+                              top: `${pt.yPercent}%`,
+                              width: `${ballSize.size}px`,
+                              height: `${ballSize.size}px`,
+                              borderRadius: '50%',
+                              background: cor,
+                              border: `${ballSize.border ?? 2}px solid rgba(255,255,255,.9)`,
+                              boxShadow: `0 0 6px ${cor}99, 0 1px 4px rgba(0,0,0,.35)`,
+                              transform: 'translate(-50%,-50%)',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              fontSize: `${ballSize.font}px`,
+                              fontWeight: 900,
+                              color: 'white',
+                              cursor: 'pointer',
+                              zIndex: 2,
+                              lineHeight: 1,
+                            }}>
+                              {pt.lote || ''}
+                            </div>
+                          );
+                        });
+                      })()}
                     </div>
                   )}
                 </div>
