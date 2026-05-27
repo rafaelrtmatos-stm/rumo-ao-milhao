@@ -930,21 +930,22 @@ app.post("/api/detectar-bolinhas", async (req: any, res: any) => {
 
     // Montar prompt com posições das bolinhas
     const listaBolinhas = bolinhas.map((b: any, i: number) =>
-      `Bolinha ${i+1}: posição x=${b.xPercent}%, y=${b.yPercent}%`
-    ).join('
-');
+      "Bolinha " + (i+1) + ": posicao x=" + b.xPercent + "%, y=" + b.yPercent + "%"
+    ).join("\n");
 
-    const prompt = `Esta é uma planta de loteamento. Abaixo estão as posições (em % da imagem) de bolinhas coloridas que representam lotes.
-
-Para cada bolinha, identifique o número do LOTE e a QUADRA escritos mais próximos dela na planta.
-
-${listaBolinhas}
-
-Responda APENAS com JSON válido, sem texto extra:
-{"resultados": [{"index": 0, "quadra": "A", "lote": "1"}, {"index": 1, "quadra": "B", "lote": "5"}, ...]}
-
-Se não conseguir identificar, use "" para quadra e lote.
-Analise cuidadosamente os números escritos próximos a cada bolinha.`;
+    const prompt = [
+      "Esta e uma planta de loteamento. Abaixo estao as posicoes (em % da imagem) de bolinhas coloridas que representam lotes.",
+      "",
+      "Para cada bolinha, identifique o numero do LOTE e a QUADRA escritos mais proximos dela na planta.",
+      "",
+      listaBolinhas,
+      "",
+      'Responda APENAS com JSON valido, sem texto extra:',
+      '{"resultados": [{"index": 0, "quadra": "A", "lote": "1"}, ...]}',
+      "",
+      "Se nao conseguir identificar, use \"\" para quadra e lote.",
+      "Analise cuidadosamente os numeros escritos proximos a cada bolinha."
+    ].join("\n");
 
     const mediaType = imageBase64.startsWith('data:image/png') ? 'image/png' : 
                       imageBase64.startsWith('data:image/jpeg') ? 'image/jpeg' : 'image/png';
