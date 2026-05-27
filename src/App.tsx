@@ -2275,6 +2275,7 @@ const DashboardSection = ({
               })}
             </div>
           </div>
+        );
       })()}
     </div>
   );
@@ -2437,7 +2438,7 @@ const LotDashboard = ({
 
   // Detecção automática de bolinhas via IA
   const [detectandoBolinhas, setDetectandoBolinhas] = useState(false);
-  const [detectPreview, setDetectPreview] = useState<any[]>([]); // bolinhas detectadas para preview
+  const [detectPreview, setDetectPreview] = useState<any[]>([]);
   const [showDetectModal, setShowDetectModal] = useState(false);
   const [bolinhaSelIdx, setBolinhaSelIdx] = useState<number|null>(null);
 
@@ -6478,41 +6479,35 @@ const LotDashboard = ({
               <div className="w-9 h-1 bg-slate-200 rounded-full" />
             </div>
 
-            {/* Abas com ícones clipart monocromáticos */}
+            {/* Abas: Visualizar / Global / Adicionar bolinhas / Editar faixas */}
             <div className="flex gap-1 p-1 bg-slate-100 rounded-2xl mb-3">
-              {/* Mapa */}
               <button
                 onClick={() => { setMapAction("visualizar"); if (isEditingMap) cancelarEdicaoMapa(); setDrawerOpen(true); }}
-                className={`flex-1 py-2 rounded-xl text-[9px] font-black transition-all flex flex-col items-center gap-0.5 ${mapAction === "visualizar" && !isEditingMap && mode !== "global" && mode !== "precos" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3V6z"/><line x1="9" y1="3" x2="9" y2="18"/><line x1="15" y1="6" x2="15" y2="21"/></svg>
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mapAction === "visualizar" && !isEditingMap && mode !== "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
                 Mapa
               </button>
-              {/* Preços */}
               <button
                 onClick={() => { setMode("precos"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); }}
-                className={`flex-1 py-2 rounded-xl text-[9px] font-black transition-all flex flex-col items-center gap-0.5 ${mode === "precos" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                Preços
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "precos" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                💰 Preços
               </button>
-              {/* Como Chegar */}
               <button
                 onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); setMapAction("visualizar"); setDrawerOpen(true); }}
-                className={`flex-1 py-2 rounded-xl text-[9px] font-black transition-all flex flex-col items-center gap-0.5 ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-400"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
-                Chegar
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${mode === "global" ? "bg-white shadow text-slate-900" : "text-slate-500"}`}>
+                🧭 Como Chegar
               </button>
-              {/* Editar bolinhas */}
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("editar"); setDrawerOpen(true); }}
-                className={`flex-1 py-2 rounded-xl text-[9px] font-black transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
-                {mapaPontos.length === 0 ? "Bolinhas" : "Editar"}
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${isEditingMap && mapAction !== "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
+                {mapaPontos.length === 0 ? (
+                  <><span className="w-4 h-4 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0 text-white font-black" style={{fontSize:12}}>+</span><span>Adicionar</span></>
+                ) : (
+                  <><span className="w-2 h-2 rounded-full bg-blue-400 flex-shrink-0" /><span>Editar</span></>
+                )}
               </button>
-              {/* Faixas */}
               <button
                 onClick={() => { if (!isEditingMap) entrarEdicao(); setMapAction("massa"); setDrawerOpen(true); }}
-                className={`flex-1 py-2 rounded-xl text-[9px] font-black transition-all flex flex-col items-center gap-0.5 ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all ${isEditingMap && mapAction === "massa" ? "bg-slate-900 text-white shadow" : "text-slate-500"}`}>
                 Faixas
               </button>
               {(localDev?.mapaImagemBase64 || localDev?.mapaImagemUrl) && (
@@ -7647,106 +7642,81 @@ const LotDashboard = ({
           <div className="flex items-center justify-between px-4 py-3 bg-black flex-shrink-0">
             <div>
               <p className="text-sm font-black text-white">{detectPreview.length} bolinhas detectadas</p>
-              <p className="text-[10px] text-slate-400">Toque numa bolinha para remover · arraste para ver tudo</p>
+              <p className="text-[10px] text-slate-400">Toque para selecionar · vermelho = remover</p>
             </div>
-            <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); }}
+            <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); setBolinhaSelIdx(null); }}
               className="p-2 rounded-xl bg-slate-800 text-slate-300">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
           </div>
-
-          {/* Mapa com bolinhas — ocupa toda a tela */}
+          {/* Mapa rolável com bolinhas clicáveis */}
           <div className="flex-1 overflow-auto relative" style={{touchAction:'pan-x pan-y'}}>
-            <div className="relative inline-block min-w-full min-h-full">
+            <div className="relative" style={{minHeight:'100%'}}>
               {(localDev?.mapaImagemBase64 || localDev?.mapaImagemUrl) && (
                 <img src={localDev.mapaImagemBase64 || localDev.mapaImagemUrl}
-                  className="block max-w-none" style={{width:'100%', minHeight:'60vh', objectFit:'contain'}} alt="mapa"/>
+                  style={{width:'100%', display:'block'}} alt="mapa"/>
               )}
-              {/* Bolinhas clicáveis */}
               {detectPreview.map((b, i) => (
                 <div key={i}
-                  onClick={() => setBolinhaSelIdx(i === bolinhaSelIdx ? null : i)}
+                  onClick={() => setBolinhaSelIdx(bolinhaSelIdx === i ? null : i)}
                   style={{
                     position:'absolute',
                     left: b.xPercent + '%',
                     top: b.yPercent + '%',
-                    width: bolinhaSelIdx === i ? 22 : 16,
-                    height: bolinhaSelIdx === i ? 22 : 16,
+                    width: bolinhaSelIdx === i ? 20 : 14,
+                    height: bolinhaSelIdx === i ? 20 : 14,
                     borderRadius:'50%',
                     background: bolinhaSelIdx === i ? '#ef4444' : '#8b5cf6',
-                    border: bolinhaSelIdx === i ? '3px solid white' : '2px solid rgba(255,255,255,0.9)',
-                    boxShadow: bolinhaSelIdx === i ? '0 0 12px rgba(239,68,68,0.8)' : '0 0 6px rgba(139,92,246,0.6)',
+                    border: '2px solid rgba(255,255,255,0.9)',
+                    boxShadow: bolinhaSelIdx === i ? '0 0 10px rgba(239,68,68,0.8)' : '0 0 6px rgba(139,92,246,0.6)',
                     transform:'translate(-50%,-50%)',
                     zIndex: bolinhaSelIdx === i ? 20 : 5,
                     cursor:'pointer',
                     transition:'all 0.15s',
-                  }}>
-                  {/* Tooltip da bolinha selecionada */}
-                  {bolinhaSelIdx === i && (
-                    <div style={{
-                      position:'absolute', bottom:'120%', left:'50%', transform:'translateX(-50%)',
-                      background:'rgba(0,0,0,0.9)', borderRadius:10, padding:'6px 10px',
-                      whiteSpace:'nowrap', zIndex:30, minWidth:120,
-                    }}>
-                      {b.quadra ? <p style={{fontSize:10, color:'#a78bfa', fontWeight:800}}>Q{b.quadra} · L{b.lote||'?'}</p>
-                        : <p style={{fontSize:10, color:'#94a3b8'}}>Sem quadra/lote</p>}
-                      <button
-                        onClick={e => { e.stopPropagation(); setDetectPreview(p => p.filter((_,j)=>j!==i)); setBolinhaSelIdx(null); }}
-                        style={{marginTop:4, width:'100%', background:'#ef4444', border:'none', borderRadius:6, color:'white', fontSize:10, fontWeight:900, padding:'4px 8px', cursor:'pointer'}}>
-                        🗑 Remover
-                      </button>
-                    </div>
-                  )}
-                </div>
+                  }}
+                />
               ))}
             </div>
           </div>
-
-          {/* Rodapé — editar bolinha selecionada + confirmar */}
+          {/* Rodapé */}
           <div className="flex-shrink-0 bg-black border-t border-slate-800 px-4 py-3">
             {bolinhaSelIdx !== null && detectPreview[bolinhaSelIdx] && (
-              <div className="flex gap-2 mb-3">
-                <div className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0 mt-1"/>
-                <input
-                  placeholder="Quadra"
-                  value={detectPreview[bolinhaSelIdx]?.quadra || ''}
-                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, quadra: e.target.value} : x))}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"
-                />
-                <input
-                  placeholder="Lote"
-                  value={detectPreview[bolinhaSelIdx]?.lote || ''}
-                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, lote: e.target.value} : x))}
-                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"
-                />
+              <div className="flex gap-2 mb-3 items-center">
+                <div className="w-4 h-4 rounded-full bg-red-500 flex-shrink-0"/>
+                <input placeholder="Quadra" value={detectPreview[bolinhaSelIdx]?.quadra || ''}
+                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, quadra:e.target.value} : x))}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"/>
+                <input placeholder="Lote" value={detectPreview[bolinhaSelIdx]?.lote || ''}
+                  onChange={e => setDetectPreview(p => p.map((x,j) => j===bolinhaSelIdx ? {...x, lote:e.target.value} : x))}
+                  className="flex-1 bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold text-white outline-none text-center placeholder-slate-500"/>
+                <button onClick={() => { setDetectPreview(p => p.filter((_,j)=>j!==bolinhaSelIdx)); setBolinhaSelIdx(null); }}
+                  className="px-3 py-2 bg-red-600 rounded-xl text-white text-xs font-black flex-shrink-0">
+                  🗑 Remover
+                </button>
               </div>
             )}
             <div className="flex gap-3">
-              <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); }}
+              <button onClick={() => { setShowDetectModal(false); setDetectPreview([]); setBolinhaSelIdx(null); }}
                 className="flex-1 py-3 rounded-2xl border border-slate-700 text-sm font-bold text-slate-300">
                 Cancelar
               </button>
               <button onClick={async () => {
-                  const novosPontos = detectPreview.map(b => ({
-                    xPercent: b.xPercent,
-                    yPercent: b.yPercent,
-                    quadra: b.quadra || '',
-                    lote: b.lote || '',
-                    status: 'disponivel',
-                  }));
-                  const pontosAtuais = (localDev as any).mapaPontos || [];
-                  const updated = { ...localDev, mapaPontos: [...pontosAtuais, ...novosPontos] };
-                  await onSaveDev(updated as any);
-                  setShowDetectModal(false);
-                  setDetectPreview([]);
-                }}
-                className="flex-2 py-3 px-6 rounded-2xl bg-violet-600 text-sm font-black text-white active:scale-95 transition-all">
+                const novosPontos = detectPreview.map(b => ({
+                  xPercent: b.xPercent, yPercent: b.yPercent,
+                  quadra: b.quadra || '', lote: b.lote || '', status: 'disponivel',
+                }));
+                const pontosAtuais = (localDev as any).mapaPontos || [];
+                const updated = { ...localDev, mapaPontos: [...pontosAtuais, ...novosPontos] };
+                await onSaveDev(updated as any);
+                setShowDetectModal(false); setDetectPreview([]); setBolinhaSelIdx(null);
+              }}
+                className="flex-1 py-3 rounded-2xl bg-violet-600 text-sm font-black text-white active:scale-95 transition-all">
                 ✓ Confirmar {detectPreview.length}
               </button>
             </div>
           </div>
-        )}
-
+        </div>
+      )}
 
       {/* ── MODAL UPLOAD MAPA ── */}
       {mapaUploadModal && (
