@@ -3817,9 +3817,14 @@ const LotDashboard = ({
           // Desenhar bolinhas sobre o PDF em alta resolução
           const imgW = canvas.width;
           const imgH = canvas.height;
+          // Usar mesma lógica do getBallPixelSize — referência = largura base do PDF (antes do scale 4x)
+          const baseW = imgW / exportScale; // largura real sem zoom
+          const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
           const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-          const radius = Math.max(4, Math.round(imgW * 0.028 * pct) / 2);
-          const borderWidth = Math.max(1.5, radius * 0.22);
+          const baseSizePx = Math.max(6, Math.round(baseW * 0.028 * pct));
+          // Escalar para o canvas em alta resolução
+          const radius = Math.round((baseSizePx / refWidth) * imgW * 0.5);
+          const borderWidth = Math.max(2, Math.round(radius * 0.22));
           mapaPontos.forEach((ponto) => {
             const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
             const indisponivel = ponto.status === "indisponivel" || !!venda;
@@ -3859,10 +3864,13 @@ const LotDashboard = ({
         ctx.imageSmoothingQuality = "high";
         ctx.drawImage(img, 0, 0, imgW, imgH);
 
-        // Raio das bolinhas: 2.8% da largura da imagem (mesma proporção do mapa na tela)
+        // Raio das bolinhas — mesma lógica do getBallPixelSize
+        const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
         const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-        const radius = Math.max(4, Math.round(imgW * 0.028 * pct) / 2);
-        const borderWidth = Math.max(1.5, radius * 0.22);
+        // Tamanho base em pixels na resolução de referência, escalado para a imagem real
+        const baseSizePx = Math.max(6, Math.round(refWidth * 0.028 * pct));
+        const radius = Math.round((baseSizePx / refWidth) * imgW * 0.5);
+        const borderWidth = Math.max(2, Math.round(radius * 0.22));
 
         mapaPontos.forEach((ponto) => {
           const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
