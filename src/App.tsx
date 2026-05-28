@@ -6153,8 +6153,8 @@ const LotDashboard = ({
               const venda = vendaDoLote(q, l);
               // Buscar lotInfo tentando variações de chave
               const _lotKey1 = getLotInfoKey(q,l);
-              const _lotKey2 = \`\${q}:\${l}\`; // formato antigo com dois pontos
-              const _lotKey3 = \`\${q.toUpperCase()}-\${l}\`;
+              const _lotKey2 = q + ":" + l; // formato antigo com dois pontos
+              const _lotKey3 = q.toUpperCase() + "-" + l;
               const lotInfo = localDev.lotesInfo?.[_lotKey1] || localDev.lotesInfo?.[_lotKey2] || localDev.lotesInfo?.[_lotKey3] || localDev.lotesInfo?.[_lotKey1.toLowerCase()];
               const status = venda ? "indisponivel" : lotInfo?.status === "reservado" ? "reservado" : lotInfo?.status === "indisponivel" ? "indisponivel" : "disponivel";
               todosLotes.push({ quadra:q, lote:l, status, venda, lotInfo });
