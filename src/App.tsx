@@ -2342,17 +2342,20 @@ const LotDashboard = ({
     preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
   }));
   const getCorPorPreco = (quadra: string, lote: string): string => {
-    // Tentar buscar pelo par quadra:lote
     if (quadra && lote) {
       const key = getLotInfoKey(quadra, lote);
-      const info = (localDev.lotesInfo as any)?.[key];
+      const lotesInfo = (localDev.lotesInfo as any) || {};
+      // Tentar chave exata
+      let info = lotesInfo[key];
+      // Tentar variações de case
+      if (!info) info = lotesInfo[key.toLowerCase()];
+      if (!info) info = lotesInfo[key.toUpperCase()];
       const preco = info?.preco || 0;
       if (preco) {
         const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
         if (faixa) return faixa.color;
       }
     }
-    // Se não tem quadra/lote — cinza indica sem preço vinculado
     return '#94a3b8';
   };
   const [isMobile] = useState(() => window.innerWidth < 768);
@@ -19197,7 +19200,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       return devAtualizado;
     });
     setDevelopments(updated);
-    if (devAtualizado) persistEmpreendimentoAtualizado(devAtualizado);
+    if (devAtualizado) {
+      persistEmpreendimentoAtualizado(devAtualizado);
+      // Sincronizar selectedDevForMap imediatamente
+      if (selectedDevForMap?.id === id) {
+        setSelectedDevForMap(devAtualizado);
+      }
+    }
   };
 
   const deleteLot = (devId: string, key: string) => {
