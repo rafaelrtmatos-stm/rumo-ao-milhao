@@ -2342,13 +2342,18 @@ const LotDashboard = ({
     preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
   }));
   const getCorPorPreco = (quadra: string, lote: string): string => {
-    if (!quadra || !lote) return '#94a3b8';
-    const key = `${quadra}:${lote}`;
-    const info = (localDev.lotesInfo as any)?.[key];
-    const preco = info?.preco || 0;
-    if (!preco) return '#94a3b8';
-    const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
-    return faixa ? faixa.color : '#94a3b8';
+    // Tentar buscar pelo par quadra:lote
+    if (quadra && lote) {
+      const key = `${quadra}:${lote}`;
+      const info = (localDev.lotesInfo as any)?.[key];
+      const preco = info?.preco || 0;
+      if (preco) {
+        const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
+        if (faixa) return faixa.color;
+      }
+    }
+    // Se não tem quadra/lote — cinza indica sem preço vinculado
+    return '#94a3b8';
   };
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
