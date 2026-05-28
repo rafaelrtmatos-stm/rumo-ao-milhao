@@ -6151,7 +6151,11 @@ const LotDashboard = ({
             const displayLots = Array.from(new Set([...configuredLots,...lotesInfoKeys,...extraLots])).sort((a,b)=>Number(a)-Number(b));
             displayLots.forEach(l => {
               const venda = vendaDoLote(q, l);
-              const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q,l)];
+              // Buscar lotInfo tentando variações de chave
+              const _lotKey1 = getLotInfoKey(q,l);
+              const _lotKey2 = \`\${q}:\${l}\`; // formato antigo com dois pontos
+              const _lotKey3 = \`\${q.toUpperCase()}-\${l}\`;
+              const lotInfo = localDev.lotesInfo?.[_lotKey1] || localDev.lotesInfo?.[_lotKey2] || localDev.lotesInfo?.[_lotKey3] || localDev.lotesInfo?.[_lotKey1.toLowerCase()];
               const status = venda ? "indisponivel" : lotInfo?.status === "reservado" ? "reservado" : lotInfo?.status === "indisponivel" ? "indisponivel" : "disponivel";
               todosLotes.push({ quadra:q, lote:l, status, venda, lotInfo });
             });
@@ -6886,6 +6890,22 @@ const LotDashboard = ({
               </div>
             );
           })()}
+
+          {/* Botões PDF e Imagem na aba Preços */}
+          {mode === "precos" && (
+            <div className="flex-shrink-0 px-3 pb-3 grid grid-cols-2 gap-2">
+              <button onClick={baixarMapaInterativoImagem}
+                className="flex items-center justify-center gap-2 py-3 bg-[#1a4a1a] text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Imagem
+              </button>
+              <button onClick={baixarMapaInterativoPdf}
+                className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                PDF
+              </button>
+            </div>
+          )}
 
           {/* Conteúdo scrollável — oculto na aba Como Chegar */}
           <div className={(mode === "global" || mode === "precos") ? "hidden" : "flex-1 overflow-y-auto px-4 pb-8 space-y-5"}>
