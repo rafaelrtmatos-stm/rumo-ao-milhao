@@ -2342,20 +2342,42 @@ const LotDashboard = ({
     preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
   }));
   const getCorPorPreco = (quadra: string, lote: string): string | null => {
-    if (quadra && lote) {
-      const lotesInfo = (localDev.lotesInfo as any) || {};
-      const key1 = getLotInfoKey(quadra, lote);
-      const quadraReal = findQuadraName(localDev, quadra) || quadra;
-      const key2 = getLotInfoKey(quadraReal, lote);
-      const info = lotesInfo[key1] || lotesInfo[key2] ||
-                   lotesInfo[key1.toUpperCase()] || lotesInfo[key2.toUpperCase()];
-      const preco = info?.preco || 0;
-      if (preco) {
-        const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
+    if (!quadra || !lote) return null;
+    const lotesInfo = (localDev.lotesInfo as any) || {};
+    const loteNorm = String(lote).trim().toUpperCase();
+    // Tentativas diretas com variações de chave
+    const quadraReal = findQuadraName(localDev, quadra) || quadra;
+    const tentativas = [
+      getLotInfoKey(quadra, lote),
+      getLotInfoKey(quadraReal, lote),
+      String(quadra).trim().toUpperCase() + '-' + loteNorm,
+      String(quadraReal).trim().toUpperCase() + '-' + loteNorm,
+    ];
+    for (const k of tentativas) {
+      const info = lotesInfo[k] || lotesInfo[k.toUpperCase()] || lotesInfo[k.toLowerCase()];
+      if (info?.preco) {
+        const faixa = faixasPrecoGlobal.find(f => f.preco === info.preco);
         if (faixa) return faixa.color;
       }
     }
-    return null; // null = sem preço definido → usar cor de status normal
+    // Busca por iteração sobre todas as chaves do lotesInfo
+    for (const [k, v] of Object.entries(lotesInfo)) {
+      const parts = k.split('-');
+      if (parts.length < 2) continue;
+      const kLote = parts[parts.length - 1];
+      const kQuadra = parts.slice(0, -1).join('-');
+      const quadraMatch = kQuadra === String(quadra).trim().toUpperCase() ||
+                          kQuadra === String(quadraReal).trim().toUpperCase() ||
+                          kQuadra.replace(/[^0-9]/g,'') === String(quadra).replace(/[^0-9]/g,'');
+      if (kLote === loteNorm && quadraMatch) {
+        const preco = (v as any)?.preco || 0;
+        if (preco) {
+          const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
+          if (faixa) return faixa.color;
+        }
+      }
+    }
+    return null;
   };
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
@@ -6891,7 +6913,7 @@ const LotDashboard = ({
                 {faixasPrecoGlobal.length === 0 ? (
                   <p className="text-[10px] text-amber-600 font-bold text-center">Sem preços. Use Gerenciador → Preços.</p>
                 ) : (
-                  <div className="flex flex-col gap-2">
+                  <div className="grid grid-cols-2 gap-2">
                     {faixasPrecoGlobal.map((f, fi) => {
                       const lts = comPreco.filter(x => x.preco === f.preco);
                       const ent = lts[0]?.entrada || 0;
