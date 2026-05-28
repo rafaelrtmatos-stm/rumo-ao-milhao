@@ -3573,9 +3573,17 @@ const LotDashboard = ({
   const aplicarMapaUpload = async (fecharModal = true) => {
     const file = mapaUploadFiles[mapaUploadPageIdx];
     if (!file) return;
-    if (fecharModal) setMapaUploadModal(false);
-    // Usar handleImageUpload internamente com o arquivo selecionado e página
+    setMapaUploadLoading(true);
+    // Fazer upload ANTES de fechar o modal — evita desmontar componente no meio do upload
     await handleImageUploadFile(file, mapaUploadPdfPage);
+    setMapaUploadLoading(false);
+    if (fecharModal) {
+      setMapaUploadModal(false);
+      setMapaUploadFiles([]);
+      setMapaUploadPreviews([]);
+      setMapaUploadPageIdx(0);
+      setMapaUploadPdfPage(1);
+    }
   };
 
   // ──────────────────────────────────────────────
