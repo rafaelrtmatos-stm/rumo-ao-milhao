@@ -2341,15 +2341,13 @@ const LotDashboard = ({
   const faixasPrecoGlobal = precosUnicosGlobal.map((preco, i) => ({
     preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
   }));
-  const getCorPorPreco = (quadra: string, lote: string): string => {
+  const getCorPorPreco = (quadra: string, lote: string): string | null => {
     if (quadra && lote) {
       const lotesInfo = (localDev.lotesInfo as any) || {};
-      // Tentar chave direta
       const key1 = getLotInfoKey(quadra, lote);
-      // Tentar com nome normalizado da quadra (ex: "2" → nome real no sistema)
       const quadraReal = findQuadraName(localDev, quadra) || quadra;
       const key2 = getLotInfoKey(quadraReal, lote);
-      const info = lotesInfo[key1] || lotesInfo[key2] || 
+      const info = lotesInfo[key1] || lotesInfo[key2] ||
                    lotesInfo[key1.toUpperCase()] || lotesInfo[key2.toUpperCase()];
       const preco = info?.preco || 0;
       if (preco) {
@@ -2357,7 +2355,7 @@ const LotDashboard = ({
         if (faixa) return faixa.color;
       }
     }
-    return '#94a3b8';
+    return null; // null = sem preço definido → usar cor de status normal
   };
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
@@ -6864,7 +6862,7 @@ const LotDashboard = ({
             const faixasVisiveis = fxs.filter(f => lcp.some(l => l.preco === f.preco));
             return (
               <div className="flex-shrink-0 px-3 py-2">
-                <div className="grid gap-2" style={{gridTemplateColumns: faixasVisiveis.length === 1 ? '1fr' : 'repeat(2, 1fr)'}}>
+                <div className="grid gap-2" style={{gridTemplateColumns: faixasVisiveis.length <= 2 ? `repeat(${faixasVisiveis.length}, 1fr)` : 'repeat(2, 1fr)'}}>
                   {faixasVisiveis.map((f,fi) => {
                     const lts = lcp.filter(l => l.preco === f.preco);
                     const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
