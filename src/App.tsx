@@ -6404,7 +6404,7 @@ const LotDashboard = ({
           <div className="flex-shrink-0 bg-[#1a4a1a] px-4 py-2">
             <div className="flex items-center gap-3">
               <div className="flex-1 bg-white/20 rounded-full h-1.5 overflow-hidden">
-                <div className="h-full bg-white rounded-full transition-all duration-300" style={{width:}}/>
+                <div className="h-full bg-white rounded-full transition-all duration-300" style={{width: mapUploadProgress + "%"}}/>
               </div>
               <span className="text-white text-[10px] font-black flex-shrink-0">⬆ {mapUploadProgress}%</span>
             </div>
