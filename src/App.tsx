@@ -6856,9 +6856,8 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* ── ABA PREÇOS: cards individuais por lote + botões download ── */}
+          {/* ── ABA PREÇOS: layout com topo, grid rolável e rodapé download ── */}
           {mode === "precos" && (() => {
-            // Montar lista de todos os lotes com info de preço
             const quadraList = getQuadraList(localDev);
             const todosLotesPreco: any[] = [];
             quadraList.forEach(q => {
@@ -6868,77 +6867,102 @@ const LotDashboard = ({
                 const _k2 = `${q}:${l}`;
                 const info = (localDev.lotesInfo as any)?.[_k1] || (localDev.lotesInfo as any)?.[_k2] || {};
                 const venda = vendaDoLote(q, l);
-                const status = venda ? "indisponivel" : info?.status === "reservado" ? "reservado" : info?.status === "indisponivel" ? "indisponivel" : "disponivel";
-                const preco = info?.preco || 0;
-                const entrada = info?.entrada || 0;
-                const parcelas = info?.parcelas || 0;
+                const status: string = venda ? "indisponivel" : info?.status === "reservado" ? "reservado" : info?.status === "indisponivel" ? "indisponivel" : "disponivel";
+                const preco = Number(info?.preco || 0);
+                const entrada = Number(info?.entrada || 0);
+                const parcelas = Number(info?.parcelas || 0);
                 const parcela = parcelas > 0 && preco > 0 ? Math.round((preco - entrada) / parcelas) : 0;
-                todosLotesPreco.push({ q, l, status, preco, entrada, parcelas, parcela, cor: getCorPorPreco(q, l) || "#94a3b8" });
+                const valorTotal = preco > 0 ? preco : entrada + parcelas * parcela;
+                // Cor pelo preço (faixa) ou status
+                let cor = getCorPorPreco(q, l);
+                if (!cor) {
+                  if (status === "reservado") cor = "#f59e0b";
+                  else if (status === "indisponivel") cor = "#ef4444";
+                  else cor = "#3b82f6";
+                }
+                todosLotesPreco.push({ q, l, status, preco, entrada, parcelas, parcela, valorTotal, cor });
               });
             });
 
-            const temPrecos = todosLotesPreco.some(x => x.preco > 0);
+            const comPreco = todosLotesPreco.filter(x => x.preco > 0);
             return (
-              <div className="flex-shrink-0 flex flex-col overflow-hidden">
-                {/* Botões download */}
-                <div className="flex gap-2 px-3 pt-2 pb-1">
-                  <button onClick={baixarMapaInterativoImagem}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a4a1a] text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Imagem
-                  </button>
-                  <button onClick={baixarMapaInterativoPdf}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    PDF
-                  </button>
-                </div>
-                {/* Faixas de preço resumo */}
-                {faixasPrecoGlobal.length === 0 && (
-                  <p className="text-[10px] text-red-500 font-bold text-center px-3 mb-1">⚠ Sem preços no lotesInfo ({Object.keys(localDev.lotesInfo||{}).length} lotes cadastrados)</p>
-                )}
-                {faixasPrecoGlobal.length > 0 && (
-                  <div className="px-3 pb-1">
-                    <div className="grid gap-1.5" style={{gridTemplateColumns: faixasPrecoGlobal.length === 1 ? '1fr' : 'repeat(2,1fr)'}}>
+              <div className="flex-shrink-0 flex flex-col gap-2 px-3 pt-2 pb-2">
+                {/* Topo: título + legenda */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm">💰</span>
+                    <span className="text-xs font-black text-slate-800">Tabela de Preços</span>
+                  </div>
+                  {faixasPrecoGlobal.length > 0 ? (
+                    <div className="flex flex-wrap gap-2 mt-1">
                       {faixasPrecoGlobal.map((f,fi) => {
-                        const lts = todosLotesPreco.filter(x => x.preco === f.preco);
-                        const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
+                        const cnt = comPreco.filter(x => x.preco === f.preco).length;
+                        const ent = comPreco.find(x => x.preco === f.preco)?.entrada || 0;
+                        const par = comPreco.find(x => x.preco === f.preco)?.parcelas || 0;
                         const pval = par > 0 ? Math.round((f.preco-ent)/par) : 0;
                         return (
-                          <div key={fi} className="rounded-xl p-2" style={{background:`${f.color}18`, border:`1px solid ${f.color}44`}}>
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background:f.color}}/>
-                              <span className="text-[10px] font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
-                              <span className="text-[8px] text-slate-400 ml-auto">{lts.length} lote(s)</span>
-                            </div>
-                            {ent > 0 && <div className="text-[8px] text-slate-500">Entrada <b className="text-slate-700">R$ {ent.toLocaleString('pt-BR')}</b></div>}
-                            {par > 0 && <div className="text-[8px] text-slate-500">{par}× <b className="text-slate-700">R$ {pval.toLocaleString('pt-BR')}</b></div>}
+                          <div key={fi} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-black" style={{background:`${f.color}18`, color:f.color, border:`1px solid ${f.color}33`}}>
+                            <div className="w-2 h-2 rounded-full" style={{background:f.color}}/>
+                            R$ {Number(f.preco).toLocaleString('pt-BR')}
+                            {par > 0 && <span className="text-[8px] font-bold opacity-70">· {par}×{pval}</span>}
+                            <span className="text-[8px] opacity-60">({cnt})</span>
                           </div>
                         );
                       })}
                     </div>
-                  </div>
-                )}
-                {/* Cards individuais de lote */}
-                {temPrecos && (
-                  <div className="overflow-y-auto px-3 pb-3 mt-1" style={{maxHeight: 260}}>
+                  ) : (
+                    <p className="text-[10px] text-amber-600 font-bold">Sem preços. Use Gerenciador → Preços.</p>
+                  )}
+                </div>
+
+                {/* Grid de cards individuais — rolável */}
+                {comPreco.length > 0 && (
+                  <div className="overflow-y-auto" style={{maxHeight: 300}}>
                     <div className="grid grid-cols-2 gap-2">
-                      {todosLotesPreco.filter(x => x.preco > 0).map((item, i) => (
-                        <div key={i} className="bg-white rounded-xl border-2 p-2.5 shadow-sm relative"
+                      {comPreco.map((item, i) => (
+                        <div key={i} className="bg-white rounded-2xl border-2 p-3 shadow-sm relative flex flex-col justify-between"
                           style={{borderColor: item.cor}}>
-                          <div className="absolute top-2 right-2 w-3 h-3 rounded-full border border-white shadow-sm" style={{background:item.cor}}/>
-                          <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Q{item.q} · Lote</div>
-                          <div className="text-lg font-black leading-none mb-1" style={{color:item.cor}}>{String(item.l).padStart(2,'0')}</div>
-                          <div className="text-[8px] space-y-0.5 text-slate-600 border-t border-slate-100 pt-1.5">
-                            <div className="flex justify-between"><span className="text-slate-400">Total:</span><b>R$ {Number(item.preco).toLocaleString('pt-BR')}</b></div>
-                            {item.entrada > 0 && <div className="flex justify-between"><span className="text-slate-400">Entrada:</span><span>R$ {Number(item.entrada).toLocaleString('pt-BR')}</span></div>}
-                            {item.parcelas > 0 && <div className="flex justify-between" style={{color:item.cor}}><span className="text-slate-400">{item.parcelas}×</span><span>R$ {Number(item.parcela).toLocaleString('pt-BR')}</span></div>}
+                          <div className="absolute top-3 right-3 w-3.5 h-3.5 rounded-full border-2 border-white shadow-sm" style={{background:item.cor}}/>
+                          <div>
+                            <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Q{item.q} · Lote</div>
+                            <div className="text-xl font-black leading-none mb-2" style={{color:item.cor}}>{String(item.l).padStart(2,'0')}</div>
+                          </div>
+                          <div className="text-[9px] space-y-1 text-slate-600 border-t border-slate-100 pt-2">
+                            {item.entrada > 0 && (
+                              <div className="flex justify-between">
+                                <span className="text-slate-400">Entrada:</span>
+                                <span className="font-bold">R$ {Number(item.entrada).toLocaleString('pt-BR')}</span>
+                              </div>
+                            )}
+                            {item.parcelas > 0 && (
+                              <div className="flex justify-between" style={{color:item.cor}}>
+                                <span className="text-slate-400">{item.parcelas}×</span>
+                                <span className="font-bold">R$ {Number(item.parcela).toLocaleString('pt-BR')}</span>
+                              </div>
+                            )}
+                            <div className="flex justify-between border-t border-dashed border-slate-100 pt-1 font-black text-slate-800">
+                              <span>Total:</span>
+                              <span>R$ {Number(item.valorTotal).toLocaleString('pt-BR')}</span>
+                            </div>
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
                 )}
+
+                {/* Rodapé: botões de download */}
+                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-2.5 flex items-center gap-2">
+                  <span className="text-[9px] font-bold text-slate-400 mr-auto">⚙️ Exportar mapa</span>
+                  <button onClick={baixarMapaInterativoImagem}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 text-white text-[10px] font-black rounded-xl active:scale-95 transition-all">
+                    🖼️ Imagem
+                  </button>
+                  <button onClick={baixarMapaInterativoPdf}
+                    className="flex items-center gap-1.5 px-3 py-2 bg-red-600 text-white text-[10px] font-black rounded-xl active:scale-95 transition-all">
+                    📄 PDF
+                  </button>
+                </div>
               </div>
             );
           })()}
