@@ -8259,13 +8259,35 @@ const EmpreendimentosSection = ({
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
-  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string}[]>(() => {
+  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string}[]>(() => {
     const saved = (lotRegDev as any)?.precosRegras;
-    return saved?.length ? saved : [{id:1, script:"", valor:"", entrada:"", parcelas:""}];
+    if (saved?.length) return saved.map((r:any) => ({...r, parcela: r.parcela || ""}));
+    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:""}];
   });
-  const [precosPadrao, setPrecosPadrao] = useState<{valor:string; entrada:string; parcelas:string}>(() => {
-    return (lotRegDev as any)?.precosPadrao || {valor:"", entrada:"", parcelas:""};
+  const [precosPadrao, setPrecosPadrao] = useState<{valor:string; entrada:string; parcelas:string; parcela:string}>(() => {
+    return (lotRegDev as any)?.precosPadrao || {valor:"", entrada:"", parcelas:"", parcela:""};
   });
+
+  // Cálculo bidirecional de preços
+  const calcularPreco = (campo: string, valor: string, atual: any) => {
+    const v = parseFloat(valor.replace(/\./g,"").replace(",",".")) || 0;
+    const ent = parseFloat(String(atual.entrada).replace(/\./g,"").replace(",",".")) || 0;
+    const par = parseInt(atual.parcelas) || 0;
+    const parc = parseFloat(String(atual.parcela).replace(/\./g,"").replace(",",".")) || 0;
+    const tot = parseFloat(String(atual.valor).replace(/\./g,"").replace(",",".")) || 0;
+    const upd: any = {...atual, [campo]: valor};
+    if (campo === "entrada" || campo === "parcelas" || campo === "parcela") {
+      const novaEnt = campo === "entrada" ? v : ent;
+      const novaPar = campo === "parcelas" ? v : par;
+      const novaParc = campo === "parcela" ? v : parc;
+      if (novaPar > 0 && novaParc > 0) upd.valor = String(Math.round(novaEnt + novaPar * novaParc));
+    } else if (campo === "valor") {
+      const novaEnt = ent;
+      const novaPar = par;
+      if (novaPar > 0) upd.parcela = String(Math.round((v - novaEnt) / novaPar));
+    }
+    return upd;
+  };
   const [precosScriptMsg, setPrecosScriptMsg] = useState("");
   const [precosScriptInput, setPrecosScriptInput] = useState("");
   const [showPrecosInput, setShowPrecosInput] = useState(false);
@@ -10215,15 +10237,25 @@ const EmpreendimentosSection = ({
                               {interpretarScript(r.script).length > 10 && <span className="text-[8px] text-slate-400">+{interpretarScript(r.script).length-10} lotes</span>}
                             </div>
                           )}
-                          <div className="grid grid-cols-3 gap-2">
-                            {[["valor","Valor R$"],["entrada","Entrada R$"],["parcelas","Parcelas"]].map(([k,l]) => (
+                          <div className="grid grid-cols-2 gap-2">
+                            {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
                               <div key={k}>
                                 <p className="text-[8px] font-bold text-slate-400 mb-1">{l}</p>
-                                <input value={(r as any)[k]} onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? {...x,[k]:e.target.value} : x))}
-                                  className="w-full border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none" placeholder="0"/>
+                                <input
+                                  value={(r as any)[k] || ""}
+                                  onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? calcularPreco(k, e.target.value, x) : x))}
+                                  className="w-full border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-white"
+                                  placeholder="0"
+                                  inputMode="numeric"
+                                />
                               </div>
                             ))}
                           </div>
+                          {r.valor && r.parcelas && r.parcela && (
+                            <div className="mt-2 px-2 py-1.5 bg-[#1a4a1a]/5 rounded-xl text-[9px] text-[#1a4a1a] font-black text-center">
+                              R$ {Number(r.entrada||0).toLocaleString('pt-BR')} entrada + {r.parcelas}× R$ {Number(r.parcela||0).toLocaleString('pt-BR')} = R$ {Number(r.valor||0).toLocaleString('pt-BR')}
+                            </div>
+                          )}
                         </div>
                       ))}
                       <button onClick={() => setPrecosRegras(p => [...p, {id:Date.now(), script:"", valor:"", entrada:"", parcelas:""}])}
@@ -10235,15 +10267,25 @@ const EmpreendimentosSection = ({
                     {/* Padrão */}
                     <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
                       <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2">⚡ Padrão — demais lotes</p>
-                      <div className="grid grid-cols-3 gap-2">
-                        {[["valor","Valor R$"],["entrada","Entrada R$"],["parcelas","Parcelas"]].map(([k,l]) => (
+                      <div className="grid grid-cols-2 gap-2">
+                        {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
                           <div key={k}>
                             <p className="text-[8px] font-bold text-amber-600 mb-1">{l}</p>
-                            <input value={(precosPadrao as any)[k]} onChange={e => setPrecosPadrao(p => ({...p,[k]:e.target.value}))}
-                              className="w-full border border-amber-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-amber-50" placeholder="0"/>
+                            <input
+                              value={(precosPadrao as any)[k] || ""}
+                              onChange={e => setPrecosPadrao(p => calcularPreco(k, e.target.value, p))}
+                              className="w-full border border-amber-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-amber-50"
+                              placeholder="0"
+                              inputMode="numeric"
+                            />
                           </div>
                         ))}
                       </div>
+                      {precosPadrao.valor && precosPadrao.parcelas && precosPadrao.parcela && (
+                        <div className="mt-2 px-2 py-1.5 bg-amber-100 rounded-xl text-[9px] text-amber-700 font-black text-center">
+                          R$ {Number(precosPadrao.entrada||0).toLocaleString('pt-BR')} entrada + {precosPadrao.parcelas}× R$ {Number(precosPadrao.parcela||0).toLocaleString('pt-BR')} = R$ {Number(precosPadrao.valor||0).toLocaleString('pt-BR')}
+                        </div>
+                      )}
                     </div>
 
                     <button onClick={aplicarPrecos} className="w-full py-3.5 bg-[#1a4a1a] text-white font-black text-sm rounded-2xl active:scale-95 transition-all">
