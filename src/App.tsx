@@ -6174,10 +6174,30 @@ const LotDashboard = ({
             displayLots.forEach(l => {
               const venda = vendaDoLote(q, l);
               // Buscar lotInfo tentando variações de chave
-              const _lotKey1 = getLotInfoKey(q,l);
-              const _lotKey2 = q + ":" + l; // formato antigo com dois pontos
-              const _lotKey3 = q.toUpperCase() + "-" + l;
-              const lotInfo = localDev.lotesInfo?.[_lotKey1] || localDev.lotesInfo?.[_lotKey2] || localDev.lotesInfo?.[_lotKey3] || localDev.lotesInfo?.[_lotKey1.toLowerCase()];
+              const _lotKey1 = getLotInfoKey(q, l);
+              const _quadraReal = findQuadraName(localDev, q) || q;
+              const _lotKey2 = getLotInfoKey(_quadraReal, l);
+              const _lotKey3 = q + ":" + l;
+              const _loteNorm = String(l).trim().toUpperCase();
+              // Busca robusta: tenta todas variações de chave
+              let lotInfo = localDev.lotesInfo?.[_lotKey1] || localDev.lotesInfo?.[_lotKey2] ||
+                            localDev.lotesInfo?.[_lotKey1.toUpperCase()] || localDev.lotesInfo?.[_lotKey2.toUpperCase()] ||
+                            localDev.lotesInfo?.[_lotKey3];
+              // Se não achou, iterar sobre todas as chaves buscando pelo número da quadra e lote
+              if (!lotInfo) {
+                const qNum = String(q).replace(/[^0-9]/g,'');
+                for (const [k, v] of Object.entries(localDev.lotesInfo || {})) {
+                  const parts = k.split('-');
+                  if (parts.length < 2) continue;
+                  const kLote = parts[parts.length-1];
+                  const kQuadra = parts.slice(0,-1).join('-');
+                  const kQuadraNum = kQuadra.replace(/[^0-9]/g,'');
+                  if (kLote === _loteNorm && (kQuadraNum === qNum || kQuadra === String(q).toUpperCase())) {
+                    lotInfo = v as any;
+                    break;
+                  }
+                }
+              }
               const status = venda ? "indisponivel" : lotInfo?.status === "reservado" ? "reservado" : lotInfo?.status === "indisponivel" ? "indisponivel" : "disponivel";
               todosLotes.push({ quadra:q, lote:l, status, venda, lotInfo });
             });
