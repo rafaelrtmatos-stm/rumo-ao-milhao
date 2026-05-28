@@ -6856,56 +6856,92 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* Cards de preço — scroll horizontal quando mode=precos */}
+          {/* ── ABA PREÇOS: cards individuais por lote + botões download ── */}
           {mode === "precos" && (() => {
-            const lcp = Object.entries(localDev.lotesInfo || {})
-              .map(([k, info]: [string, any]) => ({k, preco:info?.preco||0, entrada:info?.entrada||0, parcelas:info?.parcelas||0}))
-              .filter(l => l.preco > 0);
-            const fxs = faixasPrecoGlobal.map(f => ({...f, label:`R$ ${Number(f.preco).toLocaleString('pt-BR')}`}));
-            if (!lcp.length) return <div className="flex-shrink-0 p-3 text-center"><p className="text-xs text-slate-400 font-bold">Sem preços. Use Gerenciador → Preços.</p></div>;
-            const faixasVisiveis = fxs.filter(f => lcp.some(l => l.preco === f.preco));
+            // Montar lista de todos os lotes com info de preço
+            const quadraList = getQuadraList(localDev);
+            const todosLotesPreco: any[] = [];
+            quadraList.forEach(q => {
+              const lts = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
+              lts.forEach(l => {
+                const _k1 = getLotInfoKey(q, l);
+                const _k2 = `${q}:${l}`;
+                const info = (localDev.lotesInfo as any)?.[_k1] || (localDev.lotesInfo as any)?.[_k2] || {};
+                const venda = vendaDoLote(q, l);
+                const status = venda ? "indisponivel" : info?.status === "reservado" ? "reservado" : info?.status === "indisponivel" ? "indisponivel" : "disponivel";
+                const preco = info?.preco || 0;
+                const entrada = info?.entrada || 0;
+                const parcelas = info?.parcelas || 0;
+                const parcela = parcelas > 0 && preco > 0 ? Math.round((preco - entrada) / parcelas) : 0;
+                todosLotesPreco.push({ q, l, status, preco, entrada, parcelas, parcela, cor: getCorPorPreco(q, l) || "#94a3b8" });
+              });
+            });
+
+            const temPrecos = todosLotesPreco.some(x => x.preco > 0);
             return (
-              <div className="flex-shrink-0 px-3 py-2">
-                {faixasPrecoGlobal.length === 0 && <p className="text-[10px] text-red-500 font-bold text-center mb-1">⚠ Sem preços no lotesInfo ({Object.keys(localDev.lotesInfo||{}).length} lotes cadastrados)</p>}
-                <div className="grid gap-2" style={{gridTemplateColumns: faixasVisiveis.length <= 2 ? `repeat(${faixasVisiveis.length}, 1fr)` : 'repeat(2, 1fr)'}}>
-                  {faixasVisiveis.map((f,fi) => {
-                    const lts = lcp.filter(l => l.preco === f.preco);
-                    const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
-                    const pval = par > 0 ? Math.round((f.preco-ent)/par) : 0;
-                    return (
-                      <div key={fi} className="rounded-2xl overflow-hidden" style={{background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}>
-                        <div className="p-2.5">
-                          <div className="flex items-center gap-1.5 mb-1">
-                            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{background:f.color}}/>
-                            <div className="text-xs font-black leading-tight" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
-                          </div>
-                          <div className="text-[8px] text-slate-500 mb-0.5">{lts.length} lote(s)</div>
-                          {ent > 0 && <div className="text-[8px] text-slate-500">Entrada <span className="font-black text-slate-700">R$ {ent.toLocaleString('pt-BR')}</span></div>}
-                          {par > 0 && <div className="text-[8px] text-slate-500">{par}× <span className="font-black text-slate-700">R$ {pval.toLocaleString('pt-BR')}</span></div>}
-                        </div>
-                      </div>
-                    );
-                  })}
+              <div className="flex-shrink-0 flex flex-col overflow-hidden">
+                {/* Botões download */}
+                <div className="flex gap-2 px-3 pt-2 pb-1">
+                  <button onClick={baixarMapaInterativoImagem}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-[#1a4a1a] text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Imagem
+                  </button>
+                  <button onClick={baixarMapaInterativoPdf}
+                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-blue-600 text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    PDF
+                  </button>
                 </div>
+                {/* Faixas de preço resumo */}
+                {faixasPrecoGlobal.length === 0 && (
+                  <p className="text-[10px] text-red-500 font-bold text-center px-3 mb-1">⚠ Sem preços no lotesInfo ({Object.keys(localDev.lotesInfo||{}).length} lotes cadastrados)</p>
+                )}
+                {faixasPrecoGlobal.length > 0 && (
+                  <div className="px-3 pb-1">
+                    <div className="grid gap-1.5" style={{gridTemplateColumns: faixasPrecoGlobal.length === 1 ? '1fr' : 'repeat(2,1fr)'}}>
+                      {faixasPrecoGlobal.map((f,fi) => {
+                        const lts = todosLotesPreco.filter(x => x.preco === f.preco);
+                        const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
+                        const pval = par > 0 ? Math.round((f.preco-ent)/par) : 0;
+                        return (
+                          <div key={fi} className="rounded-xl p-2" style={{background:`${f.color}18`, border:`1px solid ${f.color}44`}}>
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <div className="w-3 h-3 rounded-full flex-shrink-0" style={{background:f.color}}/>
+                              <span className="text-[10px] font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
+                              <span className="text-[8px] text-slate-400 ml-auto">{lts.length} lote(s)</span>
+                            </div>
+                            {ent > 0 && <div className="text-[8px] text-slate-500">Entrada <b className="text-slate-700">R$ {ent.toLocaleString('pt-BR')}</b></div>}
+                            {par > 0 && <div className="text-[8px] text-slate-500">{par}× <b className="text-slate-700">R$ {pval.toLocaleString('pt-BR')}</b></div>}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {/* Cards individuais de lote */}
+                {temPrecos && (
+                  <div className="overflow-y-auto px-3 pb-3 mt-1" style={{maxHeight: 260}}>
+                    <div className="grid grid-cols-2 gap-2">
+                      {todosLotesPreco.filter(x => x.preco > 0).map((item, i) => (
+                        <div key={i} className="bg-white rounded-xl border-2 p-2.5 shadow-sm relative"
+                          style={{borderColor: item.cor}}>
+                          <div className="absolute top-2 right-2 w-3 h-3 rounded-full border border-white shadow-sm" style={{background:item.cor}}/>
+                          <div className="text-[8px] font-black text-slate-400 uppercase tracking-widest">Q{item.q} · Lote</div>
+                          <div className="text-lg font-black leading-none mb-1" style={{color:item.cor}}>{String(item.l).padStart(2,'0')}</div>
+                          <div className="text-[8px] space-y-0.5 text-slate-600 border-t border-slate-100 pt-1.5">
+                            <div className="flex justify-between"><span className="text-slate-400">Total:</span><b>R$ {Number(item.preco).toLocaleString('pt-BR')}</b></div>
+                            {item.entrada > 0 && <div className="flex justify-between"><span className="text-slate-400">Entrada:</span><span>R$ {Number(item.entrada).toLocaleString('pt-BR')}</span></div>}
+                            {item.parcelas > 0 && <div className="flex justify-between" style={{color:item.cor}}><span className="text-slate-400">{item.parcelas}×</span><span>R$ {Number(item.parcela).toLocaleString('pt-BR')}</span></div>}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
-
-          {/* Botões PDF e Imagem na aba Preços */}
-          {mode === "precos" && (
-            <div className="flex-shrink-0 px-3 pb-3 grid grid-cols-2 gap-2">
-              <button onClick={baixarMapaInterativoImagem}
-                className="flex items-center justify-center gap-2 py-3 bg-[#1a4a1a] text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Imagem
-              </button>
-              <button onClick={baixarMapaInterativoPdf}
-                className="flex items-center justify-center gap-2 py-3 bg-blue-600 text-white rounded-2xl text-xs font-black active:scale-95 transition-all">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                PDF
-              </button>
-            </div>
-          )}
 
           {/* Conteúdo scrollável — oculto na aba Como Chegar */}
           <div className={(mode === "global" || mode === "precos") ? "hidden" : "flex-1 overflow-y-auto px-4 pb-8 space-y-5"}>
