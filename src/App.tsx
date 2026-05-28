@@ -6862,6 +6862,7 @@ const LotDashboard = ({
             const faixasVisiveis = fxs.filter(f => lcp.some(l => l.preco === f.preco));
             return (
               <div className="flex-shrink-0 px-3 py-2">
+                {faixasPrecoGlobal.length === 0 && <p className="text-[10px] text-red-500 font-bold text-center mb-1">⚠ Sem preços no lotesInfo ({Object.keys(localDev.lotesInfo||{}).length} lotes cadastrados)</p>}
                 <div className="grid gap-2" style={{gridTemplateColumns: faixasVisiveis.length <= 2 ? `repeat(${faixasVisiveis.length}, 1fr)` : 'repeat(2, 1fr)'}}>
                   {faixasVisiveis.map((f,fi) => {
                     const lts = lcp.filter(l => l.preco === f.preco);
