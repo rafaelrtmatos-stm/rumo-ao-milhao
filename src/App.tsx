@@ -2343,13 +2343,14 @@ const LotDashboard = ({
   }));
   const getCorPorPreco = (quadra: string, lote: string): string => {
     if (quadra && lote) {
-      const key = getLotInfoKey(quadra, lote);
       const lotesInfo = (localDev.lotesInfo as any) || {};
-      // Tentar chave exata
-      let info = lotesInfo[key];
-      // Tentar variações de case
-      if (!info) info = lotesInfo[key.toLowerCase()];
-      if (!info) info = lotesInfo[key.toUpperCase()];
+      // Tentar chave direta
+      const key1 = getLotInfoKey(quadra, lote);
+      // Tentar com nome normalizado da quadra (ex: "2" → nome real no sistema)
+      const quadraReal = findQuadraName(localDev, quadra) || quadra;
+      const key2 = getLotInfoKey(quadraReal, lote);
+      const info = lotesInfo[key1] || lotesInfo[key2] || 
+                   lotesInfo[key1.toUpperCase()] || lotesInfo[key2.toUpperCase()];
       const preco = info?.preco || 0;
       if (preco) {
         const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
@@ -9979,8 +9980,10 @@ const EmpreendimentosSection = ({
                       // tag = "Q1·L5" → quadra=1, lote=5
                       const m = tag.match(/Q(\w+)·L(\w+)/);
                       if (!m) return;
-                      const [, q, l] = m;
-                      const key = getLotInfoKey(q, l);
+                      const [, qRaw, l] = m;
+                      // Resolver nome real da quadra (pode ser "Quadra 2" em vez de "2")
+                      const quadraReal = findQuadraName(lotRegDev, qRaw) || qRaw;
+                      const key = getLotInfoKey(quadraReal, l);
                       if (!info[key]) info[key] = {};
                       info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
