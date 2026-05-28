@@ -6183,9 +6183,9 @@ const LotDashboard = ({
           const totalInd  = todosLotes.filter(l=>l.status==="indisponivel").length;
 
           const statusCfg: Record<string,{label:string;color:string;bg:string;border:string}> = {
-            disponivel:   {label:"Disponível",   color:"#16a34a", bg:"#f0fdf4", border:"#bbf7d0"},
-            reservado:    {label:"Reservado",    color:"#d97706", bg:"#fffbeb", border:"#fde68a"},
-            indisponivel: {label:"Indisponível", color:"#dc2626", bg:"#fef2f2", border:"#fecaca"},
+            disponivel:   {label:"Disponível",   color:"#3b82f6", bg:"#eff6ff", border:"#bfdbfe"},
+            reservado:    {label:"Reservado",    color:"#f59e0b", bg:"#fffbeb", border:"#fde68a"},
+            indisponivel: {label:"Indisponível", color:"#ef4444", bg:"#fef2f2", border:"#fecaca"},
           };
 
           return (
@@ -6222,9 +6222,9 @@ const LotDashboard = ({
               {/* Linha 2: pills status */}
               <div className="flex items-center gap-2 px-3 pb-2 overflow-x-auto" style={{scrollbarWidth:'none'}}>
                 {[
-                  {k:"disponivel",  l:"Disponível",   c:"#16a34a", bc:"#bbf7d0", bg:"#f0fdf4"},
-                  {k:"reservado",   l:"Reservado",    c:"#d97706", bc:"#fde68a", bg:"#fffbeb"},
-                  {k:"indisponivel",l:"Indisponível", c:"#dc2626", bc:"#fecaca", bg:"#fef2f2"},
+                  {k:"disponivel",  l:"Disponível",   c:"#3b82f6", bc:"#bfdbfe", bg:"#eff6ff"},
+                  {k:"reservado",   l:"Reservado",    c:"#f59e0b", bc:"#fde68a", bg:"#fffbeb"},
+                  {k:"indisponivel",l:"Indisponível", c:"#ef4444", bc:"#fecaca", bg:"#fef2f2"},
                 ].map(({k,l,c,bc,bg}) => (
                   <button key={k} onClick={()=>toggleStatusFiltro(k)}
                     className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs border transition-all whitespace-nowrap"
