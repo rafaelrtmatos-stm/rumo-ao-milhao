@@ -6878,7 +6878,7 @@ const LotDashboard = ({
             </div>
           </div>
 
-          {/* ── ABA PREÇOS: layout com topo, grid rolável e rodapé download ── */}
+          {/* ── ABA PREÇOS ── */}
           {mode === "precos" && (() => {
             const quadraList = getQuadraList(localDev);
             const todosLotesPreco: any[] = [];
@@ -6886,7 +6886,7 @@ const LotDashboard = ({
               const lts = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
               lts.forEach(l => {
                 const _k1 = getLotInfoKey(q, l);
-                const _k2 = `${q}:${l}`;
+                const _k2 = q + ":" + l;
                 const info = (localDev.lotesInfo as any)?.[_k1] || (localDev.lotesInfo as any)?.[_k2] || {};
                 const venda = vendaDoLote(q, l);
                 const status: string = venda ? "indisponivel" : info?.status === "reservado" ? "reservado" : info?.status === "indisponivel" ? "indisponivel" : "disponivel";
@@ -6894,87 +6894,89 @@ const LotDashboard = ({
                 const entrada = Number(info?.entrada || 0);
                 const parcelas = Number(info?.parcelas || 0);
                 const parcela = parcelas > 0 && preco > 0 ? Math.round((preco - entrada) / parcelas) : 0;
-                const valorTotal = preco > 0 ? preco : entrada + parcelas * parcela;
-                // Cor pelo preço (faixa) ou status
-                let cor = getCorPorPreco(q, l);
-                if (!cor) {
-                  if (status === "reservado") cor = "#f59e0b";
-                  else if (status === "indisponivel") cor = "#ef4444";
-                  else cor = "#3b82f6";
-                }
-                todosLotesPreco.push({ q, l, status, preco, entrada, parcelas, parcela, valorTotal, cor });
+                // Cor pela faixa de preço
+                const corFaixa = getCorPorPreco(q, l);
+                // Cfg de status padrão
+                const cfgStatus: any = {
+                  disponivel:   { color:"#3b82f6", bg:"#eff6ff",  border:"#bfdbfe" },
+                  reservado:    { color:"#f59e0b", bg:"#fffbeb",  border:"#fde68a" },
+                  indisponivel: { color:"#ef4444", bg:"#fef2f2",  border:"#fecaca" },
+                };
+                const cfg = cfgStatus[status] || cfgStatus.disponivel;
+                const corBolinha = corFaixa || cfg.color;
+                todosLotesPreco.push({ q, l, status, preco, entrada, parcelas, parcela, cfg, corBolinha });
               });
             });
-
             const comPreco = todosLotesPreco.filter(x => x.preco > 0);
+
             return (
-              <div className="flex-1 overflow-y-auto flex flex-col gap-2 px-3 pt-2 pb-3" style={{WebkitOverflowScrolling:'touch'}}>
-                {/* Cards por faixa de preço — valor total, entrada, parcelas, quadras */}
-                {faixasPrecoGlobal.length === 0 ? (
-                  <p className="text-[10px] text-amber-600 font-bold text-center">Sem preços. Use Gerenciador → Preços.</p>
-                ) : (
-                  <div className="grid grid-cols-2 gap-2">
+              <div className="flex-1 overflow-y-auto flex flex-col gap-3 px-3 pt-2 pb-3" style={{WebkitOverflowScrolling:'touch'}}>
+                {/* Legenda de faixas */}
+                {faixasPrecoGlobal.length > 0 && (
+                  <div className="flex flex-wrap gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider w-full">Planos de preço:</span>
                     {faixasPrecoGlobal.map((f, fi) => {
                       const lts = comPreco.filter(x => x.preco === f.preco);
                       const ent = lts[0]?.entrada || 0;
                       const par = lts[0]?.parcelas || 0;
                       const pval = par > 0 ? Math.round((f.preco - ent) / par) : 0;
-                      // Quadras únicas desta faixa
-                      const quadras = Array.from(new Set(lts.map(x => x.q))).sort();
+                      const quadras = Array.from(new Set(lts.map((x:any) => x.q))).sort();
                       return (
-                        <div key={fi} className="bg-white rounded-2xl border-2 p-3 shadow-sm"
-                          style={{borderColor: f.color}}>
-                          {/* Header card */}
-                          <div className="flex items-center gap-2 mb-2">
-                            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{background: f.color}}/>
-                            <span className="text-sm font-black" style={{color: f.color}}>
-                              R$ {Number(f.preco).toLocaleString('pt-BR')}
-                            </span>
-                            <span className="text-[9px] text-slate-400 ml-auto">{lts.length} lote(s)</span>
-                          </div>
-                          {/* Dados financeiros */}
-                          <div className="text-[10px] space-y-1 border-t border-slate-100 pt-2">
-                            {ent > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Entrada</span>
-                                <span className="font-black text-slate-700">R$ {Number(ent).toLocaleString('pt-BR')}</span>
-                              </div>
-                            )}
-                            {par > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-slate-400">Parcelas</span>
-                                <span className="font-black" style={{color: f.color}}>{par}× R$ {Number(pval).toLocaleString('pt-BR')}</span>
-                              </div>
-                            )}
-                            <div className="flex justify-between border-t border-dashed border-slate-100 pt-1">
-                              <span className="text-slate-400">Total</span>
-                              <span className="font-black text-slate-800">R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
-                            </div>
-                          </div>
-                          {/* Quadras */}
-                          {quadras.length > 0 && (
-                            <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-slate-100">
-                              {quadras.map(q => (
-                                <span key={q} className="text-[8px] font-black px-1.5 py-0.5 rounded-md"
-                                  style={{background: f.color + '18', color: f.color}}>
-                                  Q{q}
-                                </span>
-                              ))}
-                            </div>
-                          )}
+                        <div key={fi} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-black"
+                          style={{background: f.color + '18', color: f.color, border: '1px solid ' + f.color + '44'}}>
+                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: f.color}}/>
+                          <span>R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
+                          {par > 0 && <span className="opacity-70">· {par}×R${pval}</span>}
+                          {quadras.map((qq:any) => <span key={qq} className="opacity-60">Q{qq}</span>)}
                         </div>
                       );
                     })}
                   </div>
                 )}
+                {faixasPrecoGlobal.length === 0 && (
+                  <p className="text-[10px] text-amber-600 font-bold text-center bg-amber-50 rounded-xl p-3 border border-amber-200">
+                    Sem preços definidos. Use Gerenciador → Preços.
+                  </p>
+                )}
+
+                {/* Grid de cards individuais por lote */}
+                {comPreco.length > 0 && (
+                  <div className="grid grid-cols-2 gap-2">
+                    {comPreco.map((item: any, i: number) => (
+                      <div key={i} className="bg-white rounded-2xl border p-3 shadow-sm relative"
+                        style={{borderColor: item.cfg.border}}>
+                        {/* Bolinha de preço */}
+                        <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full shadow-sm"
+                          style={{background: item.corBolinha}}/>
+                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Q{item.q} · Lote</span>
+                        <p className="text-2xl font-black leading-none mb-2" style={{color: item.cfg.color}}>
+                          {String(item.l).padStart(2,'0')}
+                        </p>
+                        <div className="text-[10px] font-bold text-slate-500 space-y-0.5">
+                          {item.entrada > 0 && <p>E: R$ {Number(item.entrada).toLocaleString('pt-BR')}</p>}
+                          {item.parcelas > 0 && <p style={{color: item.corBolinha}}>{item.parcelas}× R$ {Number(item.parcela).toLocaleString('pt-BR')}</p>}
+                          <p className="font-black text-slate-800 border-t border-slate-100 pt-1">
+                            R$ {Number(item.preco).toLocaleString('pt-BR')}
+                          </p>
+                        </div>
+                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full mt-1.5 inline-block uppercase"
+                          style={{background: item.cfg.bg, color: item.cfg.color}}>
+                          {item.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* Botões download — idênticos à aba Mapa */}
-                <div className="grid grid-cols-2 gap-2">
-                  <button onClick={baixarMapaInterativoImagem} className="flex items-center justify-center gap-2 py-3.5 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                <div className="grid grid-cols-2 gap-2 mt-1">
+                  <button onClick={baixarMapaInterativoImagem}
+                    className="flex items-center justify-center gap-2 py-3.5 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Imagem
                   </button>
-                  <button onClick={baixarMapaInterativoPdf} className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
+                  <button onClick={baixarMapaInterativoPdf}
+                    className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     PDF
                   </button>
@@ -6983,7 +6985,7 @@ const LotDashboard = ({
             );
           })()}
 
-          {/* Conteúdo scrollável — oculto na aba Como Chegar */}
+                    {/* Conteúdo scrollável — oculto na aba Como Chegar */}
           <div className={(mode === "global" || mode === "precos") ? "hidden" : "flex-1 overflow-y-auto px-4 pb-8 space-y-5"}>
 
 
