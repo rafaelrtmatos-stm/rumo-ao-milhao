@@ -6838,6 +6838,40 @@ const LotDashboard = ({
             </div>
           </div>
 
+          {/* Cards de preço — scroll horizontal quando mode=precos */}
+          {mode === "precos" && (() => {
+            const lcp = Object.entries(localDev.lotesInfo || {})
+              .map(([k, info]: [string, any]) => ({k, preco:info?.preco||0, entrada:info?.entrada||0, parcelas:info?.parcelas||0}))
+              .filter(l => l.preco > 0);
+            const fxs = faixasPrecoGlobal.map(f => ({...f, label:`R$ ${Number(f.preco).toLocaleString('pt-BR')}`}));
+            if (!lcp.length) return <div className="flex-shrink-0 p-3 text-center"><p className="text-xs text-slate-400 font-bold">Sem preços. Use Gerenciador → Preços.</p></div>;
+            return (
+              <div className="flex-shrink-0 py-2">
+                <div className="flex gap-2 overflow-x-auto px-3" style={{scrollbarWidth:'none'}}>
+                  {fxs.map((f,fi) => {
+                    const lts = lcp.filter(l => l.preco === f.preco);
+                    if (!lts.length) return null;
+                    const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
+                    const pval = par > 0 ? Math.round((f.preco-ent)/par) : 0;
+                    return (
+                      <div key={fi} className="flex-shrink-0 rounded-2xl overflow-hidden" style={{width:140,background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}>
+                        <div className="p-2.5">
+                          <div className="flex items-center gap-1.5 mb-1.5">
+                            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{background:f.color}}/>
+                            <div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
+                          </div>
+                          <div className="text-[8px] text-slate-500 mb-0.5">{lts.length} lote(s)</div>
+                          {ent > 0 && <div className="text-[8px] text-slate-500">Entrada <span className="font-black text-slate-700">R$ {ent.toLocaleString('pt-BR')}</span></div>}
+                          {par > 0 && <div className="text-[8px] text-slate-500">{par}× <span className="font-black text-slate-700">R$ {pval.toLocaleString('pt-BR')}</span></div>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })()}
+
           {/* Conteúdo scrollável — oculto na aba Como Chegar */}
           <div className={(mode === "global" || mode === "precos") ? "hidden" : "flex-1 overflow-y-auto px-4 pb-8 space-y-5"}>
 
@@ -7578,6 +7612,14 @@ const LotDashboard = ({
             {/* COLUNA DIREITA — sidebar 25% */}
             <div className="w-56 xl:w-60 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
 
+              {/* Cards de preço — só na aba Preços */}
+              {mode === "precos" && (() => {
+                const lcp = Object.entries(localDev.lotesInfo || {}).map(([k,info]: [string,any]) => ({k,preco:info?.preco||0,entrada:info?.entrada||0,parcelas:info?.parcelas||0})).filter(l=>l.preco>0);
+                const fxs = faixasPrecoGlobal.map(f => ({...f,label:`R$ ${Number(f.preco).toLocaleString('pt-BR')}`}));
+                if (!lcp.length) return <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center"><p className="text-xs font-bold text-amber-700">Sem preços definidos</p></div>;
+                return (<div className="flex flex-col gap-2">{fxs.map((f,fi)=>{const lts=lcp.filter(l=>l.preco===f.preco);if(!lts.length)return null;const ent=lts[0]?.entrada||0,par=lts[0]?.parcelas||0,pval=par>0?Math.round((f.preco-ent)/par):0;return(<div key={fi} className="rounded-2xl overflow-hidden" style={{background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}><div className="p-3"><div className="flex items-center gap-2 mb-1"><div className="w-4 h-4 rounded-full" style={{background:f.color}}/><div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div></div><div className="text-[9px] text-slate-500">{lts.length} lote(s)</div>{ent>0&&<div className="text-[9px] text-slate-500">Entrada <b>R$ {ent.toLocaleString('pt-BR')}</b></div>}{par>0&&<div className="text-[9px] text-slate-500">{par}× <b>R$ {pval.toLocaleString('pt-BR')}</b></div>}</div></div>);})}</div>);
+              })()}
+
               {/* RESUMO */}
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Resumo</p>
@@ -7678,69 +7720,8 @@ const LotDashboard = ({
             {renderMapa()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
-        ) : mode === "precos" ? (() => {
-          // Calcular faixas de preço dos lotes
-          const lotesComPreco = Object.entries(localDev.lotesInfo || {})
-            .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0, entrada: info?.entrada || 0, parcelas: info?.parcelas || 0 }))
-            .filter(l => l.preco > 0);
-          const precos = lotesComPreco.map(l => l.preco);
-          // Usar faixas globais do componente
-          const faixas = faixasPrecoGlobal.map(f => ({
-            ...f,
-            label: `R$ ${Number(f.preco).toLocaleString('pt-BR')}`,
-          }));
-          const getCorLote = (preco: number) => {
-            if (!preco) return '#94a3b8';
-            const faixa = faixas.find(f => f.preco === preco);
-            return faixa ? faixa.color : '#94a3b8';
-          };
-          return (
-            <div className="flex flex-col" style={{height:'100%'}}>
-              {/* Mapa de preços — usa EXATAMENTE o mesmo sistema de renderização da aba Mapa */}
-  
-              {/* Cards horizontais de faixas de preço */}
-              {precos.length > 0 && (
-                <div className="flex-shrink-0 pb-3 pt-2">
-                  <div className="flex gap-2 overflow-x-auto px-3" style={{scrollbarWidth:'none'}}>
-                    {faixas.map((f, fi) => {
-                      const lotesNaFaixa = lotesComPreco.filter(l => l.preco === f.preco);
-                      if (!lotesNaFaixa.length) return null;
-                      const entrada = lotesNaFaixa[0]?.entrada || 0;
-                      const parcelas = lotesNaFaixa[0]?.parcelas || 0;
-                      const parcela = parcelas > 0 ? Math.round((f.preco - entrada) / parcelas) : 0;
-                      return (
-                        <div key={fi} className="flex-shrink-0 rounded-2xl overflow-hidden" style={{width:148, background:`linear-gradient(160deg, ${f.color}22, ${f.color}44)`, border:`1px solid ${f.color}55`}}>
-                          <div className="p-3">
-                            <div className="flex items-center gap-2 mb-2">
-                              <div className="w-6 h-6 rounded-full flex-shrink-0" style={{background:f.color}}/>
-                              <div>
-                                <div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
-                                <div className="text-[8px] font-bold text-slate-500">{lotesNaFaixa.length} lote(s)</div>
-                              </div>
-                            </div>
-                            {entrada > 0 && <div className="text-[9px] text-slate-500 mb-1">Entrada <span className="font-black text-slate-700">R$ {entrada.toLocaleString('pt-BR')}</span></div>}
-                            {parcelas > 0 && <div className="text-[9px] text-slate-500 mb-2">{parcelas}× <span className="font-black text-slate-700">R$ {parcela.toLocaleString('pt-BR')}</span></div>}
-                            <div className="text-[8px] font-bold mb-1" style={{color:f.color}}>{f.label}</div>
-                          </div>
-                          <div style={{background:f.color}} className="mx-2 mb-2 rounded-xl py-2 text-center text-white text-[9px] font-black cursor-pointer">
-                            VER LOTES
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-              {precos.length === 0 && (
-                <div className="flex-shrink-0 p-4 text-center">
-                  <p className="text-xs text-slate-400 font-bold">Nenhum lote com preço definido.</p>
-                  <p className="text-[10px] text-slate-300 mt-1">Use o Gerenciador → aba Preços para definir.</p>
-                </div>
-              )}
-            </div>
-          );
-        })()
         : mode === "global" ? renderAbaGlobal()
+                : mode === "global" ? renderAbaGlobal()
         : mode === "quadradinhos" ? renderAbaLotes() : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
             {renderQuadradinhos()}
