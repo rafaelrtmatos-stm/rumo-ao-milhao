@@ -3573,10 +3573,8 @@ const LotDashboard = ({
   const aplicarMapaUpload = async (fecharModal = true) => {
     const file = mapaUploadFiles[mapaUploadPageIdx];
     if (!file) return;
-    setMapaUploadLoading(true);
-    // Fazer upload ANTES de fechar o modal — evita desmontar componente no meio do upload
-    await handleImageUploadFile(file, mapaUploadPdfPage);
-    setMapaUploadLoading(false);
+    const pdfPage = mapaUploadPdfPage;
+    // Fechar modal imediatamente — upload continua em background
     if (fecharModal) {
       setMapaUploadModal(false);
       setMapaUploadFiles([]);
@@ -3584,6 +3582,9 @@ const LotDashboard = ({
       setMapaUploadPageIdx(0);
       setMapaUploadPdfPage(1);
     }
+    // Upload em background — barra de progresso flutuante fica visível
+    setMapUploadProgress(1);
+    handleImageUploadFile(file, pdfPage).catch(() => setMapUploadProgress(0));
   };
 
   // ──────────────────────────────────────────────
@@ -6397,6 +6398,18 @@ const LotDashboard = ({
       <>
       <div className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
         style={{ background: '#f5f7fb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+
+        {/* BARRA DE PROGRESSO FLUTUANTE */}
+        {mapUploadProgress > 0 && mapUploadProgress < 100 && (
+          <div className="flex-shrink-0 bg-[#1a4a1a] px-4 py-2">
+            <div className="flex items-center gap-3">
+              <div className="flex-1 bg-white/20 rounded-full h-1.5 overflow-hidden">
+                <div className="h-full bg-white rounded-full transition-all duration-300" style={{width:}}/>
+              </div>
+              <span className="text-white text-[10px] font-black flex-shrink-0">⬆ {mapUploadProgress}%</span>
+            </div>
+          </div>
+        )}
 
         {/* ── HEADER ── */}
         <div className="flex-shrink-0 bg-white flex items-center gap-3 px-4 pt-11 pb-3 shadow-sm">
