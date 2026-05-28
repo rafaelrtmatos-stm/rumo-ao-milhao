@@ -7721,7 +7721,6 @@ const LotDashboard = ({
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
         : mode === "global" ? renderAbaGlobal()
-                : mode === "global" ? renderAbaGlobal()
         : mode === "quadradinhos" ? renderAbaLotes() : (
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 relative">
             {renderQuadradinhos()}
