@@ -2344,7 +2344,7 @@ const LotDashboard = ({
   const getCorPorPreco = (quadra: string, lote: string): string => {
     // Tentar buscar pelo par quadra:lote
     if (quadra && lote) {
-      const key = `${quadra}:${lote}`;
+      const key = getLotInfoKey(quadra, lote);
       const info = (localDev.lotesInfo as any)?.[key];
       const preco = info?.preco || 0;
       if (preco) {
@@ -9977,7 +9977,7 @@ const EmpreendimentosSection = ({
                       const m = tag.match(/Q(\w+)·L(\w+)/);
                       if (!m) return;
                       const [, q, l] = m;
-                      const key = `${q}:${l}`;
+                      const key = getLotInfoKey(q, l);
                       if (!info[key]) info[key] = {};
                       info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
@@ -9993,7 +9993,7 @@ const EmpreendimentosSection = ({
                         ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
                         : (Array.isArray(lts) ? lts : []);
                       lst.forEach((l: string) => {
-                        const key = `${q}:${l}`;
+                        const key = getLotInfoKey(q, l);
                         if (!aplicados.includes(`Q${q}·L${String(l)}`)) {
                           if (!info[key]) info[key] = {};
                           info[key].preco = parseFloat(precosPadrao.valor) || 0;
