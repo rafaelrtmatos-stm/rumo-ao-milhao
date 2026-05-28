@@ -6861,20 +6861,20 @@ const LotDashboard = ({
               .filter(l => l.preco > 0);
             const fxs = faixasPrecoGlobal.map(f => ({...f, label:`R$ ${Number(f.preco).toLocaleString('pt-BR')}`}));
             if (!lcp.length) return <div className="flex-shrink-0 p-3 text-center"><p className="text-xs text-slate-400 font-bold">Sem preços. Use Gerenciador → Preços.</p></div>;
+            const faixasVisiveis = fxs.filter(f => lcp.some(l => l.preco === f.preco));
             return (
-              <div className="flex-shrink-0 py-2">
-                <div className="flex gap-2 overflow-x-auto px-3" style={{scrollbarWidth:'none'}}>
-                  {fxs.map((f,fi) => {
+              <div className="flex-shrink-0 px-3 py-2">
+                <div className="grid gap-2" style={{gridTemplateColumns: faixasVisiveis.length === 1 ? '1fr' : 'repeat(2, 1fr)'}}>
+                  {faixasVisiveis.map((f,fi) => {
                     const lts = lcp.filter(l => l.preco === f.preco);
-                    if (!lts.length) return null;
                     const ent = lts[0]?.entrada||0, par = lts[0]?.parcelas||0;
                     const pval = par > 0 ? Math.round((f.preco-ent)/par) : 0;
                     return (
-                      <div key={fi} className="flex-shrink-0 rounded-2xl overflow-hidden" style={{width:140,background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}>
+                      <div key={fi} className="rounded-2xl overflow-hidden" style={{background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}>
                         <div className="p-2.5">
-                          <div className="flex items-center gap-1.5 mb-1.5">
-                            <div className="w-4 h-4 rounded-full flex-shrink-0" style={{background:f.color}}/>
-                            <div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
+                          <div className="flex items-center gap-1.5 mb-1">
+                            <div className="w-3.5 h-3.5 rounded-full flex-shrink-0" style={{background:f.color}}/>
+                            <div className="text-xs font-black leading-tight" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div>
                           </div>
                           <div className="text-[8px] text-slate-500 mb-0.5">{lts.length} lote(s)</div>
                           {ent > 0 && <div className="text-[8px] text-slate-500">Entrada <span className="font-black text-slate-700">R$ {ent.toLocaleString('pt-BR')}</span></div>}
