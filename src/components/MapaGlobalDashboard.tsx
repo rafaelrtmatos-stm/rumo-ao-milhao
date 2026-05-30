@@ -57,7 +57,7 @@ export interface MapaGlobalHandle {
 }
 
 const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlobalDashboard(
-  { empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick, config = {} as AppConfig, onSaveConfig },
+  { empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick, config: appCfg = {} as AppConfig, onSaveConfig },
   ref
 ) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -86,20 +86,20 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
   // Tamanho e cor do pino — lidos do banco via config prop
   const [pinSize, setPinSize] = useState<number>(function() {
-    return Number((config as any).mapPinSize) || 22;
+    return Number((appCfg as any).mapPinSize) || 22;
   });
   const [pinColor, setPinColor] = useState<string>(function() {
-    return String((config as any).mapPinColor || '#e53935');
+    return String((appCfg as any).mapPinColor || '#e53935');
   });
 
   // Sincronizar pinSize e pinColor quando config mudar (dados chegando do banco)
   useEffect(function() {
-    if ((config as any).mapPinSize) setPinSize(Number((config as any).mapPinSize));
-  }, [(config as any).mapPinSize]);
+    if ((appCfg as any).mapPinSize) setPinSize(Number((appCfg as any).mapPinSize));
+  }, [(appCfg as any).mapPinSize]);
 
   useEffect(function() {
-    if ((config as any).mapPinColor) setPinColor(String((config as any).mapPinColor));
-  }, [(config as any).mapPinColor]);
+    if ((appCfg as any).mapPinColor) setPinColor(String((appCfg as any).mapPinColor));
+  }, [(appCfg as any).mapPinColor]);
 
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -364,7 +364,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
   }
 
   function salvarPinConfig(novoSize: number, novaCor: string) {
-    if (onSaveConfig) onSaveConfig({ ...config, mapPinSize: novoSize, mapPinColor: novaCor } as AppConfig);
+    if (onSaveConfig) onSaveConfig({ ...appCfg, mapPinSize: novoSize, mapPinColor: novaCor } as AppConfig);
   }
 
   const totalDisponiveis = devsComLoc.reduce(function(s,d) { return s + Math.max(0,(d.totalLotes??0)-(d.lotesVendidos??0)); }, 0);
