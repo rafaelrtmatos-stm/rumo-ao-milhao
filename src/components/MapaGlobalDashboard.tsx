@@ -46,17 +46,17 @@ const TILES: Record<Camada, { url: string; options: any }> = {
   satelite: {
     // Esri World Imagery — gratuito, sem API key, sem bloqueio
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri, Maxar" },
+    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri, Maxar", crossOrigin: true },
   },
   hibrido: {
     // Esri satélite + Google roads overlay
     url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri" },
+    options: { maxZoom: 19, maxNativeZoom: 19, attribution: "© Esri", crossOrigin: true },
   },
   ruas: {
     // CartoDB Voyager — moderno, sem bloqueio
     url: "https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png",
-    options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB" },
+    options: { maxZoom: 19, subdomains: "abcd", attribution: "© CartoDB", crossOrigin: true },
   },
 };
 
@@ -117,11 +117,11 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     if (filtro === "mais_vendidos") list = [...list].sort((a, b) => (b.lotesVendidos ?? 0) - (a.lotesVendidos ?? 0)).slice(0, 10);
     if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
     if (busca.trim()) {
-      const q = String(busca || "").toLowerCase();
-      list = list.filter(d => {
-        const nome = String(d.nome ?? '').toLowerCase();
-        const cidade = String(d.cidade ?? '').toLowerCase();
-        return nome.includes(q) || cidade.includes(q);
+      const termoBusca = String(busca || "").toLowerCase();
+      list = list.filter(function(devItem) {
+        const nomeDevItem = String(devItem.nome ?? '').toLowerCase();
+        const cidadeDevItem = String(devItem.cidade ?? '').toLowerCase();
+        return nomeDevItem.includes(termoBusca) || cidadeDevItem.includes(termoBusca);
       });
     }
     return list;
@@ -327,7 +327,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       if (camada === 'hibrido') {
         overlayRef.current = L.tileLayer(
           "https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}",
-          { maxZoom: 19, opacity: 0.8 }
+          { maxZoom: 19, opacity: 0.8, crossOrigin: true }
         ).addTo(leafletRef.current!);
       }
     });
