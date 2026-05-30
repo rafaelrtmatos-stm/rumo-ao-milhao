@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState, useMemo } from "react";
-import type { Empreendimento, Venda } from "../types";
+import type { Empreendimento, Venda, AppConfig } from "../types";
 
 interface Props {
   empreendimentos: Empreendimento[];
@@ -8,7 +8,9 @@ interface Props {
   onVerMapa: (id: string) => void;
   visible?: boolean;
   focusDevId?: string | null;
-  onLocationPick?: (lat: number, lng: number) => void; // clique no mapa define coordenada
+  onLocationPick?: (lat: number, lng: number) => void;
+  config?: AppConfig;
+  onSaveConfig?: (c: AppConfig) => void;
 }
 
 type Camada = "satelite" | "hibrido" | "ruas";
@@ -72,7 +74,7 @@ export interface MapaGlobalHandle {
 }
 
 const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlobalDashboard(
-  { empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick },
+  { empreendimentos, sales, onAbrirEmpreendimento, onVerMapa, visible = true, focusDevId = null, onLocationPick, config, onSaveConfig },
   ref
 ) {
   const mapRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,8 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     return saved ? Math.max(300, Math.min(window.innerHeight, parseInt(saved))) : 480;
   });
   const [activeDevId, setActiveDevId] = useState<string | null>(null);
+  const [pinSize, setPinSize] = useState<number>(() => config?.mapPinSize ?? parseInt(localStorage.getItem('mapPinSize') || '22'));
+  const [pinColor, setPinColor] = useState<string>(() => config?.mapPinColor ?? localStorage.getItem('mapPinColor') ?? '#e53935');
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -361,16 +365,16 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             return n.toLowerCase().split(' ').map((w,i) => i>0 && preps.has(w) ? w : w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
           };
           const nome = fmtNome(dev.nome.length > 18 ? dev.nome.slice(0,18)+'…' : dev.nome);
-          // Estilo Google Maps: pino vermelho + label branco ao lado
+          // Estilo Google Maps: pino colorido + label branco ao lado
           icon = L.divIcon({
             className: "",
             html: `<div style="display:flex;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">
-              <!-- PIN vermelho estilo Google Maps -->
+              <!-- PIN estilo Google Maps -->
               <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                <div style="width:22px;height:22px;background:#e53935;border-radius:50% 50% 50% 0;
+                <div style="width:${pinSize}px;height:${pinSize}px;background:${pinColor};border-radius:50% 50% 50% 0;
                   transform:rotate(-45deg);border:2.5px solid white;
-                  box-shadow:0 2px 6px rgba(229,57,53,0.6);"></div>
-                <div style="width:4px;height:8px;background:#e53935;margin-top:-1px;border-radius:0 0 2px 2px;"></div>
+                  box-shadow:0 2px 6px ${pinColor}99;"></div>
+                <div style="width:${Math.round(pinSize*0.18)}px;height:${Math.round(pinSize*0.36)}px;background:${pinColor};margin-top:-1px;border-radius:0 0 2px 2px;"></div>
               </div>
               <!-- NOME branco ao lado -->
               <div style="background:rgba(30,30,30,0.82);color:white;
@@ -381,7 +385,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
                 ${nome}
               </div>
             </div>`,
-            iconSize: [200, 36], iconAnchor: [11, 30],
+            iconSize: [200, 36], iconAnchor: [Math.round(pinSize*0.5), pinSize + Math.round(pinSize*0.36)],
           });
         }
 
@@ -400,7 +404,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         markersRef.current.push(marker);
       });
     });
-  }, [devsFiltrados, mapZoom, mapReady, sales]);
+  }, [devsFiltrados, mapZoom, mapReady, sales, pinSize, pinColor]);
 
   function centralizarEm(dev: Empreendimento) {
     if (!leafletRef.current || !validLatLng(dev.lat, dev.lng)) return;
@@ -701,6 +705,81 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             display:'flex', alignItems:'center', justifyContent:'center',
           }}>
           <div style={{ width:32, height:2, background:'rgba(255,255,255,0.15)', borderRadius:2 }}/>
+        </div>
+      )}
+
+      {/* PAINEL PERSONALIZAÇÃO PINOS */}
+      {!focusDevId && !isFullscreen && (
+        <div style={{
+          flexShrink:0, background:'rgba(10,15,26,0.85)', backdropFilter:'blur(12px)',
+          borderTop:'1px solid rgba(255,255,255,0.06)',
+          padding:'10px 16px', display:'flex', alignItems:'center', gap:20, flexWrap:'wrap',
+        }}>
+          {/* Tamanho */}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.5, whiteSpace:'nowrap' }}>Tamanho do pino</span>
+            <input
+              type="range" min={12} max={40} value={pinSize}
+              onChange={e => {
+                const v = parseInt(e.target.value);
+                setPinSize(v);
+                localStorage.setItem('mapPinSize', String(v));
+                if (onSaveConfig && config) onSaveConfig({ ...config, mapPinSize: v });
+              }}
+              style={{ width:90, accentColor: pinColor, cursor:'pointer' }}
+            />
+            <span style={{ fontSize:10, color:'rgba(255,255,255,0.5)', minWidth:24 }}>{pinSize}px</span>
+            {/* Preview do pino */}
+            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', flexShrink:0 }}>
+              <div style={{
+                width: pinSize * 0.7, height: pinSize * 0.7,
+                background: pinColor, borderRadius:'50% 50% 50% 0',
+                transform:'rotate(-45deg)', border:'2px solid white',
+                boxShadow:`0 1px 4px ${pinColor}99`,
+              }}/>
+            </div>
+          </div>
+
+          {/* Cor */}
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+            <span style={{ fontSize:10, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:0.5, whiteSpace:'nowrap' }}>Cor do pino</span>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {[
+                { cor:'#e53935', label:'Vermelho' },
+                { cor:'#f97316', label:'Laranja' },
+                { cor:'#eab308', label:'Amarelo' },
+                { cor:'#22c55e', label:'Verde' },
+                { cor:'#3b82f6', label:'Azul' },
+                { cor:'#a855f7', label:'Roxo' },
+                { cor:'#ec4899', label:'Rosa' },
+                { cor:'#ffffff', label:'Branco' },
+              ].map(({ cor, label }) => (
+                <button
+                  key={cor}
+                  title={label}
+                  onClick={() => {
+                    setPinColor(cor);
+                    localStorage.setItem('mapPinColor', cor);
+                    if (onSaveConfig && config) onSaveConfig({ ...config, mapPinColor: cor });
+                  }}
+                  style={{
+                    width:20, height:20, borderRadius:'50%', background:cor, cursor:'pointer',
+                    border: pinColor === cor ? '2.5px solid white' : '2px solid rgba(255,255,255,0.15)',
+                    boxShadow: pinColor === cor ? `0 0 0 2px ${cor}` : 'none',
+                    transition:'all 0.15s', flexShrink:0,
+                  }}
+                />
+              ))}
+              {/* Seletor de cor customizada */}
+              <label title="Cor personalizada" style={{ width:20, height:20, borderRadius:'50%', cursor:'pointer', overflow:'hidden', border:'2px solid rgba(255,255,255,0.2)', flexShrink:0, position:'relative', display:'flex', alignItems:'center', justifyContent:'center', background:'conic-gradient(red,yellow,lime,cyan,blue,magenta,red)' }}>
+                <input type="color" value={pinColor} onChange={e => {
+                  setPinColor(e.target.value);
+                  localStorage.setItem('mapPinColor', e.target.value);
+                  if (onSaveConfig && config) onSaveConfig({ ...config, mapPinColor: e.target.value });
+                }} style={{ opacity:0, position:'absolute', inset:0, width:'100%', height:'100%', cursor:'pointer' }}/>
+              </label>
+            </div>
+          </div>
         </div>
       )}
     </div>
