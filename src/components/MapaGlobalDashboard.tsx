@@ -102,13 +102,24 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
     return saved ? Math.max(300, Math.min(window.innerHeight, parseInt(saved))) : 480;
   });
   const [activeDevId, setActiveDevId] = useState<string | null>(null);
-  const [pinSize, setPinSize] = useState<number>(() => config?.mapPinSize ?? parseInt(localStorage.getItem('mapPinSize') || '22'));
-  const [pinColor, setPinColor] = useState<string>(() => config?.mapPinColor ?? localStorage.getItem('mapPinColor') ?? '#e53935');
+  const [pinSize, setPinSize] = useState<number>(22);
+  const [pinColor, setPinColor] = useState<string>('#e53935');
   const resizeDragRef = useRef<{startY:number;startH:number}|null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // DECLARADOS ANTES DOS HOOKS (evita TDZ no bundle minificado)
   const empreendimentosRef = useRef(empreendimentos);
+
+  // Sincronizar pinSize/pinColor com config do banco quando carregado
+  useEffect(() => {
+    if (config?.mapPinSize) setPinSize(config.mapPinSize);
+    else { const v = parseInt(localStorage.getItem('mapPinSize') || '22'); if (v) setPinSize(v); }
+  }, [config?.mapPinSize]);
+
+  useEffect(() => {
+    if (config?.mapPinColor) setPinColor(config.mapPinColor);
+    else { const v = localStorage.getItem('mapPinColor'); if (v) setPinColor(v); }
+  }, [config?.mapPinColor]);
 
   const devsComLoc = useMemo(() =>
     empreendimentosFiltrados.filter(d => validLatLng(d.lat, d.lng)),
