@@ -362,10 +362,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
         if (cluster.isCluster) {
           icon = L.divIcon({
             className: "",
-            html: `<div style="background:#1a4a1a;color:white;border-radius:50%;width:46px;height:46px;
-              display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;
-              border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.5);cursor:pointer;">
-              ${cluster.devs.length}</div>`,
+            html: '<div style="background:#1a4a1a;color:white;border-radius:50%;width:46px;height:46px;display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.5);cursor:pointer;">' + cluster.devs.length + '</div>',
             iconSize: [46, 46], iconAnchor: [23, 23],
           });
         } else {
@@ -379,23 +376,14 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
           // Estilo Google Maps: pino colorido + label branco ao lado
           icon = L.divIcon({
             className: "",
-            html: `<div style="display:flex;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">
-              <!-- PIN estilo Google Maps -->
-              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                <div style="width:${pinSize}px;height:${pinSize}px;background:${pinColor};border-radius:50% 50% 50% 0;
-                  transform:rotate(-45deg);border:2.5px solid white;
-                  box-shadow:0 2px 6px ${pinColor}99;"></div>
-                <div style="width:${Math.round(pinSize*0.18)}px;height:${Math.round(pinSize*0.36)}px;background:${pinColor};margin-top:-1px;border-radius:0 0 2px 2px;"></div>
-              </div>
-              <!-- NOME branco ao lado -->
-              <div style="background:rgba(30,30,30,0.82);color:white;
-                padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;
-                white-space:nowrap;letter-spacing:0.2px;backdrop-filter:blur(4px);
-                border:1px solid rgba(255,255,255,0.15);max-width:140px;
-                overflow:hidden;text-overflow:ellipsis;">
-                ${nome}
-              </div>
-            </div>`,
+            html: '<div style="display:flex;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">'
+              + '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">'
+              + '<div style="width:' + pinSize + 'px;height:' + pinSize + 'px;background:' + pinColor + ';border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 2px 6px ' + pinColor + '99;"></div>'
+              + '<div style="width:' + Math.round(pinSize*0.18) + 'px;height:' + Math.round(pinSize*0.36) + 'px;background:' + pinColor + ';margin-top:-1px;border-radius:0 0 2px 2px;"></div>'
+              + '</div>'
+              + '<div style="background:rgba(30,30,30,0.82);color:white;padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;white-space:nowrap;letter-spacing:0.2px;backdrop-filter:blur(4px);border:1px solid rgba(255,255,255,0.15);max-width:140px;overflow:hidden;text-overflow:ellipsis;">'
+              + nome
+              + '</div></div>',
             iconSize: [200, 36], iconAnchor: [Math.round(pinSize*0.5), pinSize + Math.round(pinSize*0.36)],
           });
         }
