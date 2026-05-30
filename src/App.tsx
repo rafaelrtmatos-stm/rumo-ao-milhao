@@ -1482,7 +1482,7 @@ const Sidebar = ({
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Nova Venda", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: FileText },
-    { id: "empreendimentos", label: "Empreendimentos", icon: Building2 },
+    // { id: "empreendimentos", label: "Empreendimentos", icon: Building2 }, // removido — mesma função de Regiões
     { id: "clientes", label: "Clientes", icon: Users },
     { id: "aniversarios", label: "Aniversários", icon: Cake },
     { id: "proprietarios", label: "Proprietários", icon: UserCheck },
