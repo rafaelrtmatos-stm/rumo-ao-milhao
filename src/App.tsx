@@ -19031,7 +19031,21 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         ]);
         const results = [r0, r1, r2, r3];
 
-        if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
+        if (results[0].status === 'fulfilled') {
+          setDevelopments(results[0].value);
+          // Abrir empreendimento via query param ?empreendimento=ID
+          const params = new URLSearchParams(window.location.search);
+          const empId = params.get('empreendimento');
+          if (empId) {
+            const dev = results[0].value.find((d: any) => d.id === empId);
+            if (dev) {
+              setSelectedDevForMap(dev as any);
+              document.body.style.overflow = 'hidden';
+              // Limpar query param da URL sem recarregar
+              window.history.replaceState({}, '', window.location.pathname);
+            }
+          }
+        }
         else console.error('Erro empreendimentos:', results[0].reason);
 
         if (results[1].status === 'fulfilled') setClients(results[1].value);
