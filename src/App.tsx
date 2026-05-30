@@ -2420,20 +2420,6 @@ const LotDashboard = ({
 
   // Tamanho visual das bolinhas configurável em porcentagem.
   // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
-  // Cores customizáveis das bolinhas por status
-  const [corDisponivel, setCorDisponivel] = useState<string>(() => {
-    const saved = (dev as any).coresBolinhas;
-    return saved?.disponivel || '#3b82f6';
-  });
-  const [corReservado, setCorReservado] = useState<string>(() => {
-    const saved = (dev as any).coresBolinhas;
-    return saved?.reservado || '#f59e0b';
-  });
-  const [corIndisponivel, setCorIndisponivel] = useState<string>(() => {
-    const saved = (dev as any).coresBolinhas;
-    return saved?.indisponivel || '#ef4444';
-  });
-
   const [markerSizePercent, setMarkerSizePercent] = useState<number>(() => {
     const saved = Number((dev as any).mapaMarkerSizePercent ?? 0);
     // Migração: valores antigos (calibrados em 0.028) precisam ser convertidos
@@ -4911,14 +4897,10 @@ const LotDashboard = ({
               {/* BOLINHAS */}
               {mapaPontos.map((ponto) => {
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                // Usar cores customizadas se definidas
-                const _statusCustom = !!venda || ponto.status === "indisponivel" || ponto.status === "vendido"
-                  ? corIndisponivel
-                  : ponto.status === "reservado" ? corReservado : corDisponivel;
                 const statusClassBase = getMapaStatusColorClass(ponto.status, !!venda);
-                // colorMode: status = cores padrão/custom, preco = cor da faixa de preço
+                // colorMode: status = cores padrão, preco = cor da faixa de preço
                 const precoColor = colorMode === "preco" ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
-                const statusClass = precoColor ? "" : ""; // sempre usar style inline
+                const statusClass = precoColor ? "" : statusClassBase;
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isMobileSel = mobileSelIds.has(ponto.id);
@@ -5012,7 +4994,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", background: precoColor || _statusCustom, boxShadow: `0 0 6px ${(precoColor || _statusCustom)}66` }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", ...(precoColor ? {background: precoColor, boxShadow: `0 0 8px ${precoColor}99`} : {}) }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -7183,41 +7165,6 @@ const LotDashboard = ({
                         </button>
                         <span className="text-[9px] text-slate-400 font-bold">Maior</span>
                       </div>
-                    </div>
-
-                    {/* Cores das bolinhas */}
-                    <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
-                      <p className="text-xs font-black text-slate-700">Cores das bolinhas</p>
-                      {[
-                        { label: "Disponível", cor: corDisponivel, set: setCorDisponivel, key: "disponivel" },
-                        { label: "Reservado", cor: corReservado, set: setCorReservado, key: "reservado" },
-                        { label: "Indisponível", cor: corIndisponivel, set: setCorIndisponivel, key: "indisponivel" },
-                      ].map(item => (
-                        <div key={item.key} className="flex items-center justify-between gap-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-4 h-4 rounded-full border-2 border-white shadow-sm flex-shrink-0" style={{background: item.cor}}/>
-                            <span className="text-[10px] font-bold text-slate-600">{item.label}</span>
-                          </div>
-                          <input type="color" value={item.cor}
-                            onChange={e => {
-                              item.set(e.target.value);
-                              // Salvar no empreendimento
-                              const cores = {disponivel: corDisponivel, reservado: corReservado, indisponivel: corIndisponivel, [item.key]: e.target.value};
-                              const updated = {...localDev, coresBolinhas: cores} as any;
-                              setLocalDev(updated);
-                              onSaveDev(updated);
-                            }}
-                            className="w-8 h-8 rounded-lg border border-slate-200 cursor-pointer p-0.5"
-                          />
-                        </div>
-                      ))}
-                      <button onClick={() => {
-                        setCorDisponivel('#3b82f6'); setCorReservado('#f59e0b'); setCorIndisponivel('#ef4444');
-                        const updated = {...localDev, coresBolinhas: {disponivel:'#3b82f6', reservado:'#f59e0b', indisponivel:'#ef4444'}} as any;
-                        setLocalDev(updated); onSaveDev(updated);
-                      }} className="w-full py-1.5 text-[9px] font-black text-slate-400 border border-slate-200 rounded-xl hover:bg-slate-100 transition-all">
-                        Restaurar cores padrão
-                      </button>
                     </div>
 
                     {/* Ações rápidas */}

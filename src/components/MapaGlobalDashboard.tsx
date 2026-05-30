@@ -60,10 +60,73 @@ const TILES: Record<Camada, { url: string; options: any }> = {
   },
 };
 
-// Sem cluster — cada empreendimento sempre tem pino próprio (igual Google Maps)
-function clusterPins(devs: Empreendimento[], zoom: number) {
-  if (!devs.length) return [];
-  return devs.map(d => ({ devs: [d], lat: d.lat!, lng: d.lng!, isCluster: false }));
+// Cores por regra (sem padrão — só regras explícitas)
+const CORES_REGRAS = ['#e53935','#f97316','#facc15','#22c55e','#3b82f6','#8b5cf6','#ec4899'];
+
+// Extrair regras do script de preços do empreendimento
+interface Regra {
+  index: number; // 0 = REGRA1, 1 = REGRA2...
+  label: string; // "Regra 1"
+  valor: number;
+  entrada: number;
+  parcelas: number;
+  valorParcela: number;
+  script: string; // "Q1:1,2,3."
+  quadras: string[]; // ["1","2"]
+  color: string;
+  lat: number;
+  lng: number;
+}
+
+function parseRegras(dev: Empreendimento): Regra[] {
+  const scriptRaw: string = (dev as any).precosRegras
+    ? (dev as any).precosRegras.map((r: any) => `REGRA${r.id}: ${r.script} VALOR:${r.valor} ENTRADA:${r.entrada} PARCELAS:${r.parcelas}`).join(' ')
+    : '';
+  const regras: Regra[] = [];
+  const regraRe = /REGRA(\d+):\s*([^V]+?)VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/gi;
+  let m: RegExpExecArray | null;
+  const totalRegras = (scriptRaw.match(/REGRA\d+:/gi) || []).length;
+  const offset = 0.00015;
+  while ((m = regraRe.exec(scriptRaw)) !== null) {
+    const idx = parseInt(m[1]) - 1;
+    const scriptLotes = m[2].trim();
+    const valor = parseInt(m[3]);
+    const entrada = parseInt(m[4]);
+    const parcelas = parseInt(m[5]);
+    const valorParcela = parcelas > 0 ? Math.round((valor - entrada) / parcelas) : 0;
+    // Extrair quadras únicas do script
+    const quadraMatches = scriptLotes.match(/Q(\w+):/g) || [];
+    const quadras = quadraMatches.map(q => q.replace('Q','').replace(':',''));
+    // Deslocamento para separar pinos
+    const mid = (totalRegras - 1) / 2;
+    const lngOffset = (idx - mid) * offset;
+    regras.push({
+      index: idx,
+      label: `Regra ${idx + 1}`,
+      valor, entrada, parcelas, valorParcela,
+      script: scriptLotes,
+      quadras,
+      color: CORES_REGRAS[idx % CORES_REGRAS.length],
+      lat: dev.lat!,
+      lng: dev.lng! + lngOffset,
+    });
+  }
+  return regras;
+}
+
+// Gerar pinos — um por regra de cada empreendimento
+function clusterPins(devs: Empreendimento[]) {
+  const pinos: { dev: Empreendimento; regra: Regra; lat: number; lng: number }[] = [];
+  devs.forEach(dev => {
+    const regras = parseRegras(dev);
+    if (regras.length === 0) {
+      // Sem regras: pino único genérico
+      pinos.push({ dev, regra: { index:0, label:'', valor:0, entrada:0, parcelas:0, valorParcela:0, script:'', quadras:[], color:'#e53935', lat:dev.lat!, lng:dev.lng! }, lat:dev.lat!, lng:dev.lng! });
+    } else {
+      regras.forEach(r => pinos.push({ dev, regra: r, lat: r.lat, lng: r.lng }));
+    }
+  });
+  return pinos;
 }
 
 export interface MapaGlobalHandle {
@@ -340,63 +403,32 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
       markersRef.current.forEach(m => m.remove());
       markersRef.current = [];
 
-      const clusters = clusterPins(devsComLoc, mapZoom); // sempre mostra todos no mapa
-
-      clusters.forEach(cluster => {
-        let icon: any;
-        if (cluster.isCluster) {
-          icon = L.divIcon({
-            className: "",
-            html: `<div style="background:#1a4a1a;color:white;border-radius:50%;width:46px;height:46px;
-              display:flex;align-items:center;justify-content:center;font-weight:900;font-size:15px;
-              border:3px solid white;box-shadow:0 3px 12px rgba(0,0,0,0.5);cursor:pointer;">
-              ${cluster.devs.length}</div>`,
-            iconSize: [46, 46], iconAnchor: [23, 23],
-          });
-        } else {
-          const dev = cluster.devs[0];
-          // Primeira letra maiúscula, preposições minúsculas
-          const fmtNome = (n: string) => {
-            const preps = new Set(['de','da','do','das','dos','e','em','na','no']);
-            return n.toLowerCase().split(' ').map((w,i) => i>0 && preps.has(w) ? w : w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
-          };
-          const nome = fmtNome(dev.nome.length > 18 ? dev.nome.slice(0,18)+'…' : dev.nome);
-          // Estilo Google Maps: pino vermelho + label branco ao lado
-          icon = L.divIcon({
-            className: "",
-            html: `<div style="display:flex;align-items:center;gap:4px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.45));">
-              <!-- PIN vermelho estilo Google Maps -->
-              <div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">
-                <div style="width:22px;height:22px;background:#e53935;border-radius:50% 50% 50% 0;
-                  transform:rotate(-45deg);border:2.5px solid white;
-                  box-shadow:0 2px 6px rgba(229,57,53,0.6);"></div>
-                <div style="width:4px;height:8px;background:#e53935;margin-top:-1px;border-radius:0 0 2px 2px;"></div>
-              </div>
-              <!-- NOME branco ao lado -->
-              <div style="background:rgba(30,30,30,0.82);color:white;
-                padding:3px 8px;border-radius:8px;font-size:11px;font-weight:700;
-                white-space:nowrap;letter-spacing:0.2px;backdrop-filter:blur(4px);
-                border:1px solid rgba(255,255,255,0.15);max-width:140px;
-                overflow:hidden;text-overflow:ellipsis;">
-                ${nome}
-              </div>
-            </div>`,
-            iconSize: [200, 36], iconAnchor: [11, 30],
-          });
-        }
-
-        const marker = L.marker([cluster.lat, cluster.lng], { icon }).addTo(leafletRef.current!);
-
-        if (cluster.isCluster) {
-          marker.on("click", () => {
-            if (!validLatLng(cluster.lat, cluster.lng)) return;
-            leafletRef.current!.flyTo([cluster.lat, cluster.lng],
-              Math.min(leafletRef.current!.getZoom() + 3, 15), { animate: true, duration: 0.8 });
-          });
-        } else {
-          marker.on("click", () => setSelectedDev(cluster.devs[0]));
-        }
-
+      // Um pino por regra de cada empreendimento
+      const pinos = clusterPins(devsFiltrados);
+      const fmtNome = (n: string) => {
+        const preps = new Set(['de','da','do','das','dos','e','em','na','no']);
+        return n.toLowerCase().split(' ').map((w:string,i:number) => i>0 && preps.has(w) ? w : w.charAt(0).toUpperCase()+w.slice(1)).join(' ');
+      };
+      pinos.forEach(pino => {
+        const { dev, regra } = pino;
+        const cor = regra.color;
+        const nomeCurto = fmtNome(dev.nome.length > 15 ? dev.nome.slice(0,15)+'…' : dev.nome);
+        const labelRegra = regra.label ? ' · ' + regra.label : '';
+        const icon = L.divIcon({
+          className: "",
+          html: '<div style="display:flex;align-items:center;gap:3px;cursor:pointer;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));">' +
+            '<div style="display:flex;flex-direction:column;align-items:center;flex-shrink:0;">' +
+              '<div style="width:20px;height:20px;background:' + cor + ';border-radius:50% 50% 50% 0;transform:rotate(-45deg);border:2.5px solid white;box-shadow:0 2px 6px ' + cor + '88;"></div>' +
+              '<div style="width:3px;height:7px;background:' + cor + ';margin-top:-1px;border-radius:0 0 2px 2px;"></div>' +
+            '</div>' +
+            '<div style="background:rgba(10,10,20,0.88);color:white;padding:2px 7px;border-radius:7px;font-size:10px;font-weight:700;white-space:nowrap;backdrop-filter:blur(4px);border:1px solid ' + cor + '55;max-width:130px;overflow:hidden;text-overflow:ellipsis;">' +
+              nomeCurto + labelRegra +
+            '</div>' +
+          '</div>',
+          iconSize: [200, 32], iconAnchor: [11, 27],
+        });
+        const marker = L.marker([pino.lat, pino.lng], { icon }).addTo(leafletRef.current!);
+        marker.on("click", () => setSelectedDev(dev));
         markersRef.current.push(marker);
       });
     });
@@ -548,7 +580,17 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
             </button>
 
             {/* Cadeado — único, pisca quando bloqueado e mapa é clicado */}
-
+            <button title="Centralizar pinos" onClick={centralizarTodos}
+              style={{
+                width:36, height:36, borderRadius:10, cursor:'pointer',
+                background:'rgba(255,255,255,0.95)', backdropFilter:'blur(8px)',
+                border:'1px solid rgba(0,0,0,0.08)',
+                boxShadow:'0 2px 10px rgba(0,0,0,0.15)',
+                display:'flex', alignItems:'center', justifyContent:'center',
+                color:'#374151',
+              }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+            </button>
 
             <button title={mapaLocked ? "Desbloquear mapa" : "Bloquear mapa"}
               onClick={() => setMapaLocked(v => !v)}
@@ -638,25 +680,20 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
           {/* Popup empreendimento premium */}
           {selectedDev && (() => {
+            const regrasDev = parseRegras(selectedDev);
             const stats = calcularStats(selectedDev, sales);
             const statusColor = stats.pct >= 90 ? '#ef4444' : stats.pct >= 60 ? '#f59e0b' : '#4ade80';
             return (
               <div style={{
-                position:'absolute', top:12, left: painelAberto ? 12 : 12, zIndex:1002,
-                width:220, background:'rgba(10,15,26,0.92)', backdropFilter:'blur(20px)',
+                position:'absolute', top:12, left:12, zIndex:1002,
+                width:230, maxHeight:'75vh', overflowY:'auto',
+                background:'rgba(10,15,26,0.92)', backdropFilter:'blur(20px)',
                 border:'1px solid rgba(255,255,255,0.1)', borderRadius:16,
-                boxShadow:'0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05)',
-                overflow:'hidden',
+                boxShadow:'0 8px 32px rgba(0,0,0,0.5)',
               }}>
-                {((selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl) && (
-                  <div style={{ height:80, overflow:'hidden', position:'relative' }}>
-                    <img src={(selectedDev as any).mapaImagemLeveBase64 || (selectedDev as any).mapaImagemUrl}
-                      style={{ width:'100%', height:'100%', objectFit:'cover', opacity:0.7 }} alt=""/>
-                    <div style={{ position:'absolute', inset:0, background:'linear-gradient(to bottom, transparent, rgba(10,15,26,0.9))' }}/>
-                  </div>
-                )}
-                <div style={{ padding:'12px' }}>
-                  <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:8 }}>
+                {/* Header */}
+                <div style={{ padding:'10px 12px 8px', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
+                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
                     <div style={{ flex:1 }}>
                       <p style={{ fontSize:12, fontWeight:900, color:'white', margin:'0 0 2px', lineHeight:1.2 }}>{selectedDev.nome}</p>
                       {selectedDev.cidade && <p style={{ fontSize:10, color:'rgba(255,255,255,0.4)', margin:0 }}>📍 {selectedDev.cidade}</p>}
@@ -664,27 +701,60 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
                     <button onClick={() => setSelectedDev(null)}
                       style={{ background:'rgba(255,255,255,0.08)', border:'none', color:'rgba(255,255,255,0.5)', borderRadius:6, width:22, height:22, cursor:'pointer', fontSize:14, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
                   </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, marginBottom:8 }}>
+                  {/* Stats gerais */}
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:4, marginTop:8 }}>
                     {[['Total',stats.total,'#94a3b8'],['Disp.',stats.disponiveis,'#4ade80'],['Vend.',stats.vendidos,'#f87171']].map(([l,v,c]) => (
-                      <div key={String(l)} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'5px 4px', textAlign:'center', border:'1px solid rgba(255,255,255,0.05)' }}>
+                      <div key={String(l)} style={{ background:'rgba(255,255,255,0.04)', borderRadius:8, padding:'4px', textAlign:'center' }}>
                         <p style={{ fontSize:13, fontWeight:900, color:String(c), margin:0 }}>{v}</p>
-                        <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:'1px 0 0', textTransform:'uppercase' }}>{l}</p>
+                        <p style={{ fontSize:8, color:'rgba(255,255,255,0.3)', margin:0, textTransform:'uppercase' }}>{l}</p>
                       </div>
                     ))}
                   </div>
-                  <div style={{ height:3, background:'rgba(255,255,255,0.08)', borderRadius:2, overflow:'hidden', marginBottom:10 }}>
-                    <div style={{ height:'100%', width:`${stats.pct}%`, background:`linear-gradient(90deg,${statusColor},${statusColor}99)`, borderRadius:2 }}/>
-                  </div>
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6 }}>
-                    <button onClick={() => onVerMapa(selectedDev.id)}
-                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(74,222,128,0.15)', border:'1px solid rgba(74,222,128,0.3)', color:'#4ade80', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
-                      VER MAPA
-                    </button>
-                    <button onClick={() => onAbrirEmpreendimento(selectedDev.id)}
-                      style={{ padding:'8px 0', borderRadius:10, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:900, cursor:'pointer', transition:'all 0.2s' }}>
-                      EDITAR
-                    </button>
-                  </div>
+                </div>
+
+                {/* Cards por regra */}
+                <div style={{ padding:'8px 10px', display:'flex', flexDirection:'column', gap:6 }}>
+                  {regrasDev.length > 0 ? regrasDev.map(regra => (
+                    <div key={regra.index} style={{ background:'rgba(255,255,255,0.04)', borderRadius:10, padding:'8px 10px', border:'1px solid ' + regra.color + '44' }}>
+                      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:5 }}>
+                        <div style={{ width:8, height:8, borderRadius:'50%', background:regra.color, flexShrink:0 }}/>
+                        <span style={{ fontSize:10, fontWeight:900, color:regra.color, textTransform:'uppercase', letterSpacing:'0.5px' }}>{regra.label}</span>
+                        {regra.quadras.length > 0 && (
+                          <span style={{ fontSize:8, color:'rgba(255,255,255,0.35)', marginLeft:'auto' }}>
+                            {regra.quadras.map(q => 'Q'+q).join(', ')}
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:3 }}>
+                        <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:6, padding:'4px 6px' }}>
+                          <p style={{ fontSize:8, color:'rgba(255,255,255,0.35)', margin:0 }}>TOTAL</p>
+                          <p style={{ fontSize:11, fontWeight:900, color:'white', margin:0 }}>R$ {Number(regra.valor).toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:6, padding:'4px 6px' }}>
+                          <p style={{ fontSize:8, color:'rgba(255,255,255,0.35)', margin:0 }}>ENTRADA</p>
+                          <p style={{ fontSize:11, fontWeight:900, color:regra.color, margin:0 }}>R$ {Number(regra.entrada).toLocaleString('pt-BR')}</p>
+                        </div>
+                        <div style={{ background:'rgba(255,255,255,0.03)', borderRadius:6, padding:'4px 6px', gridColumn:'span 2' }}>
+                          <p style={{ fontSize:8, color:'rgba(255,255,255,0.35)', margin:0 }}>PARCELAS</p>
+                          <p style={{ fontSize:11, fontWeight:900, color:'white', margin:0 }}>{regra.parcelas}× R$ {Number(regra.valorParcela).toLocaleString('pt-BR')}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )) : (
+                    <p style={{ fontSize:10, color:'rgba(255,255,255,0.3)', textAlign:'center', padding:'8px 0' }}>Sem preços definidos</p>
+                  )}
+                </div>
+
+                {/* Botões */}
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:6, padding:'0 10px 10px' }}>
+                  <button onClick={() => onVerMapa(selectedDev.id)}
+                    style={{ padding:'8px 0', borderRadius:10, background:'rgba(74,222,128,0.15)', border:'1px solid rgba(74,222,128,0.3)', color:'#4ade80', fontSize:10, fontWeight:900, cursor:'pointer' }}>
+                    VER MAPA
+                  </button>
+                  <button onClick={() => onAbrirEmpreendimento(selectedDev.id)}
+                    style={{ padding:'8px 0', borderRadius:10, background:'rgba(255,255,255,0.07)', border:'1px solid rgba(255,255,255,0.1)', color:'rgba(255,255,255,0.6)', fontSize:10, fontWeight:900, cursor:'pointer' }}>
+                    EDITAR
+                  </button>
                 </div>
               </div>
             );
