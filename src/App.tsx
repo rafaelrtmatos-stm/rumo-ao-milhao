@@ -17150,7 +17150,7 @@ const ConfigSection = ({
   hiddenMenuItems: string[];
   setHiddenMenuItems: (h: string[]) => void;
 }) => {
-  const [formData, setFormData] = useState({ ...appSettings, vendedores: config.vendedores || [] });
+  const [formData, setFormData] = useState({ ...appSettings, vendedores: appSettings.vendedores || [] });
   const [migrating, setMigrating] = useState(false);
   const [migrateMsg, setMigrateMsg] = useState('');
   const [showVendedorForm, setShowVendedorForm] = useState(false);
@@ -17269,7 +17269,7 @@ const ConfigSection = ({
         empreendimentos: importPreview.empreendimentos,
         clientes: importPreview.clientes,
         vendas: importPreview.vendas,
-        config: importPreview.config || config,
+        config: importPreview.config || appSettings,
       }, importMode);
       setImportSuccess(`Importação concluída com sucesso! ${importMode === 'replace' ? 'Todos os dados foram substituídos.' : 'Dados mesclados com os existentes.'}`);
       setImportPreview(null);
@@ -19819,7 +19819,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onGoToContractsRecibo={handleGoToContractsRecibo}
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
-            vendedores={config.vendedores || []}
+            vendedores={appSettings.vendedores || []}
             clients={clients}
             editingEntry={editingVendaEntry}
             onUpdateVendaFull={handleUpdateVendaFull}
@@ -19838,7 +19838,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onSaveVenda={saveSale}
             onDeleteVenda={deleteVenda}
             onUpdateVenda={updateVenda}
-            vendedores={config.vendedores || []}
+            vendedores={appSettings.vendedores || []}
             proprietarios={appSettings.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
