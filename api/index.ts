@@ -933,9 +933,14 @@ const autenticarApiKey = (req: any, res: any, next: any) => {
 app.get("/api/info", async (req: any, res: any) => {
   try {
     const devs = await db.query.empreendimentos.findMany({
-      columns: { id: true, nome: true, cidade: true }
+      columns: { id: true, data: true }
     });
-    res.json({ empreendimentos: devs });
+    const result = devs.map((d: any) => ({
+      id: d.id,
+      nome: d.data?.nome || d.data?.name || "(sem nome)",
+      cidade: d.data?.cidade || "",
+    }));
+    res.json({ empreendimentos: result });
   } catch (e: any) {
     res.status(500).json({ error: e.message });
   }
