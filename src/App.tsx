@@ -10095,7 +10095,7 @@ const EmpreendimentosSection = ({
                   linhas.push("FORMATO DE RESPOSTA:");
                   linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
                   linhas.push("REGRA2: Q2:1,2,3. VALOR:18000 ENTRADA:500 PARCELAS:48");
-                  linhas.push("PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50");
+                  // Sem PADRAO — usar REGRA para todos os lotes
                   const txt = linhas.join("\n");
                   try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
@@ -10111,8 +10111,7 @@ const EmpreendimentosSection = ({
                     while ((m = regraRegex.exec(txt)) !== null) {
                       regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
                     }
-                    const padM = txt.match(/PADRAO:\s*VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/i);
-                    if (padM) setPrecosPadrao({valor: padM[1], entrada: padM[2], parcelas: padM[3]});
+                    // PADRAO ignorado — usar REGRA para todos os lotes
                     if (regras.length) { setPrecosRegras(regras); setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!"); }
                     else setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
                   } catch { setPrecosScriptMsg("❌ Erro ao ler clipboard."); }
@@ -10137,24 +10136,7 @@ const EmpreendimentosSection = ({
                       aplicados.push(`Q${q}·L${l}`);
                     });
                   });
-                  // Aplicar padrão nos não especificados
-                  if (precosPadrao.valor) {
-                    Object.keys(lotRegDev.lotesPorQuadra || {}).forEach(q => {
-                      const lts = (lotRegDev.lotesPorQuadra as any)[q];
-                      const lst = typeof lts === "object" && !Array.isArray(lts)
-                        ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
-                        : (Array.isArray(lts) ? lts : []);
-                      lst.forEach((l: string) => {
-                        const key = getLotInfoKey(q, l);
-                        if (!aplicados.includes(`Q${q}·L${String(l)}`)) {
-                          if (!info[key]) info[key] = {};
-                          info[key].preco = parseFloat(precosPadrao.valor) || 0;
-                          info[key].entrada = parseFloat(precosPadrao.entrada) || 0;
-                          info[key].parcelas = parseInt(precosPadrao.parcelas) || 0;
-                        }
-                      });
-                    });
-                  }
+                  // Sem PADRAO — lotes sem regra não recebem preço
                   // Salvar preços nos lotes
                   onUpdateLotesInfo(lotRegDev!.id, info);
                   // Persistir as regras no empreendimento para reedição
@@ -10202,7 +10184,7 @@ const EmpreendimentosSection = ({
                         <textarea
                           value={precosScriptInput}
                           onChange={e => setPrecosScriptInput(e.target.value)}
-                          placeholder="REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;PADRAO: VALOR:15000 ENTRADA:500 PARCELAS:50"
+                          placeholder="REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1,2,3. VALOR:15000 ENTRADA:500 PARCELAS:50"
                           className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
                           rows={5}
                           autoFocus
@@ -10218,8 +10200,7 @@ const EmpreendimentosSection = ({
                             while ((m = regraRegex.exec(txt)) !== null) {
                               regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
                             }
-                            const padM = txt.match(/PADRAO:\s*VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/i);
-                            if (padM) setPrecosPadrao({valor: padM[1], entrada: padM[2], parcelas: padM[3]});
+                            // PADRAO não existe mais — ignorado
                             if (regras.length) {
                               setPrecosRegras(regras);
                               setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!");
@@ -10286,29 +10267,7 @@ const EmpreendimentosSection = ({
                       </button>
                     </div>
 
-                    {/* Padrão */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
-                      <p className="text-[9px] font-black text-amber-600 uppercase tracking-widest mb-2">⚡ Padrão — demais lotes</p>
-                      <div className="grid grid-cols-2 gap-2">
-                        {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
-                          <div key={k}>
-                            <p className="text-[8px] font-bold text-amber-600 mb-1">{l}</p>
-                            <input
-                              value={(precosPadrao as any)[k] || ""}
-                              onChange={e => setPrecosPadrao(p => calcularPreco(k, e.target.value, p))}
-                              className="w-full border border-amber-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-amber-50"
-                              placeholder="0"
-                              inputMode="numeric"
-                            />
-                          </div>
-                        ))}
-                      </div>
-                      {precosPadrao.valor && precosPadrao.parcelas && precosPadrao.parcela && (
-                        <div className="mt-2 px-2 py-1.5 bg-amber-100 rounded-xl text-[9px] text-amber-700 font-black text-center">
-                          R$ {Number(precosPadrao.entrada||0).toLocaleString('pt-BR')} entrada + {precosPadrao.parcelas}× R$ {Number(precosPadrao.parcela||0).toLocaleString('pt-BR')} = R$ {Number(precosPadrao.valor||0).toLocaleString('pt-BR')}
-                        </div>
-                      )}
-                    </div>
+                    {/* Sem Padrão — lotes sem regra ficam sem preço */}
 
                     <button onClick={aplicarPrecos} className="w-full py-3.5 bg-[#1a4a1a] text-white font-black text-sm rounded-2xl active:scale-95 transition-all">
                       ✓ Aplicar Todos os Preços
