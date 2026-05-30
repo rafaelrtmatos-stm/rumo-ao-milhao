@@ -8886,6 +8886,8 @@ const EmpreendimentosSection = ({
                     sales={sales}
                     visible={showMapaGlobal}
                     focusDevId={isAdding && editingDev ? editingDev.id : null}
+                    config={config}
+                    onSaveConfig={saveAppConfig}
                     onAbrirEmpreendimento={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); } }}
                     onVerMapa={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; } }}
                   />
@@ -8931,6 +8933,8 @@ const EmpreendimentosSection = ({
                 sales={sales}
                 visible={showMapaGlobal}
                 focusDevId={isAdding && editingDev ? editingDev.id : null}
+                config={config}
+                onSaveConfig={saveAppConfig}
                 onAbrirEmpreendimento={(id) => {
                   setShowMapaGlobal(false);
                   const dev = developments.find(d => d.id === id);
