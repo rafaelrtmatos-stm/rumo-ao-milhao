@@ -10091,14 +10091,13 @@ const EmpreendimentosSection = ({
                       linhas.push(`Q${q}:${lst}.`);
                     });
                   }
-                  linhas.push("", "INSTRUÇÕES: Defina regras de preço no formato abaixo.");
-                  linhas.push("Cada REGRA define: quais quadras/lotes, valor total, entrada e parcelas.");
-                  linhas.push("NÃO existe PADRÃO — todos os lotes devem estar em uma REGRA específica.", "");
-                  linhas.push("FORMATO DE RESPOSTA:");
+                  linhas.push("", "INSTRUÇÕES: Defina as regras de preço abaixo.");
+                  linhas.push("Cada REGRA tem: quais quadras/lotes, valor total, entrada e parcelas.");
+                  linhas.push("Crie quantas REGRAs forem necessárias — uma para cada faixa de preço.", "");
+                  linhas.push("FORMATO:");
                   linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
                   linhas.push("REGRA2: Q2:1,2,3. VALOR:18000 ENTRADA:500 PARCELAS:48");
                   linhas.push("REGRA3: Q3:1,2,3. VALOR:15000 ENTRADA:500 PARCELAS:50");
-                  linhas.push("(crie quantas REGRAs forem necessárias, uma para cada faixa de preço)");
                   const txt = linhas.join("\n");
                   try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
