@@ -929,6 +929,18 @@ const autenticarApiKey = (req: any, res: any, next: any) => {
   next();
 };
 
+// GET /api/info — rota pública para ver IDs dos empreendimentos (sem autenticação)
+app.get("/api/info", async (req: any, res: any) => {
+  try {
+    const devs = await db.query.empreendimentos.findMany({
+      columns: { id: true, nome: true, cidade: true }
+    });
+    res.json({ empreendimentos: devs });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // GET /api/external/empreendimentos — listar empreendimentos (para descobrir IDs)
 app.get('/api/external/empreendimentos', autenticarApiKey, async (req: any, res: any) => {
   try {
