@@ -915,6 +915,98 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 });
 
 // --- Contrato ---
+// ── API EXTERNA DE VENDAS ──
+
+// Chave API para acesso externo — definida na variável de ambiente VENDAS_API_KEY
+const VENDAS_API_KEY = process.env.VENDAS_API_KEY || '';
+
+// Middleware de autenticação por chave
+const autenticarApiKey = (req: any, res: any, next: any) => {
+  const key = req.headers['x-api-key'];
+  if (!key || key !== VENDAS_API_KEY || !VENDAS_API_KEY) {
+    return res.status(401).json({ error: 'Chave de API inválida ou não configurada.' });
+  }
+  next();
+};
+
+// GET /api/external/empreendimentos — listar empreendimentos (para descobrir IDs)
+app.get('/api/external/empreendimentos', autenticarApiKey, async (req: any, res: any) => {
+  try {
+    const devs = await db.query.empreendimentos.findMany({
+      columns: { id: true, nome: true, cidade: true, estado: true }
+    });
+    res.json({ ok: true, empreendimentos: devs });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// POST /api/external/vendas — registrar venda de lote externamente
+app.post('/api/external/vendas', autenticarApiKey, async (req: any, res: any) => {
+  try {
+    const {
+      empreendimentoId, quadra, lote,
+      clienteNome, clienteCpf, clienteTelefone, clienteEmail,
+      valorTotal, entrada, parcelas, valorParcela,
+      vendedorNome, dataVenda, observacao
+    } = req.body;
+
+    if (!empreendimentoId || !quadra || !lote || !clienteNome) {
+      return res.status(400).json({ error: 'Campos obrigatórios: empreendimentoId, quadra, lote, clienteNome' });
+    }
+
+    // Verificar se empreendimento existe
+    const dev = await db.query.empreendimentos.findFirst({
+      where: (t: any, { eq }: any) => eq(t.id, empreendimentoId)
+    });
+    if (!dev) return res.status(404).json({ error: 'Empreendimento não encontrado.' });
+
+    // Criar venda no banco
+    const vendaId = 'ext_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+    const novaVenda = {
+      id: vendaId,
+      empreendimentoId,
+      quadra: String(quadra),
+      lote: String(lote),
+      clienteNome: String(clienteNome),
+      clienteCpf: clienteCpf ? String(clienteCpf) : '',
+      clienteTelefone: clienteTelefone ? String(clienteTelefone) : '',
+      clienteEmail: clienteEmail ? String(clienteEmail) : '',
+      valorTotal: Number(valorTotal) || 0,
+      valorEntrada: Number(entrada) || 0,
+      numeroParcelas: Number(parcelas) || 0,
+      valorParcela: Number(valorParcela) || 0,
+      vendedorNome: vendedorNome ? String(vendedorNome) : 'API Externa',
+      dataVenda: dataVenda || new Date().toISOString().split('T')[0],
+      observacao: observacao ? String(observacao) : 'Venda registrada via API externa',
+      status: 'ativo',
+      criadoEm: new Date().toISOString(),
+      atualizadoEm: new Date().toISOString(),
+    };
+
+    await db.insert(schema.vendas).values(novaVenda);
+
+    console.log(`[API Externa] Venda registrada: ${vendaId} - ${clienteNome} - Q${quadra}L${lote}`);
+    res.json({ ok: true, vendaId, mensagem: `Venda de Q${quadra} L${lote} para ${clienteNome} registrada com sucesso!` });
+  } catch (e: any) {
+    console.error('[API Externa] Erro ao registrar venda:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// GET /api/external/vendas/:empreendimentoId — listar vendas de um empreendimento
+app.get('/api/external/vendas/:empreendimentoId', autenticarApiKey, async (req: any, res: any) => {
+  try {
+    const { empreendimentoId } = req.params;
+    const vendas = await db.query.vendas.findMany({
+      where: (t: any, { eq }: any) => eq(t.empreendimentoId, empreendimentoId)
+    });
+    res.json({ ok: true, total: vendas.length, vendas });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── DETECÇÃO DE BOLINHAS VIA CLAUDE VISION ──
 app.post("/api/detectar-bolinhas", async (req: any, res: any) => {
   try {
