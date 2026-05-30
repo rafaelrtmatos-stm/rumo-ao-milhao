@@ -11,7 +11,7 @@
 // - Sair da edição somente ao clicar em Salvar / OK
 // - Nome exportado: empreendimento + dia da semana + data + hora
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
   LayoutDashboard,
   Home,
@@ -379,6 +379,68 @@ function getMapaStatusLabel(status: any, hasVenda = false): string {
   return "Disponível";
 }
 
+// ─── Regras de Preço ──────────────────────────────────────────────────────────
+// Cada empreendimento tem seu próprio mapaScriptRegras.
+// Regra 1 = Vermelho | Regra 2 = Laranja | Regra 3 = Amarelo | Regra 4 = Roxo/Azul
+type RegraPreco = 1 | 2 | 3 | 4;
+
+const REGRA_CORES_BG: Record<RegraPreco, string> = {
+  1: "#ef4444", // Vermelho
+  2: "#f97316", // Laranja
+  3: "#eab308", // Amarelo
+  4: "#7c3aed", // Roxo/Azul
+};
+const REGRA_LABELS_MAP: Record<RegraPreco, string> = {
+  1: "Regra 1 — Vermelho",
+  2: "Regra 2 — Laranja",
+  3: "Regra 3 — Amarelo",
+  4: "Regra 4 — Roxo",
+};
+
+/**
+ * Parseia o campo mapaScriptRegras de UM empreendimento específico.
+ * Nunca mistura dados de outros empreendimentos — é sempre chamado com o
+ * script do empreendimento em questão.
+ *
+ * Formato aceito (separado por ; ou \n):
+ *   Q1:Regra1 Q2:Regra1 ; Q7:Regra3 Q8:Regra4
+ *   Q1:R1, Q2:R2 ; Q3:R3
+ *   Q1:1, Q2:2 ; Q3:3, Q4:4
+ *
+ * Retorna Map<QUADRA_UPPERCASE, RegraPreco>
+ */
+function parseScriptRegras(script: string): Map<string, RegraPreco> {
+  const result = new Map<string, RegraPreco>();
+  if (!script || !script.trim()) return result;
+  const segmentos = script.split(/[;\n]/);
+  for (const seg of segmentos) {
+    const matches = [...seg.matchAll(/Q(\w+)\s*:\s*(?:Regra\s*|R)?(\d)/gi)];
+    for (const m of matches) {
+      const quadra = String(m[1]).trim().toUpperCase();
+      const num = parseInt(m[2], 10) as RegraPreco;
+      if (num >= 1 && num <= 4) {
+        result.set(quadra, num);
+      }
+    }
+  }
+  return result;
+}
+
+/**
+ * Retorna a cor CSS de uma bolinha no modo "Preços", baseada na quadra
+ * e no mapa de regras do empreendimento específico.
+ * Retorna null se a quadra não tiver regra definida.
+ */
+function getCorBolinhaPreco(
+  quadra: string | undefined,
+  regraMap: Map<string, RegraPreco>
+): string | null {
+  if (!quadra) return null;
+  const key = String(quadra).trim().toUpperCase();
+  const regra = regraMap.get(key);
+  if (!regra) return null;
+  return REGRA_CORES_BG[regra] ?? null;
+}
 
 type LotScriptItem = { quadra: string; lote: string; status: MapaLoteStatus };
 type LotScriptParseResult = { items: LotScriptItem[]; errors: string[] };
@@ -1068,12 +1130,12 @@ const BuscarCEPPorRua = ({
   estadoPadrao?: string;
   cidadePadrao?: string;
 }) => {
-  const [open, setOpen] = React.useState(false);
+  const [open, setOpen] = useState(false);
   const [uf, setUf] = React.useState(estadoPadrao);
   const [cidade, setCidade] = React.useState(cidadePadrao);
   const [rua, setRua] = React.useState("");
   const [resultados, setResultados] = React.useState<CepResultado[]>([]);
-  const [buscando, setBuscando] = React.useState(false);
+  const [buscando, setBuscando] = useState(false);
   const [erro, setErro] = React.useState("");
 
   const buscar = async () => {
@@ -1296,7 +1358,7 @@ const DELETE_PASSWORD = "Geper3tp@";
 function useDeleteConfirm() {
   const [pending, setPending] = React.useState<{ message: string; onConfirm: () => void } | null>(null);
   const [inputVal, setInputVal] = React.useState("");
-  const [error, setError] = React.useState(false);
+  const [error, setError] = useState(false);
 
   const request = (message: string, onConfirm: () => void) => {
     setInputVal("");
@@ -2264,6 +2326,18 @@ const LotDashboard = ({
   const [mode, setMode] = useState<"mapa" | "quadradinhos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
   // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
   const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
+
+  // ── Modo Visualização de Preços ───────────────────────────────────────────
+  // Quando true, as bolinhas são coloridas pelas Regras de Preço do empreendimento
+  // (mapaScriptRegras). Cada empreendimento tem suas próprias regras — nunca mistura.
+  // No modo edição (isEditingMap) este toggle é ignorado.
+  const [modoVisualizacaoPreco, setModoVisualizacaoPreco] = useState(false);
+  // Mapa de regras processado individualmente para ESTE empreendimento.
+  const regraMapPreco = useMemo(
+    () => parseScriptRegras((localDev as any).mapaScriptRegras ?? ""),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [(localDev as any).mapaScriptRegras]
+  );
 
   // Novo marcador unificado: fase "idle" | "formulario" | "aguardando_segundo"
   // lote pode ser "1" (único) ou "1,2,3,4" (múltiplos → linha entre dois pontos)
@@ -4089,7 +4163,16 @@ const LotDashboard = ({
               {/* BOLINHAS */}
               {mapaPontos.map((ponto) => {
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                // ── Cor da bolinha ──────────────────────────────────────────────────────
+                // No modo Preços (e fora do modo edição): cor pela regra de preço da quadra
+                //   deste empreendimento específico (regraMapPreco é individual por loteamento).
+                // No modo Status (ou durante edição): cor pelo status do lote.
+                const usePrecoColor = modoVisualizacaoPreco && !isEditingMap;
+                const corPreco = usePrecoColor
+                  ? (getCorBolinhaPreco(ponto.quadra, regraMapPreco) ?? "#94a3b8")
+                  : null;
+                // statusClass só é aplicado quando NÃO estamos no modo preço
+                const statusClass = usePrecoColor ? "" : getMapaStatusColorClass(ponto.status, !!venda);
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isDragging = draggingId === ponto.id;
@@ -4112,7 +4195,7 @@ const LotDashboard = ({
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
                     className={`absolute -translate-x-1/2 -translate-y-1/2 rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto" }}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, borderWidth: `${getBallBorderWidth(ballSize.size)}px`, pointerEvents: "auto", ...(corPreco ? { backgroundColor: corPreco } : {}) }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -4164,6 +4247,62 @@ const LotDashboard = ({
               <div className="card-premium p-4 space-y-3">
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Modo visualização</p>
                 <p className="text-xs text-slate-500">Clique em uma bolinha para ver detalhes, iniciar venda ou alterar status.</p>
+
+                {/* ── Toggle Preços / Status ─────────────────────────────────────────
+                    Só aparece se o empreendimento tem mapaScriptRegras configurado.
+                    Cada loteamento processa APENAS seu próprio script. */}
+                {(localDev as any).mapaScriptRegras && (
+                  <div className="space-y-2">
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setModoVisualizacaoPreco(false)}
+                        className={"py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors " + (!modoVisualizacaoPreco ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200")}
+                      >
+                        🔵 Status
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setModoVisualizacaoPreco(true)}
+                        className={"py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-colors " + (modoVisualizacaoPreco ? "bg-purple-600 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200")}
+                      >
+                        💰 Preços
+                      </button>
+                    </div>
+                    {/* Legenda de regras — só no modo Preços */}
+                    {modoVisualizacaoPreco && regraMapPreco.size > 0 && (
+                      <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-1.5">
+                        <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-2">Tabela de Preços</p>
+                        {([1, 2, 3, 4] as RegraPreco[])
+                          .filter(r => Array.from(regraMapPreco.values()).includes(r))
+                          .map(r => (
+                            <div key={r} className="flex items-center gap-2">
+                              <div style={{ width: 12, height: 12, borderRadius: "50%", background: REGRA_CORES_BG[r], flexShrink: 0 }} />
+                              <span className="text-[10px] font-bold text-slate-700">{REGRA_LABELS_MAP[r]}</span>
+                            </div>
+                          ))}
+                        {regraMapPreco.size === 0 && (
+                          <p className="text-[10px] text-slate-400">Nenhuma quadra mapeada no script.</p>
+                        )}
+                      </div>
+                    )}
+                    {modoVisualizacaoPreco && regraMapPreco.size === 0 && (
+                      <p className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-xl">
+                        Script de regras vazio ou inválido. Configure em Editar Empreendimento.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Legenda de Status — só no modo Status */}
+                {!modoVisualizacaoPreco && (
+                  <div className="flex gap-3 flex-wrap">
+                    <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-blue-500 flex-shrink-0" /><span className="text-[10px] font-bold text-slate-500">Disponível</span></div>
+                    <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-yellow-400 flex-shrink-0" /><span className="text-[10px] font-bold text-slate-500">Reservado</span></div>
+                    <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded-full bg-red-500 flex-shrink-0" /><span className="text-[10px] font-bold text-slate-500">Vendido</span></div>
+                  </div>
+                )}
+
                 {getEmpreendimentoMapsUrl(localDev) && (
                   <button
                     type="button"
@@ -4275,6 +4414,34 @@ const LotDashboard = ({
                   <Upload size={14} />{mapaImagem ? "Trocar mapa" : "Carregar mapa"}
                   <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" onChange={handleImageUpload} className="hidden" />
                 </label>
+
+                {/* ── Script de Regras de Preço ──────────────────────────────────────
+                    Cada empreendimento tem seu próprio script — salvo em mapaScriptRegras.
+                    Formato: Q1:Regra1 Q2:Regra1 ; Q7:Regra2 Q8:Regra3 Q9:Regra4
+                    Regra 1=Vermelho | Regra 2=Laranja | Regra 3=Amarelo | Regra 4=Roxo */}
+                <div className="p-3 rounded-2xl bg-purple-50 border border-purple-100 space-y-2">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-purple-700">Regras de Preço (Visual)</p>
+                  <p className="text-[10px] text-purple-700/80">
+                    Define cores por quadra na aba <strong>Preços</strong>. Ex:{" "}
+                    <strong>Q1:Regra1 Q2:Regra2 ; Q7:Regra3</strong>
+                  </p>
+                  <textarea
+                    className="input-field min-h-[64px] text-[11px] font-mono leading-relaxed"
+                    value={(localDev as any).mapaScriptRegras ?? ""}
+                    onChange={(e) => setLocalDev((d) => ({ ...d, mapaScriptRegras: e.target.value }))}
+                    placeholder={"Ex: Q1:Regra1 Q2:Regra1 ; Q7:Regra2 Q8:Regra3 Q9:Regra4
+(Separe grupos por ponto-e-vírgula)"}
+                  />
+                  {/* Mini-legenda de cores */}
+                  <div className="flex flex-wrap gap-2">
+                    {([1,2,3,4] as RegraPreco[]).map(r => (
+                      <div key={r} className="flex items-center gap-1">
+                        <div style={{ width:10, height:10, borderRadius:"50%", background: REGRA_CORES_BG[r] }} />
+                        <span className="text-[9px] font-bold text-purple-800">R{r}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Script ChatGPT / importação por texto */}
                 <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-100 space-y-2">
@@ -4677,7 +4844,11 @@ const LotDashboard = ({
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                  const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                  // Modo Preços: cor pela regra deste empreendimento (fullscreen também respeita)
+                  const corPrecoFS = modoVisualizacaoPreco
+                    ? (getCorBolinhaPreco(ponto.quadra, regraMapPreco) ?? "#94a3b8")
+                    : null;
+                  const statusClass = modoVisualizacaoPreco ? "" : getMapaStatusColorClass(ponto.status, !!venda);
                   return (
                     <button
                       key={`fullscreen-${ponto.id}`}
@@ -4697,6 +4868,7 @@ const LotDashboard = ({
                         fontSize: `${ballSize.font}px`,
                         borderWidth: `${getBallBorderWidth(ballSize.size)}px`,
                         pointerEvents: "auto",
+                        ...(corPrecoFS ? { backgroundColor: corPrecoFS } : {}),
                       }}
                     />
                   );
