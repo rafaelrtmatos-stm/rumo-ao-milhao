@@ -1,7 +1,6 @@
 /**
  * mapaStorage.ts
  * Upload binário de mapas para Supabase Storage.
- * Substitui completamente a conversão Base64.
  */
 import { createClient } from '@supabase/supabase-js';
 
@@ -23,26 +22,59 @@ export async function uploadMapaImagem(
   const webpBlob = await comprimirParaWebP(file, 0.82);
   onProgress?.(40);
 
-  // 2. Nome único
-  const ext = 'webp';
-  const nome = `${empreendimentoId}_${Date.now()}.${ext}`;
+  // 2. Garantir que é um File com tipo correto
+  const webpFile = new File([webpBlob], `mapa.webp`, { type: 'image/webp' });
+  const nome = `${empreendimentoId}_${Date.now()}.webp`;
 
-  // 3. Upload binário
-  const { data, error } = await supabase.storage
+  // 3. Tentar upload direto
+  const { error } = await supabase.storage
     .from(BUCKET)
-    .upload(nome, webpBlob, {
+    .upload(nome, webpFile, {
+      contentType: 'image/webp',
+      upsert: true,
+      duplex: 'half',
+    } as any);
+
+  if (!error) {
+    onProgress?.(90);
+    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(nome);
+    onProgress?.(100);
+    return urlData.publicUrl;
+  }
+
+  console.warn('[storage] Upload direto falhou:', error.message, '— tentando com path de usuário');
+
+  // 4. Fallback: tentar com userId no path
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id || 'shared';
+  const nomeAlt = `${userId}/${nome}`;
+
+  const { error: error2 } = await supabase.storage
+    .from(BUCKET)
+    .upload(nomeAlt, webpFile, {
       contentType: 'image/webp',
       upsert: true,
     });
 
-  if (error) throw new Error('Upload falhou: ' + error.message);
-  onProgress?.(90);
+  if (!error2) {
+    onProgress?.(90);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
+    onProgress?.(100);
+    return data.publicUrl;
+  }
 
-  // 4. URL pública
-  const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(nome);
-  onProgress?.(100);
-
-  return urlData.publicUrl;
+  // 5. Último fallback: base64 (funciona sem storage)
+  console.warn('[storage] Upload WEBP falhou, usando base64:', error2.message);
+  onProgress?.(70);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      onProgress?.(100);
+      resolve(reader.result as string);
+    };
+    reader.onerror = () => reject(new Error('Falha ao ler imagem: ' + error2.message));
+    reader.readAsDataURL(webpFile);
+  });
 }
 
 /** Comprime File para WEBP via Canvas. */
@@ -53,7 +85,6 @@ async function comprimirParaWebP(file: File, quality: number): Promise<Blob> {
     img.onload = () => {
       URL.revokeObjectURL(url);
       const canvas = document.createElement('canvas');
-      // Limitar resolução máxima para 4000px
       const MAX = 4000;
       let { width, height } = img;
       if (width > MAX || height > MAX) {
@@ -85,40 +116,40 @@ export async function uploadMapaPDF(
   onProgress?.(10);
   const nome = `${empreendimentoId}_${Date.now()}.pdf`;
 
-  // Tentar upload no storage com upsert
   const { error } = await supabase.storage
     .from(BUCKET)
     .upload(nome, file, { contentType: 'application/pdf', upsert: true });
 
-  if (error) {
-    // RLS bloqueou — tentar com path de usuário autenticado
-    const { data: { session } } = await supabase.auth.getSession();
-    const userId = session?.user?.id || 'shared';
-    const nomeAlt = `${userId}/${nome}`;
-    const { error: error2 } = await supabase.storage
-      .from(BUCKET)
-      .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
+  if (!error) {
+    onProgress?.(90);
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
+    onProgress?.(100);
+    return data.publicUrl;
+  }
 
-    if (error2) {
-      // Último fallback: converter para base64 URL (funciona sem storage)
-      console.warn('[storage] Upload PDF falhou, usando base64:', error2.message);
-      return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error('Falha ao ler PDF: ' + error2.message));
-        reader.readAsDataURL(file);
-      });
-    }
+  // Fallback com userId
+  const { data: { session } } = await supabase.auth.getSession();
+  const userId = session?.user?.id || 'shared';
+  const nomeAlt = `${userId}/${nome}`;
+  const { error: error2 } = await supabase.storage
+    .from(BUCKET)
+    .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
+
+  if (!error2) {
     onProgress?.(90);
     const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
     onProgress?.(100);
     return data.publicUrl;
   }
 
-  onProgress?.(90);
-  const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
-  onProgress?.(100);
-  return data.publicUrl;
+  // Último fallback: base64
+  console.warn('[storage] Upload PDF falhou, usando base64:', error2.message);
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(new Error('Falha ao ler PDF: ' + error2.message));
+    reader.readAsDataURL(file);
+  });
 }
 
 /** Pré-cacheia a URL no Service Worker para acesso offline imediato. */
