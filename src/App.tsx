@@ -8886,7 +8886,7 @@ const EmpreendimentosSection = ({
                     sales={sales}
                     visible={showMapaGlobal}
                     focusDevId={isAdding && editingDev ? editingDev.id : null}
-                    config={config}
+                    config={appSettings}
                     onSaveConfig={saveAppConfig}
                     onAbrirEmpreendimento={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setEditingDev(dev); setFormData({ ...emptyForm, ...dev } as any); setIsAdding(true); } }}
                     onVerMapa={(id) => { setShowMapaGlobal(false); const dev = developments.find(d => d.id === id); if (dev) { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; } }}
@@ -8933,7 +8933,7 @@ const EmpreendimentosSection = ({
                 sales={sales}
                 visible={showMapaGlobal}
                 focusDevId={isAdding && editingDev ? editingDev.id : null}
-                config={config}
+                config={appSettings}
                 onSaveConfig={saveAppConfig}
                 onAbrirEmpreendimento={(id) => {
                   setShowMapaGlobal(false);
@@ -17126,7 +17126,7 @@ const SyncButton = ({ dbService }: { dbService: any }) => {
 };
 
 const ConfigSection = ({
-  config,
+  config: appSettings,
   onSave,
   developments,
   clients,
@@ -17150,7 +17150,7 @@ const ConfigSection = ({
   hiddenMenuItems: string[];
   setHiddenMenuItems: (h: string[]) => void;
 }) => {
-  const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
+  const [formData, setFormData] = useState({ ...appSettings, vendedores: config.vendedores || [] });
   const [migrating, setMigrating] = useState(false);
   const [migrateMsg, setMigrateMsg] = useState('');
   const [showVendedorForm, setShowVendedorForm] = useState(false);
@@ -17173,7 +17173,7 @@ const ConfigSection = ({
       empreendimentos: developments,
       clientes: clients,
       vendas: sales,
-      config,
+      config: appSettings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -17196,7 +17196,7 @@ const ConfigSection = ({
       type: "config-only",
       app: "Rumo ao Milhão",
       exportedAt: new Date().toISOString(),
-      config,
+      config: appSettings,
     };
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -17222,7 +17222,7 @@ const ConfigSection = ({
           setConfigImportError('Arquivo inválido: configurações não encontradas.');
           return;
         }
-        const merged: AppConfig = { ...config, ...cfg, vendedores: cfg.vendedores ?? config.vendedores };
+        const merged: AppConfig = { ...appSettings, ...cfg, vendedores: cfg.vendedores ?? config.vendedores };
         onSave(merged);
         setFormData({ ...formData, ...merged, vendedores: merged.vendedores || [] });
         setConfigImportSuccess('Configurações importadas com sucesso!');
@@ -17563,7 +17563,7 @@ const ConfigSection = ({
             <div>
               <p className="font-semibold text-slate-800 text-sm">Exportar Configurações</p>
               <p className="text-xs text-slate-500 mt-0.5">
-                Tema · {(formData.vendedores || []).length} vendedor(es) · {(config.proprietarios || []).length} proprietário(s)
+                Tema · {(formData.vendedores || []).length} vendedor(es) · {(appSettings.proprietarios || []).length} proprietário(s)
               </p>
             </div>
           </div>
@@ -17850,13 +17850,13 @@ const CalculatorSection = () => {
 // --- Proprietarios Section ---
 
 const ProprietariosSection = ({
-  config,
+  config: appSettings,
   onSave,
 }: {
   config: AppConfig;
   onSave: (c: AppConfig) => void;
 }) => {
-  const proprietarios = config.proprietarios || [];
+  const proprietarios = appSettings.proprietarios || [];
   const emptyProp: Omit<Proprietario, "id"> = {
     nome: "", genero: "M", nacionalidade: "brasileiro", estadoCivil: "Solteiro",
     rg: "", cpf: "", endereco: "", numero: "", bairro: "", cidade: "Santarém", estado: "PA", cep: "",
@@ -17934,7 +17934,7 @@ const ProprietariosSection = ({
     } else {
       updated = [...proprietarios, normalizarNomeObrigatorio({ ...form, estado: (form.estado || "").toUpperCase(), id: `prop-${Date.now()}` } as any)];
     }
-    onSave({ ...config, proprietarios: updated });
+    onSave({ ...appSettings, proprietarios: updated });
     setShowForm(false);
     setEditingId(null);
     setForm(emptyProp);
@@ -17948,7 +17948,7 @@ const ProprietariosSection = ({
 
   const handleDelete = (id: string) => {
     requestDelete("Remover este proprietário?", () => {
-      onSave({ ...config, proprietarios: proprietarios.filter((p) => p.id !== id) });
+      onSave({ ...appSettings, proprietarios: proprietarios.filter((p) => p.id !== id) });
     });
   };
 
@@ -18900,15 +18900,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       bancoTitular: "D SOUZA DE ANDRADE IMÓVEIS", bancoCnpj: "60.659.875/0001-21",
       bancoNomeFantasia: "IMOBILIÁRIA GEO FLORESTAL",
     };
-    const missing = Object.entries(defaults).filter(([k]) => !config[k]);
+    const missing = Object.entries(defaults).filter(([k]) => !appSettings[k]);
     if (missing.length > 0) {
-      const updated = { ...config };
+      const updated = { ...appSettings };
       missing.forEach(([k, v]) => { updated[k] = v; });
       saveAppConfig(updated);
     }
   }, []); // roda uma única vez
 
-  const [config, setConfig] = useState<AppConfig>({
+  const [appSettings, setAppSettings] = useState<AppConfig>({
     theme: "standard",
     vendedores: [],
   });
@@ -19072,7 +19072,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         if (results[2].status === 'fulfilled') setSales(results[2].value);
         else console.error('Erro vendas:', results[2].reason);
 
-        if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        if (results[3].status === 'fulfilled') setAppSettings(results[3].value);
         else console.error('Erro config:', results[3].reason);
 
         const anyFailed = results.some(r => r.status === 'rejected');
@@ -19183,7 +19183,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           if (results[0].status === 'fulfilled') setDevelopments(results[0].value);
           if (results[1].status === 'fulfilled') setClients(results[1].value);
           if (results[2].status === 'fulfilled') setSales(results[2].value);
-          if (results[3].status === 'fulfilled') setConfig(results[3].value);
+          if (results[3].status === 'fulfilled') setAppSettings(results[3].value);
         }).catch(() => {});
       }, 2000); // espera 2s antes de refetch
     };
@@ -19199,8 +19199,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", config.theme);
-  }, [config.theme]);
+    document.documentElement.setAttribute("data-theme", appSettings.theme);
+  }, [appSettings.theme]);
 
   const saveDev = (newDev: Empreendimento) => {
     if (!isLoaded) return;
@@ -19422,7 +19422,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
 
   const saveAppConfig = (newConfig: AppConfig) => {
-    setConfig(newConfig);
+    setAppSettings(newConfig);
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
@@ -19453,7 +19453,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       data.vendas.forEach((s) => saleMap.set(s.id, s));
       finalSales = Array.from(saleMap.values());
 
-      finalConfig = { ...config, ...data.config, vendedores: data.config?.vendedores ?? config.vendedores };
+      finalConfig = { ...appSettings, ...data.config, vendedores: data.config?.vendedores ?? config.vendedores };
     }
 
     await Promise.all([
@@ -19466,7 +19466,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     setDevelopments(finalDevs);
     setClients(finalClients);
     setSales(finalSales);
-    setConfig(finalConfig);
+    setAppSettings(finalConfig);
   };
 
   const [contractInitialMode, setContractInitialMode] = React.useState<'recibo' | undefined>(undefined);
@@ -19484,15 +19484,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
 
   const handleUpdateProprietario = (p: Proprietario) => {
-    const updated = (config.proprietarios || []).map((x) => x.id === p.id ? p : x);
-    const newConfig = { ...config, proprietarios: updated };
-    setConfig(newConfig);
+    const updated = (appSettings.proprietarios || []).map((x) => x.id === p.id ? p : x);
+    const newConfig = { ...appSettings, proprietarios: updated };
+    setAppSettings(newConfig);
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
   // Salva vendedor como proprietário (upsert por CPF — evita duplicidade)
   const handleSaveProprietario = (p: Proprietario) => {
-    const lista = config.proprietarios || [];
+    const lista = appSettings.proprietarios || [];
     const cpfLimpo = p.cpf.replace(/\D/g, "");
     const existente = cpfLimpo
       ? lista.find((x) => x.cpf.replace(/\D/g, "") === cpfLimpo)
@@ -19506,8 +19506,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     } else {
       updated = [...lista, normalizarNomeObrigatorio({ ...p, estado: (p.estado || "").toUpperCase() } as any)];
     }
-    const newConfig = { ...config, proprietarios: updated };
-    setConfig(newConfig);
+    const newConfig = { ...appSettings, proprietarios: updated };
+    setAppSettings(newConfig);
     dbService.saveAppConfig(newConfig).catch(console.error);
   };
 
@@ -19802,13 +19802,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onStartSale={handleStartSale}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
             onReleaseSoldLot={(vendaId) => updateVendaStatus(vendaId, "cancelado")}
-            proprietarios={config.proprietarios || []}
+            proprietarios={appSettings.proprietarios || []}
             canEditMap={!!isAdmin || userPermissions?.editar_mapas === true}
             isAdmin={!!isAdmin}
           />
         );
       case "proprietarios":
-        return <ProprietariosSection config={config} onSave={saveAppConfig} />;
+        return <ProprietariosSection config={appSettings} onSave={saveAppConfig} />;
       case "vendas":
         return (
           <VendasSection
@@ -19839,7 +19839,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onDeleteVenda={deleteVenda}
             onUpdateVenda={updateVenda}
             vendedores={config.vendedores || []}
-            proprietarios={config.proprietarios || []}
+            proprietarios={appSettings.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
             onSaveProprietario={handleSaveProprietario}
@@ -19876,7 +19876,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       case "config":
         return (
           <ConfigSection
-            config={config}
+            config={appSettings}
             onSave={saveAppConfig}
             developments={developments}
             clients={clients}
