@@ -13370,6 +13370,12 @@ const ContratosSection = ({
   const [sortBy, setSortBy] = useState<"data_desc" | "data_asc" | "valor_desc" | "valor_asc" | "nome_asc" | "emp_asc" | "status_asc" | "corretor_asc">("data_desc");
   const [paymentFilter] = useState<"" | "avista" | "parcelado">("");
   const [showRanking, setShowRanking] = useState(false);
+  const [rankingAba, setRankingAba] = useState<'ranking'|'gestao'>('ranking');
+  const [gestaoCorretor, setGestaoCorretor] = useState<string>('');
+  const [gestaoMesclarDe, setGestaoMesclarDe] = useState<string>('');
+  const [gestaoMesclarPara, setGestaoMesclarPara] = useState<string>('');
+  const [gestaoNovoNome, setGestaoNovoNome] = useState<string>('');
+  const [gestaoVendaSel, setGestaoVendaSel] = useState<string>('');
   const [viewMode, setViewMode] = useState<"contract" | "receipt">("contract");
   const [showNovoContrato, setShowNovoContrato] = useState(false);
   const [clienteMode, setClienteMode] = useState<"existente" | "novo">("existente");
@@ -14639,58 +14645,192 @@ VENDEDOR: ${vendedorLabel}`;
               className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
             >
               {/* Header */}
-              <div className="px-7 pt-7 pb-5 border-b border-slate-100 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-amber-500 rounded-xl text-white">
-                    <Trophy size={20} />
+              <div className="px-6 pt-6 pb-0 border-b border-slate-100">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2.5 bg-amber-500 rounded-xl text-white"><Trophy size={18} /></div>
+                    <div>
+                      <h3 className="text-base font-display font-bold text-slate-800">Ranking de Corretores</h3>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sales.length} vendas</p>
+                    </div>
                   </div>
-                  <div>
-                    <h3 className="text-lg font-display font-bold text-slate-800">Ranking de Corretores</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{sales.length} venda{sales.length !== 1 ? 's' : ''} no total</p>
-                  </div>
+                  <button onClick={() => { setShowRanking(false); setRankingAba('ranking'); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                    <X size={20} className="text-slate-400" />
+                  </button>
                 </div>
-                <button onClick={() => setShowRanking(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                  <X size={20} className="text-slate-400" />
-                </button>
+                {/* Abas */}
+                <div className="flex gap-1">
+                  {[{id:'ranking',label:'🏆 Ranking'},{id:'gestao',label:'⚙️ Gestão Admin'}].map(aba => (
+                    <button key={aba.id} onClick={() => setRankingAba(aba.id as any)}
+                      className={`px-4 py-2 rounded-t-xl text-xs font-black transition-all ${rankingAba===aba.id ? 'bg-white border-t border-x border-slate-200 text-slate-800 -mb-px pb-3' : 'text-slate-400 hover:text-slate-600'}`}>
+                      {aba.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Body */}
-              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
-                {rankingCorretores.length === 0 ? (
-                  <p className="text-center text-slate-400 py-10 font-medium">Nenhuma venda registrada.</p>
-                ) : rankingCorretores.map((corretor, idx) => {
-                  const pct = totalGeralVendas > 0 ? (corretor.total / totalGeralVendas) * 100 : 0;
-                  const medals = ["🥇", "🥈", "🥉"];
-                  const medal = medals[idx] || `${idx + 1}º`;
-                  const barColors = [
-                    "bg-amber-400",
-                    "bg-slate-400",
-                    "bg-orange-400",
-                  ];
-                  const barColor = barColors[idx] || "bg-primary-main/60";
-                  return (
-                    <div key={corretor.nome} className="bg-slate-50 rounded-2xl p-4 space-y-2">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
-                          <span className="text-xl shrink-0">{medal}</span>
-                          <div className="min-w-0">
-                            <p className="font-bold text-slate-800 truncate">{corretor.nome}</p>
-                            <p className="text-xs text-slate-500">{corretor.vendas} venda{corretor.vendas !== 1 ? 's' : ''}</p>
+              <div className="p-5 max-h-[65vh] overflow-y-auto">
+                {rankingAba === 'ranking' ? (
+                  <div className="space-y-3">
+                    {rankingCorretores.length === 0 ? (
+                      <p className="text-center text-slate-400 py-10 font-medium">Nenhuma venda registrada.</p>
+                    ) : rankingCorretores.map((corretor, idx) => {
+                      const pct = totalGeralVendas > 0 ? (corretor.total / totalGeralVendas) * 100 : 0;
+                      const medals = ["🥇","🥈","🥉"];
+                      const medal = medals[idx] || `${idx+1}º`;
+                      const barColors = ["bg-amber-400","bg-slate-400","bg-orange-400"];
+                      const barColor = barColors[idx] || "bg-primary-main/60";
+                      return (
+                        <div key={corretor.nome} className="bg-slate-50 rounded-2xl p-4 space-y-2">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span className="text-xl shrink-0">{medal}</span>
+                              <div className="min-w-0">
+                                <p className="font-bold text-slate-800 truncate">{corretor.nome}</p>
+                                <p className="text-xs text-slate-500">{corretor.vendas} venda{corretor.vendas !== 1 ? 's' : ''}</p>
+                              </div>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="font-display font-bold text-slate-800 text-sm">
+                                {new Intl.NumberFormat("pt-BR",{style:"currency",currency:"BRL",minimumFractionDigits:0}).format(corretor.total)}
+                              </p>
+                              <p className="text-[10px] font-bold text-slate-400">{pct.toFixed(1)}%</p>
+                            </div>
+                          </div>
+                          <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                            <div className={`h-full rounded-full ${barColor}`} style={{width:`${pct}%`}}/>
                           </div>
                         </div>
-                        <div className="text-right shrink-0">
-                          <p className="font-display font-bold text-slate-800 text-sm">
-                            {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 0, maximumFractionDigits: 0 }).format(corretor.total)}
-                          </p>
-                          <p className="text-[10px] font-bold text-slate-400">{pct.toFixed(1)}% do total</p>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  /* ABA GESTÃO ADMIN */
+                  <div className="space-y-5">
+                    {/* 1. Renomear corretor em todas as vendas */}
+                    <div className="bg-blue-50 rounded-2xl p-4 space-y-3 border border-blue-100">
+                      <p className="text-xs font-black text-blue-800 uppercase tracking-wide">✏️ Renomear corretor</p>
+                      <p className="text-[10px] text-blue-600">Atualiza o nome em TODAS as vendas deste corretor</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">Corretor atual</label>
+                          <select className="input-field text-xs" value={gestaoCorretor} onChange={e => setGestaoCorretor(e.target.value)}>
+                            <option value="">Selecionar...</option>
+                            {rankingCorretores.map(c => <option key={c.nome} value={c.nome}>{c.nome} ({c.vendas})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">Novo nome</label>
+                          <input className="input-field text-xs" placeholder="Novo nome..." value={gestaoNovoNome} onChange={e => setGestaoNovoNome(e.target.value)}/>
                         </div>
                       </div>
-                      <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+                      <button disabled={!gestaoCorretor || !gestaoNovoNome}
+                        onClick={() => {
+                          if (!gestaoCorretor || !gestaoNovoNome) return;
+                          if (!confirm(`Renomear "${gestaoCorretor}" → "${gestaoNovoNome}" em todas as vendas?`)) return;
+                          const atualizadas = sales.filter(s => (s.vendedor||'') === gestaoCorretor).map(s => ({...s, vendedor: gestaoNovoNome}));
+                          atualizadas.forEach(s => onUpdateVenda(s));
+                          setGestaoCorretor(''); setGestaoNovoNome('');
+                          alert(`${atualizadas.length} vendas atualizadas!`);
+                        }}
+                        className="w-full py-2 rounded-xl bg-blue-600 text-white text-xs font-black disabled:opacity-40 hover:bg-blue-700 transition-colors">
+                        Renomear em todas as vendas
+                      </button>
+                    </div>
+
+                    {/* 2. Mesclar dois corretores */}
+                    <div className="bg-purple-50 rounded-2xl p-4 space-y-3 border border-purple-100">
+                      <p className="text-xs font-black text-purple-800 uppercase tracking-wide">🔀 Mesclar corretores</p>
+                      <p className="text-[10px] text-purple-600">Une todas as vendas de um corretor para outro (elimina duplicados)</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">De (será removido)</label>
+                          <select className="input-field text-xs" value={gestaoMesclarDe} onChange={e => setGestaoMesclarDe(e.target.value)}>
+                            <option value="">Selecionar...</option>
+                            {rankingCorretores.map(c => <option key={c.nome} value={c.nome}>{c.nome} ({c.vendas})</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 mb-1 block">Para (ficará)</label>
+                          <select className="input-field text-xs" value={gestaoMesclarPara} onChange={e => setGestaoMesclarPara(e.target.value)}>
+                            <option value="">Selecionar...</option>
+                            {rankingCorretores.filter(c => c.nome !== gestaoMesclarDe).map(c => <option key={c.nome} value={c.nome}>{c.nome} ({c.vendas})</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <button disabled={!gestaoMesclarDe || !gestaoMesclarPara}
+                        onClick={() => {
+                          if (!gestaoMesclarDe || !gestaoMesclarPara) return;
+                          const vendas = sales.filter(s => (s.vendedor||'') === gestaoMesclarDe);
+                          if (!confirm(`Mesclar ${vendas.length} vendas de "${gestaoMesclarDe}" para "${gestaoMesclarPara}"?`)) return;
+                          vendas.forEach(s => onUpdateVenda({...s, vendedor: gestaoMesclarPara}));
+                          setGestaoMesclarDe(''); setGestaoMesclarPara('');
+                          alert(`${vendas.length} vendas mescladas!`);
+                        }}
+                        className="w-full py-2 rounded-xl bg-purple-600 text-white text-xs font-black disabled:opacity-40 hover:bg-purple-700 transition-colors">
+                        Mesclar corretores
+                      </button>
+                    </div>
+
+                    {/* 3. Transferir venda específica */}
+                    <div className="bg-amber-50 rounded-2xl p-4 space-y-3 border border-amber-100">
+                      <p className="text-xs font-black text-amber-800 uppercase tracking-wide">↔️ Transferir venda específica</p>
+                      <p className="text-[10px] text-amber-600">Move uma venda individual para outro corretor</p>
+                      <div className="space-y-2">
+                        <select className="input-field text-xs" value={gestaoCorretor} onChange={e => setGestaoCorretor(e.target.value)}>
+                          <option value="">Filtrar por corretor...</option>
+                          {rankingCorretores.map(c => <option key={c.nome} value={c.nome}>{c.nome} ({c.vendas})</option>)}
+                        </select>
+                        {gestaoCorretor && (
+                          <>
+                            <select className="input-field text-xs" value={gestaoVendaSel} onChange={e => setGestaoVendaSel(e.target.value)}>
+                              <option value="">Selecionar venda...</option>
+                              {sales.filter(s => (s.vendedor||'') === gestaoCorretor).map(s => (
+                                <option key={s.id} value={s.id}>{s.clienteNome} — Q{s.quadra} L{s.numeroLote} — {s.empreendimentoNome}</option>
+                              ))}
+                            </select>
+                            <select className="input-field text-xs" value={gestaoMesclarPara} onChange={e => setGestaoMesclarPara(e.target.value)}>
+                              <option value="">Transferir para...</option>
+                              {rankingCorretores.filter(c => c.nome !== gestaoCorretor).map(c => <option key={c.nome} value={c.nome}>{c.nome}</option>)}
+                            </select>
+                            <button disabled={!gestaoVendaSel || !gestaoMesclarPara}
+                              onClick={() => {
+                                const venda = sales.find(s => s.id === gestaoVendaSel);
+                                if (!venda || !gestaoMesclarPara) return;
+                                if (!confirm(`Transferir venda de "${gestaoCorretor}" para "${gestaoMesclarPara}"?`)) return;
+                                onUpdateVenda({...venda, vendedor: gestaoMesclarPara});
+                                setGestaoVendaSel(''); setGestaoMesclarPara('');
+                                alert('Venda transferida!');
+                              }}
+                              className="w-full py-2 rounded-xl bg-amber-600 text-white text-xs font-black disabled:opacity-40 hover:bg-amber-700 transition-colors">
+                              Transferir venda
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
-                  );
-                })}
+
+                    {/* 4. Remover corretor de venda */}
+                    <div className="bg-red-50 rounded-2xl p-4 space-y-3 border border-red-100">
+                      <p className="text-xs font-black text-red-800 uppercase tracking-wide">🗑️ Remover corretor de venda</p>
+                      <p className="text-[10px] text-red-600">Remove o vínculo do corretor sem excluir a venda</p>
+                      <select className="input-field text-xs" onChange={e => {
+                        const venda = sales.find(s => s.id === e.target.value);
+                        if (!venda) return;
+                        if (!confirm(`Remover corretor "${venda.vendedor}" da venda de ${venda.clienteNome}?`)) return;
+                        onUpdateVenda({...venda, vendedor: '', vendedorId: ''});
+                        alert('Corretor removido da venda!');
+                        e.target.value = '';
+                      }}>
+                        <option value="">Selecionar venda para remover corretor...</option>
+                        {sales.filter(s => s.vendedor).map(s => (
+                          <option key={s.id} value={s.id}>{s.vendedor} → {s.clienteNome} Q{s.quadra}L{s.numeroLote}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Footer totais */}
