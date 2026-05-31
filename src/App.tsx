@@ -8974,31 +8974,34 @@ const EmpreendimentosSection = ({
               className="card-premium grid grid-cols-1 md:grid-cols-2 gap-6 bg-slate-50/50"
             >
               {/* HEADER DO FORMULÁRIO */}
-              <div className="md:col-span-2 flex items-center justify-between pb-2 border-b border-slate-100 -mx-6 px-6 -mt-6 pt-5 bg-white rounded-t-3xl">
-                <div>
-                  <h3 className="text-base font-black text-slate-900">
-                    {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
-                  </h3>
-                  <p className="text-xs text-slate-400">{editingDev ? "Apenas este empreendimento" : "Preencha os dados abaixo"}</p>
+              <div className="md:col-span-2 border-b border-slate-100 -mx-6 px-4 -mt-6 pt-4 pb-3 bg-white rounded-t-3xl">
+                <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="min-w-0">
+                    <h3 className="text-base font-black text-slate-900 truncate">
+                      {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
+                    </h3>
+                    <p className="text-xs text-slate-400">{editingDev ? "Apenas este empreendimento" : "Preencha os dados abaixo"}</p>
+                  </div>
+                  <button type="button"
+                    onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
+                    className="w-8 h-8 rounded-xl bg-slate-100 text-slate-500 flex items-center justify-center flex-shrink-0">
+                    <X size={15} />
+                  </button>
                 </div>
-                <div className="flex items-center gap-2">
+                {/* Botões em linha própria para não cortar no mobile */}
+                <div className="flex gap-2">
                   {editingDev && (
                     <button type="button"
                       onClick={(e) => { e.preventDefault(); handleSubmit({ preventDefault: () => {} } as any); }}
-                      className="px-4 py-2 rounded-xl bg-blue-600 text-white text-xs font-black uppercase hover:bg-blue-500 active:scale-95 transition-all flex items-center gap-1.5">
+                      className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase active:scale-95 transition-all flex items-center justify-center gap-1.5">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       Aplicar
                     </button>
                   )}
                   <button type="submit"
-                    className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase hover:bg-emerald-500 active:scale-95 transition-all flex items-center gap-1.5">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-                    OK
-                  </button>
-                  <button type="button"
-                    onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
-                    className="px-4 py-2 rounded-xl bg-slate-100 text-slate-600 text-xs font-black uppercase hover:bg-slate-200 active:scale-95 transition-all flex items-center gap-1.5">
-                    <X size={13} /> Cancelar
+                    className="flex-1 py-2.5 rounded-2xl bg-emerald-600 text-white text-sm font-black uppercase active:scale-95 transition-all flex items-center justify-center gap-2">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                    {editingDev ? 'Salvar' : 'Criar Empreendimento'}
                   </button>
                 </div>
               </div>
@@ -9524,6 +9527,19 @@ const EmpreendimentosSection = ({
                 )}
               </div>
 
+              {/* Botão salvar fixo no rodapé — sempre visível no mobile */}
+              <div className="md:col-span-2 sticky bottom-0 bg-white/95 backdrop-blur-sm -mx-6 px-4 py-3 border-t border-slate-100 flex gap-2 rounded-b-3xl">
+                <button type="button"
+                  onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
+                  className="px-4 py-3 rounded-2xl bg-slate-100 text-slate-600 text-xs font-black uppercase active:scale-95 transition-all">
+                  Cancelar
+                </button>
+                <button type="submit"
+                  className="flex-1 py-3 rounded-2xl bg-emerald-600 text-white text-sm font-black uppercase active:scale-95 transition-all flex items-center justify-center gap-2 shadow-lg">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                  {editingDev ? 'Salvar Alterações' : '✅ Criar Empreendimento'}
+                </button>
+              </div>
 
             </form>
           </motion.div>
