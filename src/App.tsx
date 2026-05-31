@@ -19520,6 +19520,13 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     }
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
+  // Usuários do sistema — carregado no App para uso em vendas/corretores
+  const [appUsers, setAppUsers] = useState<{ id: string; email: string; profile: { nome?: string } }[]>([]);
+  useEffect(function() {
+    authFetch('/api/admin/users').then(function(r: any) { return r.json(); }).then(function(data: any) {
+      if (Array.isArray(data)) setAppUsers(data);
+    }).catch(function() {});
+  }, []);
   const [prefilledSale, setPrefilledSale] = useState<
     Partial<Venda> | undefined
   >(undefined);
@@ -20419,7 +20426,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onGoToContractsRecibo={handleGoToContractsRecibo}
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
-            vendedores={[...(users.filter(u => u.profile?.nome).map(u => ({ id: u.id, nome: u.profile.nome || u.email }))), ...(config.vendedores || []).filter(v => !users.some(u => u.profile?.nome === v.nome))]}
+            vendedores={[...(appUsers.filter(function(u) { return u.profile?.nome; }).map(function(u) { return { id: u.id, nome: u.profile.nome || u.email }; })), ...((config.vendedores || []).filter(function(v) { return !appUsers.some(function(u) { return u.profile?.nome === v.nome; }); }))]}
             clients={clients}
             editingEntry={editingVendaEntry}
             onUpdateVendaFull={handleUpdateVendaFull}
@@ -20438,7 +20445,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onSaveVenda={saveSale}
             onDeleteVenda={deleteVenda}
             onUpdateVenda={updateVenda}
-            vendedores={[...(users.filter(u => u.profile?.nome).map(u => ({ id: u.id, nome: u.profile.nome || u.email }))), ...(config.vendedores || []).filter(v => !users.some(u => u.profile?.nome === v.nome))]}
+            vendedores={[...(appUsers.filter(function(u) { return u.profile?.nome; }).map(function(u) { return { id: u.id, nome: u.profile.nome || u.email }; })), ...((config.vendedores || []).filter(function(v) { return !appUsers.some(function(u) { return u.profile?.nome === v.nome; }); }))]}
             proprietarios={config.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
