@@ -12968,22 +12968,46 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                 </div>
                 <div className="space-y-3">
                   <div>
-                    <label className="label">Corretor / Vendedor 1</label>
-                    {vendedores.length > 0 ? (
-                      <select
-                        className="input-field font-semibold"
-                        value={saleData.vendedorId || ""}
-                        onChange={(e) => {
-                          const v = vendedores.find(x => x.id === e.target.value);
-                          setSaleData({ ...saleData, vendedorId: e.target.value, vendedor: textoMaiusculo(v?.nome || "") });
-                        }}
-                      >
-                        <option value="">Selecionar vendedor...</option>
-                        {vendedores.map((v) => (
-                          <option key={v.id} value={v.id}>{v.nome}</option>
-                        ))}
-                      </select>
-                    ) : (
+                    <label className="label">Corretor(es) / Vendedor(es)</label>
+                    {vendedores.length > 0 ? (() => {
+                      // Lista de corretores selecionados (suporte a múltiplos)
+                      const corretoresSel: string[] = (saleData as any).corretores || (saleData.vendedor ? [saleData.vendedor] : []);
+                      const toggleCorretor = (nome: string) => {
+                        const lista = corretoresSel.includes(nome)
+                          ? corretoresSel.filter(c => c !== nome)
+                          : [...corretoresSel, nome];
+                        const primeiro = lista[0] || '';
+                        const v = vendedores.find(x => x.nome === primeiro);
+                        setSaleData({ ...saleData, corretores: lista, vendedor: primeiro, vendedorId: v?.id || '' } as any);
+                      };
+                      return (
+                        <div className="space-y-1">
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                            {vendedores.map((v) => (
+                              <label key={v.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors">
+                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${corretoresSel.includes(v.nome) ? 'bg-[#1a4a1a] border-[#1a4a1a]' : 'border-slate-300'}`}>
+                                  {corretoresSel.includes(v.nome) && (
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                  )}
+                                </div>
+                                <span className="text-sm font-semibold text-slate-700">{v.nome}</span>
+                                {corretoresSel.indexOf(v.nome) >= 0 && (
+                                  <span className="ml-auto text-[10px] font-black text-[#1a4a1a] bg-[#1a4a1a]/10 px-2 py-0.5 rounded-full">
+                                    {corretoresSel.indexOf(v.nome) === 0 ? '1º' : `${corretoresSel.indexOf(v.nome)+1}º`}
+                                  </span>
+                                )}
+                                <input type="checkbox" className="hidden" checked={corretoresSel.includes(v.nome)} onChange={() => toggleCorretor(v.nome)} />
+                              </label>
+                            ))}
+                          </div>
+                          {corretoresSel.length > 0 && (
+                            <p className="text-[10px] text-slate-400 font-bold">
+                              Selecionados: {corretoresSel.join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })() : (
                       <input
                         className="input-field font-semibold"
                         placeholder="Nome do corretor/vendedor"
@@ -20183,7 +20207,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onGoToContractsRecibo={handleGoToContractsRecibo}
             initialSaleData={prefilledSale}
             onSaveDev={saveDev}
-            vendedores={config.vendedores || []}
+            vendedores={[...(users.filter(u => u.profile?.nome).map(u => ({ id: u.id, nome: u.profile.nome || u.email }))), ...(config.vendedores || []).filter(v => !users.some(u => u.profile?.nome === v.nome))]}
             clients={clients}
             editingEntry={editingVendaEntry}
             onUpdateVendaFull={handleUpdateVendaFull}
@@ -20202,7 +20226,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onSaveVenda={saveSale}
             onDeleteVenda={deleteVenda}
             onUpdateVenda={updateVenda}
-            vendedores={config.vendedores || []}
+            vendedores={[...(users.filter(u => u.profile?.nome).map(u => ({ id: u.id, nome: u.profile.nome || u.email }))), ...(config.vendedores || []).filter(v => !users.some(u => u.profile?.nome === v.nome))]}
             proprietarios={config.proprietarios || []}
             initialMode={contractInitialMode}
             onUpdateProprietario={handleUpdateProprietario}
