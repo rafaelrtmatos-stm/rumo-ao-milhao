@@ -15117,19 +15117,8 @@ VENDEDOR: ${vendedorLabel}`;
       </AnimatePresence>
 
       {(() => {
-        // Vendas sem contrato: apenas rascunhos ou vendas sem dados mínimos (possíveis fantasmas)
-        // Vendas reais sem contrato ainda são mostradas separadas em comContrato abaixo
-        const semContrato = filteredSales.filter((v) => 
-          !v.contratoGerado && (
-            v.status === "rascunho" ||
-            !v.clienteNome ||
-            !v.quadra ||
-            !v.numeroLote
-          )
-        );
-        const vendasSemContratoReais = filteredSales.filter((v) =>
-          !v.contratoGerado && v.status !== "rascunho" && v.clienteNome && v.quadra && v.numeroLote
-        );
+        // Vendas sem contrato — legítimas, apenas ainda não documentadas
+        const semContrato = filteredSales.filter((v) => !v.contratoGerado);
         const comContrato = filteredSales.filter((v) => v.contratoGerado);
 
         const renderMobileCard = (venda: Venda) => {
@@ -15359,11 +15348,11 @@ VENDEDOR: ${vendedorLabel}`;
                   </div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-amber-800">⚠️ Vendas Fantasmas</span>
+                      <span className="text-sm font-black text-amber-800">📋 Vendas sem Contrato</span>
                       <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full text-xs font-black">{semContrato.length}</span>
                     </div>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      Rascunhos ou registros incompletos (sem nome/quadra/lote). Estão contabilizando nos lotes como vendidos mas não têm dados válidos.
+                      Vendas registradas sem contrato gerado. Os lotes estão reservados corretamente. Gere o contrato quando necessário.
                     </p>
                   </div>
                   {/* Excluir todas */}
@@ -15406,7 +15395,7 @@ VENDEDOR: ${vendedorLabel}`;
                             () => onDeleteVenda(v.id)
                           )}
                           className="flex-shrink-0 w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center active:scale-90 transition-all border border-red-200"
-                          title="Excluir venda rascunho">
+                          title="Excluir venda">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                         </button>
                       </div>
