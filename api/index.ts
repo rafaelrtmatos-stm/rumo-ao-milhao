@@ -1024,6 +1024,42 @@ app.get('/api/external/vendas/:empreendimentoId', autenticarApiKey, async (req: 
   }
 });
 
+// ── UPLOAD DE DOCUMENTOS DE CLIENTES ──
+app.post('/api/external/upload-documento', autenticarApiKey, async (req: any, res: any) => {
+  try {
+    const multer = (await import('multer')).default;
+    const storage = multer.memoryStorage();
+    const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } }).single('arquivo');
+    
+    upload(req, res, async (err: any) => {
+      if (err) return res.status(400).json({ error: 'Erro no upload: ' + err.message });
+      if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo enviado' });
+      
+      const { clienteId, clienteNome, nomeArquivo } = req.body;
+      if (!clienteId) return res.status(400).json({ error: 'clienteId obrigatório' });
+
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_ANON_KEY!);
+      
+      const ext = (nomeArquivo || req.file.originalname).split('.').pop();
+      const path = `clientes/${clienteId}/${Date.now()}.${ext}`;
+      
+      const { error } = await sb.storage.from('documentos').upload(path, req.file.buffer, {
+        contentType: req.file.mimetype,
+        upsert: true,
+      });
+      if (error) return res.status(500).json({ error: error.message });
+      
+      const { data: urlData } = sb.storage.from('documentos').getPublicUrl(path);
+      
+      console.log(`[Upload Doc] Cliente: ${clienteNome || clienteId} — ${nomeArquivo || req.file.originalname}`);
+      res.json({ ok: true, url: urlData.publicUrl, path, nome: nomeArquivo || req.file.originalname });
+    });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── DETECÇÃO DE BOLINHAS VIA CLAUDE VISION ──
 app.post("/api/detectar-bolinhas", async (req: any, res: any) => {
   try {

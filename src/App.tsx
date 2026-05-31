@@ -16847,6 +16847,70 @@ const AniversariosSection = ({
                   </div>
                 </div>
 
+                {/* Documentos anexados */}
+                <div className="space-y-2">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documentos</p>
+                  {/* Lista de documentos existentes */}
+                  {((selectedClient as any).documentos || []).length === 0 ? (
+                    <div className="p-3 bg-slate-50 rounded-2xl text-center">
+                      <p className="text-xs text-slate-400">Nenhum documento anexado</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {((selectedClient as any).documentos || []).map((doc: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-700 truncate">{doc.nome}</p>
+                              <p className="text-[10px] text-slate-400">{doc.data ? new Date(doc.data).toLocaleDateString('pt-BR') : ''}</p>
+                            </div>
+                          </div>
+                          <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                            className="flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                            title="Baixar documento">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {/* Upload de novo documento */}
+                  <label className="flex items-center gap-2 p-3 bg-green-50 border-2 border-dashed border-green-200 rounded-2xl cursor-pointer hover:bg-green-100 transition-colors">
+                    <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    </div>
+                    <span className="text-xs font-bold text-green-700">Anexar documento (RG, CPF, comprovante...)</span>
+                    <input type="file" accept="image/*,application/pdf" className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file || !selectedClient) return;
+                        try {
+                          const { createClient } = await import('@supabase/supabase-js');
+                          const sb = createClient(
+                            import.meta.env.VITE_SUPABASE_URL,
+                            import.meta.env.VITE_SUPABASE_ANON_KEY
+                          );
+                          const ext = file.name.split('.').pop();
+                          const path = `clientes/${selectedClient.id}/${Date.now()}.${ext}`;
+                          const { error } = await sb.storage.from('documentos').upload(path, file, { upsert: true });
+                          if (error) throw error;
+                          const { data: urlData } = sb.storage.from('documentos').getPublicUrl(path);
+                          const docNovo = { nome: file.name, url: urlData.publicUrl, data: new Date().toISOString() };
+                          const docsAtuais = (selectedClient as any).documentos || [];
+                          const clienteAtualizado = { ...selectedClient, documentos: [...docsAtuais, docNovo] };
+                          onUpdateCliente(clienteAtualizado);
+                          setSelectedClient(clienteAtualizado as any);
+                        } catch (err: any) {
+                          alert('Erro ao enviar documento: ' + err.message);
+                        }
+                      }}
+                    />
+                  </label>
+                </div>
+
                 {/* Purchases — clicáveis, sem badge de status */}
                 <div className="space-y-2">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
