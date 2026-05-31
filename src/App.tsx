@@ -15417,37 +15417,52 @@ VENDEDOR: ${vendedorLabel}`;
                   </button>
                 </div>
 
-                {/* Lista com botão excluir em cada uma */}
+                {/* Lista com botões Gerar Contrato, Recibo e Excluir */}
                 <div className="space-y-2">
                   {semContrato.map(v => {
                     const dev = developments.find(d => d.id === v.empreendimentoId);
                     return (
-                      <div key={v.id} className="flex items-center gap-3 p-3 bg-white rounded-2xl border border-amber-100">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-black text-slate-800 truncate">{v.clienteNome}</span>
-                            {v.status === "cancelado" && (
-                              <span className="px-2 py-0.5 bg-red-100 text-red-600 rounded-full text-[10px] font-black">Cancelado</span>
-                            )}
-                            {v.status === "rascunho" && (
-                              <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black">Rascunho</span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-3 mt-0.5">
-                            {dev && <span className="text-xs text-slate-400">{fmtEmp(dev.nome)}</span>}
-                            {v.quadra && v.numeroLote && <span className="text-xs text-slate-400">Q{v.quadra}:L{v.numeroLote}</span>}
-                            {v.dataVenda && <span className="text-xs text-slate-400">{v.dataVenda}</span>}
+                      <div key={v.id} className="flex flex-col gap-2 p-3 bg-white rounded-2xl border border-amber-100">
+                        <div className="flex items-center gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-black text-slate-800 truncate">{v.clienteNome}</span>
+                              {v.status === "rascunho" && (
+                                <span className="px-2 py-0.5 bg-slate-100 text-slate-500 rounded-full text-[10px] font-black">Rascunho</span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-3 mt-0.5 flex-wrap">
+                              {dev && <span className="text-xs text-slate-400">{fmtEmp(dev.nome)}</span>}
+                              {v.quadra && v.numeroLote && <span className="text-xs font-bold text-slate-600">Q{v.quadra} L{v.numeroLote}</span>}
+                              {v.valorEntrada > 0 && <span className="text-xs text-green-600 font-bold">Entrada: R$ {Number(v.valorEntrada).toLocaleString('pt-BR')}</span>}
+                              {v.dataVenda && <span className="text-xs text-slate-400">{v.dataVenda}</span>}
+                            </div>
                           </div>
                         </div>
-                        <button
-                          onClick={() => requestDelete(
-                            `Excluir venda de ${v.clienteNome}? Isso liberará o lote Q${v.quadra}:${v.numeroLote}.`,
-                            () => onDeleteVenda(v.id)
-                          )}
-                          className="flex-shrink-0 w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center active:scale-90 transition-all border border-red-200"
-                          title="Excluir venda">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
-                        </button>
+                        {/* Botões de ação */}
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleOpenGerarContratoForVenda(v)}
+                            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-primary-main/10 text-primary-main border border-primary-main/20 hover:bg-primary-main hover:text-white text-[11px] font-black transition-all">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                            Gerar Contrato
+                          </button>
+                          <button
+                            onClick={() => { setSelectedVenda(v); setReciboObservacao((v as any).reciboObservacao || ''); setShowReciboModal(true); }}
+                            className="flex-1 flex items-center justify-center gap-1 py-2 rounded-xl bg-emerald-50 text-emerald-700 border border-emerald-200 hover:bg-emerald-600 hover:text-white text-[11px] font-black transition-all">
+                            <FileCheck size={12} />
+                            Recibo
+                          </button>
+                          <button
+                            onClick={() => requestDelete(
+                              `Excluir venda de ${v.clienteNome}? Isso liberará o lote Q${v.quadra}:L${v.numeroLote}.`,
+                              () => onDeleteVenda(v.id)
+                            )}
+                            className="w-9 h-9 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center transition-all border border-red-200"
+                            title="Excluir venda">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
