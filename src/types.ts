@@ -153,5 +153,8 @@ export interface AppTheme { [key: string]: any; }
 export interface AppConfig {
   vendedores?: Vendedor[];
   proprietarios?: Proprietario[];
+  chavePix?: string;
+  nomeBeneficiario?: string;
+  cidadeBeneficiario?: string;
   [key: string]: any;
 }

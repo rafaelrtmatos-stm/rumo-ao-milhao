@@ -8208,6 +8208,34 @@ const LotDashboard = ({
 
 
 // fix-sales-scope
+// ── PIX BR CODE GENERATOR ──
+function gerarPixPayload(params: {
+  chavePix: string;
+  nomeBeneficiario: string;
+  cidadeBeneficiario: string;
+  valor: number;
+  descricao: string;
+  txid?: string;
+}): string {
+  const { chavePix, nomeBeneficiario, cidadeBeneficiario, valor, descricao, txid = '***' } = params;
+  const nome = nomeBeneficiario.substring(0, 25).toUpperCase();
+  const cidade = cidadeBeneficiario.substring(0, 15).toUpperCase();
+  const valorStr = valor.toFixed(2);
+  const desc = descricao.substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, '');
+  function pixCampo(id: string, val: string): string {
+    return id + String(val.length).padStart(2, '0') + val;
+  }
+  const mai = pixCampo('00', 'BR.GOV.BCB.PIX') + pixCampo('01', chavePix) + (desc ? pixCampo('02', desc) : '');
+  const payload = pixCampo('00', '01') + pixCampo('26', mai) + pixCampo('52', '0000') + pixCampo('53', '986') + pixCampo('54', valorStr) + pixCampo('58', 'BR') + pixCampo('59', nome) + pixCampo('60', cidade) + pixCampo('62', pixCampo('05', txid));
+  const semCRC = payload + '6304';
+  let crc = 0xFFFF;
+  for (let i = 0; i < semCRC.length; i++) {
+    crc ^= semCRC.charCodeAt(i) << 8;
+    for (let j = 0; j < 8; j++) { crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1); }
+  }
+  return semCRC + (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+}
+
 const EmpreendimentosSection = ({
   developments,
   sales,
@@ -13306,6 +13334,8 @@ const ContratosSection = ({
     initialVenda || null,
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
+  const [pixVenda, setPixVenda] = useState<Venda | null>(null);
+  const [pixQRData, setPixQRData] = useState<string>('');
   const [reciboObservacao, setReciboObservacao] = useState("");
   const [comCarimbo, setComCarimbo] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -15301,6 +15331,25 @@ VENDEDOR: ${vendedorLabel}`;
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   </button>
                   <button
+                    onClick={async () => {
+                      setPixVenda(venda);
+                      const QRCode = (await import('qrcode')).default;
+                      const chavePix = (appSettings as any).chavePix || '';
+                      const nomeBenef = (appSettings as any).nomeBeneficiario || 'VENDEDOR';
+                      const cidadeBenef = (appSettings as any).cidadeBeneficiario || 'SANTAREM';
+                      if (!chavePix) { alert('Configure a chave PIX nas Configurações primeiro!'); return; }
+                      const desc = `Entrada Q${venda.quadra} L${venda.numeroLote} ${venda.empreendimentoNome || ''}`.substring(0, 50);
+                      const payload = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: venda.valorEntrada || 0, descricao: desc });
+                      const qr = await QRCode.toDataURL(payload, { width: 256, margin: 2 });
+                      setPixQRData(qr);
+                    }}
+                    className="px-2.5 py-2 bg-surface-card text-green-600 rounded-xl shadow-sm border border-border-subtle hover:bg-green-600 hover:text-white transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0"
+                    title="Gerar QR Code PIX da entrada"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="flex-shrink-0"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
+                    <span className="truncate">PIX</span>
+                  </button>
+                  <button
                     onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
                     className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
                     title="Excluir"
@@ -15631,6 +15680,52 @@ VENDEDOR: ${vendedorLabel}`;
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal: QR Code PIX */}
+      {pixVenda && pixQRData && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={() => { setPixVenda(null); setPixQRData(''); }}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm p-6" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="font-black text-slate-800 text-lg">QR Code PIX</h3>
+                <p className="text-xs text-slate-500 mt-0.5">Entrada da venda</p>
+              </div>
+              <button onClick={() => { setPixVenda(null); setPixQRData(''); }}
+                className="w-9 h-9 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="bg-green-50 rounded-2xl p-3 mb-4 space-y-1">
+              <div className="flex justify-between"><span className="text-xs text-slate-500">Cliente</span><span className="text-xs font-black text-slate-800">{pixVenda.clienteNome}</span></div>
+              <div className="flex justify-between"><span className="text-xs text-slate-500">Lote</span><span className="text-xs font-black text-slate-800">Q{pixVenda.quadra} L{pixVenda.numeroLote} — {pixVenda.empreendimentoNome}</span></div>
+              <div className="flex justify-between border-t border-green-200 pt-1 mt-1">
+                <span className="text-xs text-slate-500">Valor entrada</span>
+                <span className="text-base font-black text-green-700">R$ {Number(pixVenda.valorEntrada || 0).toLocaleString('pt-BR', {minimumFractionDigits:2})}</span>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-3">
+              <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl">
+                <img src={pixQRData} alt="QR Code PIX" className="w-48 h-48"/>
+              </div>
+              <p className="text-[10px] text-slate-400 text-center">Escaneie com o app do banco</p>
+            </div>
+            <button
+              onClick={() => {
+                const chavePix = (appSettings as any).chavePix || '';
+                const nomeBenef = (appSettings as any).nomeBeneficiario || 'VENDEDOR';
+                const cidadeBenef = (appSettings as any).cidadeBeneficiario || 'SANTAREM';
+                const descPix = ('Entrada Q' + pixVenda!.quadra + ' L' + pixVenda!.numeroLote + ' ' + (pixVenda!.empreendimentoNome || '')).substring(0, 50);
+                const payloadPix = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: pixVenda!.valorEntrada || 0, descricao: descPix });
+                navigator.clipboard.writeText(payloadPix);
+                alert('Código PIX copiado!');
+              }}
+              className="w-full mt-3 py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-black text-sm flex items-center justify-center gap-2 transition-colors">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+              Copiar código PIX (Copia e Cola)
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal: Gerar Recibo */}
       <AnimatePresence>
@@ -17462,6 +17557,38 @@ const ConfigSection = ({
       </div>
 
       <div className="card-premium space-y-8">
+
+        {/* CONFIGURAÇÃO PIX */}
+        <div>
+          <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
+            Configuração PIX
+          </h4>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label className="label">Chave PIX</label>
+              <input className="input" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                value={(formData as any).chavePix || ''}
+                onChange={e => setFormData((p: any) => ({...p, chavePix: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Nome do Beneficiário</label>
+              <input className="input" placeholder="Ex: RAFAEL TAVARES" maxLength={25}
+                value={(formData as any).nomeBeneficiario || ''}
+                onChange={e => setFormData((p: any) => ({...p, nomeBeneficiario: e.target.value.toUpperCase()}))}
+              />
+            </div>
+            <div>
+              <label className="label">Cidade</label>
+              <input className="input" placeholder="Ex: SANTAREM" maxLength={15}
+                value={(formData as any).cidadeBeneficiario || ''}
+                onChange={e => setFormData((p: any) => ({...p, cidadeBeneficiario: e.target.value.toUpperCase()}))}
+              />
+            </div>
+          </div>
+          <p className="text-[10px] text-slate-400 mt-1">Usado para gerar o QR Code PIX na hora da venda com o valor da entrada.</p>
+        </div>
 
         {/* FORÇAR SINCRONIZAÇÃO */}
         <div>
