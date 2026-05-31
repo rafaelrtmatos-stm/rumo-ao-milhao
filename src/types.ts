@@ -156,5 +156,11 @@ export interface AppConfig {
   chavePix?: string;
   nomeBeneficiario?: string;
   cidadeBeneficiario?: string;
+  nomeFantasia?: string;
+  cnpj?: string;
+  banco?: string;
+  agencia?: string;
+  contaBancaria?: string;
+  tipoConta?: string;
   [key: string]: any;
 }

@@ -17588,6 +17588,53 @@ const ConfigSection = ({
             </div>
           </div>
           <p className="text-[10px] text-slate-400 mt-1">Usado para gerar o QR Code PIX na hora da venda com o valor da entrada.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+            <div>
+              <label className="label">Nome Fantasia / Empresa</label>
+              <input className="input" placeholder="Ex: Imobiliária Rafael Tavares"
+                value={(formData as any).nomeFantasia || ''}
+                onChange={e => setFormData((p: any) => ({...p, nomeFantasia: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">CNPJ</label>
+              <input className="input" placeholder="00.000.000/0001-00"
+                value={(formData as any).cnpj || ''}
+                onChange={e => setFormData((p: any) => ({...p, cnpj: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Banco</label>
+              <input className="input" placeholder="Ex: Nubank, Bradesco, Caixa"
+                value={(formData as any).banco || ''}
+                onChange={e => setFormData((p: any) => ({...p, banco: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Agência</label>
+              <input className="input" placeholder="Ex: 0001"
+                value={(formData as any).agencia || ''}
+                onChange={e => setFormData((p: any) => ({...p, agencia: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Conta</label>
+              <input className="input" placeholder="Ex: 12345-6"
+                value={(formData as any).contaBancaria || ''}
+                onChange={e => setFormData((p: any) => ({...p, contaBancaria: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Tipo de Conta</label>
+              <select className="input" value={(formData as any).tipoConta || ''}
+                onChange={e => setFormData((p: any) => ({...p, tipoConta: e.target.value}))}>
+                <option value="">Selecionar</option>
+                <option value="Corrente">Corrente</option>
+                <option value="Poupança">Poupança</option>
+                <option value="Pagamento">Pagamento</option>
+              </select>
+            </div>
+          </div>
         </div>
 
         {/* FORÇAR SINCRONIZAÇÃO */}
@@ -20022,6 +20069,109 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 </div>
               ))}
             </div>
+
+            {/* Card PIX da empresa */}
+            {(appSettings as any).chavePix && (() => {
+              const [pixStaticQR, setPixStaticQR] = React.useState<string>('');
+              const [pixCarregando, setPixCarregando] = React.useState(false);
+              React.useEffect(() => {
+                if (!(appSettings as any).chavePix) return;
+                setPixCarregando(true);
+                import('qrcode').then(({ default: QRCode }) => {
+                  const descPix = ((appSettings as any).nomeFantasia || 'EMPRESA').substring(0, 25);
+                  const payloadPix = gerarPixPayload({
+                    chavePix: (appSettings as any).chavePix,
+                    nomeBeneficiario: (appSettings as any).nomeBeneficiario || descPix,
+                    cidadeBeneficiario: (appSettings as any).cidadeBeneficiario || 'SANTAREM',
+                    valor: 0.01,
+                    descricao: descPix,
+                    txid: '***',
+                  });
+                  QRCode.toDataURL(payloadPix, { width: 220, margin: 2 }).then(qr => {
+                    setPixStaticQR(qr);
+                    setPixCarregando(false);
+                  });
+                });
+              }, [(appSettings as any).chavePix]);
+
+              return (
+                <div className="card-premium overflow-hidden">
+                  {/* Header verde */}
+                  <div className="bg-[#1a4a1a] px-5 py-4 flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center flex-shrink-0">
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
+                    </div>
+                    <div>
+                      <p className="text-white font-black text-sm">{(appSettings as any).nomeFantasia || 'Painel PIX'}</p>
+                      {(appSettings as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(appSettings as any).cnpj}</p>}
+                    </div>
+                  </div>
+
+                  <div className="p-5 flex flex-col sm:flex-row gap-5 items-center">
+                    {/* QR Code */}
+                    <div className="flex-shrink-0">
+                      {pixCarregando ? (
+                        <div className="w-40 h-40 rounded-2xl bg-slate-100 flex items-center justify-center">
+                          <span className="text-xs text-slate-400 animate-pulse">Gerando...</span>
+                        </div>
+                      ) : pixStaticQR ? (
+                        <div className="p-2 border-2 border-slate-200 rounded-2xl bg-white">
+                          <img src={pixStaticQR} alt="QR Code PIX" className="w-36 h-36"/>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    {/* Dados */}
+                    <div className="flex-1 space-y-2 w-full">
+                      {[
+                        { label: 'Chave PIX', value: (appSettings as any).chavePix },
+                        { label: 'Beneficiário', value: (appSettings as any).nomeBeneficiario },
+                        { label: 'Banco', value: (appSettings as any).banco },
+                        { label: 'Agência', value: (appSettings as any).agencia },
+                        { label: 'Conta', value: (appSettings as any).contaBancaria ? `${(appSettings as any).contaBancaria}${(appSettings as any).tipoConta ? ' (' + (appSettings as any).tipoConta + ')' : ''}` : null },
+                      ].filter(i => i.value).map(item => (
+                        <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-slate-100">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.label}</span>
+                          <span className="text-xs font-black text-slate-700">{item.value}</span>
+                        </div>
+                      ))}
+
+                      {/* Botões */}
+                      <div className="flex gap-2 pt-1">
+                        <button
+                          onClick={() => { navigator.clipboard.writeText((appSettings as any).chavePix || ''); alert('Chave PIX copiada!'); }}
+                          className="flex-1 py-2.5 rounded-2xl bg-[#1a4a1a] text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                          Copiar chave
+                        </button>
+                        {navigator.share && (
+                          <button
+                            onClick={() => {
+                              const texto = [
+                                (appSettings as any).nomeFantasia ? '🏢 ' + (appSettings as any).nomeFantasia : '',
+                                (appSettings as any).cnpj ? 'CNPJ: ' + (appSettings as any).cnpj : '',
+                                '',
+                                '💚 PIX',
+                                'Chave: ' + ((appSettings as any).chavePix || ''),
+                                '',
+                                (appSettings as any).banco ? '🏦 ' + (appSettings as any).banco : '',
+                                (appSettings as any).agencia ? 'Agência: ' + (appSettings as any).agencia : '',
+                                (appSettings as any).contaBancaria ? 'Conta: ' + (appSettings as any).contaBancaria + ((appSettings as any).tipoConta ? ' (' + (appSettings as any).tipoConta + ')' : '') : '',
+                              ].filter(Boolean).join(String.fromCharCode(10));
+                              navigator.share({ title: 'Dados PIX', text: texto });
+                            }}
+                            className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-700 text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all hover:bg-slate-200">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                            Compartilhar
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
           </div>
         );
       case "dashboard":
