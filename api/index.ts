@@ -915,6 +915,100 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 });
 
 // --- Contrato ---
+// ── ROTAS PÚBLICAS (SEM AUTH) — RESERVA DE CLIENTES ──
+
+// Dados públicos do empreendimento
+app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
+  try {
+    const empId = req.params.id;
+    const allEmps = await db.query.empreendimentos.findMany();
+    const emp = allEmps.find((e: any) => e.id === empId);
+    if (!emp) return res.status(404).json({ error: 'Empreendimento não encontrado' });
+    const allPontos = await db.query.mapasPontos.findMany();
+    const pontos = allPontos.filter((p: any) => p.empreendimentoId === empId);
+    const allVendas = await db.query.vendas.findMany();
+    const vendas = allVendas.filter((v: any) => v.empreendimentoId === empId && v.status !== 'cancelado');
+    const precos = (emp as any).precos || {};
+    const pontosPublicos = pontos.map((p: any) => {
+      const venda = vendas.find((v: any) => v.quadra === p.quadra && (v.numeroLote === p.lote || v.lote === p.lote));
+      const chave = 'Q' + p.quadra + '-L' + p.lote;
+      const chave2 = p.quadra + '-' + p.lote;
+      const precoLote = precos[chave] || precos[chave2] || null;
+      return {
+        id: p.id, quadra: p.quadra, lote: p.lote || p.numeroLote,
+        xPercent: p.xPercent, yPercent: p.yPercent,
+        status: venda ? (venda.status === 'rascunho' ? 'reservado' : 'vendido') : (p.status || 'disponivel'),
+        preco: precoLote ? (precoLote.valorTotal || 0) : 0,
+        valorEntrada: precoLote ? (precoLote.valorEntrada || 0) : 0,
+        quantidadeParcelas: precoLote ? (precoLote.quantidadeParcelas || 0) : 0,
+        valorParcela: precoLote ? (precoLote.valorParcela || 0) : 0,
+      };
+    });
+    res.json({
+      id: emp.id, nome: (emp as any).nome, cidade: (emp as any).cidade, estado: (emp as any).estado,
+      mapaImagemUrl: (emp as any).mapaImagemUrl,
+      mapaImagemBase64: (emp as any).mapaImagemLeveBase64 || (emp as any).mapaImagemBase64,
+      totalLotes: (emp as any).totalLotes,
+      pontos: pontosPublicos,
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Pré-reserva pública — salva como rascunho
+app.post('/api/publico/pre-reserva', async (req: any, res: any) => {
+  try {
+    const body = req.body;
+    if (!body.empreendimentoId || !body.quadra || !body.numeroLote || !body.clienteNome)
+      return res.status(400).json({ error: 'Dados obrigatórios ausentes' });
+    const allClientes = await db.query.clientes.findMany();
+    let clienteExist = body.clienteCpf ? allClientes.find((c: any) => c.cpf === body.clienteCpf) : null;
+    let clienteId = clienteExist ? clienteExist.id : String(Date.now());
+    if (!clienteExist) {
+      await db.insert(schema.clientes).values({
+        id: clienteId, nome: body.clienteNome, cpf: body.clienteCpf || '',
+        telefone1: body.clienteTelefone || '', telefone2: body.clienteWhatsapp || '',
+        dataNascimento: body.clienteDataNascimento || '', endereco: body.clienteEndereco || '',
+        dataCadastro: new Date().toISOString(),
+      } as any).onConflictDoNothing();
+    }
+    const vendaId = String(Date.now() + 1);
+    await db.insert(schema.vendas).values({
+      id: vendaId, clienteId, empreendimentoId: body.empreendimentoId,
+      empreendimentoNome: body.empreendimentoNome || '', clienteNome: body.clienteNome,
+      quadra: body.quadra, numeroLote: body.numeroLote,
+      valorLote: body.valorLote || 0, valorEntrada: body.valorEntrada || 0,
+      quantidadeParcelas: body.quantidadeParcelas || 0, valorParcela: body.valorParcela || 0,
+      dataVencimento: '', dataVenda: new Date().toISOString().split('T')[0],
+      status: 'rascunho', vendedor: '', origemReserva: 'site_publico',
+      documentos: JSON.stringify(body.documentos || []),
+      createdAt: new Date().toISOString(),
+    } as any).onConflictDoNothing();
+    console.log('[Pre-reserva] ' + body.clienteNome + ' Q' + body.quadra + 'L' + body.numeroLote);
+    res.json({ ok: true, vendaId, clienteId });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Upload público de documento
+app.post('/api/publico/upload-doc', async (req: any, res: any) => {
+  try {
+    const multer = (await import('multer')).default;
+    const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } }).single('arquivo');
+    upload(req, res, async (err: any) => {
+      if (err) return res.status(400).json({ error: err.message });
+      if (!req.file) return res.status(400).json({ error: 'Nenhum arquivo' });
+      const { createClient } = await import('@supabase/supabase-js');
+      const sb = createClient(process.env.VITE_SUPABASE_URL!, process.env.VITE_SUPABASE_ANON_KEY!);
+      const nomeArq = req.body.nomeArquivo || req.file.originalname;
+      const clienteNome = (req.body.clienteNome || 'cliente').replace(/[^a-zA-Z0-9]/g, '_');
+      const path = 'clientes/publico/' + clienteNome + '/' + Date.now() + '_' + nomeArq;
+      const { error } = await sb.storage.from('documentos').upload(path, req.file.buffer, { contentType: req.file.mimetype, upsert: true });
+      if (error) return res.status(500).json({ error: error.message });
+      const { data: u } = sb.storage.from('documentos').getPublicUrl(path);
+      res.json({ ok: true, url: u.publicUrl, nome: nomeArq });
+    });
+  } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── API EXTERNA DE VENDAS ──
 
 // Chave API para acesso externo — definida na variável de ambiente VENDAS_API_KEY

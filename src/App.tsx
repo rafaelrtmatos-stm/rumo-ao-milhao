@@ -105,6 +105,7 @@ import MapaGlobalDashboard, { MapaGlobalHandle } from "./components/MapaGlobalDa
 import PickLocationMap from "./components/PickLocationMap";
 import { uploadMapaImagem, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
+import ReservaPublica from "./components/ReservaPublica";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
 
@@ -6961,32 +6962,60 @@ const LotDashboard = ({
                   </p>
                 )}
 
-                {/* Grid de cards individuais por lote */}
-                {comPreco.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2">
-                    {comPreco.map((item: any, i: number) => (
-                      <div key={i} className="bg-white rounded-2xl border p-3 shadow-sm relative"
-                        style={{borderColor: item.cfg.border}}>
-                        {/* Bolinha de preço */}
-                        <div className="absolute top-3 right-3 w-2.5 h-2.5 rounded-full shadow-sm"
-                          style={{background: item.corBolinha}}/>
-                        <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Q{item.q} · Lote</span>
-                        <p className="text-2xl font-black leading-none mb-2" style={{color: item.cfg.color}}>
-                          {String(item.l).padStart(2,'0')}
-                        </p>
-                        <div className="text-[10px] font-bold text-slate-500 space-y-0.5">
-                          {item.entrada > 0 && <p>E: R$ {Number(item.entrada).toLocaleString('pt-BR')}</p>}
-                          {item.parcelas > 0 && <p style={{color: item.corBolinha}}>{item.parcelas}× R$ {Number(item.parcela).toLocaleString('pt-BR')}</p>}
-                          <p className="font-black text-slate-800 border-t border-slate-100 pt-1">
-                            R$ {Number(item.preco).toLocaleString('pt-BR')}
-                          </p>
+                {/* Grid 2×2 de faixas de preço — sem listar lotes */}
+                {faixasPrecoGlobal.length > 0 && (
+                  <div className="grid grid-cols-2 gap-3">
+                    {faixasPrecoGlobal.map((faixa: any, fi: number) => {
+                      const lotsFaixa = comPreco.filter((x: any) => x.preco === faixa.preco);
+                      const entradaFaixa = lotsFaixa[0]?.entrada || 0;
+                      const parcelasFaixa = lotsFaixa[0]?.parcelas || 0;
+                      const valorParcela = parcelasFaixa > 0 ? Math.round((faixa.preco - entradaFaixa) / parcelasFaixa) : 0;
+                      const cor = faixa.color || '#3b82f6';
+                      return (
+                        <div key={fi} className="bg-white rounded-2xl border-2 p-4 shadow-sm space-y-2.5 relative overflow-hidden"
+                          style={{borderColor: cor + '55'}}>
+                          {/* Barra de cor no topo */}
+                          <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{background: cor}}/>
+                          {/* Valor total */}
+                          <div>
+                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor total</p>
+                            <p className="text-xl font-black leading-none mt-0.5" style={{color: cor}}>
+                              R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                            </p>
+                          </div>
+                          <div className="border-t border-slate-100 pt-2 space-y-1.5">
+                            {entradaFaixa > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-slate-400 font-bold">Entrada</span>
+                                <span className="text-[11px] font-black text-slate-700">R$ {Number(entradaFaixa).toLocaleString('pt-BR')}</span>
+                              </div>
+                            )}
+                            {parcelasFaixa > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-slate-400 font-bold">Parcelas</span>
+                                <span className="text-[11px] font-black" style={{color: cor}}>{parcelasFaixa}×</span>
+                              </div>
+                            )}
+                            {valorParcela > 0 && (
+                              <div className="flex justify-between items-center">
+                                <span className="text-[10px] text-slate-400 font-bold">Vl. parcela</span>
+                                <span className="text-[11px] font-black text-slate-700">R$ {Number(valorParcela).toLocaleString('pt-BR')}</span>
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1.5 pt-1">
+                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: cor}}/>
+                            <span className="text-[9px] font-bold text-slate-400">{lotsFaixa.length} lote{lotsFaixa.length !== 1 ? 's' : ''}</span>
+                          </div>
                         </div>
-                        <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full mt-1.5 inline-block uppercase"
-                          style={{background: item.cfg.bg, color: item.cfg.color}}>
-                          {item.status}
-                        </span>
-                      </div>
-                    ))}
+                      );
+                    })}
+                  </div>
+                )}
+                {faixasPrecoGlobal.length === 0 && comPreco.length === 0 && (
+                  <div className="text-center py-6">
+                    <p className="text-slate-400 text-sm font-bold">Sem preços definidos</p>
+                    <p className="text-slate-300 text-xs mt-1">Use Gerenciador → Preços para configurar</p>
                   </div>
                 )}
 
@@ -10116,12 +10145,19 @@ const EmpreendimentosSection = ({
                 const temLotes = Object.keys(lotRegDev.lotesInfo || {}).length > 0 || Object.keys(lotRegDev.lotesPorQuadra || {}).length > 0;
                 const interpretarScript = (script: string) => {
                   const lotes: string[] = [];
-                  const regex = /Q(\w+):([\d,]+)\./g;
+                  // Regex robusto: ponto final opcional, aceita espaço após lista
+                  const regex = /Q(\w+):([\ \d,]+?)(?:\.|\s+Q|\s+VALOR|\s+$)/g;
                   let matchResult;
-                  while ((matchResult = regex.exec(script)) !== null) {
-                    const quadraNum = matchResult[1];
-                    const nums = matchResult[2].split(",").filter(Boolean);
-                    nums.forEach(function(nLote) { lotes.push('Q' + quadraNum + '·L' + nLote.trim()); });
+                  // Normalizar: garantir ponto no fim de cada grupo Q para o regex funcionar
+                  const scriptNorm = script.replace(/Q(\w+):([\d,\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
+                    function(match: string) { return match.trim().endsWith('.') ? match : match.trim() + '.'; }
+                  );
+                  const regex2 = /Q(\w+):([\d,\s]+?)\./g;
+                  let m2;
+                  while ((m2 = regex2.exec(scriptNorm)) !== null) {
+                    const quadraNum = m2[1];
+                    const nums = m2[2].split(',').map(function(n: string) { return n.trim(); }).filter(Boolean);
+                    nums.forEach(function(nLote: string) { lotes.push('Q' + quadraNum + '·L' + nLote); });
                   }
                   return lotes;
                 };
@@ -10155,7 +10191,7 @@ const EmpreendimentosSection = ({
                     // Interpretar resposta do ChatGPT
                     const regras: typeof precosRegras = [];
                     let id = 1;
-                    const regraRegex = /REGRA\d+:\s*([^VALOR]+)VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/gi;
+                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)\s+ENTRADA:([\d.]+)\s+PARCELAS:(\d+)/gi;
                     let m;
                     while ((m = regraRegex.exec(txt)) !== null) {
                       regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
@@ -10182,7 +10218,7 @@ const EmpreendimentosSection = ({
                       info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].parcelas = parseInt(r.parcelas) || 0;
-                      aplicados.push(`Q${q}·L${l}`);
+                      aplicados.push('Q' + qRaw + '·L' + l);
                     });
                   });
                   // Sem PADRAO — lotes sem regra não recebem preço
@@ -19362,6 +19398,9 @@ const HistoricoExclusoesSection = ({
 // --- Main App ---
 
 export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
+  // Página pública de reserva — sem login necessário
+  const _reservaId = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('reserva');
+  if (_reservaId) return <ReservaPublica empreendimentoId={_reservaId} />;
   // .ready é adicionado pelo LoadingScreen ao montar — evita FOUC
   const [section, setSection] = useState<Section>(() => {
     try {
