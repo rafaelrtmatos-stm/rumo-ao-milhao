@@ -15267,44 +15267,45 @@ VENDEDOR: ${vendedorLabel}`;
               <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors text-right font-display font-bold text-primary-main">
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </td>
-              <td className="py-4 px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
-                <div className="flex justify-center gap-1.5">
+              <td className="py-4 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
+                <div className="grid grid-cols-2 sm:flex sm:justify-center gap-1.5">
                   <button
                     onClick={() => handleOpenGerarContratoForVenda(venda)}
-                    className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center gap-1.5 text-xs font-bold ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                    className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center justify-center gap-1.5 text-xs font-bold col-span-2 sm:col-span-1 ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
                     title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
-                    {venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                    <span className="hidden sm:inline">{venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}</span>
+                    <span className="sm:hidden">{venda.contratoGerado ? "Ver" : "Gerar"}</span>
                   </button>
                   <button
                     onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
-                    className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1.5 text-xs font-bold"
+                    className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1.5 text-xs font-bold col-span-2 sm:col-span-1"
                     title="Gerar recibo"
                   >
-                    <FileCheck size={15} />
-                    Recibo
+                    <FileCheck size={14} />
+                    <span>Recibo</span>
                   </button>
                   <button
                     onClick={() => copyResumoVenda(venda)}
-                    className="p-2.5 bg-surface-card text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
+                    className="p-2.5 bg-surface-card text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all flex items-center justify-center"
                     title="Copiar resumo"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
                   </button>
                   <button
                     onClick={() => handleEditarContrato(venda)}
-                    className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                    className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center"
                     title="Editar venda"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   </button>
                   <button
                     onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                    className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                    className="p-2.5 bg-surface-card text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all flex items-center justify-center"
                     title="Excluir"
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                   </button>
                 </div>
               </td>
