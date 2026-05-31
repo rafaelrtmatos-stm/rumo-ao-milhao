@@ -16877,38 +16877,146 @@ const AniversariosSection = ({
                       ))}
                     </div>
                   )}
-                  {/* Upload de novo documento */}
-                  <label className="flex items-center gap-2 p-3 bg-green-50 border-2 border-dashed border-green-200 rounded-2xl cursor-pointer hover:bg-green-100 transition-colors">
-                    <div className="w-8 h-8 rounded-xl bg-green-100 flex items-center justify-center flex-shrink-0">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    </div>
-                    <span className="text-xs font-bold text-green-700">Anexar documento (RG, CPF, comprovante...)</span>
-                    <input type="file" accept="image/*,application/pdf" className="hidden"
-                      onChange={async (e) => {
-                        const file = e.target.files?.[0];
-                        if (!file || !selectedClient) return;
+                  {/* Upload inteligente — CNH (1 foto) ou RG (frente + verso) */}
+                  {(() => {
+                    // Estado local via atributos no window para evitar re-render do modal
+                    const ClienteDocUpload = () => {
+                      const [etapa, setEtapa] = React.useState<'escolher'|'cnh'|'rg_frente'|'rg_verso_pergunta'|'rg_verso'|'salvando'>('escolher');
+                      const [tipo, setTipo] = React.useState<'CNH'|'RG'|null>(null);
+                      const [frente, setFrente] = React.useState<File|null>(null);
+                      const [verso, setVerso] = React.useState<File|null>(null);
+
+                      const uploadArquivo = async (arquivo: File, sufixo: string) => {
+                        const { createClient } = await import('@supabase/supabase-js');
+                        const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+                        const ext = arquivo.name.split('.').pop() || 'jpg';
+                        const nomeBase = (selectedClient!.nome || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+                        const nomeArquivo = `${nomeBase}_${sufixo}.${ext}`;
+                        const path = `clientes/${selectedClient!.id}/${nomeArquivo}`;
+                        const { error } = await sb.storage.from('documentos').upload(path, arquivo, { upsert: true, contentType: arquivo.type });
+                        if (error) throw new Error(error.message);
+                        const { data: u } = sb.storage.from('documentos').getPublicUrl(path);
+                        return { nome: nomeArquivo, url: u.publicUrl, data: new Date().toISOString(), tipo: sufixo };
+                      };
+
+                      const salvar = async (arquivos: {arquivo: File; sufixo: string}[]) => {
+                        setEtapa('salvando');
                         try {
-                          const { createClient } = await import('@supabase/supabase-js');
-                          const sb = createClient(
-                            import.meta.env.VITE_SUPABASE_URL,
-                            import.meta.env.VITE_SUPABASE_ANON_KEY
-                          );
-                          const ext = file.name.split('.').pop();
-                          const path = `clientes/${selectedClient.id}/${Date.now()}.${ext}`;
-                          const { error } = await sb.storage.from('documentos').upload(path, file, { upsert: true });
-                          if (error) throw error;
-                          const { data: urlData } = sb.storage.from('documentos').getPublicUrl(path);
-                          const docNovo = { nome: file.name, url: urlData.publicUrl, data: new Date().toISOString() };
+                          const novos = await Promise.all(arquivos.map(a => uploadArquivo(a.arquivo, a.sufixo)));
                           const docsAtuais = (selectedClient as any).documentos || [];
-                          const clienteAtualizado = { ...selectedClient, documentos: [...docsAtuais, docNovo] };
-                          onUpdateCliente(clienteAtualizado);
-                          setSelectedClient(clienteAtualizado as any);
-                        } catch (err: any) {
-                          alert('Erro ao enviar documento: ' + err.message);
-                        }
-                      }}
-                    />
-                  </label>
+                          const cli = { ...selectedClient, documentos: [...docsAtuais, ...novos] };
+                          onUpdateCliente(cli as any);
+                          setSelectedClient(cli as any);
+                          setEtapa('escolher'); setFrente(null); setVerso(null); setTipo(null);
+                        } catch (err: any) { alert('Erro: ' + err.message); setEtapa('escolher'); }
+                      };
+
+                      if (etapa === 'escolher') return (
+                        <div className="flex gap-2">
+                          <button onClick={() => { setTipo('CNH'); setEtapa('cnh'); }}
+                            className="flex-1 flex items-center justify-center gap-2 p-3 bg-blue-50 border-2 border-dashed border-blue-200 rounded-2xl hover:bg-blue-100 transition-colors cursor-pointer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M16 10h2M16 14h2M6 10h.01M8 10a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"/></svg>
+                            <span className="text-xs font-black text-blue-700">Anexar CNH</span>
+                          </button>
+                          <button onClick={() => { setTipo('RG'); setEtapa('rg_frente'); }}
+                            className="flex-1 flex items-center justify-center gap-2 p-3 bg-purple-50 border-2 border-dashed border-purple-200 rounded-2xl hover:bg-purple-100 transition-colors cursor-pointer">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.5"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M8 15h8M8 11h4"/></svg>
+                            <span className="text-xs font-black text-purple-700">Anexar RG</span>
+                          </button>
+                        </div>
+                      );
+
+                      if (etapa === 'cnh') return (
+                        <div className="p-4 bg-blue-50 rounded-2xl border-2 border-blue-200 space-y-3">
+                          <p className="text-xs font-black text-blue-800">📎 CNH — selecione a foto ou PDF</p>
+                          <label className="flex items-center gap-2 p-3 bg-white rounded-xl border border-blue-200 cursor-pointer hover:bg-blue-50 transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span className="text-xs font-bold text-blue-700">{frente ? frente.name : 'Selecionar arquivo...'}</span>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setFrente(e.target.files?.[0] || null)} />
+                          </label>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEtapa('escolher'); setFrente(null); }}
+                              className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">Cancelar</button>
+                            <button disabled={!frente} onClick={() => frente && salvar([{arquivo: frente, sufixo: 'CNH'}])}
+                              className="flex-1 py-2 rounded-xl bg-blue-600 text-white text-xs font-black disabled:opacity-40 hover:bg-blue-700 transition-colors">
+                              {etapa === 'salvando' ? 'Salvando...' : 'Salvar CNH'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+
+                      if (etapa === 'rg_frente') return (
+                        <div className="p-4 bg-purple-50 rounded-2xl border-2 border-purple-200 space-y-3">
+                          <p className="text-xs font-black text-purple-800">📎 RG — Frente do documento</p>
+                          <label className="flex items-center gap-2 p-3 bg-white rounded-xl border border-purple-200 cursor-pointer hover:bg-purple-50 transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span className="text-xs font-bold text-purple-700">{frente ? frente.name : 'Selecionar frente...'}</span>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setFrente(e.target.files?.[0] || null)} />
+                          </label>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEtapa('escolher'); setFrente(null); }}
+                              className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">Cancelar</button>
+                            <button disabled={!frente} onClick={() => setEtapa('rg_verso_pergunta')}
+                              className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-xs font-black disabled:opacity-40 hover:bg-purple-700 transition-colors">Próximo →</button>
+                          </div>
+                        </div>
+                      );
+
+                      if (etapa === 'rg_verso_pergunta') return (
+                        <div className="p-4 bg-purple-50 rounded-2xl border-2 border-purple-200 space-y-3">
+                          <p className="text-xs font-black text-purple-800">O arquivo selecionado já tem frente e verso juntos?</p>
+                          <div className="flex gap-2">
+                            <button onClick={() => frente && salvar([{arquivo: frente, sufixo: 'RG_FrenteVerso'}])}
+                              className="flex-1 py-3 rounded-xl bg-purple-600 text-white text-xs font-black hover:bg-purple-700 transition-colors">
+                              ✅ Sim, já tem os dois
+                            </button>
+                            <button onClick={() => setEtapa('rg_verso')}
+                              className="flex-1 py-3 rounded-xl bg-white border-2 border-purple-300 text-purple-700 text-xs font-black hover:bg-purple-50 transition-colors">
+                              ❌ Não, preciso anexar o verso
+                            </button>
+                          </div>
+                        </div>
+                      );
+
+                      if (etapa === 'rg_verso') return (
+                        <div className="p-4 bg-purple-50 rounded-2xl border-2 border-purple-200 space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="w-2 h-2 rounded-full bg-purple-400"/>
+                            <p className="text-[10px] font-bold text-purple-600">Frente: {frente?.name}</p>
+                          </div>
+                          <p className="text-xs font-black text-purple-800">📎 RG — Verso do documento</p>
+                          <label className="flex items-center gap-2 p-3 bg-white rounded-xl border border-purple-200 cursor-pointer hover:bg-purple-50 transition-colors">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c3aed" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            <span className="text-xs font-bold text-purple-700">{verso ? verso.name : 'Selecionar verso...'}</span>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setVerso(e.target.files?.[0] || null)} />
+                          </label>
+                          <div className="flex gap-2">
+                            <button onClick={() => { setEtapa('rg_frente'); setVerso(null); }}
+                              className="flex-1 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-500 hover:bg-slate-50">← Voltar</button>
+                            <button disabled={!verso} onClick={() => frente && verso && salvar([
+                                {arquivo: frente, sufixo: 'RG_Frente'},
+                                {arquivo: verso, sufixo: 'RG_Verso'}
+                              ])}
+                              className="flex-1 py-2 rounded-xl bg-purple-600 text-white text-xs font-black disabled:opacity-40 hover:bg-purple-700 transition-colors">
+                              {etapa === 'salvando' ? 'Salvando...' : '💾 Salvar RG'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+
+                      if (etapa === 'salvando') return (
+                        <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 text-center">
+                          <p className="text-xs font-bold text-slate-500 animate-pulse">⏳ Enviando para o Supabase...</p>
+                        </div>
+                      );
+
+                      return null;
+                    };
+                    return <ClienteDocUpload />;
+                  })()}
                 </div>
 
                 {/* Purchases — clicáveis, sem badge de status */}
