@@ -1509,9 +1509,11 @@ const Sidebar = ({
   const mainMenuItems = orderedItems;
 
   const configItem = { id: "config", label: "Configurações", icon: Settings };
-  const showConfig = isAdmin || userPermissions?.["config"] !== false;
+  // temAcesso: leitor ou editor têm acesso; false = sem acesso
+  const temAcessoPerm = (sec: string) => isAdmin || (userPermissions?.[sec] && userPermissions[sec] !== false);
+  const showConfig = temAcessoPerm('config');
   const historicoItem = { id: "historico", label: "Lixeira", icon: Trash2 };
-  const showHistorico = isAdmin || userPermissions?.["historico"] !== false;
+  const showHistorico = isAdmin || temAcessoPerm('historico');
 
   return (
     <>
@@ -18582,7 +18584,7 @@ const ProprietariosSection = ({
 const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; userId?: string; userEmail?: string }) => {
   const SECTION_LABELS: Record<string, string> = {
     dashboard: "Dashboard",
-    vendas: "Nova Venda",
+    vendas: "Vendas",
     empreendimentos: "Empreendimentos",
     proprietarios: "Proprietários",
     contratos: "Contratos",
@@ -18591,7 +18593,21 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
     calculadora: "Calculadora",
     config: "Configurações",
     usuarios: "Usuários",
-    editar_mapas: "Editar mapas",
+    editar_mapas: "Editar Mapas",
+  };
+
+  // Seções que têm diferença entre leitor (ver) e editor (editar)
+  const SECTION_TEM_EDITOR: Record<string, boolean> = {
+    dashboard: false, // sempre só leitura
+    vendas: true,     // leitor: ver vendas | editor: criar/editar venda
+    empreendimentos: true,
+    proprietarios: true,
+    contratos: true,
+    clientes: true,
+    aniversarios: false,
+    calculadora: false,
+    config: true,
+    editar_mapas: true,
   };
 
   const ALL_SECTIONS_LIST = ["dashboard","vendas","empreendimentos","proprietarios","contratos","clientes","aniversarios","calculadora","config","editar_mapas"];
@@ -18662,7 +18678,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [editingPermUser, setEditingPermUser] = useState<string | null>(null);
-  const [pendingPerms, setPendingPerms] = useState<Record<string, boolean>>({});
+  const [pendingPerms, setPendingPerms] = useState<Record<string, any>>({});
   const [savingPerms, setSavingPerms] = useState(false);
   const [editingProfileUser, setEditingProfileUser] = useState<string | null>(null);
   const [editProfileData, setEditProfileData] = useState<{ nome: string; creci: string; telefone: string; assinaturaUrl: string }>({ nome: "", creci: "", telefone: "", assinaturaUrl: "" });
@@ -19126,24 +19142,51 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                       className="overflow-hidden"
                     >
                       <div className="p-5 border-t border-border-subtle bg-white space-y-4">
-                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">
-                          Seções que <span className="text-primary-main">{u.email.split("@")[0]}</span> pode acessar:
-                        </p>
-                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                        <div className="flex items-center gap-2">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex-1">
+                            Permissões de <span className="text-primary-main">{u.profile?.nome || u.email.split("@")[0]}</span>
+                          </p>
+                          <span className="text-[9px] bg-green-100 text-green-700 px-2 py-1 rounded-lg font-black">LEITOR = só ver · EDITOR = editar</span>
+                        </div>
+                        <div className="space-y-2">
                           {ALL_SECTIONS_LIST.map((sec) => {
-                            const enabled = pendingPerms[sec] ?? false;
+                            const val = pendingPerms[sec]; // false | 'leitor' | 'editor'
+                            const ativo = val && val !== false;
+                            const temEditor = SECTION_TEM_EDITOR[sec];
                             return (
-                              <button
-                                key={sec}
-                                type="button"
-                                onClick={() => setPendingPerms(prev => ({ ...prev, [sec]: !enabled }))}
-                                className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all ${enabled ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300"}`}
-                              >
-                                <div className={`w-4 h-4 rounded flex items-center justify-center flex-none transition-all ${enabled ? "bg-primary-main text-white" : "border-2 border-slate-300"}`}>
-                                  {enabled && <Check size={10} />}
-                                </div>
-                                {SECTION_LABELS[sec]}
-                              </button>
+                              <div key={sec} className={`rounded-2xl border-2 transition-all overflow-hidden ${ativo ? 'border-primary-main/30 bg-primary-main/5' : 'border-slate-100 bg-slate-50'}`}>
+                                {/* Toggle principal */}
+                                <label className="flex items-center gap-3 px-4 py-3 cursor-pointer">
+                                  <div
+                                    className={`w-10 h-6 rounded-full transition-all flex items-center px-0.5 ${ativo ? 'bg-primary-main' : 'bg-slate-300'}`}
+                                    onClick={() => setPendingPerms((prev: any) => ({
+                                      ...prev,
+                                      [sec]: ativo ? false : (temEditor ? 'leitor' : 'leitor')
+                                    }))}
+                                  >
+                                    <div className={`w-5 h-5 bg-white rounded-full shadow transition-transform ${ativo ? 'translate-x-4' : 'translate-x-0'}`}/>
+                                  </div>
+                                  <span className={`text-sm font-bold flex-1 ${ativo ? 'text-slate-800' : 'text-slate-400'}`}>{SECTION_LABELS[sec]}</span>
+                                  {ativo && !temEditor && <span className="text-[10px] font-black text-blue-600 bg-blue-50 px-2 py-0.5 rounded-lg">LEITOR</span>}
+                                </label>
+                                {/* Submenu Leitor/Editor */}
+                                {ativo && temEditor && (
+                                  <div className="px-4 pb-3 flex gap-2">
+                                    <button
+                                      onClick={() => setPendingPerms((prev: any) => ({...prev, [sec]: 'leitor'}))}
+                                      className={`flex-1 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${val === 'leitor' ? 'bg-blue-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-blue-300'}`}>
+                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                      Leitor
+                                    </button>
+                                    <button
+                                      onClick={() => setPendingPerms((prev: any) => ({...prev, [sec]: 'editor'}))}
+                                      className={`flex-1 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center justify-center gap-1.5 ${val === 'editor' ? 'bg-green-600 text-white' : 'bg-white border border-slate-200 text-slate-500 hover:border-green-300'}`}>
+                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                                      Editor
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
