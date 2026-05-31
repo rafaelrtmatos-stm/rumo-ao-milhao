@@ -10071,10 +10071,11 @@ const EmpreendimentosSection = ({
                 const interpretarScript = (script: string) => {
                   const lotes: string[] = [];
                   const regex = /Q(\w+):([\d,]+)\./g;
-                  let m;
-                  while ((m = regex.exec(script)) !== null) {
-                    const q = m[1], nums = m[2].split(",").filter(Boolean);
-                    nums.forEach(n => lotes.push(`Q${q}·L${n.trim()}`));
+                  let matchResult;
+                  while ((matchResult = regex.exec(script)) !== null) {
+                    const quadraNum = matchResult[1];
+                    const nums = matchResult[2].split(",").filter(Boolean);
+                    nums.forEach(function(nLote) { lotes.push('Q' + quadraNum + '·L' + nLote.trim()); });
                   }
                   return lotes;
                 };
