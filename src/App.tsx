@@ -16485,8 +16485,9 @@ const ClientesSection = ({
                   : "—";
                 return (
                   <tr key={cliente.id} className="group">
-                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors">
-                      <div className="font-bold text-slate-800 text-xs sm:text-sm truncate max-w-[80px] sm:max-w-none">
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors cursor-pointer"
+                      onClick={() => setSelectedClient(cliente)}>
+                      <div className="font-bold text-primary-main hover:underline text-xs sm:text-sm truncate max-w-[80px] sm:max-w-none">
                         {cliente.nome}
                       </div>
                       <div className="text-[7px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-tighter sm:tracking-normal">
