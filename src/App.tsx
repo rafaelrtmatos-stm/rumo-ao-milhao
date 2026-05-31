@@ -6934,33 +6934,7 @@ const LotDashboard = ({
 
             return (
               <div className="flex-1 overflow-y-auto flex flex-col gap-3 px-3 pt-2 pb-3" style={{WebkitOverflowScrolling:'touch'}}>
-                {/* Legenda de faixas */}
-                {faixasPrecoGlobal.length > 0 && (
-                  <div className="flex flex-wrap gap-2 bg-white p-2.5 rounded-xl border border-slate-200 shadow-sm">
-                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider w-full">Planos de preço:</span>
-                    {faixasPrecoGlobal.map((f, fi) => {
-                      const lts = comPreco.filter(x => x.preco === f.preco);
-                      const ent = lts[0]?.entrada || 0;
-                      const par = lts[0]?.parcelas || 0;
-                      const pval = par > 0 ? Math.round((f.preco - ent) / par) : 0;
-                      const quadras = Array.from(new Set(lts.map((x:any) => x.q))).sort();
-                      return (
-                        <div key={fi} className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-[9px] font-black"
-                          style={{background: f.color + '18', color: f.color, border: '1px solid ' + f.color + '44'}}>
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: f.color}}/>
-                          <span>R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
-                          {par > 0 && <span className="opacity-70">· {par}×R${pval}</span>}
-                          {quadras.map((qq:any) => <span key={qq} className="opacity-60">Q{qq}</span>)}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {faixasPrecoGlobal.length === 0 && (
-                  <p className="text-[10px] text-amber-600 font-bold text-center bg-amber-50 rounded-xl p-3 border border-amber-200">
-                    Sem preços definidos. Use Gerenciador → Preços.
-                  </p>
-                )}
+
 
                 {/* Grid 2×2 de faixas de preço — sem listar lotes */}
                 {faixasPrecoGlobal.length > 0 && (
