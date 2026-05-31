@@ -15117,7 +15117,19 @@ VENDEDOR: ${vendedorLabel}`;
       </AnimatePresence>
 
       {(() => {
-        const semContrato = filteredSales.filter((v) => !v.contratoGerado);
+        // Vendas sem contrato: apenas rascunhos ou vendas sem dados mínimos (possíveis fantasmas)
+        // Vendas reais sem contrato ainda são mostradas separadas em comContrato abaixo
+        const semContrato = filteredSales.filter((v) => 
+          !v.contratoGerado && (
+            v.status === "rascunho" ||
+            !v.clienteNome ||
+            !v.quadra ||
+            !v.numeroLote
+          )
+        );
+        const vendasSemContratoReais = filteredSales.filter((v) =>
+          !v.contratoGerado && v.status !== "rascunho" && v.clienteNome && v.quadra && v.numeroLote
+        );
         const comContrato = filteredSales.filter((v) => v.contratoGerado);
 
         const renderMobileCard = (venda: Venda) => {
@@ -15351,7 +15363,7 @@ VENDEDOR: ${vendedorLabel}`;
                       <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full text-xs font-black">{semContrato.length}</span>
                     </div>
                     <p className="text-xs text-amber-700 mt-0.5">
-                      Estas vendas não têm contrato gerado. Podem ser simulações ou testes. Estão contabilizando nos lotes como vendidos.
+                      Rascunhos ou registros incompletos (sem nome/quadra/lote). Estão contabilizando nos lotes como vendidos mas não têm dados válidos.
                     </p>
                   </div>
                   {/* Excluir todas */}
@@ -15394,7 +15406,7 @@ VENDEDOR: ${vendedorLabel}`;
                             () => onDeleteVenda(v.id)
                           )}
                           className="flex-shrink-0 w-8 h-8 rounded-xl bg-red-50 text-red-500 hover:bg-red-100 flex items-center justify-center active:scale-90 transition-all border border-red-200"
-                          title="Excluir venda fantasma">
+                          title="Excluir venda rascunho">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
                         </button>
                       </div>
