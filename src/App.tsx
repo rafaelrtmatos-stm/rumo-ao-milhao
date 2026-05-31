@@ -15268,23 +15268,22 @@ VENDEDOR: ${vendedorLabel}`;
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </td>
               <td className="py-4 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
-                <div className="grid grid-cols-2 sm:flex sm:justify-center gap-1.5">
+                <div className="flex justify-center gap-1.5 flex-wrap">
                   <button
                     onClick={() => handleOpenGerarContratoForVenda(venda)}
-                    className={`p-2.5 rounded-xl shadow-sm border transition-all flex items-center justify-center gap-1.5 text-xs font-bold col-span-2 sm:col-span-1 ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                    className={`px-2.5 py-2 rounded-xl shadow-sm border transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0 ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
                     title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
-                    <span className="hidden sm:inline">{venda.contratoGerado ? "Ver Contrato" : "Gerar Contrato"}</span>
-                    <span className="sm:hidden">{venda.contratoGerado ? "Ver" : "Gerar"}</span>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                    <span className="truncate">{venda.contratoGerado ? "Ver" : "Gerar"}</span>
                   </button>
                   <button
                     onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
-                    className="p-2.5 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1.5 text-xs font-bold col-span-2 sm:col-span-1"
+                    className="px-2.5 py-2 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0"
                     title="Gerar recibo"
                   >
-                    <FileCheck size={14} />
-                    <span>Recibo</span>
+                    <FileCheck size={13} className="flex-shrink-0" />
+                    <span className="truncate">Recibo</span>
                   </button>
                   <button
                     onClick={() => copyResumoVenda(venda)}
