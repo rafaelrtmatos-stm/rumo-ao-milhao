@@ -10925,6 +10925,7 @@ const VendasSection = ({
   onUpdateVendaFull,
   onMergeClients,
   isOnline = true,
+  appConfig = {},
 }: {
   developments: Empreendimento[];
   sales?: Venda[];
@@ -10938,6 +10939,7 @@ const VendasSection = ({
   editingEntry?: { venda: Venda; cliente: Cliente | null } | null;
   onUpdateVendaFull?: (v: Venda, c: Cliente) => void;
   onMergeClients?: (masterId: string, duplicateIds: string[]) => void;
+  appConfig?: any;
   isOnline?: boolean;
 }) => {
   const [clientData, setClientData] = useState<Partial<Cliente>>({
@@ -15584,37 +15586,37 @@ VENDEDOR: ${vendedorLabel}`;
               <p className="font-display font-bold text-primary-main text-lg">
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </p>
-              <div className="grid grid-cols-5 gap-2">
+              {/* Linha 1: Contrato, Recibo, Copiar */}
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => handleOpenGerarContratoForVenda(venda)}
-                  title="Ver contrato"
-                  className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${venda.contratoGerado ? "bg-white text-primary-main border-border-subtle hover:bg-primary-main hover:text-white" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                  className={`flex flex-col items-center gap-1 p-3 rounded-xl shadow-sm border transition-all ${venda.contratoGerado ? "bg-white text-primary-main border-border-subtle" : "bg-primary-main/10 text-primary-main border-primary-main/20"}`}
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
                   <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
                 </button>
                 <button
                   onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
-                  title="Gerar recibo"
-                  className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle transition-all"
                 >
-                  <FileCheck size={20} />
+                  <FileCheck size={18} />
                   <span className="text-[9px] font-bold uppercase">Recibo</span>
                 </button>
                 <button
                   onClick={() => copyResumoVenda(venda)}
-                  title="Copiar resumo"
-                  className="flex flex-col items-center gap-1 p-3 bg-white text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-slate-500 rounded-xl shadow-sm border border-border-subtle transition-all"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
                   <span className="text-[9px] font-bold uppercase">Copiar</span>
                 </button>
+              </div>
+              {/* Linha 2: Editar, Docs/Excluir, PIX (se tiver) */}
+              <div className="grid grid-cols-3 gap-2">
                 <button
                   onClick={() => handleEditarContrato(venda)}
-                  title="Editar"
-                  className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all"
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-amber-500 rounded-xl shadow-sm border border-border-subtle transition-all"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   <span className="text-[9px] font-bold uppercase">Editar</span>
                 </button>
                 {(venda as any).documentos?.length > 0 ? (
@@ -15624,28 +15626,44 @@ VENDEDOR: ${vendedorLabel}`;
                       if (docs.length === 1) { window.open(docs[0].url, '_blank'); return; }
                       docs.forEach((d, i) => setTimeout(() => window.open(d.url, '_blank'), i * 300));
                     }}
-                    title={`${(venda as any).documentos.length} documento(s)`}
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-blue-500 rounded-xl shadow-sm border border-border-subtle hover:bg-blue-500 hover:text-white transition-all"
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-blue-500 rounded-xl shadow-sm border border-border-subtle transition-all"
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
                     <span className="text-[9px] font-bold uppercase">Docs</span>
                   </button>
                 ) : (
                   <button
-                    onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                    title="Excluir"
-                    className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                    onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}?`, () => onDeleteVenda(venda.id))}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle transition-all"
                   >
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                     <span className="text-[9px] font-bold uppercase">Excluir</span>
                   </button>
                 )}
+                <button
+                  onClick={async () => {
+                    setPixVenda(venda);
+                    const QRCode = (await import('qrcode')).default;
+                    const chavePix = (appConfig as any).chavePix || '';
+                    const nomeBenef = (appConfig as any).nomeBeneficiario || 'VENDEDOR';
+                    const cidadeBenef = (appConfig as any).cidadeBeneficiario || 'SANTAREM';
+                    if (!chavePix) { alert('Configure a chave PIX nas Configurações primeiro!'); return; }
+                    const desc = ('Entrada Q' + venda.quadra + ' L' + venda.numeroLote + ' ' + (venda.empreendimentoNome || '')).substring(0, 50);
+                    const payload = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: venda.valorEntrada || 0, descricao: desc });
+                    const qr = await QRCode.toDataURL(payload, { width: 256, margin: 2 });
+                    setPixQRData(qr);
+                  }}
+                  className="flex flex-col items-center gap-1 p-3 bg-white text-green-600 rounded-xl shadow-sm border border-border-subtle transition-all"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
+                  <span className="text-[9px] font-bold uppercase">PIX</span>
+                </button>
               </div>
-              {/* Se tiver docs E mostrar excluir também */}
+              {/* Excluir quando tem docs */}
               {(venda as any).documentos?.length > 0 && (
                 <button
-                  onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                  className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-red-50 text-red-400 text-[10px] font-bold border border-red-100 hover:bg-red-100 transition-all"
+                  onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}?`, () => onDeleteVenda(venda.id))}
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-red-50 text-red-400 text-[10px] font-bold border border-red-100"
                 >
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
                   Excluir venda
@@ -15759,9 +15777,9 @@ VENDEDOR: ${vendedorLabel}`;
                     onClick={async () => {
                       setPixVenda(venda);
                       const QRCode = (await import('qrcode')).default;
-                      const chavePix = (config as any).chavePix || '';
-                      const nomeBenef = (config as any).nomeBeneficiario || 'VENDEDOR';
-                      const cidadeBenef = (config as any).cidadeBeneficiario || 'SANTAREM';
+                      const chavePix = (appConfig as any).chavePix || '';
+                      const nomeBenef = (appConfig as any).nomeBeneficiario || 'VENDEDOR';
+                      const cidadeBenef = (appConfig as any).cidadeBeneficiario || 'SANTAREM';
                       if (!chavePix) { alert('Configure a chave PIX nas Configurações primeiro!'); return; }
                       const desc = `Entrada Q${venda.quadra} L${venda.numeroLote} ${venda.empreendimentoNome || ''}`.substring(0, 50);
                       const payload = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: venda.valorEntrada || 0, descricao: desc });
@@ -16081,9 +16099,9 @@ VENDEDOR: ${vendedorLabel}`;
             </div>
             <button
               onClick={() => {
-                const chavePix = (config as any).chavePix || '';
-                const nomeBenef = (config as any).nomeBeneficiario || 'VENDEDOR';
-                const cidadeBenef = (config as any).cidadeBeneficiario || 'SANTAREM';
+                const chavePix = (appConfig as any).chavePix || '';
+                const nomeBenef = (appConfig as any).nomeBeneficiario || 'VENDEDOR';
+                const cidadeBenef = (appConfig as any).cidadeBeneficiario || 'SANTAREM';
                 const descPix = ('Entrada Q' + pixVenda!.quadra + ' L' + pixVenda!.numeroLote + ' ' + (pixVenda!.empreendimentoNome || '')).substring(0, 50);
                 const payloadPix = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: pixVenda!.valorEntrada || 0, descricao: descPix });
                 navigator.clipboard.writeText(payloadPix);
@@ -20593,6 +20611,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onUpdateVendaFull={handleUpdateVendaFull}
             onMergeClients={handleMergeClients}
             isOnline={isOnline}
+            appConfig={config}
           />
         );
       case "contratos":
