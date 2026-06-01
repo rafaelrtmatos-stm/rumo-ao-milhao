@@ -11466,8 +11466,52 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     setSaleData(updatedData);
   };
 
-  const finalizeVenda = (venda: Venda, cliente: Cliente) => {
-    const savedVenda = onSaveVenda(venda, cliente);
+  const finalizeVenda = async (venda: Venda, cliente: Cliente) => {
+    // Upload de documentos se houver
+    const docTipoVenda = (saleData as any).docTipoVenda as string;
+    const docFrenteVenda = (saleData as any).docFrenteVenda as File | null;
+    const docVersoVenda = (saleData as any).docVersoVenda as File | null;
+    const docEtapaVenda = (saleData as any).docEtapaVenda as string;
+
+    let documentos: any[] = [];
+    if (docTipoVenda && docFrenteVenda && docEtapaVenda === 'pronto') {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+        const nomeBase = (cliente.nome || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+
+        const uploadDoc = async (file: File, sufixo: string) => {
+          const ext = file.name.split('.').pop() || 'jpg';
+          const nomeArq = nomeBase + '_' + sufixo + '.' + ext;
+          const clienteId = venda.clienteId || cliente.id || String(Date.now());
+          const path = 'clientes/' + clienteId + '/' + nomeArq;
+          const { error } = await sb.storage.from('documentos').upload(path, file, { upsert: true, contentType: file.type });
+          if (error) throw error;
+          const { data: u } = sb.storage.from('documentos').getPublicUrl(path);
+          return { nome: nomeArq, url: u.publicUrl, tipo: sufixo, data: new Date().toISOString() };
+        };
+
+        if (docTipoVenda === 'CNH') {
+          documentos.push(await uploadDoc(docFrenteVenda, 'CNH'));
+        } else if (docTipoVenda === 'RG') {
+          if (docVersoVenda) {
+            documentos.push(await uploadDoc(docFrenteVenda, 'RG_Frente'));
+            documentos.push(await uploadDoc(docVersoVenda, 'RG_Verso'));
+          } else {
+            documentos.push(await uploadDoc(docFrenteVenda, 'RG_FrenteVerso'));
+          }
+        }
+      } catch (err: any) {
+        console.error('Erro ao fazer upload de documento:', err);
+      }
+    }
+
+    const vendaComDocs = documentos.length > 0 ? { ...venda, documentos } : venda;
+    const clienteComDocs = documentos.length > 0
+      ? { ...cliente, documentos: [...((cliente as any).documentos || []), ...documentos] }
+      : cliente;
+
+    const savedVenda = onSaveVenda(vendaComDocs as Venda, clienteComDocs);
     setPendingMissingLotSale(null);
     setLastSavedVenda(savedVenda);
   };
@@ -13052,6 +13096,98 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                     Fica salvo no registro e será usado no contrato e recibo.
                   </p>
                 </div>
+
+                {/* ── DOCUMENTOS DO CLIENTE (OPCIONAL) ── */}
+                {(() => {
+                  const docTipoVenda = (saleData as any).docTipoVenda as 'CNH'|'RG'|'' || '';
+                  const docEtapaVenda = (saleData as any).docEtapaVenda as string || 'tipo';
+                  const docFrenteVenda = (saleData as any).docFrenteVenda as File|null || null;
+                  const docVersoVenda = (saleData as any).docVersoVenda as File|null || null;
+
+                  const setDocState = (patch: Record<string,any>) => setSaleData((p: any) => ({...p, ...patch}));
+
+                  return (
+                    <div className="space-y-3 border-t border-slate-100 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className="label mb-0">Documentos do cliente</label>
+                        <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-0.5 rounded-lg">opcional</span>
+                      </div>
+
+                      {docEtapaVenda === 'tipo' && (
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: 'CNH', docEtapaVenda: 'frente' })}
+                            className="flex-1 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-primary-main/40 text-xs font-black text-slate-500 hover:text-primary-main transition-all flex items-center justify-center gap-2">
+                            🪪 CNH
+                          </button>
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: 'RG', docEtapaVenda: 'frente' })}
+                            className="flex-1 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-primary-main/40 text-xs font-black text-slate-500 hover:text-primary-main transition-all flex items-center justify-center gap-2">
+                            🆔 RG
+                          </button>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'frente' && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-primary-main bg-primary-main/10 px-3 py-1 rounded-full">{docTipoVenda}</span>
+                            <span className="text-xs text-slate-400">{docTipoVenda === 'CNH' ? 'Foto ou PDF da CNH' : 'Frente do RG'}</span>
+                            <button type="button" onClick={() => setDocState({ docTipoVenda: '', docEtapaVenda: 'tipo', docFrenteVenda: null, docVersoVenda: null })}
+                              className="ml-auto text-[10px] text-slate-400 underline">trocar</button>
+                          </div>
+                          <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary-main/40 transition-all">
+                            <span className="text-lg">{docFrenteVenda ? '✅' : '📎'}</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700">{docFrenteVenda ? docFrenteVenda.name : 'Selecionar arquivo...'}</p>
+                              <p className="text-[10px] text-slate-400">JPG, PNG ou PDF</p>
+                            </div>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setDocState({ docFrenteVenda: e.target.files?.[0] || null, docEtapaVenda: e.target.files?.[0] ? (docTipoVenda === 'CNH' ? 'pronto' : 'verso_pergunta') : 'frente' })}/>
+                          </label>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'verso_pergunta' && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-slate-600">O arquivo já tem frente e verso?</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setDocState({ docEtapaVenda: 'pronto' })}
+                              className="flex-1 py-2.5 rounded-xl bg-primary-main/10 text-primary-main text-xs font-black border border-primary-main/20">✅ Sim, já tem os dois</button>
+                            <button type="button" onClick={() => setDocState({ docEtapaVenda: 'verso' })}
+                              className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black border border-slate-200">❌ Não, adicionar verso</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'verso' && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] text-slate-400 font-bold">Frente: {docFrenteVenda?.name}</div>
+                          <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary-main/40 transition-all">
+                            <span className="text-lg">{docVersoVenda ? '✅' : '📎'}</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700">{docVersoVenda ? docVersoVenda.name : 'Selecionar verso...'}</p>
+                              <p className="text-[10px] text-slate-400">JPG, PNG ou PDF</p>
+                            </div>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setDocState({ docVersoVenda: e.target.files?.[0] || null, docEtapaVenda: e.target.files?.[0] ? 'pronto' : 'verso' })}/>
+                          </label>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'pronto' && (
+                        <div className="flex items-center gap-3 p-3 bg-green-50 rounded-2xl border border-green-200">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-green-800">{docTipoVenda} pronto para envio</p>
+                            <p className="text-[10px] text-green-600 truncate">{docFrenteVenda?.name}{docVersoVenda ? ' + ' + docVersoVenda.name : ''}</p>
+                          </div>
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: '', docEtapaVenda: 'tipo', docFrenteVenda: null, docVersoVenda: null })}
+                            className="text-[10px] text-red-400 underline flex-shrink-0">remover</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 <div id="section-pagamento" className={tipoVenda === 'avista' ? 'hidden' : ''}>
                   <label className="label">Entrada</label>
                   <input
@@ -15526,6 +15662,22 @@ VENDEDOR: ${vendedorLabel}`;
                   >
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   </button>
+                  {/* Botão documentos — só aparece se houver documentos */}
+                  {((venda as any).documentos?.length > 0) && (
+                    <div className="relative group">
+                      <button
+                        className="px-2.5 py-2 bg-surface-card text-blue-500 rounded-xl shadow-sm border border-border-subtle hover:bg-blue-500 hover:text-white transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0"
+                        title={`${(venda as any).documentos.length} documento(s)`}
+                        onClick={() => {
+                          const docs = (venda as any).documentos as {nome:string;url:string}[];
+                          if (docs.length === 1) { window.open(docs[0].url, '_blank'); return; }
+                          docs.forEach((d, i) => setTimeout(() => window.open(d.url, '_blank'), i * 300));
+                        }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
+                        <span className="truncate">Docs ({(venda as any).documentos.length})</span>
+                      </button>
+                    </div>
+                  )}
                   <button
                     onClick={async () => {
                       setPixVenda(venda);
@@ -16742,6 +16894,7 @@ const ClientesSection = ({
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [editForm, setEditForm] = useState<Partial<Cliente>>({});
   const [fieldErrors, setFieldErrors] = useState<{ cpf?: string; rg?: string }>({});
+  const [selectedClient, setSelectedClient] = useState<Cliente | null>(null);
 
   const openEdit = (c: Cliente) => {
     setEditingCliente(c);
