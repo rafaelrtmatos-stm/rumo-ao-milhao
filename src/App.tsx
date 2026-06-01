@@ -16049,93 +16049,7 @@ VENDEDOR: ${vendedorLabel}`;
         )}
       </AnimatePresence>
 
-      {/* Modal PIX da tela inicial */}
-      {showPixModal && (
-        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
-          onClick={() => setShowPixModal(false)}>
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
-            onClick={e => e.stopPropagation()}>
-            {/* Header */}
-            <div className="bg-[#1a4a1a] px-5 py-4 flex items-center justify-between">
-              <div>
-                <p className="text-white font-black text-sm">{(config as any).nomeFantasia || 'PIX'}</p>
-                {(config as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(config as any).cnpj}</p>}
-              </div>
-              <button onClick={() => setShowPixModal(false)}
-                className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-              </button>
-            </div>
-            <div className="p-5 space-y-4">
-              {(config as any).chavePix ? (() => {
-                const [qrSrc, setQrSrc] = React.useState('');
-                React.useEffect(() => {
-                  import('qrcode').then(({ default: QRCode }) => {
-                    const descPix = ((config as any).nomeFantasia || 'EMPRESA').substring(0,25);
-                    const payload = gerarPixPayload({
-                      chavePix: (config as any).chavePix,
-                      nomeBeneficiario: (config as any).nomeBeneficiario || descPix,
-                      cidadeBeneficiario: (config as any).cidadeBeneficiario || 'SANTAREM',
-                      valor: 0.01, descricao: descPix,
-                    });
-                    QRCode.toDataURL(payload, { width: 200, margin: 2 }).then(setQrSrc);
-                  });
-                }, []);
-                return (
-                  <>
-                    {qrSrc && (
-                      <div className="flex justify-center">
-                        <div className="p-2 border-2 border-slate-200 rounded-2xl">
-                          <img src={qrSrc} alt="QR Code PIX" className="w-40 h-40"/>
-                        </div>
-                      </div>
-                    )}
-                    <div className="space-y-2">
-                      {[
-                        { l:'Chave PIX', v:(config as any).chavePix },
-                        { l:'Beneficiário', v:(config as any).nomeBeneficiario },
-                        { l:'Banco', v:(config as any).banco },
-                        { l:'Agência', v:(config as any).agencia },
-                        { l:'Conta', v:(config as any).contaBancaria ? (config as any).contaBancaria + ((config as any).tipoConta ? ' (' + (config as any).tipoConta + ')' : '') : null },
-                      ].filter(i => i.v).map(item => (
-                        <div key={item.l} className="flex justify-between py-1.5 border-b border-slate-100">
-                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.l}</span>
-                          <span className="text-xs font-black text-slate-700">{item.v}</span>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="flex gap-2">
-                      <button onClick={() => { navigator.clipboard.writeText((config as any).chavePix); alert('Chave PIX copiada!'); }}
-                        className="flex-1 py-3 rounded-2xl bg-[#1a4a1a] text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copiar chave
-                      </button>
-                      {typeof navigator !== 'undefined' && (navigator as any).share && (
-                        <button onClick={() => {
-                          const txt = [(config as any).nomeFantasia ? '🏢 ' + (config as any).nomeFantasia : '', (config as any).cnpj ? 'CNPJ: ' + (config as any).cnpj : '', '', '💚 PIX', 'Chave: ' + (config as any).chavePix, '', (config as any).banco ? '🏦 ' + (config as any).banco : '', (config as any).agencia ? 'Agência: ' + (config as any).agencia : '', (config as any).contaBancaria ? 'Conta: ' + (config as any).contaBancaria : ''].filter(Boolean).join(String.fromCharCode(10));
-                          (navigator as any).share({ title: 'Dados PIX', text: txt });
-                        }}
-                          className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-                          Compartilhar
-                        </button>
-                      )}
-                    </div>
-                  </>
-                );
-              })() : (
-                <div className="text-center py-4 space-y-2">
-                  <p className="text-slate-500 text-sm font-bold">Chave PIX não configurada</p>
-                  <button onClick={() => { setShowPixModal(false); setSection('config'); }}
-                    className="px-4 py-2 rounded-xl bg-[#1a4a1a] text-white text-xs font-black">
-                    Ir para Configurações
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+
 
       {/* Modal: QR Code PIX */}
       {pixVenda && pixQRData && (
@@ -19497,6 +19411,53 @@ const HistoricoExclusoesSection = ({
 
 // --- Main App ---
 
+
+// Componente PIX QR — usado no modal global do App
+function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantasia, banco, agencia, contaBancaria, tipoConta, onClose }: any) {
+  const [qrSrc, setQrSrc] = React.useState('');
+  React.useEffect(() => {
+    if (!chavePix) return;
+    import('qrcode').then(({ default: QRCode }) => {
+      const descPix = String(nomeFantasia || 'EMPRESA').substring(0,25);
+      const payload = gerarPixPayload({
+        chavePix, nomeBeneficiario: nomeBeneficiario || descPix,
+        cidadeBeneficiario: cidadeBeneficiario || 'SANTAREM',
+        valor: 0.01, descricao: descPix,
+      });
+      QRCode.toDataURL(payload, { width: 200, margin: 2 }).then(setQrSrc);
+    });
+  }, [chavePix]);
+  return (
+    <>
+      {qrSrc && <div className="flex justify-center"><div className="p-2 border-2 border-slate-200 rounded-2xl"><img src={qrSrc} alt="QR Code PIX" className="w-40 h-40"/></div></div>}
+      <div className="space-y-2">
+        {[{l:'Chave PIX',v:chavePix},{l:'Beneficiário',v:nomeBeneficiario},{l:'Banco',v:banco},{l:'Agência',v:agencia},{l:'Conta',v:contaBancaria?(contaBancaria+(tipoConta?' ('+tipoConta+')':'')):null}].filter(i=>i.v).map(item=>(
+          <div key={item.l} className="flex justify-between py-1.5 border-b border-slate-100">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.l}</span>
+            <span className="text-xs font-black text-slate-700">{item.v}</span>
+          </div>
+        ))}
+      </div>
+      <div className="flex gap-2">
+        <button onClick={() => { navigator.clipboard.writeText(chavePix); alert('Chave PIX copiada!'); }}
+          className="flex-1 py-3 rounded-2xl bg-[#1a4a1a] text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+          Copiar chave
+        </button>
+        {(navigator as any).share && (
+          <button onClick={() => {
+            const txt = [nomeFantasia?'🏢 '+nomeFantasia:'','💚 PIX','Chave: '+chavePix,banco?'🏦 '+banco:'',agencia?'Agência: '+agencia:'',contaBancaria?'Conta: '+contaBancaria:''].filter(Boolean).join(String.fromCharCode(10));
+            (navigator as any).share({ title: 'Dados PIX', text: txt });
+          }} className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+            Compartilhar
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
 export default function App({ onLogout, isAdmin, userId, userEmail, userPermissions }: { onLogout?: () => void; isAdmin?: boolean; userId?: string; userEmail?: string; userPermissions?: Record<string, boolean> }) {
   // Página pública de reserva — sem login necessário
   const _reservaId = new URLSearchParams(typeof window !== 'undefined' ? window.location.search : '').get('reserva');
@@ -20678,6 +20639,33 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           <button onClick={()=>setShowOfflineBanner(false)} style={{background:'none',border:'none',color:'white',cursor:'pointer',fontSize:18}}>×</button>
         </div>
       )}
+      {/* Modal PIX global */}
+      {showPixModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowPixModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#1a4a1a] px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-white font-black text-sm">{(config as any).nomeFantasia || 'PIX'}</p>
+                {(config as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(config as any).cnpj}</p>}
+              </div>
+              <button onClick={() => setShowPixModal(false)} className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {(config as any).chavePix ? (
+                <PixQRBlock chavePix={(config as any).chavePix} nomeBeneficiario={(config as any).nomeBeneficiario} cidadeBeneficiario={(config as any).cidadeBeneficiario} nomeFantasia={(config as any).nomeFantasia} banco={(config as any).banco} agencia={(config as any).agencia} contaBancaria={(config as any).contaBancaria} tipoConta={(config as any).tipoConta} />
+              ) : (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-slate-500 text-sm font-bold">Chave PIX não configurada</p>
+                  <button onClick={() => { setShowPixModal(false); setSection('config'); }} className="px-4 py-2 rounded-xl bg-[#1a4a1a] text-white text-xs font-black">Ir para Configurações</button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* BARRA DE PROGRESSO GLOBAL — topo da tela */}
       {loadProgress > 0 && loadProgress < 100 && (
         <div className="fixed top-0 left-0 right-0 z-[9999] h-1 bg-slate-200">
