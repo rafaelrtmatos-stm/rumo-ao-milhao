@@ -158,10 +158,15 @@ function escapeRegExpLocal(texto: string): string {
 function aplicarNegritoDocx(xml: string, texto: string): string {
   const alvo = xmlEscape(String(texto || "").trim());
   if (!alvo) return xml;
-  const pattern = new RegExp(`(<w:t(?:\\s+[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t>)`, "g");
+  // Só aplica negrito quando o alvo é o conteúdo EXATO do <w:t> (sem texto antes/depois)
+  // Isso evita quebra de XML com tags mal aninhadas
+  const pattern = new RegExp(
+    `(<w:r>(?:<w:rPr>(?:(?!</w:rPr>).)*</w:rPr>)?<w:t(?:\\s[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t></w:r>)`,
+    "g"
+  );
   return xml.replace(
     pattern,
-    `</w:t></w:r><w:r><w:rPr><w:b/><w:bCs/></w:rPr><w:t>$2</w:t></w:r><w:r><w:t>`
+    `<w:r><w:rPr><w:b/><w:bCs/><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t>$2</w:t></w:r>`
   );
 }
 
