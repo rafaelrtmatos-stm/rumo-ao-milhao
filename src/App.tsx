@@ -8644,18 +8644,14 @@ const EmpreendimentosSection = ({
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const salvarEmpreendimento = (fechar: boolean) => {
     if (!formData.nome) {
       triggerShake(devFormRef.current);
       return;
     }
     const formDataNormalizado = { ...formData, nome: textoMaiusculo(formData.nome).trim(), estado: (formData.estado || "").toUpperCase() };
     if (editingDev) {
-      const mergedDev = {
-        ...editingDev,
-        ...formDataNormalizado,
-      } as Empreendimento;
+      const mergedDev = { ...editingDev, ...formDataNormalizado } as Empreendimento;
       onSave(syncEmpreendimentoConfigWithMapa(mergedDev, sales));
     } else {
       onSave({
@@ -8664,10 +8660,18 @@ const EmpreendimentosSection = ({
         lotesVendidos: 0,
         lotesInfo: {},
       });
+      fechar = true; // novo empreendimento sempre fecha
     }
-    setIsAdding(false);
-    setEditingDev(null);
-    setFormData(emptyForm);
+    if (fechar) {
+      setIsAdding(false);
+      setEditingDev(null);
+      setFormData(emptyForm);
+    }
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    salvarEmpreendimento(true); // OK → salva e fecha
   };
 
   const handleMapUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -8995,7 +8999,7 @@ const EmpreendimentosSection = ({
                 <div className="flex gap-2">
                   {editingDev && (
                     <button type="button"
-                      onClick={(e) => { e.preventDefault(); handleSubmit({ preventDefault: () => {} } as any); }}
+                      onClick={(e) => { e.preventDefault(); salvarEmpreendimento(false); }}
                       className="flex-1 py-2.5 rounded-2xl bg-blue-600 text-white text-xs font-black uppercase active:scale-95 transition-all flex items-center justify-center gap-1.5">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                       Aplicar
