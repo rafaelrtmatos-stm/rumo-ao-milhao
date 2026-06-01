@@ -15582,33 +15582,7 @@ VENDEDOR: ${vendedorLabel}`;
             )}
 
             {semContrato.length > 0 && (
-              <div className="card-premium space-y-4 border-2 border-amber-200 bg-amber-50/50">
-                {/* Header com alerta */}
-                <div className="flex items-start gap-3 pb-3 border-b border-amber-200">
-                  <div className="w-9 h-9 rounded-xl bg-amber-100 flex items-center justify-center flex-shrink-0">
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#d97706" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-                  </div>
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-black text-amber-800">📋 Vendas sem Contrato</span>
-                      <span className="px-2 py-0.5 bg-amber-200 text-amber-800 rounded-full text-xs font-black">{semContrato.length}</span>
-                    </div>
-                    <p className="text-xs text-amber-700 mt-0.5">
-                      Vendas registradas sem contrato gerado. Os lotes estão reservados corretamente. Gere o contrato quando necessário.
-                    </p>
-                  </div>
-                  {/* Excluir todas */}
-                  <button
-                    onClick={() => requestDelete(
-                      `Excluir TODAS as ${semContrato.length} vendas sem contrato? Esta ação não pode ser desfeita.`,
-                      () => semContrato.forEach(v => onDeleteVenda(v.id))
-                    )}
-                    className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-600 text-white text-xs font-black hover:bg-red-700 active:scale-95 transition-all">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                    Excluir todas
-                  </button>
-                </div>
-
+              <div className="card-premium space-y-3">
                 {/* Mobile: mesmo card da lista principal */}
                 <div className="sm:hidden space-y-3">{semContrato.map(v => renderMobileCard(v))}</div>
                 {/* Desktop: mesma tabela da lista principal */}
