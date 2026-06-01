@@ -10134,7 +10134,7 @@ const EmpreendimentosSection = ({
                   let m2;
                   while ((m2 = regex2.exec(scriptNorm)) !== null) {
                     const quadraNum = m2[1];
-                    const nums = m2[2].split(',').map(function(n: string) { return n.trim(); }).filter(Boolean);
+                    const nums = m2[2].split(',').map(function(n: string) { return n.trim().replace(/[DIRdir]+$/, '').trim(); }).filter(Boolean);
                     nums.forEach(function(nLote: string) { lotes.push('Q' + quadraNum + '·L' + nLote); });
                   }
                   return lotes;
@@ -10180,17 +10180,23 @@ const EmpreendimentosSection = ({
                   linhas.push("");
                   linhas.push("LOTES POR QUADRA (todos os lotes cadastrados no mapa):");
 
+                  // Limpar sufixos D/I/R do número do lote (ex: "1D" → "1", "12I" → "12")
+                  const limparLote = (l: string) => String(l).replace(/[DIRdir]+$/, "").trim();
+
                   if (usarPontos) {
                     quadrasOrdenadas.forEach(q => {
-                      const lts = quadraMapaMap[q].sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
+                      const lts = quadraMapaMap[q]
+                        .map(limparLote)
+                        .filter((v,i,a) => a.indexOf(v) === i) // deduplicar
+                        .sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
                       linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(",")}.`);
                     });
                   } else if (quadrasConf.length) {
                     quadrasConf.forEach(q => {
                       const lts = (lotRegDev.lotesPorQuadra as any)[q];
-                      const lst: string[] = typeof lts === "object" && !Array.isArray(lts)
+                      const lst: string[] = (typeof lts === "object" && !Array.isArray(lts)
                         ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
-                        : (Array.isArray(lts) ? lts : []);
+                        : (Array.isArray(lts) ? lts : [])).map(limparLote);
                       linhas.push(`Q${q}: ${lst.length} lotes — ${lst.join(",")}.`);
                     });
                   } else {
