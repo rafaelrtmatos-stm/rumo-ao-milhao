@@ -158,16 +158,36 @@ function escapeRegExpLocal(texto: string): string {
 function aplicarNegritoDocx(xml: string, texto: string): string {
   const alvo = xmlEscape(String(texto || "").trim());
   if (!alvo) return xml;
-  // Só aplica negrito quando o alvo é o conteúdo EXATO do <w:t> (sem texto antes/depois)
-  // Isso evita quebra de XML com tags mal aninhadas
-  const pattern = new RegExp(
-    `(<w:r>(?:<w:rPr>(?:(?!</w:rPr>).)*</w:rPr>)?<w:t(?:\\s[^>]*)?>)(${escapeRegExpLocal(alvo)})(</w:t></w:r>)`,
+
+  // Captura <w:r> completo incluindo rPr opcional, depois split em antes/alvo/depois
+  // para garantir XML bem formado sem quebrar nada ao redor
+  const rPattern = new RegExp(
+    `(<w:r>)((?:<w:rPr>(?:(?!</w:rPr>)[\\s\\S])*?</w:rPr>)?<w:t(?:\\s[^>]*)?>)([^<]*)(${escapeRegExpLocal(alvo)})([^<]*)(</w:t></w:r>)`,
     "g"
   );
-  return xml.replace(
-    pattern,
-    `<w:r><w:rPr><w:b/><w:bCs/><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr><w:t>$2</w:t></w:r>`
-  );
+
+  const rPrBold = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:b/><w:bCs/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+  const rPrNormal = `<w:rPr><w:rFonts w:ascii="Times New Roman" w:hAnsi="Times New Roman" w:cs="Times New Roman"/><w:sz w:val="24"/><w:szCs w:val="24"/></w:rPr>`;
+
+  return xml.replace(rPattern, (_match, _wr, rPrAndT, antes, meio, depois, closeT) => {
+    // Extrai o rPr existente se houver (mantém formatação original)
+    const rPrExistMatch = rPrAndT.match(/^(<w:rPr>[\s\S]*?<\/w:rPr>)/);
+    const rPrExist = rPrExistMatch ? rPrExistMatch[1] : '';
+    const tOpen = rPrAndT.replace(/^(<w:rPr>[\s\S]*?<\/w:rPr>)?/, '');
+
+    let result = '';
+    // Parte antes do alvo (se houver)
+    if (antes) {
+      result += `<w:r>${rPrExist || rPrNormal}${tOpen}${antes}</w:t></w:r>`;
+    }
+    // Parte em negrito
+    result += `<w:r>${rPrBold}<w:t xml:space="preserve">${meio}</w:t></w:r>`;
+    // Parte depois do alvo (se houver)
+    if (depois) {
+      result += `<w:r>${rPrExist || rPrNormal}${tOpen}${depois}</w:t></w:r>`;
+    }
+    return result;
+  });
 }
 
 function aplicarNegritosContratoParcelado(xml: string, vendedorNome: string, compradorNome: string, vendedorPapel: string, compradorPapel: string): string {
