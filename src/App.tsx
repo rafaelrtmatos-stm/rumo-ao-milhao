@@ -15526,9 +15526,9 @@ VENDEDOR: ${vendedorLabel}`;
                     onClick={async () => {
                       setPixVenda(venda);
                       const QRCode = (await import('qrcode')).default;
-                      const chavePix = (appSettings as any).chavePix || '';
-                      const nomeBenef = (appSettings as any).nomeBeneficiario || 'VENDEDOR';
-                      const cidadeBenef = (appSettings as any).cidadeBeneficiario || 'SANTAREM';
+                      const chavePix = (config as any).chavePix || '';
+                      const nomeBenef = (config as any).nomeBeneficiario || 'VENDEDOR';
+                      const cidadeBenef = (config as any).cidadeBeneficiario || 'SANTAREM';
                       if (!chavePix) { alert('Configure a chave PIX nas Configurações primeiro!'); return; }
                       const desc = `Entrada Q${venda.quadra} L${venda.numeroLote} ${venda.empreendimentoNome || ''}`.substring(0, 50);
                       const payload = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: venda.valorEntrada || 0, descricao: desc });
@@ -15872,9 +15872,9 @@ VENDEDOR: ${vendedorLabel}`;
             </div>
             <button
               onClick={() => {
-                const chavePix = (appSettings as any).chavePix || '';
-                const nomeBenef = (appSettings as any).nomeBeneficiario || 'VENDEDOR';
-                const cidadeBenef = (appSettings as any).cidadeBeneficiario || 'SANTAREM';
+                const chavePix = (config as any).chavePix || '';
+                const nomeBenef = (config as any).nomeBeneficiario || 'VENDEDOR';
+                const cidadeBenef = (config as any).cidadeBeneficiario || 'SANTAREM';
                 const descPix = ('Entrada Q' + pixVenda!.quadra + ' L' + pixVenda!.numeroLote + ' ' + (pixVenda!.empreendimentoNome || '')).substring(0, 50);
                 const payloadPix = gerarPixPayload({ chavePix, nomeBeneficiario: nomeBenef, cidadeBeneficiario: cidadeBenef, valor: pixVenda!.valorEntrada || 0, descricao: descPix });
                 navigator.clipboard.writeText(payloadPix);
@@ -20283,18 +20283,18 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             </div>
 
             {/* Card PIX da empresa */}
-            {(appSettings as any).chavePix && (() => {
+            {(config as any).chavePix && (() => {
               const [pixStaticQR, setPixStaticQR] = React.useState<string>('');
               const [pixCarregando, setPixCarregando] = React.useState(false);
               React.useEffect(() => {
-                if (!(appSettings as any).chavePix) return;
+                if (!(config as any).chavePix) return;
                 setPixCarregando(true);
                 import('qrcode').then(({ default: QRCode }) => {
-                  const descPix = ((appSettings as any).nomeFantasia || 'EMPRESA').substring(0, 25);
+                  const descPix = ((config as any).nomeFantasia || 'EMPRESA').substring(0, 25);
                   const payloadPix = gerarPixPayload({
-                    chavePix: (appSettings as any).chavePix,
-                    nomeBeneficiario: (appSettings as any).nomeBeneficiario || descPix,
-                    cidadeBeneficiario: (appSettings as any).cidadeBeneficiario || 'SANTAREM',
+                    chavePix: (config as any).chavePix,
+                    nomeBeneficiario: (config as any).nomeBeneficiario || descPix,
+                    cidadeBeneficiario: (config as any).cidadeBeneficiario || 'SANTAREM',
                     valor: 0.01,
                     descricao: descPix,
                     txid: '***',
@@ -20304,7 +20304,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                     setPixCarregando(false);
                   });
                 });
-              }, [(appSettings as any).chavePix]);
+              }, [(config as any).chavePix]);
 
               return (
                 <div className="card-premium overflow-hidden">
@@ -20314,8 +20314,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
                     </div>
                     <div>
-                      <p className="text-white font-black text-sm">{(appSettings as any).nomeFantasia || 'Painel PIX'}</p>
-                      {(appSettings as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(appSettings as any).cnpj}</p>}
+                      <p className="text-white font-black text-sm">{(config as any).nomeFantasia || 'Painel PIX'}</p>
+                      {(config as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(config as any).cnpj}</p>}
                     </div>
                   </div>
 
@@ -20336,11 +20336,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                     {/* Dados */}
                     <div className="flex-1 space-y-2 w-full">
                       {[
-                        { label: 'Chave PIX', value: (appSettings as any).chavePix },
-                        { label: 'Beneficiário', value: (appSettings as any).nomeBeneficiario },
-                        { label: 'Banco', value: (appSettings as any).banco },
-                        { label: 'Agência', value: (appSettings as any).agencia },
-                        { label: 'Conta', value: (appSettings as any).contaBancaria ? `${(appSettings as any).contaBancaria}${(appSettings as any).tipoConta ? ' (' + (appSettings as any).tipoConta + ')' : ''}` : null },
+                        { label: 'Chave PIX', value: (config as any).chavePix },
+                        { label: 'Beneficiário', value: (config as any).nomeBeneficiario },
+                        { label: 'Banco', value: (config as any).banco },
+                        { label: 'Agência', value: (config as any).agencia },
+                        { label: 'Conta', value: (config as any).contaBancaria ? `${(config as any).contaBancaria}${(config as any).tipoConta ? ' (' + (config as any).tipoConta + ')' : ''}` : null },
                       ].filter(i => i.value).map(item => (
                         <div key={item.label} className="flex justify-between items-center py-1.5 border-b border-slate-100">
                           <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.label}</span>
@@ -20351,7 +20351,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                       {/* Botões */}
                       <div className="flex gap-2 pt-1">
                         <button
-                          onClick={() => { navigator.clipboard.writeText((appSettings as any).chavePix || ''); alert('Chave PIX copiada!'); }}
+                          onClick={() => { navigator.clipboard.writeText((config as any).chavePix || ''); alert('Chave PIX copiada!'); }}
                           className="flex-1 py-2.5 rounded-2xl bg-[#1a4a1a] text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
                           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                           Copiar chave
@@ -20360,15 +20360,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                           <button
                             onClick={() => {
                               const texto = [
-                                (appSettings as any).nomeFantasia ? '🏢 ' + (appSettings as any).nomeFantasia : '',
-                                (appSettings as any).cnpj ? 'CNPJ: ' + (appSettings as any).cnpj : '',
+                                (config as any).nomeFantasia ? '🏢 ' + (config as any).nomeFantasia : '',
+                                (config as any).cnpj ? 'CNPJ: ' + (config as any).cnpj : '',
                                 '',
                                 '💚 PIX',
-                                'Chave: ' + ((appSettings as any).chavePix || ''),
+                                'Chave: ' + ((config as any).chavePix || ''),
                                 '',
-                                (appSettings as any).banco ? '🏦 ' + (appSettings as any).banco : '',
-                                (appSettings as any).agencia ? 'Agência: ' + (appSettings as any).agencia : '',
-                                (appSettings as any).contaBancaria ? 'Conta: ' + (appSettings as any).contaBancaria + ((appSettings as any).tipoConta ? ' (' + (appSettings as any).tipoConta + ')' : '') : '',
+                                (config as any).banco ? '🏦 ' + (config as any).banco : '',
+                                (config as any).agencia ? 'Agência: ' + (config as any).agencia : '',
+                                (config as any).contaBancaria ? 'Conta: ' + (config as any).contaBancaria + ((config as any).tipoConta ? ' (' + (config as any).tipoConta + ')' : '') : '',
                               ].filter(Boolean).join(String.fromCharCode(10));
                               navigator.share({ title: 'Dados PIX', text: texto });
                             }}
