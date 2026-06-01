@@ -2,7 +2,10 @@
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
     .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
-    .replace(/simplesmente\s*(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
+    .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    // Corrigir duplo "de"
+    .replace(/simplesmente de de (VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
 }
 
 import AdmZip from "adm-zip";

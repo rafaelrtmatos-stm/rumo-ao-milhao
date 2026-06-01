@@ -1,21 +1,26 @@
 
 function corrigirEspacosSimplesmente(texto: string): string {
   return String(texto || "")
+    // Garantir sempre "simplesmente de PAPEL" — nunca remover o "de"
     .replace(/simplesmente\s+de\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
     .replace(/simplesmente\s+(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
     .replace(/simplesmente(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
-    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
+    .replace(/simplesmente  +(VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1")
+    // Corrigir duplo "de"
+    .replace(/simplesmente de de (VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR)/g, "simplesmente de $1");
 }
 
 function corrigirSimplesmenteNoXml(xml: string): string {
   const papeis = "VENDEDORA|VENDEDOR|COMPRADORA|COMPRADOR";
+  // Corrigir "simplesmente" e papel separados por tags XML — preserva "de"
   xml = xml.replace(
     new RegExp(`(simplesmente)(?:\s*de\s*)?</w:t>(?:</w:r>)?(?:<[^>]{0,200}>)*?<w:t(?:\s[^>]*)?>(?:de\s*)?(${papeis})`, "g"),
-    "simplesmente $2"
+    "simplesmente de $2"
   );
-  xml = xml.replace(new RegExp(`simplesmente(?:de\s*)?(${papeis})`, "g"), "simplesmente $1");
-  xml = xml.replace(new RegExp(`simplesmente\s+de\s+(${papeis})`, "g"), "simplesmente $1");
-  xml = xml.replace(new RegExp(`simplesmente\s{2,}(${papeis})`, "g"), "simplesmente $1");
+  // Corrigir colado sem espaço: "simplesmenteVENDEDOR"
+  xml = xml.replace(new RegExp(`simplesmente(${papeis})`, "g"), "simplesmente de $1");
+  // Corrigir duplo "de": "simplesmente de de VENDEDOR"
+  xml = xml.replace(new RegExp(`simplesmente de de (${papeis})`, "g"), "simplesmente de $1");
   return xml;
 }
 
