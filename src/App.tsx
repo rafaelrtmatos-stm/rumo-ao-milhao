@@ -15565,15 +15565,40 @@ VENDEDOR: ${vendedorLabel}`;
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                   <span className="text-[9px] font-bold uppercase">Editar</span>
                 </button>
+                {(venda as any).documentos?.length > 0 ? (
+                  <button
+                    onClick={() => {
+                      const docs = (venda as any).documentos as {nome:string;url:string}[];
+                      if (docs.length === 1) { window.open(docs[0].url, '_blank'); return; }
+                      docs.forEach((d, i) => setTimeout(() => window.open(d.url, '_blank'), i * 300));
+                    }}
+                    title={`${(venda as any).documentos.length} documento(s)`}
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-blue-500 rounded-xl shadow-sm border border-border-subtle hover:bg-blue-500 hover:text-white transition-all"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
+                    <span className="text-[9px] font-bold uppercase">Docs</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
+                    title="Excluir"
+                    className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                    <span className="text-[9px] font-bold uppercase">Excluir</span>
+                  </button>
+                )}
+              </div>
+              {/* Se tiver docs E mostrar excluir também */}
+              {(venda as any).documentos?.length > 0 && (
                 <button
                   onClick={() => requestDelete(`Excluir venda de ${venda.clienteNome}? Esta ação não pode ser desfeita.`, () => onDeleteVenda(venda.id))}
-                  title="Excluir"
-                  className="flex flex-col items-center gap-1 p-3 bg-white text-red-400 rounded-xl shadow-sm border border-border-subtle hover:bg-red-500 hover:text-white transition-all"
+                  className="w-full flex items-center justify-center gap-2 py-2 rounded-xl bg-red-50 text-red-400 text-[10px] font-bold border border-red-100 hover:bg-red-100 transition-all"
                 >
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                  <span className="text-[9px] font-bold uppercase">Excluir</span>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+                  Excluir venda
                 </button>
-              </div>
+              )}
             </div>
           );
         };
@@ -17324,26 +17349,7 @@ const AniversariosSection = ({
                   </div>
                 </div>
 
-                {/* Documentos — só leitura no card de aniversário */}
-                {((selectedClient as any).documentos || []).length > 0 && (
-                  <div className="space-y-2">
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documentos</p>
-                    {((selectedClient as any).documentos || []).map((doc: any, i: number) => (
-                      <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <div className="w-8 h-8 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                          </div>
-                          <p className="text-xs font-bold text-slate-700 truncate">{doc.nome}</p>
-                        </div>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
-                          className="flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </a>
-                      </div>
-                    ))}
-                  </div>
-                )}
+
 
                 {/* Purchases — clicáveis, sem badge de status */}
                 <div className="space-y-2">
