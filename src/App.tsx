@@ -10141,19 +10141,64 @@ const EmpreendimentosSection = ({
                 };
                 const copiarScriptPrecos = async () => {
                   const linhas = ["GERENCIADOR DE PREÇOS — " + lotRegDev.nome, ""];
-                  const quadras = Object.keys(lotRegDev.lotesPorQuadra || {});
-                  if (quadras.length) {
-                    linhas.push("LOTES DISPONÍVEIS:");
-                    quadras.forEach(q => {
+
+                  // Pegar pontos reais do mapa (quadras e lotes cadastrados)
+                  const pontosDoMapa = (lotRegDev as any).mapaPontos as {quadra:string;lote:string;status?:string}[] || [];
+                  const quadraMapaMap: Record<string, string[]> = {};
+                  pontosDoMapa.forEach(p => {
+                    const q = String(p.quadra || "").trim();
+                    const l = String(p.lote || "").trim();
+                    if (!q || !l) return;
+                    if (!quadraMapaMap[q]) quadraMapaMap[q] = [];
+                    if (!quadraMapaMap[q].includes(l)) quadraMapaMap[q].push(l);
+                  });
+
+                  // Ordenar lotes numericamente
+                  const quadrasOrdenadas = Object.keys(quadraMapaMap).sort((a,b) => {
+                    const na = parseInt(a) || 0, nb = parseInt(b) || 0;
+                    return na !== nb ? na - nb : a.localeCompare(b);
+                  });
+
+                  // Fallback: usar lotesPorQuadra se não tiver pontos no mapa
+                  const usarPontos = quadrasOrdenadas.length > 0;
+                  const quadrasConf = Object.keys(lotRegDev.lotesPorQuadra || {});
+
+                  const totalQuadras = usarPontos ? quadrasOrdenadas.length : quadrasConf.length;
+                  const totalLotes = usarPontos
+                    ? pontosDoMapa.length
+                    : quadrasConf.reduce((s, q) => {
+                        const lts = (lotRegDev.lotesPorQuadra as any)[q];
+                        const n = typeof lts === "object" && !Array.isArray(lts)
+                          ? (lts.fim||0)-(lts.inicio||1)+1
+                          : (Array.isArray(lts) ? lts.length : 0);
+                        return s + n;
+                      }, 0);
+
+                  linhas.push(`EMPREENDIMENTO: ${lotRegDev.nome}`);
+                  linhas.push(`TOTAL DE QUADRAS: ${totalQuadras}`);
+                  linhas.push(`TOTAL DE LOTES: ${totalLotes}`);
+                  linhas.push("");
+                  linhas.push("LOTES POR QUADRA (cadastrados no mapa):");
+
+                  if (usarPontos) {
+                    quadrasOrdenadas.forEach(q => {
+                      const lts = quadraMapaMap[q].sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
+                      linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(",")}.`);
+                    });
+                  } else if (quadrasConf.length) {
+                    quadrasConf.forEach(q => {
                       const lts = (lotRegDev.lotesPorQuadra as any)[q];
                       const lst = typeof lts === "object" && !Array.isArray(lts)
                         ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i)).join(",")
                         : (Array.isArray(lts) ? lts.join(",") : "");
                       linhas.push(`Q${q}:${lst}.`);
                     });
+                  } else {
+                    linhas.push("(Nenhum lote cadastrado no mapa ainda)");
                   }
-                  linhas.push("", "INSTRUÇÕES: Defina as regras de preço abaixo.");
-                  linhas.push("Cada REGRA tem: quais quadras/lotes, valor total, entrada e parcelas.");
+
+                  linhas.push("", "INSTRUÇÕES: Com base nas quadras e lotes acima, defina as regras de preço.");
+                  linhas.push("Cada REGRA tem: quais quadras/lotes, valor total, entrada e número de parcelas.");
                   linhas.push("Crie quantas REGRAs forem necessárias — uma para cada faixa de preço.", "");
                   linhas.push("FORMATO:");
                   linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
