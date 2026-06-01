@@ -347,6 +347,20 @@ async function upsertVenda(item: Venda): Promise<void> {
   processSyncQueue();
 }
 
+async function deleteClienteById(id: string): Promise<void> {
+  await db.clientes.delete(id);
+  if (navigator.onLine) {
+    try {
+      await apiDelete(`/api/clientes/${id}`);
+      return;
+    } catch (err) {
+      console.warn('[db] deleteClienteById API falhou, enfileirando:', err);
+    }
+  }
+  await enqueue('cliente', 'delete', id);
+  processSyncQueue();
+}
+
 async function deleteVendaById(id: string): Promise<void> {
   await db.vendas.delete(id);
   if (navigator.onLine) {
@@ -458,6 +472,7 @@ export const dbService = {
   getVendas,
   saveVendas,
   upsertVenda,
+  deleteClienteById,
   deleteVendaById,
   getAppConfig,
   saveAppConfig,

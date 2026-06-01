@@ -16877,10 +16877,14 @@ const ClientesSection = ({
   clients,
   sales,
   onUpdateCliente,
+  onDeleteCliente,
+  isAdmin,
 }: {
   clients: Cliente[];
   sales: Venda[];
   onUpdateCliente: (c: Cliente) => void;
+  onDeleteCliente?: (id: string) => void;
+  isAdmin?: boolean;
 }) => {
   const [editingCliente, setEditingCliente] = useState<Cliente | null>(null);
   const [editForm, setEditForm] = useState<Partial<Cliente>>({});
@@ -16976,12 +16980,23 @@ const ClientesSection = ({
                       {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 }).format(totalInvestido)}
                     </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-xl sm:rounded-r-2xl transition-colors text-center">
-                      <button
-                        onClick={() => openEdit(cliente)}
-                        className="text-[10px] font-bold text-primary-main hover:underline px-2 py-1 rounded-lg hover:bg-primary-main/10 transition-colors"
-                      >
-                        Editar
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => openEdit(cliente)}
+                          className="text-[10px] font-bold text-primary-main hover:underline px-2 py-1 rounded-lg hover:bg-primary-main/10 transition-colors"
+                        >
+                          Editar
+                        </button>
+                        {isAdmin && onDeleteCliente && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); onDeleteCliente(cliente.id); }}
+                            className="text-[10px] font-bold text-red-400 hover:text-red-600 px-2 py-1 rounded-lg hover:bg-red-50 transition-colors"
+                            title="Excluir cliente"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 );
@@ -17316,6 +17331,55 @@ const AniversariosSection = ({
                 </div>
 
 
+
+                {/* Endereço */}
+                {(selectedClient.endereco || selectedClient.cep || selectedClient.cidade) && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Endereço</p>
+                    <div className="p-3 bg-slate-50 rounded-2xl space-y-1">
+                      {selectedClient.endereco && <p className="text-sm font-bold text-slate-800">{selectedClient.endereco}{selectedClient.numero ? `, ${selectedClient.numero}` : ''}</p>}
+                      {selectedClient.bairro && <p className="text-xs text-slate-500">{selectedClient.bairro}</p>}
+                      {(selectedClient.cidade || selectedClient.estado) && <p className="text-xs text-slate-500">{[selectedClient.cidade, selectedClient.estado].filter(Boolean).join(' — ')}</p>}
+                      {selectedClient.cep && <p className="text-xs text-slate-400">CEP: {selectedClient.cep}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Documentos */}
+                {((selectedClient as any).documentos?.length > 0) && (
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Documentos</p>
+                    {((selectedClient as any).documentos as {nome:string;url:string;tipo?:string;data?:string}[]).map((doc, i) => (
+                      <div key={i} className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-9 h-9 rounded-xl bg-blue-100 flex items-center justify-center flex-shrink-0">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-xs font-bold text-slate-700 truncate">{doc.nome}</p>
+                            {doc.data && <p className="text-[10px] text-slate-400">{new Date(doc.data).toLocaleDateString('pt-BR')}</p>}
+                          </div>
+                        </div>
+                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                          className="flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors"
+                          title="Baixar documento">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Excluir cliente (só admin) */}
+                {isAdmin && onDeleteCliente && (
+                  <button
+                    onClick={() => { onDeleteCliente(selectedClient.id); setSelectedClient(null); }}
+                    className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl border-2 border-red-200 bg-red-50 text-red-500 hover:bg-red-100 text-xs font-black uppercase tracking-wide transition-all active:scale-95"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                    Excluir este cliente
+                  </button>
+                )}
 
                 {/* Purchases — clicáveis, sem badge de status */}
                 <div className="space-y-2">
@@ -20558,12 +20622,18 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           <ClientesSection
             clients={clients}
             sales={sales}
+            isAdmin={isAdmin}
             onUpdateCliente={(updated) => {
               const updatedList = clients.map((c) =>
                 c.id === updated.id ? updated : c
               );
               setClients(updatedList);
               dbService.upsertCliente(updated).catch(console.error);
+            }}
+            onDeleteCliente={(id) => {
+              if (!window.confirm('Excluir este cliente permanentemente? Esta ação não pode ser desfeita.')) return;
+              setClients(prev => prev.filter(c => c.id !== id));
+              dbService.deleteClienteById(id).catch(console.error);
             }}
           />
         );
