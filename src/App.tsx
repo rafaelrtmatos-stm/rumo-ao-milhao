@@ -13391,6 +13391,7 @@ const ContratosSection = ({
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [pixVenda, setPixVenda] = useState<Venda | null>(null);
+  const [showPixModal, setShowPixModal] = useState(false);
   const [pixQRData, setPixQRData] = useState<string>('');
   const [reciboObservacao, setReciboObservacao] = useState("");
   const [comCarimbo, setComCarimbo] = useState(false);
@@ -15819,6 +15820,94 @@ VENDEDOR: ${vendedorLabel}`;
           </div>
         )}
       </AnimatePresence>
+
+      {/* Modal PIX da tela inicial */}
+      {showPixModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4"
+          onClick={() => setShowPixModal(false)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#1a4a1a] px-5 py-4 flex items-center justify-between">
+              <div>
+                <p className="text-white font-black text-sm">{(config as any).nomeFantasia || 'PIX'}</p>
+                {(config as any).cnpj && <p className="text-white/60 text-[10px]">CNPJ: {(config as any).cnpj}</p>}
+              </div>
+              <button onClick={() => setShowPixModal(false)}
+                className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="p-5 space-y-4">
+              {(config as any).chavePix ? (() => {
+                const [qrSrc, setQrSrc] = React.useState('');
+                React.useEffect(() => {
+                  import('qrcode').then(({ default: QRCode }) => {
+                    const descPix = ((config as any).nomeFantasia || 'EMPRESA').substring(0,25);
+                    const payload = gerarPixPayload({
+                      chavePix: (config as any).chavePix,
+                      nomeBeneficiario: (config as any).nomeBeneficiario || descPix,
+                      cidadeBeneficiario: (config as any).cidadeBeneficiario || 'SANTAREM',
+                      valor: 0.01, descricao: descPix,
+                    });
+                    QRCode.toDataURL(payload, { width: 200, margin: 2 }).then(setQrSrc);
+                  });
+                }, []);
+                return (
+                  <>
+                    {qrSrc && (
+                      <div className="flex justify-center">
+                        <div className="p-2 border-2 border-slate-200 rounded-2xl">
+                          <img src={qrSrc} alt="QR Code PIX" className="w-40 h-40"/>
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-2">
+                      {[
+                        { l:'Chave PIX', v:(config as any).chavePix },
+                        { l:'Beneficiário', v:(config as any).nomeBeneficiario },
+                        { l:'Banco', v:(config as any).banco },
+                        { l:'Agência', v:(config as any).agencia },
+                        { l:'Conta', v:(config as any).contaBancaria ? (config as any).contaBancaria + ((config as any).tipoConta ? ' (' + (config as any).tipoConta + ')' : '') : null },
+                      ].filter(i => i.v).map(item => (
+                        <div key={item.l} className="flex justify-between py-1.5 border-b border-slate-100">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.l}</span>
+                          <span className="text-xs font-black text-slate-700">{item.v}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => { navigator.clipboard.writeText((config as any).chavePix); alert('Chave PIX copiada!'); }}
+                        className="flex-1 py-3 rounded-2xl bg-[#1a4a1a] text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        Copiar chave
+                      </button>
+                      {typeof navigator !== 'undefined' && (navigator as any).share && (
+                        <button onClick={() => {
+                          const txt = [(config as any).nomeFantasia ? '🏢 ' + (config as any).nomeFantasia : '', (config as any).cnpj ? 'CNPJ: ' + (config as any).cnpj : '', '', '💚 PIX', 'Chave: ' + (config as any).chavePix, '', (config as any).banco ? '🏦 ' + (config as any).banco : '', (config as any).agencia ? 'Agência: ' + (config as any).agencia : '', (config as any).contaBancaria ? 'Conta: ' + (config as any).contaBancaria : ''].filter(Boolean).join(String.fromCharCode(10));
+                          (navigator as any).share({ title: 'Dados PIX', text: txt });
+                        }}
+                          className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+                          Compartilhar
+                        </button>
+                      )}
+                    </div>
+                  </>
+                );
+              })() : (
+                <div className="text-center py-4 space-y-2">
+                  <p className="text-slate-500 text-sm font-bold">Chave PIX não configurada</p>
+                  <button onClick={() => { setShowPixModal(false); setSection('config'); }}
+                    className="px-4 py-2 rounded-xl bg-[#1a4a1a] text-white text-xs font-black">
+                    Ir para Configurações
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal: QR Code PIX */}
       {pixVenda && pixQRData && (
@@ -20221,22 +20310,31 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                   )
                 },
                 {
-                  label: "Calculadora", section: "calculadora",
+                  label: "PIX", section: "pix_modal" as any,
                   icon: (
                     <svg viewBox="0 0 48 48" fill="none" className="w-9 h-9">
-                      <rect x="8" y="4" width="32" height="40" rx="6" fill="white" fillOpacity=".2" stroke="white" strokeWidth="2.5"/>
-                      <rect x="12" y="8" width="24" height="10" rx="3" fill="white" fillOpacity=".9"/>
-                      <circle cx="16" cy="28" r="3" fill="white" fillOpacity=".8"/>
-                      <circle cx="24" cy="28" r="3" fill="white" fillOpacity=".8"/>
-                      <circle cx="32" cy="28" r="3" fill="white" fillOpacity=".8"/>
-                      <circle cx="16" cy="38" r="3" fill="white" fillOpacity=".8"/>
-                      <circle cx="24" cy="38" r="3" fill="white" fillOpacity=".8"/>
-                      <rect x="29" y="35" width="6" height="6" rx="3" fill="white" fillOpacity=".95"/>
+                      <rect x="4" y="4" width="16" height="16" rx="3" fill="white" fillOpacity=".9"/>
+                      <rect x="8" y="8" width="8" height="8" rx="1.5" fill="#1a4a1a"/>
+                      <rect x="28" y="4" width="16" height="16" rx="3" fill="white" fillOpacity=".9"/>
+                      <rect x="32" y="8" width="8" height="8" rx="1.5" fill="#1a4a1a"/>
+                      <rect x="4" y="28" width="16" height="16" rx="3" fill="white" fillOpacity=".9"/>
+                      <rect x="8" y="32" width="8" height="8" rx="1.5" fill="#1a4a1a"/>
+                      <rect x="28" y="28" width="4" height="4" rx="1" fill="white" fillOpacity=".9"/>
+                      <rect x="34" y="28" width="4" height="4" rx="1" fill="white" fillOpacity=".9"/>
+                      <rect x="40" y="28" width="4" height="4" rx="1" fill="white" fillOpacity=".7"/>
+                      <rect x="28" y="34" width="4" height="4" rx="1" fill="white" fillOpacity=".7"/>
+                      <rect x="34" y="34" width="4" height="4" rx="1" fill="white" fillOpacity=".95"/>
+                      <rect x="40" y="34" width="4" height="4" rx="1" fill="white" fillOpacity=".9"/>
+                      <rect x="28" y="40" width="4" height="4" rx="1" fill="white" fillOpacity=".9"/>
+                      <rect x="34" y="40" width="10" height="4" rx="1" fill="white" fillOpacity=".7"/>
                     </svg>
                   )
                 },
               ].map(item => (
-                <button key={item.section} onClick={() => { setSection(item.section as Section); try { localStorage.setItem('lastSection', item.section); } catch {} }}
+                <button key={item.section} onClick={() => {
+                  if (item.section === 'pix_modal') { setShowPixModal(true); return; }
+                  setSection(item.section as Section); try { localStorage.setItem('lastSection', item.section); } catch {};
+                }}
                   className="flex flex-col items-center gap-2.5 p-4 rounded-3xl bg-[#1a4a1a] hover:bg-[#245424] active:scale-95 transition-all shadow-lg group">
                   <div className="w-14 h-14 rounded-2xl bg-white/10 flex items-center justify-center group-hover:bg-white/15 transition-colors">
                     {item.icon}
