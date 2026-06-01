@@ -10178,28 +10178,12 @@ const EmpreendimentosSection = ({
                   linhas.push(`TOTAL DE QUADRAS: ${totalQuadras}`);
                   linhas.push(`TOTAL DE LOTES: ${totalLotes}`);
                   linhas.push("");
-                  linhas.push("LOTES POR QUADRA (cadastrados no mapa):");
-
-                  // Pegar vendas ativas para saber quais lotes estão ocupados
-                  const vendasAtivas = sales.filter((s: any) =>
-                    s.empreendimentoId === lotRegDev.id && s.status !== "cancelado"
-                  );
-                  const loteOcupado = (q: string, l: string) =>
-                    vendasAtivas.some((s: any) =>
-                      String(s.quadra||"").trim() === String(q).trim() &&
-                      String(s.numeroLote||"").trim() === String(l).trim()
-                    );
+                  linhas.push("LOTES POR QUADRA (todos os lotes cadastrados no mapa):");
 
                   if (usarPontos) {
                     quadrasOrdenadas.forEach(q => {
                       const lts = quadraMapaMap[q].sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
-                      const disponiveis = lts.filter(l => !loteOcupado(q, l));
-                      const ocupados   = lts.filter(l => loteOcupado(q, l));
-                      linhas.push(`Q${q}: ${lts.length} lotes no total`);
-                      linhas.push(`  Disponíveis (${disponiveis.length}): ${disponiveis.length > 0 ? disponiveis.join(",") : "nenhum"}.`);
-                      if (ocupados.length > 0) {
-                        linhas.push(`  Vendidos/Indisponíveis (${ocupados.length}): ${ocupados.join(",")}.`);
-                      }
+                      linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(",")}.`);
                     });
                   } else if (quadrasConf.length) {
                     quadrasConf.forEach(q => {
@@ -10207,22 +10191,17 @@ const EmpreendimentosSection = ({
                       const lst: string[] = typeof lts === "object" && !Array.isArray(lts)
                         ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
                         : (Array.isArray(lts) ? lts : []);
-                      const disponiveis = lst.filter(l => !loteOcupado(q, l));
-                      const ocupados   = lst.filter(l => loteOcupado(q, l));
-                      linhas.push(`Q${q}: ${lst.length} lotes no total`);
-                      linhas.push(`  Disponíveis (${disponiveis.length}): ${disponiveis.length > 0 ? disponiveis.join(",") : "nenhum"}.`);
-                      if (ocupados.length > 0) {
-                        linhas.push(`  Vendidos/Indisponíveis (${ocupados.length}): ${ocupados.join(",")}.`);
-                      }
+                      linhas.push(`Q${q}: ${lst.length} lotes — ${lst.join(",")}.`);
                     });
                   } else {
                     linhas.push("(Nenhum lote cadastrado no mapa ainda)");
                   }
 
-                  linhas.push("", "INSTRUÇÕES: Com base nas quadras e lotes acima, defina as regras de preço.");
-                  linhas.push("Cada REGRA tem: quais quadras/lotes, valor total, entrada e número de parcelas.");
-                  linhas.push("Crie quantas REGRAs forem necessárias — uma para cada faixa de preço.", "");
-                  linhas.push("FORMATO:");
+                  linhas.push("");
+                  linhas.push("INSTRUÇÕES: Agrupe os lotes acima em REGRAs de preço.");
+                  linhas.push("Cada REGRA define quais quadras/lotes têm o mesmo preço, entrada e parcelas.");
+                  linhas.push("Todos os lotes devem estar em alguma REGRA. Crie quantas precisar.", "");
+                  linhas.push("FORMATO (cole o resultado abaixo desta linha):");
                   linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
                   linhas.push("REGRA2: Q2:1,2,3. VALOR:18000 ENTRADA:500 PARCELAS:48");
                   linhas.push("REGRA3: Q3:1,2,3. VALOR:15000 ENTRADA:500 PARCELAS:50");
