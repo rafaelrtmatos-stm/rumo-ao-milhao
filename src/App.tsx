@@ -13391,7 +13391,6 @@ const ContratosSection = ({
   );
   const [showReciboModal, setShowReciboModal] = useState(false);
   const [pixVenda, setPixVenda] = useState<Venda | null>(null);
-  const [showPixModal, setShowPixModal] = useState(false);
   const [pixQRData, setPixQRData] = useState<string>('');
   const [reciboObservacao, setReciboObservacao] = useState("");
   const [comCarimbo, setComCarimbo] = useState(false);
@@ -19587,6 +19586,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     }
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
+  const [showPixModal, setShowPixModal] = useState(false);
   // Usuários do sistema — carregado no App para uso em vendas/corretores
   const [appUsers, setAppUsers] = useState<{ id: string; email: string; profile: { nome?: string } }[]>([]);
   useEffect(function() {
