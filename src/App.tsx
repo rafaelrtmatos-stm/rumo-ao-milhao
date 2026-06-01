@@ -15596,9 +15596,11 @@ VENDEDOR: ${vendedorLabel}`;
                   )}
                 </div>
               </div>
-              <p className="font-display font-bold text-primary-main text-lg">
-                {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
-              </p>
+              {venda.valorLote > 0 && (venda as any).origemReserva !== 'site_publico' && venda.status !== 'rascunho' && (
+                <p className="font-display font-bold text-primary-main text-lg">
+                  {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
+                </p>
+              )}
               {/* Linha 1: Contrato, Recibo, Copiar */}
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -15848,87 +15850,38 @@ VENDEDOR: ${vendedorLabel}`;
             {/* 🌐 RESERVAS ONLINE — vieram do site */}
             {reservasOnline.length > 0 && (
               <div className="space-y-3">
-                <div className="flex items-center gap-3 px-1">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"/>
-                    <span className="text-sm font-black text-slate-700">🌐 Reservas Online</span>
-                    <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-black">{reservasOnline.length}</span>
-                  </div>
-                  <p className="text-xs text-slate-400 hidden sm:block">Reservas feitas pelo site — adicione preço e vendedor para confirmar</p>
+                <div className="flex items-center gap-2 px-1">
+                  <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse"/>
+                  <span className="text-sm font-black text-slate-700">🌐 Reservas Online</span>
+                  <span className="px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-xs font-black">{reservasOnline.length}</span>
                 </div>
-                <div className="space-y-3">
+                {/* Mobile */}
+                <div className="sm:hidden space-y-3">
                   {reservasOnline.map(v => {
-                    const dev = developments.find(d => d.id === v.empreendimentoId);
-                    const docs = (v as any).documentos as {nome:string;url:string;tipo?:string;data?:string}[] || [];
+                    const docs = (v as any).documentos as {nome:string;url:string;tipo?:string}[] || [];
+                    const mCard = renderMobileCard(v);
+                    // Renderizar igual ao sem contrato mas sem valor — reusar renderMobileCard
+                    // e adicionar bloco de docs abaixo se houver
                     return (
-                      <div key={v.id} className="bg-white rounded-2xl border-2 border-blue-100 p-4 space-y-3 shadow-sm">
-                        {/* Header */}
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="text-sm font-black text-slate-800">{v.clienteNome}</span>
-                              <span className="px-2 py-0.5 bg-blue-100 text-blue-600 rounded-full text-[10px] font-black uppercase">Online</span>
-                            </div>
-                            <div className="flex items-center gap-2 mt-0.5 flex-wrap text-xs text-slate-500">
-                              {dev && <span>{dev.nome}</span>}
-                              {v.quadra && v.numeroLote && <span className="font-bold text-slate-700">Q{v.quadra} L{v.numeroLote}</span>}
-                              {v.dataVenda && <span>{new Date(v.dataVenda).toLocaleDateString('pt-BR')}</span>}
-                            </div>
-                            {/* Contato */}
-                            <div className="flex gap-3 mt-1 flex-wrap">
-                              {(v as any).clienteTelefone && (
-                                <a href={`https://wa.me/55${String((v as any).clienteTelefone).replace(/\D/g,'')}`}
-                                  target="_blank" rel="noopener noreferrer"
-                                  className="flex items-center gap-1 text-[11px] text-green-600 font-bold hover:underline">
-                                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 0C5.373 0 0 5.373 0 12c0 2.127.558 4.123 1.532 5.857L0 24l6.335-1.521A11.945 11.945 0 0 0 12 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 0 1-5.034-1.39l-.361-.215-3.722.893.928-3.63-.235-.374A9.818 9.818 0 1 1 12 21.818z"/></svg>
-                                  {(v as any).clienteTelefone}
-                                </a>
-                              )}
-                              {(v as any).clienteEmail && (
-                                <span className="text-[11px] text-slate-400">{(v as any).clienteEmail}</span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Documentos anexados pelo cliente */}
+                      <div key={v.id}>
+                        {mCard}
                         {docs.length > 0 && (
-                          <div className="flex flex-wrap gap-2">
+                          <div className="flex flex-wrap gap-2 mt-2 px-1">
                             {docs.map((doc, di) => (
                               <a key={di} href={doc.url} target="_blank" rel="noopener noreferrer"
                                 className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 border border-blue-200 rounded-xl text-[11px] font-bold text-blue-700 hover:bg-blue-100 transition-colors">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
-                                {doc.tipo || doc.nome.split('_').pop()?.split('.')[0] || 'Doc'}
+                                {doc.tipo || 'Doc'}
                               </a>
                             ))}
                           </div>
                         )}
-
-                        {/* Botões de ação */}
-                        <div className="grid grid-cols-3 gap-2">
-                          <button
-                            onClick={() => handleOpenGerarContratoForVenda(v)}
-                            className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-primary-main/10 text-primary-main border border-primary-main/20 hover:bg-primary-main hover:text-white text-[10px] font-black transition-all">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
-                            Contrato
-                          </button>
-                          <button
-                            onClick={() => handleEditarContrato(v)}
-                            className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 hover:bg-amber-500 hover:text-white text-[10px] font-black transition-all">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
-                            Editar
-                          </button>
-                          <button
-                            onClick={() => requestDelete(`Excluir reserva de ${v.clienteNome}?`, () => onDeleteVenda(v.id))}
-                            className="flex flex-col items-center gap-1 p-2.5 rounded-xl bg-red-50 text-red-400 border border-red-100 hover:bg-red-500 hover:text-white text-[10px] font-black transition-all">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
-                            Excluir
-                          </button>
-                        </div>
                       </div>
                     );
                   })}
                 </div>
+                {/* Desktop */}
+                <GroupTable rows={reservasOnline} />
               </div>
             )}
 
