@@ -10180,18 +10180,40 @@ const EmpreendimentosSection = ({
                   linhas.push("");
                   linhas.push("LOTES POR QUADRA (cadastrados no mapa):");
 
+                  // Pegar vendas ativas para saber quais lotes estão ocupados
+                  const vendasAtivas = sales.filter((s: any) =>
+                    s.empreendimentoId === lotRegDev.id && s.status !== "cancelado"
+                  );
+                  const loteOcupado = (q: string, l: string) =>
+                    vendasAtivas.some((s: any) =>
+                      String(s.quadra||"").trim() === String(q).trim() &&
+                      String(s.numeroLote||"").trim() === String(l).trim()
+                    );
+
                   if (usarPontos) {
                     quadrasOrdenadas.forEach(q => {
                       const lts = quadraMapaMap[q].sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
-                      linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(",")}.`);
+                      const disponiveis = lts.filter(l => !loteOcupado(q, l));
+                      const ocupados   = lts.filter(l => loteOcupado(q, l));
+                      linhas.push(`Q${q}: ${lts.length} lotes no total`);
+                      linhas.push(`  Disponíveis (${disponiveis.length}): ${disponiveis.length > 0 ? disponiveis.join(",") : "nenhum"}.`);
+                      if (ocupados.length > 0) {
+                        linhas.push(`  Vendidos/Indisponíveis (${ocupados.length}): ${ocupados.join(",")}.`);
+                      }
                     });
                   } else if (quadrasConf.length) {
                     quadrasConf.forEach(q => {
                       const lts = (lotRegDev.lotesPorQuadra as any)[q];
-                      const lst = typeof lts === "object" && !Array.isArray(lts)
-                        ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i)).join(",")
-                        : (Array.isArray(lts) ? lts.join(",") : "");
-                      linhas.push(`Q${q}:${lst}.`);
+                      const lst: string[] = typeof lts === "object" && !Array.isArray(lts)
+                        ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
+                        : (Array.isArray(lts) ? lts : []);
+                      const disponiveis = lst.filter(l => !loteOcupado(q, l));
+                      const ocupados   = lst.filter(l => loteOcupado(q, l));
+                      linhas.push(`Q${q}: ${lst.length} lotes no total`);
+                      linhas.push(`  Disponíveis (${disponiveis.length}): ${disponiveis.length > 0 ? disponiveis.join(",") : "nenhum"}.`);
+                      if (ocupados.length > 0) {
+                        linhas.push(`  Vendidos/Indisponíveis (${ocupados.length}): ${ocupados.join(",")}.`);
+                      }
                     });
                   } else {
                     linhas.push("(Nenhum lote cadastrado no mapa ainda)");
