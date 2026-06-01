@@ -13539,6 +13539,2635 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
   );
 };
 
+
+const VendasSection = ({
+  developments,
+  sales = [],
+  onSaveVenda,
+  onGoToContracts,
+  onGoToContractsRecibo,
+  initialSaleData,
+  onSaveDev,
+  vendedores = [],
+  clients = [],
+  editingEntry,
+  onUpdateVendaFull,
+  onMergeClients,
+  isOnline = true,
+  appConfig = {},
+}: {
+  developments: Empreendimento[];
+  sales?: Venda[];
+  onSaveVenda: (v: Venda, c: Cliente) => Venda;
+  onGoToContracts: (v: Venda) => void;
+  onGoToContractsRecibo?: (v: Venda) => void;
+  initialSaleData?: Partial<Venda>;
+  onSaveDev: (d: Empreendimento) => void;
+  vendedores?: Vendedor[];
+  clients?: Cliente[];
+  editingEntry?: { venda: Venda; cliente: Cliente | null } | null;
+  onUpdateVendaFull?: (v: Venda, c: Cliente) => void;
+  onMergeClients?: (masterId: string, duplicateIds: string[]) => void;
+  appConfig?: any;
+  isOnline?: boolean;
+}) => {
+  const [clientData, setClientData] = useState<Partial<Cliente>>({
+    nome: "",
+    nacionalidade: "Brasileira",
+    genero: "M",
+    rg: "",
+    cpf: "",
+    estadoCivil: "Solteiro(a)",
+    profissao: "",
+    nascimento: "",
+    cep: "",
+    endereco: "",
+    numero: "",
+    bairro: "",
+    cidade: "",
+    estado: "",
+    telefone1: "",
+    telefone2: "",
+  });
+  const [hasSecondBuyer, setHasSecondBuyer] = useState(false);
+  const [secondBuyerData, setSecondBuyerData] = useState<Venda["comprador2"]>({
+    nome: "",
+    nacionalidade: "Brasileira",
+    genero: "M",
+    rg: "",
+    cpf: "",
+    estadoCivil: "Solteiro(a)",
+    profissao: "",
+    nascimento: "",
+  });
+  const [saleData, setSaleData] = useState<Partial<Venda>>({
+    empreendimentoId: "",
+    numeroLote: "",
+    quadra: "",
+    rua: "",
+    valorLote: undefined,
+    valorEntrada: undefined,
+    quantidadeParcelas: undefined,
+    dataVencimento: defaultVencimento(),
+    vendedor: "",
+    valorParcela: 0,
+    custo: 0,
+    comissao: 0,
+    formaPagamento: "Boleto",
+    ...initialSaleData,
+  });
+  const [tipoVenda, setTipoVenda] = useState<'avista' | 'parcelado'>(
+    initialSaleData?.quantidadeParcelas === 0 ? 'avista' : 'parcelado'
+  );
+  const vendasFormRef = useRef<HTMLFormElement>(null);
+  const [showNovoDev, setShowNovoDev] = useState(false);
+  const [novoDevData, setNovoDevData] = useState({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
+  const [cpfErr, setCpfErr] = useState<string | null>(null);
+  const [rgErr, setRgErr] = useState<string | null>(null);
+  const [cpf2Err, setCpf2Err] = useState<string | null>(null);
+  const [rg2Err, setRg2Err] = useState<string | null>(null);
+  const [invalidSaleFields, setInvalidSaleFields] = useState<Record<string, string>>({});
+  const [showNameDropdown, setShowNameDropdown] = useState(false);
+  const [showCpfDropdown, setShowCpfDropdown] = useState(false);
+  const [cpfMatch, setCpfMatch] = useState<Cliente | null>(null);
+  const [cpfDuplicates, setCpfDuplicates] = useState<Cliente[]>([]);
+  const [showMergeModal, setShowMergeModal] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState<string>("");
+  const [hasDraft, setHasDraft] = useState(() => !!localStorage.getItem('venda_rascunho'));
+  const [showColarFicha, setShowColarFicha] = useState(false);
+  const [fichaText, setFichaText] = useState("");
+  const [fichaFilled, setFichaFilled] = useState<string[]>([]);
+  const [fichaSuccess, setFichaSuccess] = useState(false);
+
+  const handleSalvarNovoDev = () => {
+    if (!novoDevData.nome) { alert("Informe o nome do empreendimento."); return; }
+    const novo: Empreendimento = {
+      id: `dev-${Date.now()}`,
+      nome: textoMaiusculo(novoDevData.nome).trim(),
+      endereco: "",
+      cidade: "",
+      estado: "",
+      totalLotes: novoDevData.totalLotes || 0,
+      descricao: "",
+      lotesVendidos: 0,
+      comunidade: novoDevData.comunidade,
+      quadras: novoDevData.quadras,
+    };
+    onSaveDev(novo);
+    setSaleData({ ...saleData, empreendimentoId: novo.id });
+    setShowNovoDev(false);
+    setNovoDevData({ nome: "", comunidade: "", quadras: "", totalLotes: 0 });
+  };
+
+  // Update saleData if initialSaleData changes (e.g. coming from Dashboard)
+  useEffect(() => {
+    if (initialSaleData) {
+      setSaleData((prev) => ({ ...prev, ...initialSaleData }));
+    }
+  }, [initialSaleData]);
+
+  // Pre-fill all data when editing an existing sale
+  useEffect(() => {
+    if (editingEntry) {
+      if (editingEntry.cliente) {
+        setClientData({ ...editingEntry.cliente });
+      }
+      setSaleData({ ...editingEntry.venda });
+      setTipoVenda(editingEntry.venda.quantidadeParcelas === 0 ? 'avista' : 'parcelado');
+      if (editingEntry.venda.comprador2) {
+        setHasSecondBuyer(true);
+        setSecondBuyerData({ ...editingEntry.venda.comprador2 });
+      } else {
+        setHasSecondBuyer(false);
+      }
+      setLastSavedVenda(null);
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [editingEntry]);
+
+  // CPF detection — match único mostra "Usar dados existentes", múltiplos mostra duplicatas
+  useEffect(() => {
+    const cpfRaw = (clientData.cpf || "").replace(/\D/g, "");
+    if (cpfRaw.length !== 11 || !validarCPF(clientData.cpf || "")) {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+      return;
+    }
+    // Exclui o cliente já carregado (edição ou após "Usar dados existentes")
+    const excludeId = editingEntry?.cliente?.id || clientData.id;
+    const matches = clients.filter(
+      (c) => c.cpf?.replace(/\D/g, "") === cpfRaw && c.id !== excludeId
+    );
+    if (matches.length === 1) {
+      setCpfMatch(matches[0]);
+      setCpfDuplicates([]);
+    } else if (matches.length > 1) {
+      setCpfMatch(null);
+      setCpfDuplicates(matches);
+    } else {
+      setCpfMatch(null);
+      setCpfDuplicates([]);
+    }
+  }, [clientData.cpf, clientData.id, clients, editingEntry]);
+
+  const [rawText, setRawText] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
+  const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
+  const [isExtractingFiles, setIsExtractingFiles] = useState(false);
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [lastSavedVenda, setLastSavedVenda] = useState<Venda | null>(null);
+  const [pendingMissingLotSale, setPendingMissingLotSale] = useState<{ venda: Venda; cliente: Cliente } | null>(null);
+
+  const requiredSaleFieldClass = (field: string) =>
+    invalidSaleFields[field] ? " border-red-500 ring-2 ring-red-200 focus:ring-red-400 bg-red-50/60" : "";
+
+  const clearInvalidSaleField = (field: string) => {
+    if (!invalidSaleFields[field]) return;
+    setInvalidSaleFields((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
+
+  // Mapeamento campo → seção do formulário
+  const saleFieldSection: Record<string, string> = {
+    nome: "section-comprador", cpf: "section-comprador", rg: "section-comprador",
+    estadoCivil: "section-comprador", nascimento: "section-comprador",
+    profissao: "section-comprador", telefone: "section-comprador",
+    endereco: "section-comprador", cidade: "section-comprador",
+    empreendimentoId: "section-lote", numeroLote: "section-lote",
+    quadra: "section-lote", valorLote: "section-lote",
+    vendedor: "section-vendedor",
+    valorEntrada: "section-pagamento", quantidadeParcelas: "section-pagamento",
+    valorParcela: "section-pagamento", dataVencimento: "section-pagamento",
+  };
+
+  const focusInvalidSaleField = (field: string) => {
+    // Primeiro: rolar para a seção correta se necessário
+    const sectionId = saleFieldSection[field];
+    if (sectionId) {
+      const section = vendasFormRef.current?.querySelector<HTMLElement>(`#${sectionId}`);
+      if (section) {
+        section.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }
+    // Depois: focar no campo específico
+    setTimeout(() => {
+      const el = vendasFormRef.current?.querySelector<HTMLElement>(`[data-sale-field="${field}"]`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "center" });
+        el.focus();
+        // Piscar vermelho para chamar atenção
+        el.style.transition = "box-shadow 0.1s";
+        el.style.boxShadow = "0 0 0 4px rgba(239,68,68,0.4)";
+        setTimeout(() => { el.style.boxShadow = ""; }, 1000);
+      }
+    }, 300);
+  };
+
+  const validateVendaFields = () => {
+    const missing: Record<string, string> = {};
+    const add = (field: string, label: string, value: any) => {
+      if (value === undefined || value === null || String(value).trim() === "" || Number.isNaN(value)) {
+        missing[field] = label;
+      }
+    };
+    const addPositive = (field: string, label: string, value: any) => {
+      const num = Number(value);
+      if (value === undefined || value === null || String(value).trim() === "" || Number.isNaN(num) || num <= 0) {
+        missing[field] = label;
+      }
+    };
+
+    add("nome", "Nome completo do comprador", clientData.nome);
+    add("cpf", "CPF do comprador", clientData.cpf);
+    add("rg", "RG do comprador", clientData.rg);
+    add("empreendimentoId", "Empreendimento", saleData.empreendimentoId);
+    add("numeroLote", "Lote", saleData.numeroLote);
+    add("quadra", "Quadra", saleData.quadra);
+    addPositive("valorLote", "Valor total", saleData.valorLote);
+    add("vendedor", "Corretor / Vendedor", saleData.vendedor);
+
+    if (tipoVenda === "parcelado") {
+      add("valorEntrada", "Entrada", saleData.valorEntrada);
+      addPositive("quantidadeParcelas", "Quantidade de parcelas", saleData.quantidadeParcelas);
+      addPositive("valorParcela", "Valor da parcela", saleData.valorParcela);
+      add("dataVencimento", "Data de vencimento", saleData.dataVencimento);
+    }
+
+    if (hasSecondBuyer) {
+      add("comprador2Nome", "Nome do segundo comprador", secondBuyerData?.nome);
+      add("comprador2Cpf", "CPF do segundo comprador", secondBuyerData?.cpf);
+      add("comprador2Rg", "RG do segundo comprador", secondBuyerData?.rg);
+    }
+
+    setInvalidSaleFields(missing);
+    const first = Object.keys(missing)[0];
+    if (first) {
+      focusInvalidSaleField(first);
+      triggerShake(vendasFormRef.current);
+      return false;
+    }
+    return true;
+  };
+
+  const [pasteSuccess, setPasteSuccess] = useState(false);
+  const [pasteError, setPasteError] = useState<string | null>(null);
+  const [pasteFilledFields, setPasteFilledFields] = useState<string[]>([]);
+  const [fileExtractSuccess, setFileExtractSuccess] = useState(false);
+  const [fileExtractError, setFileExtractError] = useState<string | null>(null);
+  const [fileFilledFields, setFileFilledFields] = useState<string[]>([]);
+
+  const applyDataToState = (
+    data: Record<string, any>,
+    devList: Empreendimento[]
+  ) => {
+    // Match empreendimento by name (field: "empreendimento")
+    const empNome = (data.empreendimento || data.empreendimentoNome || "").toLowerCase().trim();
+    let empreendimentoId: string | undefined;
+    if (empNome) {
+      const match = devList.find(
+        (d) =>
+          String(d.nome ?? '').toLowerCase().includes(empNome) ||
+          empNome.includes(String(d.nome ?? '').toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+
+    // Detect gender from estadoCivil
+    const estadoCivil = data.estadoCivil || "";
+    const generoDetectado: "F" | "M" | undefined =
+      ["Solteira", "Casada", "Divorciada", "Viúva"].includes(estadoCivil) ? "F" :
+      ["Solteiro", "Casado", "Divorciado", "Viúvo"].includes(estadoCivil) ? "M" : undefined;
+
+    // Build dataVencimento date from diaVencimento day number
+    let dataVencimento: string | undefined;
+    const diaVenc = data.diaVencimento ? String(data.diaVencimento).replace(/\D/g, "") : "";
+    if (diaVenc) {
+      const now = new Date();
+      let year = now.getFullYear();
+      let month = now.getMonth() + 1;
+      const dia = parseInt(diaVenc);
+      if (dia <= now.getDate()) { month += 1; if (month > 12) { month = 1; year += 1; } }
+      dataVencimento = `${year}-${String(month).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+    } else if (data.dataVencimento) {
+      dataVencimento = data.dataVencimento;
+    }
+
+    setClientData((prev) => ({
+      ...prev,
+      ...(data.nome ? { nome: textoMaiusculo(data.nome) } : {}),
+      ...(data.nacionalidade ? { nacionalidade: data.nacionalidade } : {}),
+      ...(data.rg ? { rg: data.rg } : {}),
+      ...(data.cpf ? { cpf: maskCPF(String(data.cpf)) } : {}),
+      ...(estadoCivil ? { estadoCivil } : {}),
+      ...(generoDetectado ? { genero: generoDetectado } : {}),
+      ...(data.profissao ? { profissao: data.profissao } : {}),
+      ...(data.nascimento ? { nascimento: data.nascimento } : {}),
+      ...(data.telefone1 ? { telefone1: maskPhone(String(data.telefone1)) } : {}),
+      ...(data.telefone2 ? { telefone2: maskPhone(String(data.telefone2)) } : {}),
+      ...(data.endereco ? { endereco: data.endereco } : {}),
+      ...(data.numero ? { numero: String(data.numero) } : {}),
+      ...(data.bairro ? { bairro: data.bairro } : {}),
+      ...(data.cidade ? { cidade: data.cidade } : {}),
+      ...(data.estado ? { estado: data.estado } : {}),
+      ...(data.cep ? { cep: maskCEP(String(data.cep)) } : {}),
+    }));
+
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      ...(data.lote || data.numeroLote ? { numeroLote: String(data.lote || data.numeroLote) } : {}),
+      ...(data.quadra ? { quadra: String(data.quadra) } : {}),
+      ...(data.valorTotal || data.valorLote ? { valorLote: Number(data.valorTotal || data.valorLote) } : {}),
+      ...(data.entrada || data.valorEntrada ? { valorEntrada: Number(data.entrada || data.valorEntrada) } : {}),
+      ...(data.valorParcela ? { valorParcela: Number(data.valorParcela) } : {}),
+      ...(data.numeroParcelas || data.quantidadeParcelas ? { quantidadeParcelas: Number(data.numeroParcelas || data.quantidadeParcelas) } : {}),
+      ...(dataVencimento ? { dataVencimento } : {}),
+    }));
+  };
+
+  const runExtraction = async (text: string) => {
+    setIsExtracting(true);
+    setPasteSuccess(false);
+    setPasteError(null);
+    setPasteFilledFields([]);
+    try {
+      const data = await geminiService.smartPaste(text);
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
+        applyDataToState(data, developments);
+        setPasteFilledFields(fields);
+        setPasteSuccess(true);
+        setRawText("");
+        setTimeout(() => { setPasteSuccess(false); setPasteFilledFields([]); }, 6000);
+      } else {
+        setPasteError("Não foi possível identificar dados. Verifique o texto.");
+        setTimeout(() => setPasteError(null), 5000);
+      }
+    } catch (err) {
+      console.error("Extraction error:", err);
+      setPasteError((err as any)?.message || "Erro ao processar o texto. Tente novamente.");
+      setTimeout(() => setPasteError(null), 5000);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  const handleExtractIA = async () => {
+    if (!rawText.trim()) return;
+    await runExtraction(rawText);
+  };
+
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pastedText = e.clipboardData.getData("text");
+    if (!pastedText.trim()) return;
+    setRawText(pastedText);
+    setTimeout(() => runExtraction(pastedText), 80);
+  };
+
+  const handleCopySummary = () => {
+    if (!lastSavedVenda) return;
+
+    const brl = (v: number) =>
+      new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(v);
+
+    // Format phone to +55 DD XXXXX-XXXX
+    const fmtPhone = (raw: string) => {
+      const digits = raw.replace(/\D/g, "");
+      if (digits.length === 11)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 7)}-${digits.slice(7)}`;
+      if (digits.length === 10)
+        return `+55 ${digits.slice(0, 2)} ${digits.slice(2, 6)}-${digits.slice(6)}`;
+      return raw;
+    };
+
+    // Format nascimento YYYY-MM-DD → DD/MM/YYYY
+    const fmtNasc = (d: string) => {
+      if (!d) return "";
+      const [y, m, day] = d.split("-");
+      return `${day}/${m}/${y}`;
+    };
+
+    // Extract day from dataVencimento
+    const diaVenc = lastSavedVenda.dataVencimento
+      ? new Date(lastSavedVenda.dataVencimento + "T12:00:00").getDate()
+      : "";
+
+    // Build phone line
+    const phones = [clientData.telefone1, clientData.telefone2]
+      .filter(Boolean)
+      .map((p) => fmtPhone(p as string));
+    const phoneLabel = `CONTATO: ${phones.join(" / ")}`;
+
+    const summary = `CADASTRO DO COMPRADOR
+NOME: ${(clientData.nome || "").toUpperCase()}
+RG: ${(clientData.rg || "").toUpperCase()}
+CPF: ${clientData.cpf || ""}
+ESTADO CIVIL: ${genderizeEstadoCivil(clientData.estadoCivil || "", clientData.genero || "M").toUpperCase()}
+DATA DE ANIVERSÁRIO: ${fmtNasc(clientData.nascimento || "")}
+ENDEREÇO: ${(clientData.endereco || "").toUpperCase()}
+Nº: ${clientData.numero || ""}
+BAIRRO: ${(clientData.bairro || "").toUpperCase()}
+CIDADE: ${(clientData.cidade || "").toUpperCase()}
+ESTADO: ${(clientData.estado || "").toUpperCase()}
+CEP: ${clientData.cep || ""}
+${phoneLabel}
+LOTE: ${lastSavedVenda.numeroLote}
+QUADRA: ${lastSavedVenda.quadra}
+EMPREENDIMENTO: ${lastSavedVenda.empreendimentoNome.toUpperCase()}
+VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
+ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
+QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
+DATA DE VENCIMENTO: ${diaVenc}
+VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2 || "")].filter(Boolean).map(v => v.toUpperCase()).join("/ ")}`;
+
+    navigator.clipboard.writeText(summary);
+    alert("Resumo copiado para a área de transferência!");
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const chosen = Array.from(e.target.files || []);
+    setAttachedFiles((prev) => {
+      const combined = [...prev, ...chosen];
+      return combined.slice(0, 2);
+    });
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    setAttachedFiles((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const applyExtractedData = (data: Record<string, any>, devs: typeof developments) => {
+    const nomeLower = (data.empreendimentoNome || "").toLowerCase();
+    let empreendimentoId: string | undefined;
+    if (nomeLower) {
+      const match = devs.find(
+        (d) =>
+          String(d.nome ?? '').toLowerCase().includes(nomeLower) ||
+          nomeLower.includes(String(d.nome ?? '').toLowerCase())
+      );
+      if (match) empreendimentoId = match.id;
+    }
+    setClientData((prev) => ({
+      ...prev,
+      nome: data.nome || data.nomeComprador || prev.nome,
+      nacionalidade: data.nacionalidade || prev.nacionalidade,
+      rg: data.rg || prev.rg,
+      cpf: data.cpf ? maskCPF(data.cpf) : prev.cpf,
+      estadoCivil: data.estadoCivil || prev.estadoCivil,
+      profissao: data.profissao || prev.profissao,
+      nascimento: data.nascimento || prev.nascimento,
+      telefone1: data.telefone1 ? maskPhone(data.telefone1) : prev.telefone1,
+      endereco: data.endereco || prev.endereco,
+      numero: data.numero || prev.numero,
+      bairro: data.bairro || prev.bairro,
+      cidade: data.cidade || prev.cidade,
+      estado: data.estado || prev.estado,
+      cep: data.cep ? maskCEP(data.cep) : prev.cep,
+    }));
+    setSaleData((prev) => ({
+      ...prev,
+      ...(empreendimentoId ? { empreendimentoId } : {}),
+      numeroLote: data.numeroLote || prev.numeroLote,
+      quadra: data.quadra || prev.quadra,
+      valorLote: data.valorLote || prev.valorLote,
+      valorEntrada: data.valorEntrada || prev.valorEntrada,
+      valorParcela: data.valorParcela || prev.valorParcela,
+      quantidadeParcelas: data.quantidadeParcelas || prev.quantidadeParcelas,
+      dataVencimento: data.dataVencimento || prev.dataVencimento,
+      vendedor: data.vendedor || prev.vendedor,
+    }));
+  };
+
+  const handleExtractFromFiles = async () => {
+    if (attachedFiles.length === 0) return;
+    setIsExtractingFiles(true);
+    setFileExtractSuccess(false);
+    setFileExtractError(null);
+    setFileFilledFields([]);
+    try {
+      const data = await geminiService.extractFromFiles(attachedFiles);
+      console.log("Gemini retornou:", data);
+      const fields = getFilledFieldNames(data);
+      if (fields.length > 0) {
+        applyExtractedData(data, developments);
+        setFileFilledFields(fields);
+        setFileExtractSuccess(true);
+        setAttachedFiles([]);
+        setTimeout(() => { setFileExtractSuccess(false); setFileFilledFields([]); }, 6000);
+      } else {
+        setFileExtractError("Não foi possível identificar dados nos documentos.");
+        setTimeout(() => setFileExtractError(null), 5000);
+      }
+    } catch (err) {
+      const msg = (err as any)?.message || "Erro ao ler os documentos.";
+      console.error("File extraction error:", err);
+      setFileExtractError(msg);
+      setTimeout(() => setFileExtractError(null), 5000);
+    } finally {
+      setIsExtractingFiles(false);
+    }
+  };
+
+  // Effect to auto-calculate default commission (e.g., 5%)
+  useEffect(() => {
+    if (saleData.valorLote && !saleData.comissao) {
+      setSaleData((prev) => ({ ...prev, comissao: prev.valorLote! * 0.05 }));
+    }
+  }, [saleData.valorLote]);
+
+  // Effect to auto-fill street if known (lotesInfo first, then ruasFaixas)
+  useEffect(() => {
+    if (saleData.empreendimentoId && saleData.quadra && saleData.numeroLote) {
+      const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+      const key = `${saleData.quadra}-${saleData.numeroLote}`.toUpperCase();
+      if (dev?.lotesInfo?.[key]?.rua) {
+        setSaleData((prev) => ({ ...prev, rua: dev!.lotesInfo![key].rua }));
+      } else {
+        const ruaSugerida = dev ? getRuaSugerida(dev, saleData.quadra, saleData.numeroLote) : null;
+        if (ruaSugerida) {
+          setSaleData((prev) => ({ ...prev, rua: ruaSugerida }));
+        }
+      }
+    }
+  }, [
+    saleData.empreendimentoId,
+    saleData.quadra,
+    saleData.numeroLote,
+    developments,
+  ]);
+
+  const buscarCEP = async (cep: string) => {
+    const cleanCEP = cep.replace(/\D/g, "");
+    if (cleanCEP.length !== 8) return;
+    try {
+      const response = await fetch(
+        `https://viacep.com.br/ws/${cleanCEP}/json/`,
+      );
+      const data = await response.json();
+      if (!data.erro) {
+        setClientData((prev) => ({
+          ...prev,
+          endereco: data.logradouro,
+          bairro: data.bairro,
+          cidade: data.localidade,
+          estado: data.uf,
+        }));
+      }
+    } catch (error) {}
+  };
+
+  const handleValueChange = (field: string, value: number) => {
+    let updatedData = { ...saleData, [field]: value };
+
+    // Total = Entry + (Count * Value)
+    // Value = (Total - Entry) / Count
+    // Total = (Value * Count) + Entry
+
+    // Cálculo bidirecional completo
+    if (field === "valorLote" || field === "valorEntrada" || field === "quantidadeParcelas") {
+      // Total + Entrada + Parcelas → calcula valor da parcela
+      const vLote = field === "valorLote" ? value : saleData.valorLote || 0;
+      const vEntrada = field === "valorEntrada" ? value : saleData.valorEntrada || 0;
+      const qParcelas = field === "quantidadeParcelas" ? value : saleData.quantidadeParcelas || 1;
+      if (qParcelas > 0) {
+        updatedData.valorParcela = Number(Math.max(0, (vLote - vEntrada) / qParcelas).toFixed(2));
+      }
+    } else if (field === "valorParcela") {
+      // Parcela + Nº Parcelas + Entrada → calcula total
+      const vParcela = value;
+      const vEntrada = saleData.valorEntrada || 0;
+      const qParcelas = saleData.quantidadeParcelas || 1;
+      updatedData.valorLote = Number((vParcela * qParcelas + vEntrada).toFixed(2));
+    }
+
+    setSaleData(updatedData);
+  };
+
+  const finalizeVenda = async (venda: Venda, cliente: Cliente) => {
+    // Upload de documentos se houver
+    const docTipoVenda = (saleData as any).docTipoVenda as string;
+    const docFrenteVenda = (saleData as any).docFrenteVenda as File | null;
+    const docVersoVenda = (saleData as any).docVersoVenda as File | null;
+    const docEtapaVenda = (saleData as any).docEtapaVenda as string;
+
+    let documentos: any[] = [];
+    if (docTipoVenda && docFrenteVenda && docEtapaVenda === 'pronto') {
+      try {
+        const { createClient } = await import('@supabase/supabase-js');
+        const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+        const nomeBase = (cliente.nome || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
+
+        const uploadDoc = async (file: File, sufixo: string) => {
+          const ext = file.name.split('.').pop() || 'jpg';
+          const nomeArq = nomeBase + '_' + sufixo + '.' + ext;
+          const clienteId = venda.clienteId || cliente.id || String(Date.now());
+          const path = 'clientes/' + clienteId + '/' + nomeArq;
+          const { error } = await sb.storage.from('documentos').upload(path, file, { upsert: true, contentType: file.type });
+          if (error) throw error;
+          const { data: u } = sb.storage.from('documentos').getPublicUrl(path);
+          return { nome: nomeArq, url: u.publicUrl, tipo: sufixo, data: new Date().toISOString() };
+        };
+
+        if (docTipoVenda === 'CNH') {
+          documentos.push(await uploadDoc(docFrenteVenda, 'CNH'));
+        } else if (docTipoVenda === 'RG') {
+          if (docVersoVenda) {
+            documentos.push(await uploadDoc(docFrenteVenda, 'RG_Frente'));
+            documentos.push(await uploadDoc(docVersoVenda, 'RG_Verso'));
+          } else {
+            documentos.push(await uploadDoc(docFrenteVenda, 'RG_FrenteVerso'));
+          }
+        }
+      } catch (err: any) {
+        console.error('Erro ao fazer upload de documento:', err);
+      }
+    }
+
+    const vendaComDocs = documentos.length > 0 ? { ...venda, documentos } : venda;
+    const clienteComDocs = documentos.length > 0
+      ? { ...cliente, documentos: [...((cliente as any).documentos || []), ...documentos] }
+      : cliente;
+
+    const savedVenda = onSaveVenda(vendaComDocs as Venda, clienteComDocs);
+    setPendingMissingLotSale(null);
+    setLastSavedVenda(savedVenda);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!validateVendaFields()) {
+      return;
+    }
+    if (!clientData.nome || !saleData.empreendimentoId) {
+      triggerShake(vendasFormRef.current);
+      return;
+    }
+    if (clientData.cpf && cpfStatus(clientData.cpf) === "invalid") {
+      setCpfErr("CPF inválido");
+      return;
+    }
+    if (clientData.rg && rgStatus(clientData.rg) === "invalid") {
+      setRgErr("RG inválido ou incompleto");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.cpf && cpfStatus(secondBuyerData.cpf) === "invalid") {
+      setCpf2Err("CPF inválido");
+      return;
+    }
+    if (hasSecondBuyer && secondBuyerData?.rg && rgStatus(secondBuyerData.rg) === "invalid") {
+      setRg2Err("RG inválido ou incompleto");
+      return;
+    }
+    const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+
+    if (!isOnline) {
+      addOfflineVendaDraft({
+        clientData: { ...clientData },
+        saleData: {
+          ...saleData,
+          empreendimentoNome: dev?.nome || saleData.empreendimentoNome || "",
+          status: "rascunho" as Venda["status"],
+        },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+        observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
+      });
+      localStorage.setItem('venda_rascunho', JSON.stringify({
+        clientData,
+        saleData: { ...saleData, status: "rascunho" },
+        secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
+        hasSecondBuyer,
+      }));
+      setHasDraft(true);
+      alert(
+        "Você está offline.\n\nA venda foi salva apenas como RASCUNHO LOCAL.\nQuando a internet voltar, abra o rascunho e conclua somente após o sistema validar se o lote ainda está disponível."
+      );
+      return;
+    }
+
+    if (editingEntry && onUpdateVendaFull) {
+      const updatedCliente: Cliente = normalizarNomeObrigatorio({
+        ...(editingEntry.cliente || ({ id: Date.now().toString(), dataCadastro: new Date().toISOString() } as Cliente)),
+        ...(clientData as Cliente),
+        estado: (clientData.estado || "").toUpperCase(),
+      } as Cliente);
+      const updatedVenda: Venda = {
+        ...editingEntry.venda,
+        ...(saleData as Venda),
+        clienteId: updatedCliente.id,
+        clienteNome: updatedCliente.nome,
+        empreendimentoNome: dev?.nome || editingEntry.venda.empreendimentoNome,
+        valorParcela: saleData.valorParcela || 0,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      onUpdateVendaFull(updatedVenda, updatedCliente);
+      setLastSavedVenda(updatedVenda);
+      return;
+    }
+
+    // ── Multi-lote: quebrar lote e quadra por separadores ──────────────────
+    const pares = parseQuadrasLotesInput(
+      String(saleData.quadra || ""),
+      String(saleData.numeroLote || "")
+    );
+
+    if (pares.length === 0) {
+      alert("Informe ao menos uma quadra e um lote.");
+      return;
+    }
+
+    // Se for apenas 1 par, comportamento original (incluindo verificações de status)
+    if (pares.length === 1) {
+      const { quadra, lote } = pares[0];
+      const cliente: Cliente = normalizarNomeObrigatorio({
+        ...(clientData as Cliente),
+        estado: (clientData.estado || "").toUpperCase(),
+        id: Date.now().toString(),
+        dataCadastro: new Date().toISOString(),
+      } as Cliente);
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (Date.now() + 1).toString(),
+        numeroContrato: `CONT-${Date.now()}`,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const lotSituation = getLotStatusForSale(dev, quadra, lote, sales, editingEntry?.venda?.id);
+      if (lotSituation.status === "vendido") {
+        alert("Este lote já está vendido/vinculado a uma venda. Verifique a quadra e o lote antes de continuar.");
+        return;
+      }
+      if (lotSituation.status === "indisponivel") {
+        alert("Este lote está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.");
+        return;
+      }
+      if (!lotSituation.exists) {
+        setPendingMissingLotSale({ venda, cliente });
+        return;
+      }
+      finalizeVenda(venda, cliente);
+      return;
+    }
+
+    // Múltiplos lotes: validar cada um individualmente antes de salvar
+    const erros: string[] = [];
+    const naoExistem: string[] = [];
+    for (const { quadra, lote } of pares) {
+      const sit = getLotStatusForSale(dev, quadra, lote, sales);
+      if (sit.status === "vendido") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} já está vendido.`);
+      } else if (sit.status === "indisponivel") {
+        erros.push(`Quadra ${quadra} / Lote ${lote} está indisponível.`);
+      } else if (!sit.exists) {
+        naoExistem.push(`Quadra ${quadra} / Lote ${lote}`);
+      }
+    }
+    if (erros.length > 0) {
+      alert("Problemas encontrados:\n\n" + erros.join("\n"));
+      return;
+    }
+    // Se algum lote não existe, perguntar se deseja adicionar (como no lote único)
+    if (naoExistem.length > 0) {
+      const confirmar = window.confirm(
+        `Os seguintes lotes não estão cadastrados no empreendimento:\n\n${naoExistem.join("\n")}\n\nDeseja adicionar ao empreendimento e continuar a venda?`
+      );
+      if (!confirmar) return;
+    }
+
+    // Salvar uma venda por lote
+    const clienteBase: Cliente = normalizarNomeObrigatorio({
+      ...(clientData as Cliente),
+      estado: (clientData.estado || "").toUpperCase(),
+      id: Date.now().toString(),
+      dataCadastro: new Date().toISOString(),
+    } as Cliente);
+
+    let lastVenda: Venda | null = null;
+    pares.forEach(({ quadra, lote }, idx) => {
+      const ts = Date.now() + idx * 2;
+      const venda: Venda = {
+        ...(saleData as Venda),
+        id: (ts + 1).toString(),
+        numeroContrato: `CONT-${ts}`,
+        clienteId: clienteBase.id,
+        clienteNome: clienteBase.nome,
+        empreendimentoNome: dev?.nome || "",
+        valorParcela: saleData.valorParcela || 0,
+        dataVenda: new Date().toISOString(),
+        status: "pendente",
+        quadra,
+        numeroLote: lote,
+        comprador2: hasSecondBuyer ? secondBuyerData : undefined,
+      };
+      const saved = onSaveVenda(venda, clienteBase);
+      lastVenda = saved;
+    });
+    if (lastVenda) {
+      setPendingMissingLotSale(null);
+      setLastSavedVenda(lastVenda);
+    }
+  };
+
+  if (lastSavedVenda) {
+    const wasEditing = !!editingEntry;
+    return (
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        className="card-premium py-20 text-center space-y-8"
+      >
+        <div className="w-24 h-24 bg-primary-main/10 text-primary-main rounded-full flex items-center justify-center mx-auto shadow-inner">
+          <FileCheck size={48} />
+        </div>
+        <div className="space-y-2">
+          <h2 className="text-3xl font-display font-bold text-slate-800">
+            {wasEditing ? "Venda Atualizada!" : "Venda Registrada!"}
+          </h2>
+          <p className="text-slate-500">
+            {wasEditing ? "As alterações foram salvas com sucesso." : "O cadastro foi concluído e os dados estão salvos."}
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 justify-center pt-8 flex-wrap">
+          <button onClick={handleCopySummary} className="btn-ghost px-6">
+            <Copy size={18} />
+            <span>Copiar Resumo</span>
+          </button>
+          <button
+            onClick={() => onGoToContracts(lastSavedVenda)}
+            className="btn-primary px-6"
+          >
+            <FileText size={18} />
+            <span>Gerar Contrato</span>
+          </button>
+          <button
+            onClick={() => onGoToContractsRecibo?.(lastSavedVenda)}
+            className="btn-ghost px-6"
+          >
+            <FileCheck size={18} />
+            <span>Gerar Recibo</span>
+          </button>
+          <button
+            onClick={() => setLastSavedVenda(null)}
+            className="btn-ghost px-6"
+          >
+            <span>Novo Cadastro</span>
+          </button>
+          <button
+            onClick={() => {
+              // Volta para o formulário sem apagar os dados já preenchidos
+              setLastSavedVenda(null);
+            }}
+            className="btn-ghost px-6"
+          >
+            <ChevronLeft size={18} />
+            <span>Voltar</span>
+          </button>
+        </div>
+      </motion.div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 pb-32 lg:pb-0">
+      <AnimatePresence>
+        {pendingMissingLotSale && (
+          <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-start gap-3">
+                <div className="p-2 bg-amber-100 text-amber-700 rounded-xl flex-shrink-0">
+                  <AlertTriangle size={20} />
+                </div>
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Quadra/lote não cadastrado</h4>
+                  <p className="text-sm text-slate-500 mt-2">
+                    Esta quadra/lote não existe no empreendimento. Deseja adicionar ao empreendimento e continuar a venda?
+                  </p>
+                  <p className="text-xs text-slate-400 mt-3 font-bold uppercase tracking-widest">
+                    Quadra {pendingMissingLotSale.venda.quadra} · Lote {pendingMissingLotSale.venda.numeroLote}
+                  </p>
+                </div>
+              </div>
+              <div className="p-5 flex flex-col sm:flex-row justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => setPendingMissingLotSale(null)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  onClick={() => finalizeVenda(pendingMissingLotSale.venda, pendingMissingLotSale.cliente)}
+                  className="px-5 h-11 rounded-xl font-bold text-sm bg-primary-main text-white hover:opacity-90 transition-opacity"
+                >
+                  Adicionar e continuar
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit mode banner */}
+      {editingEntry && (
+        <motion.div
+          initial={{ opacity: 0, y: -8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-300 rounded-2xl"
+        >
+          <div className="p-2 bg-amber-500 rounded-xl text-white flex-shrink-0">
+            <Pencil size={16} />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-black text-amber-800 uppercase tracking-widest">Modo Edição</p>
+            <p className="text-sm font-semibold text-amber-700">
+              Editando venda de <strong>{editingEntry.venda.clienteNome}</strong> — {editingEntry.venda.empreendimentoNome}, Quadra {editingEntry.venda.quadra}, Lote {editingEntry.venda.numeroLote}
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Merge Modal */}
+      <AnimatePresence>
+        {showMergeModal && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl overflow-hidden"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div>
+                  <h4 className="font-display font-bold text-slate-800">Mesclar Clientes Duplicados</h4>
+                  <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">Escolha o registro principal</p>
+                </div>
+                <button onClick={() => setShowMergeModal(false)} className="h-9 w-9 flex items-center justify-center rounded-xl hover:bg-slate-100 text-slate-400">
+                  <X size={18} />
+                </button>
+              </div>
+              <div className="p-6 space-y-3 max-h-[60vh] overflow-y-auto">
+                <p className="text-sm text-slate-500 mb-4">
+                  Selecione qual registro manter como principal. Os outros serão excluídos e suas vendas serão transferidas para o registro principal.
+                </p>
+                {cpfDuplicates.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setMergeTargetId(c.id)}
+                    className={`w-full text-left p-4 rounded-2xl border-2 transition-all ${mergeTargetId === c.id ? "border-primary-main bg-primary-main/5" : "border-slate-100 hover:border-slate-200"}`}
+                  >
+                    <p className="font-bold text-slate-800">{c.nome}</p>
+                    <div className="flex gap-4 mt-1 text-xs text-slate-500">
+                      {c.cpf && <span>CPF: {c.cpf}</span>}
+                      {c.telefone1 && <span>Tel: {c.telefone1}</span>}
+                      {c.dataCadastro && <span>Cadastro: {new Date(c.dataCadastro).toLocaleDateString("pt-BR")}</span>}
+                    </div>
+                  </button>
+                ))}
+              </div>
+              <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                <button type="button" onClick={() => setShowMergeModal(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  type="button"
+                  disabled={!mergeTargetId}
+                  onClick={() => {
+                    if (!mergeTargetId || !onMergeClients) return;
+                    const duplicateIds = cpfDuplicates.filter(c => c.id !== mergeTargetId).map(c => c.id);
+                    onMergeClients(mergeTargetId, duplicateIds);
+                    const master = cpfDuplicates.find(c => c.id === mergeTargetId);
+                    if (master) setClientData({ ...clientData, ...master });
+                    setCpfDuplicates([]);
+                    setShowMergeModal(false);
+                  }}
+                  className="btn-primary px-8 disabled:opacity-50"
+                >
+                  Mesclar e Manter Principal
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* IA Auto-fill Section — temporariamente desativado. Para reativar, remova o "hidden" abaixo */}
+      <div className="hidden card-premium bg-gradient-to-br from-primary-main/[0.03] to-transparent border-primary-main/10">
+        <div className="flex items-center gap-3 mb-4">
+          <div className="p-3 bg-primary-main text-primary-contrast rounded-2xl shadow-lg shadow-primary-main/10">
+            <Sparkles size={20} />
+          </div>
+          <div>
+            <h3 className="text-lg font-display font-bold text-slate-800">
+              Auto-preenchimento
+            </h3>
+            <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+              Cole texto ou anexe documentos
+            </p>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {/* Textarea */}
+          <div className="relative">
+            <textarea
+              className="input-field min-h-[100px] resize-none"
+              placeholder="Cole o texto do cadastro aqui e os campos serão preenchidos automaticamente..."
+              value={rawText}
+              onChange={(e) => setRawText(e.target.value)}
+              onPaste={handlePaste}
+            />
+            {isExtracting && (
+              <div className="absolute inset-0 bg-white/70 backdrop-blur-sm rounded-2xl flex items-center justify-center gap-2 text-primary-main text-xs font-black uppercase tracking-widest">
+                <RefreshCw size={16} className="animate-spin" />
+                Preenchendo campos...
+              </div>
+            )}
+          </div>
+
+          <AnimatePresence>
+            {pasteSuccess && (
+              <motion.div
+                key="paste-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos automaticamente!
+                </div>
+                {pasteFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {pasteFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {pasteError && (
+              <motion.div
+                key="paste-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {pasteError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          <button
+            type="button"
+            disabled={isExtracting || !rawText.trim()}
+            onClick={handleExtractIA}
+            className="btn-primary w-full sm:w-auto px-8"
+          >
+            {isExtracting ? (
+              <>
+                <RefreshCw size={18} className="animate-spin" />
+                <span>🤖 Analisando...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles size={18} />
+                <span>Preencher com IA</span>
+              </>
+            )}
+          </button>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <div className="flex-1 h-px bg-slate-200" />
+            <span className="text-xs text-slate-400 font-bold uppercase tracking-widest">ou</span>
+            <div className="flex-1 h-px bg-slate-200" />
+          </div>
+
+          {/* File upload */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            multiple
+            className="hidden"
+            onChange={handleFileChange}
+          />
+
+          <button
+            type="button"
+            disabled={attachedFiles.length >= 2}
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-secondary w-full sm:w-auto px-8"
+          >
+            <span>📎</span>
+            <span>Anexar Documentos</span>
+            <span className="text-xs opacity-60">(máx. 2)</span>
+          </button>
+
+          {/* Previews */}
+          {attachedFiles.length > 0 && (
+            <div className="flex flex-wrap gap-3">
+              {attachedFiles.map((file, idx) => (
+                <div
+                  key={idx}
+                  className="relative flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 shadow-sm"
+                >
+                  {file.type.startsWith("image/") ? (
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt={file.name}
+                      className="w-10 h-10 object-cover rounded-lg"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 flex items-center justify-center bg-red-50 rounded-lg text-red-500 text-xl">
+                      📄
+                    </div>
+                  )}
+                  <div className="max-w-[120px]">
+                    <p className="text-xs font-semibold text-slate-700 truncate">{file.name}</p>
+                    <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(0)} KB</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => removeFile(idx)}
+                    className="ml-1 p-1 rounded-full hover:bg-red-100 text-slate-400 hover:text-red-500 transition-colors"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Extract from files button — only when files are selected */}
+          {attachedFiles.length > 0 && (
+            <button
+              type="button"
+              disabled={isExtractingFiles}
+              onClick={handleExtractFromFiles}
+              className="btn-primary w-full sm:w-auto px-8"
+            >
+              {isExtractingFiles ? (
+                <>
+                  <RefreshCw size={18} className="animate-spin" />
+                  <span>🤖 Lendo documentos...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles size={18} />
+                  <span>Extrair com IA</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <AnimatePresence>
+            {fileExtractSuccess && (
+              <motion.div
+                key="file-success"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+              >
+                <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                  <CheckCircle2 size={15} />
+                  ✅ Campos preenchidos a partir dos documentos!
+                </div>
+                {fileFilledFields.length > 0 && (
+                  <p className="text-[11px] text-emerald-600 ml-5">
+                    {fileFilledFields.join(", ")}
+                  </p>
+                )}
+              </motion.div>
+            )}
+            {fileExtractError && (
+              <motion.div
+                key="file-error"
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                className="flex items-center gap-2 text-red-600 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-[11px] font-black uppercase tracking-widest"
+              >
+                <AlertCircle size={15} />
+                ❌ {fileExtractError}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+      </div>
+
+      {/* Colar Ficha Button */}
+      <div className="flex justify-end">
+        <button
+          type="button"
+          onClick={() => { setShowColarFicha(true); setFichaText(""); setFichaFilled([]); setFichaSuccess(false); }}
+          className="flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-primary-main transition-colors shadow-lg"
+        >
+          <ClipboardPaste size={15} />
+          Colar Ficha
+        </button>
+      </div>
+
+      {/* Modal: Colar Ficha */}
+      <AnimatePresence>
+        {showColarFicha && (
+          <div className="fixed inset-0 z-[200] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-xl rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+            >
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-slate-900 rounded-xl text-white">
+                    <ClipboardPaste size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-display font-bold text-slate-800">Colar Ficha</h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Preenchimento automático por texto</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowColarFicha(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                  <X size={20} className="text-slate-500" />
+                </button>
+              </div>
+              <div className="p-6 space-y-4 overflow-y-auto flex-1">
+                <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
+                  <p className="font-bold text-slate-700 mb-1">Como usar</p>
+                  <p>Cole o texto da ficha no formato <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">CHAVE: valor</span>, um por linha. Exemplos: <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Nome: João Silva</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Parcelas: 63x de R$ 600,00</span>, <span className="font-mono bg-white border border-slate-200 px-1 py-0.5 rounded">Contato: (11) 99999-0000 / (11) 88888-0000</span></p>
+                </div>
+                <textarea
+                  className="input-field min-h-[200px] resize-none font-mono text-xs"
+                  placeholder={"Nome: João da Silva\nCPF: 123.456.789-00\nRG: 1234567\nNascimento: 01/01/1990\nEstado Civil: Casado(a)\nProfissão: Comerciante\nEndereço: Rua das Flores\nBairro: Centro\nCidade: São Paulo\nCEP: 01001-000\nContato: (11) 99999-0000 / (11) 88888-0000\nEmpreendimento: Residencial Palmeiras\nQuadra: A\nLote: 05\nValor Total: R$ 50.000,00\nEntrada: R$ 5.000,00\nParcelas: 60x de R$ 750,00"}
+                  value={fichaText}
+                  onChange={(e) => setFichaText(e.target.value)}
+                  autoFocus
+                />
+                {fichaSuccess && fichaFilled.length > 0 && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="flex flex-col gap-1 text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3"
+                  >
+                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-widest">
+                      <CheckCircle2 size={15} />
+                      Campos preenchidos com sucesso!
+                    </div>
+                    <p className="text-[11px] text-emerald-600 ml-5">{fichaFilled.join(", ")}</p>
+                  </motion.div>
+                )}
+              </div>
+              <div className="p-5 border-t border-slate-100 flex justify-end gap-3">
+                <button onClick={() => setShowColarFicha(false)} className="btn-secondary px-6">Cancelar</button>
+                <button
+                  disabled={!fichaText.trim()}
+                  onClick={() => {
+                    const parsed = parseFicha(fichaText);
+                    const filled: string[] = [];
+                    applyDataToState(parsed, developments);
+                    if (parsed.nome) filled.push("Nome");
+                    if (parsed.cpf) filled.push("CPF");
+                    if (parsed.rg) filled.push("RG");
+                    if (parsed.nascimento) filled.push("Nascimento");
+                    if (parsed.estadoCivil) filled.push("Estado Civil");
+                    if (parsed.profissao) filled.push("Profissão");
+                    if (parsed.endereco) filled.push("Endereço");
+                    if (parsed.bairro) filled.push("Bairro");
+                    if (parsed.cidade) filled.push("Cidade");
+                    if (parsed.cep) filled.push("CEP");
+                    if (parsed.telefone1) filled.push("Telefone");
+                    if (parsed.telefone2) filled.push("Telefone 2");
+                    if (parsed.empreendimento) filled.push("Empreendimento");
+                    if (parsed.quadra) filled.push("Quadra");
+                    if (parsed.lote) filled.push("Lote");
+                    if (parsed.valorTotal) filled.push("Valor Total");
+                    if (parsed.entrada) filled.push("Entrada");
+                    if (parsed.numeroParcelas) filled.push("Parcelas");
+                    if (parsed.valorParcela) filled.push("Valor Parcela");
+                    setFichaFilled(filled);
+                    setFichaSuccess(true);
+                    if (filled.length > 0) {
+                      setTimeout(() => setShowColarFicha(false), 1800);
+                    }
+                  }}
+                  className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${!fichaText.trim() ? "bg-slate-100 text-slate-400 cursor-not-allowed" : "bg-slate-900 hover:bg-primary-main text-white"}`}
+                >
+                  <ClipboardPaste size={15} />
+                  Preencher Campos
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <form ref={vendasFormRef} onSubmit={handleSubmit} noValidate className="space-y-8">
+        {!isOnline && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-800 flex items-start gap-3">
+            <AlertTriangle size={20} className="mt-0.5 shrink-0" />
+            <div>
+              <p className="text-sm font-black uppercase tracking-widest">Modo offline</p>
+              <p className="text-sm font-semibold">
+                Você pode preencher o cadastro, mas a venda será salva somente como rascunho local. A conclusão será liberada quando a internet voltar e o lote for validado novamente.
+              </p>
+            </div>
+          </div>
+        )}
+        {Object.keys(invalidSaleFields).length > 0 && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-bold text-red-700">
+            Preencha o campo obrigatório destacado: {Object.values(invalidSaleFields)[0]}.
+          </div>
+        )}
+        <div id="section-comprador" className="card-premium">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-slate-100 text-slate-600 rounded-2xl">
+              <Users size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-bold text-slate-800">
+                Dados do Proponente
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                Identificação e Contato
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="md:col-span-2 flex flex-col sm:flex-row gap-4">
+              <div className="flex-1">
+                <label className="label">Nome Completo do Comprador</label>
+                <div className="relative">
+                  <input
+                    required
+                    data-sale-field="nome"
+                    className={`input-field${requiredSaleFieldClass("nome")}`}
+                    value={clientData.nome}
+                    onChange={(e) => {
+                      clearInvalidSaleField("nome");
+                      setClientData({ ...clientData, nome: textoMaiusculo(e.target.value) });
+                      setShowNameDropdown(true);
+                    }}
+                    onFocus={() => setShowNameDropdown(true)}
+                    onBlur={() => setTimeout(() => setShowNameDropdown(false), 150)}
+                    placeholder="Nome Completo"
+                    autoComplete="off"
+                  />
+                  {showNameDropdown && clientData.nome.length >= 2 && (() => {
+                    const matches = clients.filter((c) =>
+                      String(c.nome || "").toLowerCase().includes(String(clientData.nome || "").toLowerCase())
+                    ).slice(0, 6);
+                    if (!matches.length) return null;
+                    return (
+                      <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                        {matches.map((c) => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onMouseDown={() => {
+                              setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
+                              setShowNameDropdown(false);
+                              setShowCpfDropdown(false);
+                            }}
+                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                              {c.nome?.charAt(0).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                              {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                            </div>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+              <div className="w-full sm:w-auto">
+                <label className="label">Gênero / Tratamento</label>
+                <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newGenero = "M";
+                      let newEstadoCivil = clientData.estadoCivil;
+                      if (newEstadoCivil === "Solteira")
+                        newEstadoCivil = "Solteiro";
+                      else if (newEstadoCivil === "Casada")
+                        newEstadoCivil = "Casado";
+                      else if (newEstadoCivil === "Divorciada")
+                        newEstadoCivil = "Divorciado";
+                      else if (newEstadoCivil === "Viúva")
+                        newEstadoCivil = "Viúvo";
+                      setClientData({
+                        ...clientData,
+                        genero: newGenero,
+                        estadoCivil: newEstadoCivil,
+                      });
+                    }}
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "M" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Masc.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newGenero = "F";
+                      let newEstadoCivil = clientData.estadoCivil;
+                      if (newEstadoCivil === "Solteiro")
+                        newEstadoCivil = "Solteira";
+                      else if (newEstadoCivil === "Casado")
+                        newEstadoCivil = "Casada";
+                      else if (newEstadoCivil === "Divorciado")
+                        newEstadoCivil = "Divorciada";
+                      else if (newEstadoCivil === "Viúvo")
+                        newEstadoCivil = "Viúva";
+                      setClientData({
+                        ...clientData,
+                        genero: newGenero,
+                        estadoCivil: newEstadoCivil,
+                      });
+                    }}
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "F" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Fem.
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setClientData({ ...clientData, genero: "O" })
+                    }
+                    className={`flex-1 sm:px-4 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all ${clientData.genero === "O" ? "bg-primary-main text-white shadow-md" : "text-slate-400 hover:text-slate-600"}`}
+                  >
+                    Outro
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-6">
+            <div>
+              <label className="label">CPF</label>
+              <div className="relative">
+                <input
+                  required
+                  data-sale-field="cpf"
+                  className={`input-field font-mono${requiredSaleFieldClass("cpf")} ${cpfErr ? "border-red-400 focus:ring-red-400" : cpfStatus(clientData.cpf) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                  value={clientData.cpf}
+                  onChange={(e) => {
+                    clearInvalidSaleField("cpf");
+                    const masked = maskCPF(e.target.value);
+                    setClientData({ ...clientData, cpf: masked });
+                    const st = cpfStatus(masked);
+                    setCpfErr(st === "invalid" ? "CPF inválido" : null);
+                    setShowCpfDropdown(true);
+                  }}
+                  onFocus={() => setShowCpfDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCpfDropdown(false), 150)}
+                  placeholder="000.000.000-00"
+                  autoComplete="off"
+                />
+                {showCpfDropdown && clientData.cpf.replace(/\D/g, "").length >= 3 && (() => {
+                  const query = clientData.cpf.replace(/\D/g, "");
+                  const matches = clients.filter((c) =>
+                    c.cpf?.replace(/\D/g, "").includes(query)
+                  ).slice(0, 6);
+                  if (!matches.length) return null;
+                  return (
+                    <div className="absolute z-50 left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl overflow-hidden">
+                      {matches.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onMouseDown={() => {
+                            setClientData({ ...clientData, ...c, nome: textoMaiusculo(c.nome) });
+                            setShowCpfDropdown(false);
+                            setShowNameDropdown(false);
+                          }}
+                          className="w-full flex items-center gap-3 px-4 py-3 hover:bg-slate-50 transition-colors text-left border-b border-slate-100 last:border-0"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-primary-main/10 text-primary-main flex items-center justify-center font-black text-xs flex-shrink-0">
+                            {c.nome?.charAt(0).toUpperCase()}
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-bold text-slate-800 truncate">{c.nome}</p>
+                            {c.cpf && <p className="text-xs text-slate-400 font-mono">{c.cpf}</p>}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
+              {cpfErr && <p className="text-red-500 text-xs mt-1 font-medium">{cpfErr}</p>}
+              {cpfMatch && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-blue-700 uppercase tracking-widest">
+                    👤 Cliente já cadastrado: {cpfMatch.nome}
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setClientData({ ...clientData, ...cpfMatch }); setCpfMatch(null); }}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700 transition-colors"
+                    >
+                      Usar dados existentes
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setCpfMatch(null)}
+                      className="text-[10px] font-bold uppercase tracking-widest bg-white text-blue-600 border border-blue-200 px-3 py-1.5 rounded-lg hover:bg-blue-50 transition-colors"
+                    >
+                      Ignorar
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+              {cpfDuplicates.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-2 p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs space-y-2"
+                >
+                  <p className="font-black text-amber-700 uppercase tracking-widest">
+                    ⚠️ {cpfDuplicates.length} clientes com este CPF
+                  </p>
+                  <div className="space-y-1">
+                    {cpfDuplicates.map((c) => (
+                      <div key={c.id} className="flex items-center justify-between gap-2">
+                        <span className="text-amber-800 font-semibold">{c.nome}</span>
+                        <button
+                          type="button"
+                          onClick={() => setClientData({ ...clientData, ...c })}
+                          className="text-[9px] font-bold uppercase tracking-widest bg-amber-600 text-white px-2 py-1 rounded-lg hover:bg-amber-700 transition-colors"
+                        >
+                          Usar este
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setMergeTargetId(cpfDuplicates[0].id); setShowMergeModal(true); }}
+                    className="text-[10px] font-bold uppercase tracking-widest bg-amber-600 text-white px-3 py-1.5 rounded-lg hover:bg-amber-700 transition-colors w-full text-center"
+                  >
+                    Mesclar clientes duplicados
+                  </button>
+                </motion.div>
+              )}
+            </div>
+            <div>
+              <label className="label">RG</label>
+              <input
+                required
+                data-sale-field="rg"
+                className={`input-field font-mono${requiredSaleFieldClass("rg")} ${rgErr ? "border-red-400 focus:ring-red-400" : rgStatus(clientData.rg) === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                value={clientData.rg}
+                onChange={(e) => {
+                  const masked = maskRG(e.target.value);
+                  setClientData({ ...clientData, rg: masked });
+                  const st = rgStatus(masked);
+                  setRgErr(st === "invalid" ? "RG inválido ou incompleto" : null);
+                }}
+                placeholder="Ex: 12.345.678-9"
+              />
+              {rgErr && <p className="text-red-500 text-xs mt-1 font-medium">{rgErr}</p>}
+            </div>
+            <div>
+              <label className="label">Estado Civil</label>
+              <select
+                className="input-field font-semibold"
+                value={genderizeEstadoCivil(clientData.estadoCivil || "Solteiro", clientData.genero || "M")}
+                onChange={(e) =>
+                  setClientData({ ...clientData, estadoCivil: e.target.value })
+                }
+              >
+                <option value={clientData.genero === "F" ? "Solteira" : "Solteiro"}>
+                  {clientData.genero === "F" ? "Solteira" : "Solteiro"}
+                </option>
+                <option value={clientData.genero === "F" ? "Casada" : "Casado"}>
+                  {clientData.genero === "F" ? "Casada" : "Casado"}
+                </option>
+                <option value={clientData.genero === "F" ? "Divorciada" : "Divorciado"}>
+                  {clientData.genero === "F" ? "Divorciada" : "Divorciado"}
+                </option>
+                <option value={clientData.genero === "F" ? "Viúva" : "Viúvo"}>
+                  {clientData.genero === "F" ? "Viúva" : "Viúvo"}
+                </option>
+                <option value="União Estável">União Estável</option>
+              </select>
+            </div>
+            <div>
+              <label className="label">Aniversário (Data Nascimento)</label>
+              <input
+                type="date"
+                required
+                className="input-field font-semibold"
+                value={clientData.nascimento}
+                onChange={(e) =>
+                  setClientData({ ...clientData, nascimento: e.target.value })
+                }
+              />
+            </div>
+            <div>
+              <label className="label">CEP</label>
+              <input
+                required
+                className="input-field font-mono"
+                value={clientData.cep}
+                onChange={(e) => {
+                  const value = maskCEP(e.target.value);
+                  setClientData({ ...clientData, cep: value });
+                  buscarCEP(value);
+                }}
+                placeholder="00000-000"
+              />
+              <BuscarCEPPorRua
+                estadoPadrao={clientData.estado || "PA"}
+                cidadePadrao={clientData.cidade || ""}
+                onSelect={(r) => setClientData((prev) => ({
+                  ...prev,
+                  cep: maskCEP(r.cep),
+                  endereco: r.logradouro || prev.endereco,
+                  bairro: r.bairro || prev.bairro,
+                  cidade: r.localidade || prev.cidade,
+                  estado: r.uf || prev.estado,
+                }))}
+              />
+            </div>
+            <div className="md:col-span-1">
+              <label className="label">Endereço</label>
+              <input
+                required
+                className="input-field"
+                value={clientData.endereco}
+                onChange={(e) =>
+                  setClientData({ ...clientData, endereco: e.target.value })
+                }
+                placeholder="Rua / Travessa"
+              />
+            </div>
+            <div>
+              <label className="label">Nº</label>
+              <input
+                required
+                className="input-field font-bold"
+                value={clientData.numero}
+                onChange={(e) =>
+                  setClientData({ ...clientData, numero: e.target.value })
+                }
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="label">Bairro</label>
+              <input
+                required
+                className="input-field"
+                value={clientData.bairro}
+                onChange={(e) =>
+                  setClientData({ ...clientData, bairro: e.target.value })
+                }
+                placeholder="Bairro"
+              />
+            </div>
+            <div>
+              <label className="label">Cidade</label>
+              <input
+                className="input-field"
+                value={clientData.cidade}
+                onChange={(e) => setClientData({ ...clientData, cidade: e.target.value })}
+                placeholder="Cidade"
+              />
+            </div>
+            <div>
+              <label className="label">Estado (UF)</label>
+              <input
+                className="input-field text-center font-bold uppercase"
+                maxLength={2}
+                value={clientData.estado}
+                onChange={(e) => setClientData({ ...clientData, estado: e.target.value.toUpperCase() })}
+                placeholder="PA"
+              />
+            </div>
+            <div>
+              <label className="label">Contato Principal</label>
+              <input
+                required
+                className="input-field font-semibold"
+                value={clientData.telefone1}
+                onChange={(e) =>
+                  setClientData({
+                    ...clientData,
+                    telefone1: maskPhone(e.target.value),
+                  })
+                }
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+            <div>
+              <label className="label">Contato Secundário</label>
+              <input
+                className="input-field"
+                value={clientData.telefone2}
+                onChange={(e) =>
+                  setClientData({
+                    ...clientData,
+                    telefone2: maskPhone(e.target.value),
+                  })
+                }
+                placeholder="(00) 00000-0000"
+              />
+            </div>
+          </div>
+
+          {/* --- Segundo Comprador --- */}
+          <div className="mt-8 pt-8 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-6">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-50 text-slate-400 rounded-xl">
+                  <Users size={18} />
+                </div>
+                <h4 className="font-bold text-slate-700">
+                  Segundo Comprador (Adicional)
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setHasSecondBuyer(!hasSecondBuyer)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl border transition-all font-bold text-xs uppercase tracking-widest ${hasSecondBuyer ? "bg-primary-main/10 border-primary-main text-primary-main" : "bg-white border-slate-200 text-slate-400 hover:border-slate-300"}`}
+              >
+                {hasSecondBuyer ? "Remover" : "Adicionar"}
+              </button>
+            </div>
+
+            {hasSecondBuyer && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                className="space-y-6 overflow-hidden"
+              >
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="md:col-span-2 flex flex-col sm:flex-row gap-4">
+                    <div className="flex-1">
+                      <label className="label">Nome Completo</label>
+                      <input
+                        required
+                        className="input-field"
+                        value={secondBuyerData?.nome}
+                        onChange={(e) =>
+                          setSecondBuyerData({
+                            ...secondBuyerData!,
+                            nome: textoMaiusculo(e.target.value),
+                          })
+                        }
+                        placeholder="Nome Completo"
+                      />
+                    </div>
+                    <div className="w-full sm:w-auto">
+                      <label className="label">Gênero</label>
+                      <div className="flex gap-2 p-1 bg-slate-100 rounded-2xl">
+                        {(["M", "F", "O"] as const).map((g) => (
+                          <button
+                            key={g}
+                            type="button"
+                            onClick={() => {
+                              let newEC =
+                                secondBuyerData?.estadoCivil || "Solteiro(a)";
+                              if (g === "M") {
+                                if (newEC === "Solteira") newEC = "Solteiro";
+                                else if (newEC === "Casada") newEC = "Casado";
+                                else if (newEC === "Divorciada")
+                                  newEC = "Divorciado";
+                                else if (newEC === "Viúva") newEC = "Viúvo";
+                              } else if (g === "F") {
+                                if (newEC === "Solteiro") newEC = "Solteira";
+                                else if (newEC === "Casado") newEC = "Casada";
+                                else if (newEC === "Divorciado")
+                                  newEC = "Divorciada";
+                                else if (newEC === "Viúvo") newEC = "Viúva";
+                              }
+                              setSecondBuyerData({
+                                ...secondBuyerData!,
+                                genero: g,
+                                estadoCivil: newEC,
+                              });
+                            }}
+                            className={`flex-1 sm:px-4 py-2 rounded-xl font-bold text-[10px] uppercase tracking-widest transition-all ${secondBuyerData?.genero === g ? "bg-primary-main text-white" : "text-slate-400"}`}
+                          >
+                            {g === "M" ? "Masc." : g === "F" ? "Fem." : "Outro"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6 pb-4">
+                  <div>
+                    <label className="label">CPF</label>
+                    <input
+                      required
+                      data-sale-field="comprador2Cpf"
+                      className={`input-field font-mono${requiredSaleFieldClass("comprador2Cpf")} ${cpf2Err ? "border-red-400 focus:ring-red-400" : cpfStatus(secondBuyerData?.cpf || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                      value={secondBuyerData?.cpf}
+                      onChange={(e) => {
+                        clearInvalidSaleField("comprador2Cpf");
+                        const masked = maskCPF(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, cpf: masked });
+                        const st = cpfStatus(masked);
+                        setCpf2Err(st === "invalid" ? "CPF inválido" : null);
+                      }}
+                      placeholder="000.000.000-00"
+                    />
+                    {cpf2Err && <p className="text-red-500 text-xs mt-1 font-medium">{cpf2Err}</p>}
+                  </div>
+                  <div>
+                    <label className="label">RG</label>
+                    <input
+                      required
+                      data-sale-field="comprador2Rg"
+                      className={`input-field font-mono${requiredSaleFieldClass("comprador2Rg")} ${rg2Err ? "border-red-400 focus:ring-red-400" : rgStatus(secondBuyerData?.rg || "") === "valid" ? "border-green-400 focus:ring-green-400" : ""}`}
+                      value={secondBuyerData?.rg}
+                      onChange={(e) => {
+                        clearInvalidSaleField("comprador2Rg");
+                        const masked = maskRG(e.target.value);
+                        setSecondBuyerData({ ...secondBuyerData!, rg: masked });
+                        const st = rgStatus(masked);
+                        setRg2Err(st === "invalid" ? "RG inválido ou incompleto" : null);
+                      }}
+                      placeholder="Ex: 12.345.678-9"
+                    />
+                    {rg2Err && <p className="text-red-500 text-xs mt-1 font-medium">{rg2Err}</p>}
+                  </div>
+                  <div>
+                    <label className="label">Nacionalidade</label>
+                    <input
+                      required
+                      className="input-field"
+                      value={secondBuyerData?.nacionalidade}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          nacionalidade: e.target.value,
+                        })
+                      }
+                      placeholder="Brasileira"
+                    />
+                  </div>
+                  <div>
+                    <label className="label">Estado Civil</label>
+                    <select
+                      className="input-field font-semibold"
+                      value={secondBuyerData?.estadoCivil}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          estadoCivil: e.target.value,
+                        })
+                      }
+                    >
+                      <option>
+                        {secondBuyerData?.genero === "F"
+                          ? "Solteira"
+                          : "Solteiro"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F" ? "Casada" : "Casado"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F"
+                          ? "Divorciada"
+                          : "Divorciado"}
+                      </option>
+                      <option>
+                        {secondBuyerData?.genero === "F" ? "Viúva" : "Viúvo"}
+                      </option>
+                      <option>União Estável</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="label">Aniversário</label>
+                    <input
+                      type="date"
+                      required
+                      className="input-field"
+                      value={secondBuyerData?.nascimento}
+                      onChange={(e) =>
+                        setSecondBuyerData({
+                          ...secondBuyerData!,
+                          nascimento: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </div>
+        </div>
+
+        <div id="section-lote" className="card-premium border-primary-light/10 bg-primary-light/[0.02]">
+          <div className="flex items-center gap-3 mb-8">
+            <div className="p-3 bg-primary-main/10 text-primary-main rounded-2xl">
+              <Package size={22} className="stroke-[2.5]" />
+            </div>
+            <div>
+              <h3 className="text-lg font-display font-bold text-slate-800">
+                Negociação e Pagamento
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest leading-none mt-1">
+                Dados Comerciais
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+            <div className="sm:col-span-2 space-y-4">
+              <div className="flex items-center justify-between">
+                <label className="label">Empreendimento Alvo</label>
+                <button
+                  type="button"
+                  onClick={() => setShowNovoDev(true)}
+                  className="text-[11px] font-bold text-primary-main hover:underline flex items-center gap-1"
+                >
+                  <Plus size={13} /> Cadastrar novo
+                </button>
+              </div>
+              <select
+                required
+                data-sale-field="empreendimentoId"
+                className={`input-field font-bold text-primary-main${requiredSaleFieldClass("empreendimentoId")}`}
+                value={saleData.empreendimentoId}
+                onChange={(e) => {
+                  clearInvalidSaleField("empreendimentoId");
+                  setSaleData({ ...saleData, empreendimentoId: e.target.value });
+                }}
+              >
+                <option value="">Escolha um loteamento...</option>
+                {developments.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.nome} — {d.totalLotes - d.lotesVendidos} livres
+                  </option>
+                ))}
+              </select>
+
+              {/* Mini modal: cadastrar empreendimento inline */}
+              <AnimatePresence>
+                {showNovoDev && (
+                  <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      exit={{ opacity: 0, scale: 0.95 }}
+                      className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden"
+                    >
+                      <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
+                            <Building2 size={20} />
+                          </div>
+                          <h3 className="text-lg font-display font-bold text-slate-800">Novo Empreendimento</h3>
+                        </div>
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                          <X size={20} className="text-slate-500" />
+                        </button>
+                      </div>
+                      <div className="p-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="sm:col-span-2">
+                          <label className="label">Nome do Empreendimento *</label>
+                          <input className="input-field" placeholder="Ex: Loteamento Villa Nova" value={novoDevData.nome} onChange={(e) => setNovoDevData({ ...novoDevData, nome: textoMaiusculo(e.target.value) })} />
+                        </div>
+                        <div>
+                          <label className="label">Comunidade / Região</label>
+                          <input className="input-field" placeholder="Ex: Centro, Vila Nova" value={novoDevData.comunidade} onChange={(e) => setNovoDevData({ ...novoDevData, comunidade: e.target.value })} />
+                        </div>
+                        <div>
+                          <label className="label">Total de Lotes</label>
+                          <input type="number" className="input-field" placeholder="0" value={novoDevData.totalLotes || ""} onChange={(e) => setNovoDevData({ ...novoDevData, totalLotes: Number(e.target.value) })} />
+                        </div>
+                        <div className="sm:col-span-2">
+                          <label className="label">Quadras</label>
+                          <input className="input-field" placeholder="Ex: A, B, C" value={novoDevData.quadras} onChange={(e) => setNovoDevData({ ...novoDevData, quadras: e.target.value })} />
+                          <p className="text-[10px] text-slate-400 mt-1">As ruas por quadra podem ser definidas no cadastro completo do empreendimento.</p>
+                        </div>
+                      </div>
+                      <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
+                        <button type="button" onClick={() => setShowNovoDev(false)} className="btn-secondary px-6">Cancelar</button>
+                        <button type="button" onClick={handleSalvarNovoDev} className="btn-primary px-8">Salvar e Selecionar</button>
+                      </div>
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
+              {saleData.empreendimentoId && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="p-4 bg-surface-card border border-border-subtle rounded-2xl space-y-2"
+                >
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                        Informações de Apoio
+                      </p>
+                      <h4 className="font-bold text-slate-800">
+                        {
+                          developments.find(
+                            (d) => d.id === saleData.empreendimentoId,
+                          )?.nome
+                        }
+                      </h4>
+                    </div>
+                    <div className="px-2 py-1 bg-primary-main/10 text-primary-main text-[10px] font-bold rounded-lg uppercase">
+                      {developments.find(
+                        (d) => d.id === saleData.empreendimentoId,
+                      )?.comunidade || "Geral"}
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4 text-xs">
+                    <p>
+                      <span className="font-bold text-slate-500">Quadras:</span>{" "}
+                      {developments.find((d) => d.id === saleData.empreendimentoId)?.quadras || "Não informada"}
+                    </p>
+                    {(() => {
+                      const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                      const q = saleData.quadra?.trim();
+                      const sugestao = q && dev ? getRuaSugerida(dev, q, saleData.numeroLote) : null;
+                      const fallback = dev?.ruas || null;
+                      return sugestao ? (
+                        <p><span className="font-bold text-slate-500">Rua prevista:</span>{" "}<span className="text-primary-main font-bold">{sugestao}</span></p>
+                      ) : fallback ? (
+                        <p><span className="font-bold text-slate-500">Ruas:</span>{" "}{fallback}</p>
+                      ) : null;
+                    })()}
+                  </div>
+                </motion.div>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:col-span-2">
+              <div>
+                <label className="label">Lote</label>
+                <input
+                  required
+                  data-sale-field="numeroLote"
+                  className={`input-field font-mono font-bold${requiredSaleFieldClass("numeroLote")}`}
+                  value={saleData.numeroLote}
+                  onChange={(e) => {
+                    clearInvalidSaleField("numeroLote");
+                    setSaleData({ ...saleData, numeroLote: e.target.value });
+                  }}
+                  placeholder="0"
+                />
+              </div>
+              <div>
+                <label className="label">Quadra</label>
+                <input
+                  required
+                  list="quadras-list"
+                  data-sale-field="quadra"
+                  className={`input-field font-mono font-bold${requiredSaleFieldClass("quadra")}`}
+                  value={saleData.quadra}
+                  onChange={(e) => {
+                    clearInvalidSaleField("quadra");
+                    setSaleData({ ...saleData, quadra: e.target.value.toUpperCase() });
+                  }}
+                  placeholder="A"
+                />
+                <datalist id="quadras-list">
+                  {developments
+                    .find((d) => d.id === saleData.empreendimentoId)
+                    ?.quadras?.split(",")
+                    .map((q) => (
+                      <option key={q.trim()} value={q.trim()} />
+                    ))}
+                </datalist>
+              </div>
+            </div>
+
+            {/* Aviso: lote já vendido */}
+            {(() => {
+              if (!saleData.empreendimentoId || !saleData.quadra || !saleData.numeroLote) return null;
+              const vendaExistente = sales.find(v =>
+                v.id !== editingEntry?.venda?.id &&
+                v.empreendimentoId === saleData.empreendimentoId &&
+                v.quadra.toUpperCase() === saleData.quadra.toUpperCase() &&
+                v.numeroLote === saleData.numeroLote &&
+                v.status !== 'cancelado'
+              );
+              if (!vendaExistente) return null;
+              return (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="sm:col-span-2 flex items-start gap-3 bg-red-50 border border-red-200 rounded-2xl p-4"
+                >
+                  <AlertCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="font-black text-red-700 text-sm uppercase tracking-wide">
+                      ⚠️ Lote já vendido!
+                    </p>
+                    <p className="text-xs text-red-600 mt-1">
+                      Quadra <strong>{vendaExistente.quadra}</strong> · Lote <strong>{vendaExistente.numeroLote}</strong> já está registrado para <strong>{vendaExistente.clienteNome}</strong> (contrato {vendaExistente.numeroContrato}, status: <strong>{vendaExistente.status || 'pendente'}</strong>). Confira antes de prosseguir.
+                    </p>
+                  </div>
+                </motion.div>
+              );
+            })()}
+
+            <div className="space-y-6 lg:col-span-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                <div>
+                  <label className="label font-bold text-primary-main">
+                    Valor Total
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorLote"
+                    className={`input-field border-primary-main/20 bg-primary-main/[0.02] font-display font-bold text-lg${requiredSaleFieldClass("valorLote")}`}
+                    value={saleData.valorLote ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorLote");
+                      handleValueChange(
+                        "valorLote",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <label className="label">Corretor(es) / Vendedor(es)</label>
+                    {vendedores.length > 0 ? (() => {
+                      // Lista de corretores selecionados (suporte a múltiplos)
+                      const corretoresSel: string[] = (saleData as any).corretores || (saleData.vendedor ? [saleData.vendedor] : []);
+                      const toggleCorretor = (nome: string) => {
+                        const lista = corretoresSel.includes(nome)
+                          ? corretoresSel.filter(c => c !== nome)
+                          : [...corretoresSel, nome];
+                        const primeiro = lista[0] || '';
+                        const v = vendedores.find(x => x.nome === primeiro);
+                        setSaleData({ ...saleData, corretores: lista, vendedor: primeiro, vendedorId: v?.id || '' } as any);
+                      };
+                      return (
+                        <div className="space-y-1">
+                          <div className="border border-slate-200 rounded-2xl overflow-hidden bg-white">
+                            {vendedores.map((v) => (
+                              <label key={v.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-slate-50 cursor-pointer border-b border-slate-100 last:border-0 transition-colors">
+                                <div className={`w-5 h-5 rounded-lg border-2 flex items-center justify-center flex-shrink-0 transition-all ${corretoresSel.includes(v.nome) ? 'bg-[#1a4a1a] border-[#1a4a1a]' : 'border-slate-300'}`}>
+                                  {corretoresSel.includes(v.nome) && (
+                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                                  )}
+                                </div>
+                                <span className="text-sm font-semibold text-slate-700">{v.nome}</span>
+                                {corretoresSel.indexOf(v.nome) >= 0 && (
+                                  <span className="ml-auto text-[10px] font-black text-[#1a4a1a] bg-[#1a4a1a]/10 px-2 py-0.5 rounded-full">
+                                    {corretoresSel.indexOf(v.nome) === 0 ? '1º' : `${corretoresSel.indexOf(v.nome)+1}º`}
+                                  </span>
+                                )}
+                                <input type="checkbox" className="hidden" checked={corretoresSel.includes(v.nome)} onChange={() => toggleCorretor(v.nome)} />
+                              </label>
+                            ))}
+                          </div>
+                          {corretoresSel.length > 0 && (
+                            <p className="text-[10px] text-slate-400 font-bold">
+                              Selecionados: {corretoresSel.join(' · ')}
+                            </p>
+                          )}
+                        </div>
+                      );
+                    })() : (
+                      <input
+                        className="input-field font-semibold"
+                        placeholder="Nome do corretor/vendedor"
+                        value={saleData.vendedor || ""}
+                        onChange={(e) => setSaleData({ ...saleData, vendedor: textoMaiusculo(e.target.value), vendedorId: "" })}
+                      />
+                    )}
+                  </div>
+                  <p className="text-[10px] text-slate-400 font-bold">
+                    Fica salvo no registro e será usado no contrato e recibo.
+                  </p>
+                </div>
+
+                {/* ── DOCUMENTOS DO CLIENTE (OPCIONAL) ── */}
+                {(() => {
+                  const docTipoVenda = (saleData as any).docTipoVenda as 'CNH'|'RG'|'' || '';
+                  const docEtapaVenda = (saleData as any).docEtapaVenda as string || 'tipo';
+                  const docFrenteVenda = (saleData as any).docFrenteVenda as File|null || null;
+                  const docVersoVenda = (saleData as any).docVersoVenda as File|null || null;
+
+                  const setDocState = (patch: Record<string,any>) => setSaleData((p: any) => ({...p, ...patch}));
+
+                  return (
+                    <div className="space-y-3 border-t border-slate-100 pt-4">
+                      <div className="flex items-center justify-between">
+                        <label className="label mb-0">Documentos do cliente</label>
+                        <span className="text-[10px] text-slate-400 font-bold bg-slate-100 px-2 py-0.5 rounded-lg">opcional</span>
+                      </div>
+
+                      {docEtapaVenda === 'tipo' && (
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: 'CNH', docEtapaVenda: 'frente' })}
+                            className="flex-1 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-primary-main/40 text-xs font-black text-slate-500 hover:text-primary-main transition-all flex items-center justify-center gap-2">
+                            🪪 CNH
+                          </button>
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: 'RG', docEtapaVenda: 'frente' })}
+                            className="flex-1 py-3 rounded-2xl border-2 border-dashed border-slate-200 hover:border-primary-main/40 text-xs font-black text-slate-500 hover:text-primary-main transition-all flex items-center justify-center gap-2">
+                            🆔 RG
+                          </button>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'frente' && (
+                        <div className="space-y-2">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xs font-black text-primary-main bg-primary-main/10 px-3 py-1 rounded-full">{docTipoVenda}</span>
+                            <span className="text-xs text-slate-400">{docTipoVenda === 'CNH' ? 'Foto ou PDF da CNH' : 'Frente do RG'}</span>
+                            <button type="button" onClick={() => setDocState({ docTipoVenda: '', docEtapaVenda: 'tipo', docFrenteVenda: null, docVersoVenda: null })}
+                              className="ml-auto text-[10px] text-slate-400 underline">trocar</button>
+                          </div>
+                          <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary-main/40 transition-all">
+                            <span className="text-lg">{docFrenteVenda ? '✅' : '📎'}</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700">{docFrenteVenda ? docFrenteVenda.name : 'Selecionar arquivo...'}</p>
+                              <p className="text-[10px] text-slate-400">JPG, PNG ou PDF</p>
+                            </div>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setDocState({ docFrenteVenda: e.target.files?.[0] || null, docEtapaVenda: e.target.files?.[0] ? (docTipoVenda === 'CNH' ? 'pronto' : 'verso_pergunta') : 'frente' })}/>
+                          </label>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'verso_pergunta' && (
+                        <div className="space-y-2">
+                          <p className="text-xs font-bold text-slate-600">O arquivo já tem frente e verso?</p>
+                          <div className="flex gap-2">
+                            <button type="button" onClick={() => setDocState({ docEtapaVenda: 'pronto' })}
+                              className="flex-1 py-2.5 rounded-xl bg-primary-main/10 text-primary-main text-xs font-black border border-primary-main/20">✅ Sim, já tem os dois</button>
+                            <button type="button" onClick={() => setDocState({ docEtapaVenda: 'verso' })}
+                              className="flex-1 py-2.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black border border-slate-200">❌ Não, adicionar verso</button>
+                          </div>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'verso' && (
+                        <div className="space-y-2">
+                          <div className="text-[10px] text-slate-400 font-bold">Frente: {docFrenteVenda?.name}</div>
+                          <label className="flex items-center gap-3 p-3 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary-main/40 transition-all">
+                            <span className="text-lg">{docVersoVenda ? '✅' : '📎'}</span>
+                            <div>
+                              <p className="text-xs font-bold text-slate-700">{docVersoVenda ? docVersoVenda.name : 'Selecionar verso...'}</p>
+                              <p className="text-[10px] text-slate-400">JPG, PNG ou PDF</p>
+                            </div>
+                            <input type="file" accept="image/*,application/pdf" className="hidden"
+                              onChange={e => setDocState({ docVersoVenda: e.target.files?.[0] || null, docEtapaVenda: e.target.files?.[0] ? 'pronto' : 'verso' })}/>
+                          </label>
+                        </div>
+                      )}
+
+                      {docEtapaVenda === 'pronto' && (
+                        <div className="flex items-center gap-3 p-3 bg-green-50 rounded-2xl border border-green-200">
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-black text-green-800">{docTipoVenda} pronto para envio</p>
+                            <p className="text-[10px] text-green-600 truncate">{docFrenteVenda?.name}{docVersoVenda ? ' + ' + docVersoVenda.name : ''}</p>
+                          </div>
+                          <button type="button" onClick={() => setDocState({ docTipoVenda: '', docEtapaVenda: 'tipo', docFrenteVenda: null, docVersoVenda: null })}
+                            className="text-[10px] text-red-400 underline flex-shrink-0">remover</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                <div id="section-pagamento" className={tipoVenda === 'avista' ? 'hidden' : ''}>
+                  <label className="label">Entrada</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorEntrada"
+                    className={`input-field font-display font-bold text-lg${requiredSaleFieldClass("valorEntrada")}`}
+                    value={saleData.valorEntrada ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorEntrada");
+                      handleValueChange(
+                        "valorEntrada",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                {/* Toggle À Vista / Parcelado */}
+                <div className="sm:col-span-2">
+                  <label className="label">Tipo de Pagamento</label>
+                  <div className="flex rounded-xl overflow-hidden border border-slate-200 w-fit text-sm font-bold">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('avista');
+                        setSaleData({ ...saleData, quantidadeParcelas: 0, valorParcela: 0, dataVencimento: "" });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'avista' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      À Vista
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTipoVenda('parcelado');
+                        setSaleData({ ...saleData, quantidadeParcelas: undefined, dataVencimento: defaultVencimento() });
+                      }}
+                      className={`px-6 py-2.5 transition-colors ${tipoVenda === 'parcelado' ? 'bg-primary-main text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                    >
+                      Parcelado
+                    </button>
+                  </div>
+                </div>
+
+                {/* Modo de pagamento à vista */}
+                {tipoVenda === 'avista' && (
+                  <div className="sm:col-span-2">
+                    <label className="label">Modo de Pagamento</label>
+                    <div className="flex flex-wrap gap-3">
+                      {[
+                        {
+                          value: 'dinheiro', label: 'Dinheiro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="4" width="22" height="16" rx="2"/><line x1="1" y1="10" x2="23" y2="10"/><circle cx="12" cy="16" r="2"/></svg>
+                        },
+                        {
+                          value: 'pix', label: 'PIX',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+                        },
+                        {
+                          value: 'cheque', label: 'Cheque',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14,2 14,8 20,8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="12" y2="17"/></svg>
+                        },
+                        {
+                          value: 'permuta', label: 'Permuta',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 3h5v5"/><path d="M4 20L21 3"/><path d="M21 16v5h-5"/><path d="M15 15l5.1 5.1"/><path d="M4 4l5 5"/></svg>
+                        },
+                        {
+                          value: 'outro', label: 'Outro',
+                          icon: <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                        },
+                      ].map((modo) => (
+                        <button
+                          key={modo.value}
+                          type="button"
+                          onClick={() => setSaleData({ ...saleData, modoAvista: modo.value as any })}
+                          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all ${
+                            saleData.modoAvista === modo.value
+                              ? 'bg-primary-main text-white shadow-lg shadow-primary-main/30'
+                              : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
+                        >
+                          {modo.icon}
+                          {modo.label}
+                        </button>
+                      ))}
+                    </div>
+                    
+                    {/* Campo de descrição para Permuta ou Outro */}
+                    {(saleData.modoAvista === 'permuta' || saleData.modoAvista === 'outro') && (
+                      <div className="mt-4">
+                        <label className="label">
+                          {saleData.modoAvista === 'permuta' ? 'Descrição do bem (ex: Carro Gol 2015)' : 'Descreva a forma de pagamento'}
+                        </label>
+                        <textarea
+                          className="input-field min-h-[80px] resize-none"
+                          placeholder={saleData.modoAvista === 'permuta' 
+                            ? 'Ex: Carro Fiat Uno 2010, avaliado em R$ 15.000,00'
+                            : 'Ex: Metade em dinheiro, metade em cheque'
+                          }
+                          value={saleData.descricaoAvista || ''}
+                          onChange={(e) => setSaleData({ ...saleData, descricaoAvista: e.target.value })}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {tipoVenda === 'parcelado' && (<>
+                <div>
+                  <label className="label">Quantidade de Parcelas</label>
+                  <input
+                    type="number"
+                    data-sale-field="quantidadeParcelas"
+                    className={`input-field font-bold text-lg${requiredSaleFieldClass("quantidadeParcelas")}`}
+                    value={saleData.quantidadeParcelas ?? ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("quantidadeParcelas");
+                      handleValueChange(
+                        "quantidadeParcelas",
+                        e.target.value === "" ? 1 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className="label font-bold text-chumbo-base opacity-70">
+                    Valor da Parcela
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    data-sale-field="valorParcela"
+                    className={`input-field border-chumbo-base/20 bg-chumbo-base/[0.02] font-display font-bold text-lg${requiredSaleFieldClass("valorParcela")}`}
+                    value={saleData.valorParcela || ""}
+                    onChange={(e) => {
+                      clearInvalidSaleField("valorParcela");
+                      handleValueChange(
+                        "valorParcela",
+                        e.target.value === "" ? 0 : Number(e.target.value),
+                      );
+                    }}
+                  />
+                </div>
+                </>)}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                {tipoVenda === 'parcelado' && (
+                <div>
+                  <label className="label">Data de Vencimento</label>
+                  <div className="relative">
+                    <Calendar
+                      size={18}
+                      className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                    />
+                    <input
+                      type="date"
+                      data-sale-field="dataVencimento"
+                      className={`input-field pl-12 font-bold${requiredSaleFieldClass("dataVencimento")}`}
+                      value={saleData.dataVencimento}
+                      onChange={(e) => {
+                        clearInvalidSaleField("dataVencimento");
+                        setSaleData({
+                          ...saleData,
+                          dataVencimento: e.target.value,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+                )}
+
+              </div>
+            </div>
+
+            <div className="lg:col-span-2 flex flex-col gap-6">
+              <div className="bg-surface-card/60 backdrop-blur-sm p-8 rounded-3xl border border-border-subtle flex-1 flex flex-col justify-center shadow-inner">
+                <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-[0.2em] mb-4 text-center">
+                  Resumo da Negociação
+                </p>
+
+                <div className="space-y-6">
+                  {tipoVenda === 'avista' ? (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">Pagamento</span>
+                      <span className="text-xl font-display font-bold text-emerald-600 bg-emerald-50 px-4 py-1.5 rounded-xl">À Vista</span>
+                    </div>
+                  ) : (
+                    <div className="flex justify-between items-center border-b border-slate-50 pb-4">
+                      <span className="text-sm font-medium text-slate-500">
+                        Valor da Mensalidade
+                      </span>
+                      <p className="text-3xl font-display font-bold text-primary-main">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(saleData.valorParcela || 0)}
+                      </p>
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-2 gap-4">
+                    {tipoVenda !== 'avista' && (
+                    <div className="space-y-1">
+                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                        Saldo Financiado
+                      </p>
+                      <p className="font-display font-bold text-slate-700">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(
+                          (saleData.valorLote || 0) - (saleData.valorEntrada || 0),
+                        )}
+                      </p>
+                    </div>
+                    )}
+                    <div className={`space-y-1 ${tipoVenda !== 'avista' ? 'text-right' : 'col-span-2'}`}>
+                      <p className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+                        Total Líquido
+                      </p>
+                      <p className="font-display font-bold text-slate-700">
+                        {new Intl.NumberFormat("pt-BR", {
+                          style: "currency",
+                          currency: "BRL",
+                        }).format(saleData.valorLote || 0)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* AÇÕES FINAIS — Cancelar sempre requer confirmação */}
+              <div className="flex flex-col gap-3">
+                {/* Linha principal: Cancelar + Vender */}
+                <div className="flex gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const temDados = clientData.nome || saleData.empreendimentoId || saleData.numeroLote;
+                      if (temDados) {
+                        if (!window.confirm('Tem certeza que quer cancelar? Os dados preenchidos serão perdidos.')) return;
+                      }
+                      // Resetar formulário
+                      setClientData({ nome: '', cpf: '', rg: '', email: '', telefone: '', endereco: '', cidade: '', estado: '', profissao: '', estadoCivil: '' } as any);
+                      setSaleData({ empreendimentoId: '', numeroLote: '', quadra: '', valorLote: 0, vendedor: '', vendedorId: '' } as any);
+                      setInvalidSaleFields({});
+                    }}
+                    className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-slate-100 text-slate-600 font-black text-sm hover:bg-red-50 hover:text-red-600 active:scale-95 transition-all border border-slate-200"
+                  >
+                    <X size={16} />
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    className="flex-1 btn-primary shadow-lg shadow-primary-main/20 active:scale-95 transition-all"
+                  >
+                    <ShoppingCart size={18} />
+                    <span>{!isOnline ? 'Salvar rascunho offline' : (editingEntry ? 'Salvar Alterações' : 'Finalizar Venda')}</span>
+                  </button>
+                </div>
+                {/* Linha secundária: Rascunho + Restaurar */}
+                <div className="flex gap-2">
+                  <button type="button"
+                    onClick={() => {
+                      localStorage.setItem('venda_rascunho', JSON.stringify({ clientData, saleData }));
+                      setHasDraft(true);
+                      alert('Rascunho salvo!');
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-50 text-slate-500 font-bold text-xs border border-slate-200 hover:bg-slate-100 active:scale-95 transition-all">
+                    <FileText size={14} />
+                    Salvar rascunho
+                  </button>
+                  {hasDraft && (
+                    <button type="button"
+                      onClick={() => {
+                        const saved = localStorage.getItem('venda_rascunho');
+                        if (!saved) return;
+                        const { clientData: cd, saleData: sd } = JSON.parse(saved);
+                        if (cd) setClientData((prev) => ({ ...prev, ...cd }));
+                        if (sd) setSaleData((prev) => ({ ...prev, ...sd }));
+                      }}
+                      className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-amber-50 text-amber-700 font-bold text-xs border border-amber-200 hover:bg-amber-100 active:scale-95 transition-all">
+                      <FileText size={14} />
+                      Restaurar rascunho
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+};
+
 const ContratosSection = ({
   sales,
   clients,
@@ -13557,6 +16186,7 @@ const ContratosSection = ({
   onClearInitialVenda,
   userProfile,
   initialMode,
+  appConfig = {},
 }: {
   sales: Venda[];
   clients: Cliente[];
@@ -13575,6 +16205,7 @@ const ContratosSection = ({
   onNovoContrato?: () => void;
   onClearInitialVenda?: () => void;
   userProfile?: { nome?: string; creci?: string; telefone?: string; assinaturaUrl?: string };
+  appConfig?: any;
 }) => {
   const [selectedVenda, setSelectedVenda] = useState<Venda | null>(
     initialVenda || null,
@@ -17841,37 +20472,13 @@ const ConfigSection = ({
 
       <div className="card-premium space-y-8">
 
-        {/* CONFIGURAÇÃO PIX */}
+        {/* PIX & DADOS DA EMPRESA */}
         <div>
           <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
-            Configuração PIX
+            PIX &amp; Dados da Empresa
           </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div>
-              <label className="label">Chave PIX</label>
-              <input className="input" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
-                value={(formData as any).chavePix || ''}
-                onChange={e => setFormData((p: any) => ({...p, chavePix: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">Nome do Beneficiário</label>
-              <input className="input" placeholder="Ex: RAFAEL TAVARES" maxLength={25}
-                value={(formData as any).nomeBeneficiario || ''}
-                onChange={e => setFormData((p: any) => ({...p, nomeBeneficiario: e.target.value.toUpperCase()}))}
-              />
-            </div>
-            <div>
-              <label className="label">Cidade</label>
-              <input className="input" placeholder="Ex: SANTAREM" maxLength={15}
-                value={(formData as any).cidadeBeneficiario || ''}
-                onChange={e => setFormData((p: any) => ({...p, cidadeBeneficiario: e.target.value.toUpperCase()}))}
-              />
-            </div>
-          </div>
-          <p className="text-[10px] text-slate-400 mt-1">Usado para gerar o QR Code PIX na hora da venda com o valor da entrada.</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Nome Fantasia / Empresa</label>
               <input className="input" placeholder="Ex: Imobiliária Rafael Tavares"
@@ -17884,6 +20491,27 @@ const ConfigSection = ({
               <input className="input" placeholder="00.000.000/0001-00"
                 value={(formData as any).cnpj || ''}
                 onChange={e => setFormData((p: any) => ({...p, cnpj: e.target.value}))}
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">Chave PIX</label>
+              <input className="input" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                value={(formData as any).chavePix || ''}
+                onChange={e => setFormData((p: any) => ({...p, chavePix: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Nome do Beneficiário (PIX)</label>
+              <input className="input" placeholder="Ex: RAFAEL TAVARES" maxLength={25}
+                value={(formData as any).nomeBeneficiario || ''}
+                onChange={e => setFormData((p: any) => ({...p, nomeBeneficiario: e.target.value.toUpperCase()}))}
+              />
+            </div>
+            <div>
+              <label className="label">Cidade (PIX)</label>
+              <input className="input" placeholder="Ex: SANTAREM" maxLength={15}
+                value={(formData as any).cidadeBeneficiario || ''}
+                onChange={e => setFormData((p: any) => ({...p, cidadeBeneficiario: e.target.value.toUpperCase()}))}
               />
             </div>
             <div>
@@ -17918,6 +20546,7 @@ const ConfigSection = ({
               </select>
             </div>
           </div>
+          <p className="text-[10px] text-slate-400 mt-2">Usado no QR Code PIX das vendas e no card da tela inicial.</p>
         </div>
 
         {/* FORÇAR SINCRONIZAÇÃO */}
@@ -20634,6 +23263,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             onNovoContrato={() => { setEditingVendaEntry(null); setSection("vendas"); }}
             onClearInitialVenda={() => setContractToOpen(null)}
             userProfile={userProfile}
+            appConfig={config}
           />
         );
       case "clientes":
