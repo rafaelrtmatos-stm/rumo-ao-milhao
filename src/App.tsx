@@ -8014,7 +8014,7 @@ const LotDashboard = ({
               </div>
 
               {/* Área do mapa */}
-              <div className="relative flex-1 min-h-0">{renderMapa()}</div>
+              <div className="relative flex-1 min-h-0" style={{minHeight: '400px'}}>{renderMapa()}</div>
 
               {/* Rodapé instrucional */}
               <div className="flex-shrink-0 flex items-center gap-2 px-4 py-2.5 border-t border-slate-50">
@@ -8124,7 +8124,7 @@ const LotDashboard = ({
           </div>
 
           {/* MOBILE mapa */}
-          <div className="sm:hidden flex-1 overflow-y-auto p-3 relative">
+          <div className="sm:hidden flex-1 overflow-y-auto p-3 relative" style={{minHeight: '60vh'}}>
             {renderMapa()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
