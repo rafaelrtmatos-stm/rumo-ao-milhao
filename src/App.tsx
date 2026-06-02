@@ -5768,23 +5768,23 @@ const LotDashboard = ({
                     minWidth: 160,
                     pointerEvents: 'none',
                   }}>
-                    <p style={{fontSize:9,fontWeight:900,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Tabela de Preços</p>
+                    <p style={{fontSize:8,fontWeight:900,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:1,marginBottom:5,marginTop:0}}>💰 Preços</p>
                     {faixasPrecoGlobal.map((faixa: any) => {
-                      const lotF = mapaPontos.find((p:any) => {
-                        const k = p.quadra&&p.lote?`${p.quadra}:${p.lote}`:null;
-                        return k && (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
-                      });
-                      const info = lotF ? (localDev.lotesInfo as any)?.[`${lotF.quadra}:${lotF.lote}`] : null;
-                      const entrada = info?.entrada || 0;
-                      const parcelas = info?.parcelas || 0;
+                      const lotF = mapaPontos.find((p:any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra,p.lote)]?.preco === faixa.preco);
+                      const infoF = lotF ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotF.quadra,lotF.lote)] : null;
+                      const entrada = infoF?.entrada || 0;
+                      const parcelas = infoF?.parcelas || 0;
+                      const avista = infoF?.avista || parcelas === 0;
                       const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
                       return (
-                        <div key={faixa.preco} style={{display:'flex',alignItems:'flex-start',gap:7,marginBottom:5}}>
-                          <div style={{width:12,height:12,borderRadius:'50%',background:faixa.color,border:'2px solid white',flexShrink:0,marginTop:2}}/>
+                        <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
+                          <div style={{width:10,height:10,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
                           <div>
-                            <p style={{fontSize:11,fontWeight:900,color:'white',margin:0,lineHeight:1.2}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                            {entrada>0&&<p style={{fontSize:9,color:'rgba(255,255,255,0.5)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                            {parcelas>0&&<p style={{fontSize:9,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlP).toLocaleString('pt-BR')}</p>}
+                            <p style={{fontSize:10,fontWeight:900,color:'white',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                            {avista ? <p style={{fontSize:8,color:'#4ade80',margin:0}}>À Vista</p> : <>
+                              {entrada>0&&<p style={{fontSize:8,color:'rgba(255,255,255,0.45)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                              {parcelas>0&&<p style={{fontSize:8,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlP).toLocaleString('pt-BR')}</p>}
+                            </>}
                           </div>
                         </div>
                       );
@@ -6107,19 +6107,21 @@ const LotDashboard = ({
             {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
               const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
                 e.stopPropagation();
+                e.preventDefault();
                 const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
                 const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
                 legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
                 const container = mapImageRef.current;
                 const onMove = (ev: MouseEvent | TouchEvent) => {
                   if (!legendaDragRef.current || !container) return;
+                  ev.preventDefault();
                   const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
                   const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
                   const dx = cx - legendaDragRef.current.startX;
                   const dy = cy - legendaDragRef.current.startY;
                   const rect = container.getBoundingClientRect();
-                  const legW = legendaRef.current?.offsetWidth || 180;
-                  const legH = legendaRef.current?.offsetHeight || 100;
+                  const legW = legendaRef.current?.offsetWidth || 140;
+                  const legH = legendaRef.current?.offsetHeight || 80;
                   const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
                   const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
                   setLegendaPos(prev => {
@@ -6145,44 +6147,33 @@ const LotDashboard = ({
                   ref={legendaRef}
                   onMouseDown={startDrag}
                   onTouchStart={startDrag}
-                  style={{
-                    position: 'absolute',
-                    left: legendaPos.x,
-                    top: legendaPos.y,
-                    zIndex: 50,
-                    cursor: 'grab',
-                    userSelect: 'none',
-                    minWidth: 160,
-                    pointerEvents: 'auto',
-                    touchAction: 'none',
-                  }}
+                  style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:50, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}
                 >
-                  <div style={{
-                    background: 'rgba(10,15,26,0.88)',
-                    backdropFilter: 'blur(12px)',
-                    borderRadius: 12,
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-                    padding: '8px 10px',
-                    minWidth: 160,
-                  }}>
-                    <p style={{fontSize:9, fontWeight:900, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:6}}>Tabela de Preços</p>
+                  <div style={{ background:'rgba(10,15,26,0.85)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 2px 12px rgba(0,0,0,0.4)', padding:'6px 8px', minWidth:130, maxWidth:180 }}>
+                    <p style={{fontSize:8, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, marginBottom:5, marginTop:0}}>💰 Preços</p>
                     {faixasPrecoGlobal.map((faixa: any) => {
+                      // Usar getLotInfoKey para achar corretamente entrada e parcelas
                       const lotsFaixa = mapaPontos.filter(p => {
-                        const k = p.quadra && p.lote ? `${p.quadra}:${p.lote}` : null;
-                        const info = k ? (localDev.lotesInfo as any)?.[k] : null;
-                        return info?.preco === faixa.preco;
+                        const k = getLotInfoKey(p.quadra, p.lote);
+                        return (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
                       });
-                      const entrada = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[`${lotsFaixa[0].quadra}:${lotsFaixa[0].lote}`]?.entrada || 0) : 0;
-                      const parcelas = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[`${lotsFaixa[0].quadra}:${lotsFaixa[0].lote}`]?.parcelas || 0) : 0;
+                      const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+                      const entrada = infoFaixa?.entrada || 0;
+                      const parcelas = infoFaixa?.parcelas || 0;
+                      const avista = infoFaixa?.avista || parcelas === 0;
                       const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
                       return (
-                        <div key={faixa.preco} style={{display:'flex', alignItems:'flex-start', gap:7, marginBottom:5}}>
-                          <div style={{width:12, height:12, borderRadius:'50%', background:faixa.color, border:'2px solid white', flexShrink:0, marginTop:2}}/>
-                          <div>
-                            <p style={{fontSize:11, fontWeight:900, color:'white', margin:0, lineHeight:1.2}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                            {entrada > 0 && <p style={{fontSize:9, color:'rgba(255,255,255,0.5)', margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                            {parcelas > 0 && <p style={{fontSize:9, color:faixa.color, margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
+                        <div key={faixa.preco} style={{display:'flex', alignItems:'center', gap:6, marginBottom:4}}>
+                          <div style={{width:10, height:10, borderRadius:'50%', background:faixa.color, border:'1.5px solid white', flexShrink:0}}/>
+                          <div style={{minWidth:0}}>
+                            <p style={{fontSize:10, fontWeight:900, color:'white', margin:0, lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                            {avista
+                              ? <p style={{fontSize:8, color:'#4ade80', margin:0}}>À Vista</p>
+                              : <>
+                                  {entrada > 0 && <p style={{fontSize:8, color:'rgba(255,255,255,0.45)', margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                                  {parcelas > 0 && <p style={{fontSize:8, color:faixa.color, margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
+                                </>
+                            }
                           </div>
                         </div>
                       );
@@ -10471,10 +10462,12 @@ const EmpreendimentosSection = ({
                     // Interpretar resposta do ChatGPT
                     const regras: typeof precosRegras = [];
                     let id = 1;
-                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)\s+ENTRADA:([\d.]+)\s+PARCELAS:(\d+)/gi;
+                    // Suporte a: VALOR:X ENTRADA:X PARCELAS:X  OU  VALOR:X AVISTA
+                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)(?:\s+ENTRADA:([\d.]*)\s+PARCELAS:(\d+)|\s+AVISTA)/gi;
                     let m;
                     while ((m = regraRegex.exec(txt)) !== null) {
-                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
+                      const avista = !m[3] && !m[4];
+                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', avista});
                     }
                     // PADRAO ignorado — usar REGRA para todos os lotes
                     if (regras.length) { setPrecosRegras(regras); setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!"); }
@@ -10498,6 +10491,7 @@ const EmpreendimentosSection = ({
                       info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
                       info[key].parcelas = parseInt(r.parcelas) || 0;
+                      info[key].avista = (r as any).avista || false;
                       aplicados.push('Q' + qRaw + '·L' + l);
                     });
                   });
