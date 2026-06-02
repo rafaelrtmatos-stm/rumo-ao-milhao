@@ -6162,7 +6162,7 @@ const LotDashboard = ({
                           <p style={{fontSize:fs.title, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
                           <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
                             {(['P','M','G'] as const).map(s => (
-                              <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+ localDev.id, s);}catch{}}}
+                              <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_' + localDev.id, s);}catch{}}}
                                 style={{width:fs.dot, height:fs.dot, borderRadius:3, background: sz===s ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.15)', color: sz===s ? '#0a0f1a' : 'rgba(255,255,255,0.5)', fontSize:fs.title-1, fontWeight:900, border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1}}>
                                 {s}
                               </button>
