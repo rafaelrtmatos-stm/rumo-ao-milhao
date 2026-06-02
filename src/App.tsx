@@ -2336,6 +2336,13 @@ const LotDashboard = ({
   const colorMode = mode === "precos" ? "preco" : "status";
 
   // Faixas de preço globais — usadas na aba Preços para colorir bolinhas e cards
+  // Posição da legenda flutuante de preços (salva por empreendimento)
+  const [legendaPos, setLegendaPos] = React.useState<{x:number;y:number}>(() => {
+    try { const s = localStorage.getItem('legendaPrecoPos_' + (dev as any).id); return s ? JSON.parse(s) : {x:16,y:16}; } catch { return {x:16,y:16}; }
+  });
+  const legendaDragRef = React.useRef<{startX:number;startY:number;startPosX:number;startPosY:number}|null>(null);
+  const legendaRef = React.useRef<HTMLDivElement>(null);
+
   const CORES_FAIXAS_PRECO = ['#00d4d4','#8b5cf6','#22c55e','#f97316','#e11d48','#0ea5e9','#d97706','#7c3aed'];
   const lotesComPrecoGlobal = Object.entries(localDev.lotesInfo || {})
     .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0 }))
@@ -3810,11 +3817,19 @@ const LotDashboard = ({
 
   const getNomeArquivoMapaExportado = (ext: "png" | "pdf") => {
     const now = new Date();
-    const diaSemana = limparNomeArquivoMapa(now.toLocaleDateString("pt-BR", { weekday: "long" }));
-    const data = now.toLocaleDateString("pt-BR").replace(/\//g, "-");
-    const hora = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }).replace(":", "-");
+    const DIAS = ["Domingo","Segunda","Terca","Quarta","Quinta","Sexta","Sabado"];
+    const diaSemana = DIAS[now.getDay()];
+    const dia = String(now.getDate()).padStart(2,'0');
+    const mes = String(now.getMonth()+1).padStart(2,'0');
+    const ano = now.getFullYear();
+    const hora = String(now.getHours()).padStart(2,'0') + 'h' + String(now.getMinutes()).padStart(2,'0');
     const empreendimento = limparNomeArquivoMapa(localDev.nome || "EMPREENDIMENTO");
-    return `${empreendimento}_${diaSemana}_${data}_${hora}.${ext}`;
+    // Calcular lotes disponíveis
+    const totalDisp = mapaPontos.filter(p => {
+      const vd = vendaDoLote(p.quadra, p.lote, p.vendaId);
+      return !vd && p.status !== 'indisponivel' && p.status !== 'vendido';
+    }).length;
+    return `${empreendimento}_${totalDisp}-disponiveis_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
   const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
@@ -3912,6 +3927,59 @@ const LotDashboard = ({
           ctx.strokeStyle = "#ffffff";
           ctx.stroke();
         });
+        // Desenhar legenda de preços no export se usePrecoColors=true
+        if (usePrecoColors && faixasPrecoGlobal.length > 0) {
+          const PAD = 16, LW = 190, LH_BASE = 36 + faixasPrecoGlobal.length * 44;
+          const scale = imgW / (mapImageRef.current?.offsetWidth || imgW);
+          const lx = Math.round(legendaPos.x * scale);
+          const ly = Math.round(legendaPos.y * scale);
+          const lw = Math.round(LW * scale);
+          const lh = Math.round(LH_BASE * scale);
+          const r = Math.round(12 * scale);
+          // Fundo escuro
+          ctx.save();
+          ctx.globalAlpha = 0.88;
+          ctx.fillStyle = '#0a0f1a';
+          ctx.beginPath();
+          ctx.roundRect(lx, ly, lw, lh, r);
+          ctx.fill();
+          ctx.restore();
+          // Título
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.font = `bold ${Math.round(9*scale)}px system-ui, sans-serif`;
+          ctx.fillText('TABELA DE PREÇOS', lx + Math.round(10*scale), ly + Math.round(20*scale));
+          // Faixas
+          faixasPrecoGlobal.forEach((faixa: any, fi: number) => {
+            const fy = ly + Math.round((36 + fi*44)*scale);
+            const dotR = Math.round(7*scale);
+            // Bolinha colorida
+            ctx.beginPath();
+            ctx.arc(lx + Math.round(18*scale), fy + Math.round(6*scale), dotR, 0, Math.PI*2);
+            ctx.fillStyle = faixa.color;
+            ctx.fill();
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = Math.round(2*scale);
+            ctx.stroke();
+            // Valor total
+            ctx.fillStyle = 'white';
+            ctx.font = `bold ${Math.round(11*scale)}px system-ui, sans-serif`;
+            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), lx + Math.round(34*scale), fy + Math.round(12*scale));
+            // Entrada e parcelas
+            const lotsFaixa = mapaPontos.filter((p: any) => {
+              const k = p.quadra && p.lote ? p.quadra+':'+p.lote : null;
+              const info = k ? (localDev.lotesInfo as any)?.[k] : null;
+              return info?.preco === faixa.preco;
+            });
+            const entrada = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[lotsFaixa[0].quadra+':'+lotsFaixa[0].lote]?.entrada||0) : 0;
+            const parcelas = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[lotsFaixa[0].quadra+':'+lotsFaixa[0].lote]?.parcelas||0) : 0;
+            const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
+            ctx.fillStyle = 'rgba(255,255,255,0.55)';
+            ctx.font = `${Math.round(9*scale)}px system-ui, sans-serif`;
+            if (entrada>0) ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), lx+Math.round(34*scale), fy+Math.round(26*scale));
+            if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), lx+Math.round(34*scale), fy+Math.round(38*scale)); }
+          });
+        }
+
         resolve(canvas);
       };
       img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
@@ -5994,6 +6062,92 @@ const LotDashboard = ({
               draggable={false}
               alt="mapa"
             />
+            {/* LEGENDA FLUTUANTE DE PREÇOS — arrastável, aparece no export */}
+            {faixasPrecoGlobal.length > 0 && (() => {
+              const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
+                e.stopPropagation();
+                const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+                const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+                legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
+                const container = mapImageRef.current;
+                const onMove = (ev: MouseEvent | TouchEvent) => {
+                  if (!legendaDragRef.current || !container) return;
+                  const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+                  const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+                  const dx = cx - legendaDragRef.current.startX;
+                  const dy = cy - legendaDragRef.current.startY;
+                  const rect = container.getBoundingClientRect();
+                  const legW = legendaRef.current?.offsetWidth || 180;
+                  const legH = legendaRef.current?.offsetHeight || 100;
+                  const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
+                  const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
+                  setLegendaPos({x: nx, y: ny});
+                };
+                const onUp = () => {
+                  if (legendaDragRef.current) {
+                    try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(legendaPos)); } catch {}
+                  }
+                  legendaDragRef.current = null;
+                  window.removeEventListener('mousemove', onMove);
+                  window.removeEventListener('mouseup', onUp);
+                  window.removeEventListener('touchmove', onMove as any);
+                  window.removeEventListener('touchend', onUp);
+                };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp);
+                window.addEventListener('touchmove', onMove as any, {passive:false});
+                window.addEventListener('touchend', onUp);
+              };
+              return (
+                <div
+                  ref={legendaRef}
+                  onMouseDown={startDrag}
+                  onTouchStart={startDrag}
+                  style={{
+                    position: 'absolute',
+                    left: legendaPos.x,
+                    top: legendaPos.y,
+                    zIndex: 50,
+                    cursor: 'grab',
+                    userSelect: 'none',
+                    minWidth: 160,
+                  }}
+                >
+                  <div style={{
+                    background: 'rgba(10,15,26,0.88)',
+                    backdropFilter: 'blur(12px)',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                    padding: '8px 10px',
+                    minWidth: 160,
+                  }}>
+                    <p style={{fontSize:9, fontWeight:900, color:'rgba(255,255,255,0.4)', textTransform:'uppercase', letterSpacing:1, marginBottom:6}}>Tabela de Preços</p>
+                    {faixasPrecoGlobal.map((faixa: any) => {
+                      const lotsFaixa = mapaPontos.filter(p => {
+                        const k = p.quadra && p.lote ? `${p.quadra}:${p.lote}` : null;
+                        const info = k ? (localDev.lotesInfo as any)?.[k] : null;
+                        return info?.preco === faixa.preco;
+                      });
+                      const entrada = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[`${lotsFaixa[0].quadra}:${lotsFaixa[0].lote}`]?.entrada || 0) : 0;
+                      const parcelas = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[`${lotsFaixa[0].quadra}:${lotsFaixa[0].lote}`]?.parcelas || 0) : 0;
+                      const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+                      return (
+                        <div key={faixa.preco} style={{display:'flex', alignItems:'flex-start', gap:7, marginBottom:5}}>
+                          <div style={{width:12, height:12, borderRadius:'50%', background:faixa.color, border:'2px solid white', flexShrink:0, marginTop:2}}/>
+                          <div>
+                            <p style={{fontSize:11, fontWeight:900, color:'white', margin:0, lineHeight:1.2}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                            {entrada > 0 && <p style={{fontSize:9, color:'rgba(255,255,255,0.5)', margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                            {parcelas > 0 && <p style={{fontSize:9, color:faixa.color, margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* Bolinhas coloridas por faixa de preço — mesma posição e tamanho do mapa real */}
             {mapaPontos.map((ponto, i) => {
               const key = ponto.quadra && ponto.lote ? `${ponto.quadra}:${ponto.lote}` : null;
