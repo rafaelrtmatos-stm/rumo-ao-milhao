@@ -3817,7 +3817,7 @@ const LotDashboard = ({
     return `${empreendimento}_${diaSemana}_${data}_${hora}.${ext}`;
   };
 
-  const gerarCanvasMapaInterativo = (): Promise<HTMLCanvasElement> => {
+  const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
     return new Promise(async (resolve, reject) => {
       // PDF: re-renderizar o vetor original em escala máxima (melhor qualidade possível)
       const originalPdf = (localDev as any).mapaPdfOriginalBase64;
@@ -3855,7 +3855,8 @@ const LotDashboard = ({
             const x = (Number(ponto.xPercent) / 100) * imgW;
             const y = (Number(ponto.yPercent) / 100) * imgH;
             ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
-            ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
+            const corPreco = usePrecoColors ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
+            ctx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
             ctx.fill();
             ctx.lineWidth = borderWidth; ctx.strokeStyle = "#ffffff"; ctx.stroke();
           });
@@ -3904,7 +3905,8 @@ const LotDashboard = ({
           const y = (Number(ponto.yPercent) / 100) * imgH;
           ctx.beginPath();
           ctx.arc(x, y, radius, 0, Math.PI * 2);
-          ctx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6";
+          const corPrecoImg = usePrecoColors ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
+          ctx.fillStyle = corPrecoImg || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
           ctx.fill();
           ctx.lineWidth = borderWidth;
           ctx.strokeStyle = "#ffffff";
@@ -6995,12 +6997,23 @@ const LotDashboard = ({
 
                 {/* Botões download — idênticos à aba Mapa */}
                 <div className="grid grid-cols-2 gap-2 mt-1">
-                  <button onClick={baixarMapaInterativoImagem}
+                  <button onClick={async () => {
+                    try { const c = await gerarCanvasMapaInterativo(true); const l = document.createElement("a"); l.download = getNomeArquivoMapaExportado("png"); l.href = c.toDataURL("image/png",1.0); document.body.appendChild(l); l.click(); document.body.removeChild(l); } catch(e:any){alert(e?.message||"Erro");}
+                  }}
                     className="flex items-center justify-center gap-2 py-3.5 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                     Imagem
                   </button>
-                  <button onClick={baixarMapaInterativoPdf}
+                  <button onClick={async () => {
+                    try {
+                      const c = await gerarCanvasMapaInterativo(true);
+                      const { jsPDF } = await import("jspdf");
+                      const land = c.width >= c.height;
+                      const pdf = new jsPDF({orientation: land?"landscape":"portrait", unit:"px", format:[c.width,c.height], compress:false});
+                      pdf.addImage(c.toDataURL("image/png",1.0),"PNG",0,0,c.width,c.height,undefined,"FAST");
+                      pdf.save(getNomeArquivoMapaExportado("pdf"));
+                    } catch(e:any){alert(e?.message||"Erro");}
+                  }}
                     className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                     PDF
