@@ -6062,8 +6062,8 @@ const LotDashboard = ({
               draggable={false}
               alt="mapa"
             />
-            {/* LEGENDA FLUTUANTE DE PREÇOS — arrastável, aparece no export */}
-            {faixasPrecoGlobal.length > 0 && (() => {
+            {/* LEGENDA FLUTUANTE DE PREÇOS — só na aba Preços */}
+            {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
               const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
                 e.stopPropagation();
                 const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
