@@ -4771,7 +4771,7 @@ const LotDashboard = ({
   // RENDERIZAR QUADRADINHOS
   // ──────────────────────────────────────────────
   const renderQuadradinhos = () => (
-    <div className="space-y-12">
+    <div className="space-y-8">
       {quadras.length > 0 ? quadras.map((q) => {
         const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
         const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter((key) => key.startsWith(q.toUpperCase() + "-")).map((key) => key.split("-")[1]);
@@ -4781,32 +4781,66 @@ const LotDashboard = ({
           ...lotesInfoKeys,
           ...extraLots,
         ])).sort((a, b) => Number(a) - Number(b));
+        const totalLotes = displayLots.length;
+        const disponiveis = displayLots.filter(l => {
+          const vd = vendaDoLote(q, l);
+          const li = localDev.lotesInfo?.[getLotInfoKey(q, l)];
+          return !vd && li?.status !== "indisponivel" && li?.status !== "vendido" && li?.status !== "reservado" && !hasExtraLot(q, l);
+        }).length;
         return (
-          <div key={q} className="space-y-4">
-            <div className="flex items-center gap-3"><h4 className="px-4 py-1.5 bg-slate-900 text-white rounded-lg font-display font-bold text-sm">Quadra {q}</h4><div className="h-px flex-1 bg-slate-100" /></div>
+          <div key={q} className="card-premium space-y-4">
+            {/* Header da quadra */}
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-slate-900 flex items-center justify-center flex-shrink-0">
+                  <span className="text-white font-black text-sm">{q}</span>
+                </div>
+                <div>
+                  <h4 className="font-display font-black text-slate-800 text-base">Quadra {q}</h4>
+                  <p className="text-xs text-slate-400">{totalLotes} lotes · <span className="text-emerald-600 font-bold">{disponiveis} disponíveis</span></p>
+                </div>
+              </div>
+              {/* Barra de progresso */}
+              <div className="hidden sm:flex flex-col items-end gap-1">
+                <span className="text-[10px] font-bold text-slate-400">{totalLotes > 0 ? Math.round(((totalLotes - disponiveis)/totalLotes)*100) : 0}% vendido</span>
+                <div className="w-24 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-red-400 rounded-full" style={{width: `${totalLotes > 0 ? Math.round(((totalLotes - disponiveis)/totalLotes)*100) : 0}%`}}/>
+                </div>
+              </div>
+            </div>
             {displayLots.length === 0 ? (
-              <div className="p-4 rounded-2xl bg-slate-50 text-sm text-slate-400 font-medium">Nenhum lote cadastrado nesta quadra.</div>
+              <p className="text-sm text-slate-400 text-center py-4">Nenhum lote cadastrado.</p>
             ) : (
-              <div className="grid grid-cols-6 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-2">
+              <div className="grid grid-cols-5 sm:grid-cols-8 md:grid-cols-10 lg:grid-cols-12 gap-2">
                 {displayLots.map((l) => {
                   const soldData = vendaDoLote(q, l);
                   const lotInfo = localDev.lotesInfo?.[getLotInfoKey(q, l)];
                   const reserved = !soldData && lotInfo?.status === "reservado";
                   const unavailable = !!soldData || lotInfo?.status === "indisponivel" || lotInfo?.status === "vendido";
                   const extraLot = hasExtraLot(q, l);
+                  const corPreco = getCorPorPreco(q, l);
+                  let bg = "bg-emerald-50 border-emerald-200 text-emerald-700 hover:border-emerald-400 hover:shadow-md";
+                  let badge = "bg-emerald-100 text-emerald-600";
+                  let label = "DIS";
+                  if (extraLot)      { bg = "bg-slate-900 border-slate-900 text-white"; badge = "bg-white/20 text-white"; label = "+"; }
+                  else if (unavailable) { bg = "bg-red-50 border-red-200 text-red-600 cursor-pointer hover:bg-red-100"; badge = "bg-red-100 text-red-500"; label = "IND"; }
+                  else if (reserved) { bg = "bg-amber-50 border-amber-200 text-amber-700"; badge = "bg-amber-100 text-amber-600"; label = "RES"; }
                   return (
-                    <div
-                      key={l}
-                      title={extraLot ? `Lote a mais: Quadra ${q} / Lote ${l}${soldData ? " - possui contrato/venda vinculada" : " - verificar cadastro"}` : undefined}
+                    <div key={l}
                       onClick={() => { if (soldData) setSelectedLotSale(soldData); }}
-                      className={`group relative p-1 rounded-xl border aspect-square flex flex-col items-center justify-center transition-all ${extraLot ? "bg-black border-black text-white cursor-pointer hover:bg-slate-900" : unavailable ? "bg-red-50 border-red-100 text-red-600 cursor-pointer hover:bg-red-100" : reserved ? "bg-yellow-50 border-yellow-100 text-yellow-700" : "bg-blue-50 border-blue-100 hover:border-blue-500 hover:shadow-xl text-blue-600"}`}
+                      className={`group relative rounded-2xl border-2 p-2 flex flex-col items-center justify-center transition-all cursor-pointer aspect-square ${bg}`}
+                      style={corPreco && !unavailable && !reserved ? {borderColor: corPreco+'66', background: corPreco+'11'} : {}}
                     >
-                      <span className="text-[7px] font-bold uppercase tracking-wider opacity-40 leading-none">Lote</span>
-                      <span className="text-sm font-display font-bold leading-none mt-0.5">{l}</span>
-                      <div className={`mt-1 px-1 rounded-full text-[6px] font-bold uppercase tracking-wider leading-tight py-0.5 ${extraLot ? "bg-white/20 text-white" : unavailable ? "bg-red-100" : reserved ? "bg-yellow-100" : "bg-blue-100"}`}>
-                        {extraLot ? "+" : unavailable ? "IND" : reserved ? "RES" : "DIS"}
-                      </div>
-                      {!extraLot && !unavailable && !reserved && <button onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }} className="absolute inset-0 flex items-center justify-center bg-blue-600/90 text-white opacity-0 group-hover:opacity-100 rounded-xl transition-all font-bold text-[9px] uppercase tracking-widest">Vender</button>}
+                      <span className="text-[8px] font-bold uppercase tracking-wider opacity-50 leading-none">L</span>
+                      <span className="text-base font-display font-black leading-none mt-0.5">{l}</span>
+                      <div className={`mt-1 px-1.5 py-0.5 rounded-full text-[7px] font-black uppercase ${badge}`}>{label}</div>
+                      {!extraLot && !unavailable && !reserved && (
+                        <button
+                          onClick={(ev) => { ev.stopPropagation(); onStartSale({ empreendimentoId: localDev.id, quadra: q, numeroLote: l, rua: lotInfo?.rua }); }}
+                          className="absolute inset-0 flex items-center justify-center bg-[#1a4a1a]/90 text-white opacity-0 group-hover:opacity-100 rounded-2xl transition-all font-black text-[9px] uppercase tracking-widest">
+                          Vender
+                        </button>
+                      )}
                     </div>
                   );
                 })}
@@ -4814,7 +4848,12 @@ const LotDashboard = ({
             )}
           </div>
         );
-      }) : <div className="text-center py-20 space-y-4"><div className="p-4 bg-slate-50 rounded-full w-fit mx-auto text-slate-300"><Info size={32} /></div><p className="text-slate-400 font-medium">Nenhuma quadra cadastrada para este empreendimento.</p><p className="text-xs text-slate-300 max-w-xs mx-auto">Cadastre lotes manualmente ou carregue uma imagem do mapa.</p></div>}
+      }) : (
+        <div className="text-center py-20 space-y-4">
+          <div className="p-4 bg-slate-50 rounded-full w-fit mx-auto text-slate-300"><Info size={32} /></div>
+          <p className="text-slate-400 font-medium">Nenhuma quadra cadastrada.</p>
+        </div>
+      )}
     </div>
   );
 
@@ -17713,6 +17752,25 @@ const ConfigSection = ({
   setHiddenMenuItems: (h: string[]) => void;
 }) => {
   const [formData, setFormData] = useState({ ...config, vendedores: config.vendedores || [] });
+  // Sincronizar formData quando config carregar do banco (pode chegar depois do mount)
+  React.useEffect(() => {
+    setFormData(prev => ({
+      ...config,
+      vendedores: config.vendedores || [],
+      // Preservar edições do usuário que ainda não foram salvas
+      ...Object.fromEntries(Object.entries(prev).filter(([k]) => !['id','createdAt','updatedAt'].includes(k))),
+      // Mas atualizar campos PIX/empresa se vierem do banco e o form estiver vazio
+      chavePix: prev.chavePix || (config as any).chavePix || '',
+      nomeBeneficiario: prev.nomeBeneficiario || (config as any).nomeBeneficiario || '',
+      cidadeBeneficiario: prev.cidadeBeneficiario || (config as any).cidadeBeneficiario || '',
+      nomeFantasia: prev.nomeFantasia || (config as any).nomeFantasia || '',
+      cnpj: prev.cnpj || (config as any).cnpj || '',
+      banco: prev.banco || (config as any).banco || '',
+      agencia: prev.agencia || (config as any).agencia || '',
+      contaBancaria: prev.contaBancaria || (config as any).contaBancaria || '',
+      tipoConta: prev.tipoConta || (config as any).tipoConta || '',
+    }));
+  }, [(config as any).chavePix, (config as any).nomeFantasia]);
   const [migrating, setMigrating] = useState(false);
   const [migrateMsg, setMigrateMsg] = useState('');
   const [showVendedorForm, setShowVendedorForm] = useState(false);
@@ -19558,6 +19616,54 @@ const HistoricoExclusoesSection = ({
 // --- Main App ---
 
 
+// Gerar imagem PNG do cartão PIX para compartilhar
+async function gerarArtePixPng(params: {
+  chavePix: string; nomeBeneficiario?: string; nomeFantasia?: string;
+  cnpj?: string; banco?: string; agencia?: string; contaBancaria?: string; tipoConta?: string;
+  qrDataUrl: string;
+}): Promise<string> {
+  const { chavePix, nomeBeneficiario, nomeFantasia, cnpj, banco, agencia, contaBancaria, tipoConta, qrDataUrl } = params;
+  const W = 600, H = 420;
+  const canvas = document.createElement('canvas');
+  canvas.width = W; canvas.height = H;
+  const ctx = canvas.getContext('2d')!;
+  // Fundo verde
+  ctx.fillStyle = '#1a4a1a';
+  ctx.fillRect(0, 0, W, H);
+  // Faixa branca no rodapé
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, H - 60, W, 60);
+  // QR Code
+  const qrImg = new Image();
+  await new Promise(r => { qrImg.onload = r; qrImg.src = qrDataUrl; });
+  ctx.fillStyle = '#ffffff';
+  ctx.roundRect(20, 20, 200, 200, 12);
+  ctx.fill();
+  ctx.drawImage(qrImg, 28, 28, 184, 184);
+  // Textos brancos
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 22px system-ui, sans-serif';
+  ctx.fillText(nomeFantasia || 'PIX', 240, 55);
+  if (cnpj) { ctx.font = '13px system-ui'; ctx.fillStyle = '#ffffff99'; ctx.fillText('CNPJ: ' + cnpj, 240, 78); }
+  ctx.fillStyle = '#4ade80';
+  ctx.font = 'bold 13px system-ui';
+  ctx.fillText('💚 Chave PIX', 240, 110);
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 16px system-ui';
+  ctx.fillText(chavePix || '', 240, 132);
+  if (banco) { ctx.fillStyle = '#ffffff99'; ctx.font = '13px system-ui'; ctx.fillText('🏦 ' + banco, 240, 160); }
+  if (agencia) ctx.fillText('Agência: ' + agencia, 240, 180);
+  if (contaBancaria) ctx.fillText('Conta: ' + contaBancaria + (tipoConta ? ' (' + tipoConta + ')' : ''), 240, 200);
+  // Rodapé branco
+  ctx.fillStyle = '#1a4a1a';
+  ctx.font = 'bold 14px system-ui';
+  ctx.fillText('Escaneie o QR Code para pagar', 20, H - 32);
+  ctx.font = '11px system-ui';
+  ctx.fillStyle = '#1a4a1a99';
+  ctx.fillText('Rumo ao Milhão • Sistema Imobiliário', 20, H - 14);
+  return canvas.toDataURL('image/png', 1.0);
+}
+
 // Componente PIX QR — usado no modal global do App
 function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantasia, banco, agencia, contaBancaria, tipoConta, onClose }: any) {
   const [qrSrc, setQrSrc] = React.useState('');
@@ -19599,6 +19705,22 @@ function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantas
             Compartilhar
           </button>
         )}
+        <button onClick={async () => {
+          try {
+            const arte = await gerarArtePixPng({ chavePix, nomeBeneficiario, nomeFantasia, cnpj, banco, agencia, contaBancaria, tipoConta, qrSrc });
+            if ((navigator as any).share && /iPhone|iPad|Android/i.test(navigator.userAgent)) {
+              const res = await fetch(arte);
+              const blob = await res.blob();
+              const file = new File([blob], 'pix-cartao.png', { type: 'image/png' });
+              await (navigator as any).share({ title: 'Cartão PIX', files: [file] });
+            } else {
+              const a = document.createElement('a'); a.href = arte; a.download = 'cartao-pix.png'; a.click();
+            }
+          } catch(e: any) { console.warn(e); }
+        }} className="w-full py-3 rounded-2xl bg-emerald-600 text-white text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M8 12h8M12 8v8"/></svg>
+          Gerar arte do cartão PIX
+        </button>
       </div>
     </>
   );
@@ -20714,8 +20836,27 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
               setClients(updatedList);
               dbService.upsertCliente(updated).catch(console.error);
             }}
-            onDeleteCliente={(id) => {
-              if (!window.confirm('Excluir este cliente permanentemente? Esta ação não pode ser desfeita.')) return;
+            onDeleteCliente={async (id) => {
+              if (!window.confirm('Excluir este cliente permanentemente? Isso também removerá os documentos do Supabase. Esta ação não pode ser desfeita.')) return;
+              // Deletar arquivos do Supabase Storage antes de remover do banco
+              const cliente = clients.find(c => c.id === id);
+              const docs = (cliente as any)?.documentos as {url?:string;nome?:string}[] || [];
+              if (docs.length > 0) {
+                try {
+                  const { createClient } = await import('@supabase/supabase-js');
+                  const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+                  const paths = docs.map(d => {
+                    if (!d.url) return null;
+                    const url = new URL(d.url);
+                    const parts = url.pathname.split('/documentos/');
+                    return parts[1] || null;
+                  }).filter(Boolean) as string[];
+                  if (paths.length > 0) {
+                    await sb.storage.from('documentos').remove(paths);
+                    console.log('[Storage] Removidos:', paths);
+                  }
+                } catch (err) { console.warn('Erro ao remover docs do Supabase:', err); }
+              }
               setClients(prev => prev.filter(c => c.id !== id));
               dbService.deleteClienteById(id).catch(console.error);
             }}
