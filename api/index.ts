@@ -715,6 +715,18 @@ app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
 });
 
 // Upsert individual de um cliente
+app.get("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    const [row] = await db.select().from(clientes)
+      .where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_USER)));
+    if (!row) return res.status(404).json({ error: "Cliente não encontrado" });
+    res.json(row.data);
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to fetch cliente" });
+  }
+});
+
 app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
