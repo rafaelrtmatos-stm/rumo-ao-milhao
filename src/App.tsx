@@ -3950,38 +3950,48 @@ const LotDashboard = ({
           ctx.fill();
           ctx.restore();
           // Título
-          ctx.fillStyle = 'rgba(255,255,255,0.4)';
-          ctx.font = `bold ${Math.round(9*scale)}px system-ui, sans-serif`;
-          ctx.fillText('TABELA DE PREÇOS', lx + Math.round(10*scale), ly + Math.round(20*scale));
+          // Tamanho baseado em legendaSize (P/M/G)
+          const szF = legendaSize === 'P' ? {title:7,valor:9,sub:7,dot:6,lineH:36,pad:8} : legendaSize === 'G' ? {title:10,valor:14,sub:10,dot:10,lineH:52,pad:12} : {title:8,valor:11,sub:8,dot:8,lineH:44,pad:10};
+          ctx.fillStyle = 'rgba(255,255,255,0.35)';
+          ctx.font = `bold ${Math.round(szF.title*scale)}px system-ui, sans-serif`;
+          ctx.fillText('💰 PREÇOS', lx + Math.round(szF.pad*scale), ly + Math.round((szF.pad+szF.title)*scale));
           // Faixas
           faixasPrecoGlobal.forEach((faixa: any, fi: number) => {
-            const fy = ly + Math.round((36 + fi*44)*scale);
-            const dotR = Math.round(7*scale);
+            const fy = ly + Math.round((szF.pad*2+szF.title + fi*szF.lineH)*scale);
+            const dotR = Math.round(szF.dot*scale/2);
+            const cx2 = lx + Math.round((szF.pad+dotR)*scale);
+            const cy2 = fy + Math.round((szF.lineH*0.3)*scale);
             // Bolinha colorida
             ctx.beginPath();
-            ctx.arc(lx + Math.round(18*scale), fy + Math.round(6*scale), dotR, 0, Math.PI*2);
+            ctx.arc(cx2, cy2, dotR, 0, Math.PI*2);
             ctx.fillStyle = faixa.color;
             ctx.fill();
             ctx.strokeStyle = 'white';
-            ctx.lineWidth = Math.round(2*scale);
+            ctx.lineWidth = Math.round(1.5*scale);
             ctx.stroke();
             // Valor total
+            const tx = lx + Math.round((szF.pad*2+szF.dot)*scale);
             ctx.fillStyle = 'white';
-            ctx.font = `bold ${Math.round(11*scale)}px system-ui, sans-serif`;
-            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), lx + Math.round(34*scale), fy + Math.round(12*scale));
-            // Entrada e parcelas
+            ctx.font = `bold ${Math.round(szF.valor*scale)}px system-ui, sans-serif`;
+            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), tx, fy + Math.round(szF.valor*scale*1.1));
+            // Entrada e parcelas — usar getLotInfoKey
             const lotsFaixa = mapaPontos.filter((p: any) => {
-              const k = p.quadra && p.lote ? p.quadra+':'+p.lote : null;
-              const info = k ? (localDev.lotesInfo as any)?.[k] : null;
-              return info?.preco === faixa.preco;
+              const k = getLotInfoKey(p.quadra, p.lote);
+              return (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
             });
-            const entrada = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[lotsFaixa[0].quadra+':'+lotsFaixa[0].lote]?.entrada||0) : 0;
-            const parcelas = lotsFaixa[0] ? ((localDev.lotesInfo as any)?.[lotsFaixa[0].quadra+':'+lotsFaixa[0].lote]?.parcelas||0) : 0;
+            const infoFx = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+            const entrada = infoFx?.entrada || 0;
+            const parcelas = infoFx?.parcelas || 0;
+            const avista = infoFx?.avista || parcelas === 0;
             const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
-            ctx.fillStyle = 'rgba(255,255,255,0.55)';
-            ctx.font = `${Math.round(9*scale)}px system-ui, sans-serif`;
-            if (entrada>0) ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), lx+Math.round(34*scale), fy+Math.round(26*scale));
-            if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), lx+Math.round(34*scale), fy+Math.round(38*scale)); }
+            ctx.font = `${Math.round(szF.sub*scale)}px system-ui, sans-serif`;
+            if (avista) {
+              ctx.fillStyle = '#4ade80';
+              ctx.fillText('À Vista', tx, fy + Math.round((szF.valor+szF.sub+2)*scale));
+            } else {
+              if (entrada>0) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), tx, fy + Math.round((szF.valor+szF.sub+2)*scale)); }
+              if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), tx, fy + Math.round((szF.valor+szF.sub*2+4)*scale)); }
+            }
           });
         }
 
