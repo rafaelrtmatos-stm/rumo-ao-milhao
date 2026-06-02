@@ -2343,7 +2343,7 @@ const LotDashboard = ({
   const legendaDragRef = React.useRef<{startX:number;startY:number;startPosX:number;startPosY:number}|null>(null);
   const legendaRef = React.useRef<HTMLDivElement>(null);
 
-  const CORES_FAIXAS_PRECO = ['#00d4d4','#8b5cf6','#22c55e','#f97316','#e11d48','#0ea5e9','#d97706','#7c3aed'];
+  const CORES_FAIXAS_PRECO = ['#e11d48','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2','#dc2626','#059669','#9333ea','#ea580c'];
   const lotesComPrecoGlobal = Object.entries(localDev.lotesInfo || {})
     .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0 }))
     .filter(l => l.preco > 0);
@@ -5725,7 +5725,8 @@ const LotDashboard = ({
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                  const statusClass = getMapaStatusColorClass(ponto.status, !!venda);
+                  const corPrecoFS = colorMode === 'preco' ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
+                  const statusClass = corPrecoFS ? '' : getMapaStatusColorClass(ponto.status, !!venda);
                   return (
                     <button
                       key={`fullscreen-${ponto.id}`}
@@ -5746,10 +5747,50 @@ const LotDashboard = ({
                         borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
                         transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
+                        ...(corPrecoFS ? { backgroundColor: corPrecoFS } : {}),
                       }}
                     />
                   );
                 })}
+                {/* Legenda flutuante no fullscreen — só na aba Preços */}
+                {colorMode === 'preco' && faixasPrecoGlobal.length > 0 && (
+                  <div style={{
+                    position: 'absolute',
+                    left: legendaPos.x,
+                    top: legendaPos.y,
+                    zIndex: 100,
+                    background: 'rgba(10,15,26,0.88)',
+                    backdropFilter: 'blur(12px)',
+                    borderRadius: 12,
+                    border: '1px solid rgba(255,255,255,0.12)',
+                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
+                    padding: '8px 10px',
+                    minWidth: 160,
+                    pointerEvents: 'none',
+                  }}>
+                    <p style={{fontSize:9,fontWeight:900,color:'rgba(255,255,255,0.4)',textTransform:'uppercase',letterSpacing:1,marginBottom:6}}>Tabela de Preços</p>
+                    {faixasPrecoGlobal.map((faixa: any) => {
+                      const lotF = mapaPontos.find((p:any) => {
+                        const k = p.quadra&&p.lote?`${p.quadra}:${p.lote}`:null;
+                        return k && (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
+                      });
+                      const info = lotF ? (localDev.lotesInfo as any)?.[`${lotF.quadra}:${lotF.lote}`] : null;
+                      const entrada = info?.entrada || 0;
+                      const parcelas = info?.parcelas || 0;
+                      const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
+                      return (
+                        <div key={faixa.preco} style={{display:'flex',alignItems:'flex-start',gap:7,marginBottom:5}}>
+                          <div style={{width:12,height:12,borderRadius:'50%',background:faixa.color,border:'2px solid white',flexShrink:0,marginTop:2}}/>
+                          <div>
+                            <p style={{fontSize:11,fontWeight:900,color:'white',margin:0,lineHeight:1.2}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                            {entrada>0&&<p style={{fontSize:9,color:'rgba(255,255,255,0.5)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                            {parcelas>0&&<p style={{fontSize:9,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlP).toLocaleString('pt-BR')}</p>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
               <div className="absolute bottom-4 right-4 z-[10001] flex flex-col gap-2">
                 <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
@@ -6081,12 +6122,13 @@ const LotDashboard = ({
                   const legH = legendaRef.current?.offsetHeight || 100;
                   const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
                   const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
-                  setLegendaPos({x: nx, y: ny});
+                  setLegendaPos(prev => {
+                    const next = {x: nx, y: ny};
+                    try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(next)); } catch {}
+                    return next;
+                  });
                 };
                 const onUp = () => {
-                  if (legendaDragRef.current) {
-                    try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(legendaPos)); } catch {}
-                  }
                   legendaDragRef.current = null;
                   window.removeEventListener('mousemove', onMove);
                   window.removeEventListener('mouseup', onUp);
@@ -6111,6 +6153,8 @@ const LotDashboard = ({
                     cursor: 'grab',
                     userSelect: 'none',
                     minWidth: 160,
+                    pointerEvents: 'auto',
+                    touchAction: 'none',
                   }}
                 >
                   <div style={{
