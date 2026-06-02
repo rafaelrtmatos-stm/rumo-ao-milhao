@@ -3123,6 +3123,7 @@ const LotDashboard = ({
   const gerarImagemLeve = (dataUrl: string, maxWidth = 800, quality = 0.3): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
+      img.crossOrigin = 'anonymous';
       img.onload = () => {
         // Yield antes de processar imagem grande
         requestAnimationFrame(() => {
@@ -3699,6 +3700,7 @@ const LotDashboard = ({
       precacheMapaUrl(url); // pré-cacheia para offline
       // Detectar orientação real da imagem e salvar referência A4
       const imgRef = new Image();
+      imgRef.crossOrigin = 'anonymous';
       imgRef.onload = () => {
         const nw = imgRef.naturalWidth;
         const nh = imgRef.naturalHeight;
@@ -3986,7 +3988,17 @@ const LotDashboard = ({
         resolve(canvas);
       };
       img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
-      img.src = mapaImagemOriginal || mapaImagem;
+      // crossOrigin deve ser definido ANTES de src para evitar canvas "tainted"
+      img.crossOrigin = 'anonymous';
+      const imgSrcFinal = mapaImagemOriginal || mapaImagem;
+      // Se for URL externa (Supabase), forçar carregamento via fetch para contornar CORS
+      if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
+        fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
+          img.src = URL.createObjectURL(blob);
+        }).catch(() => { img.src = imgSrcFinal; });
+      } else {
+        img.src = imgSrcFinal;
+      }
     });
   };
 
