@@ -5050,11 +5050,9 @@ const LotDashboard = ({
                         const scale = mapZoomRef.current || 1;
                         const initPositions: Record<string,{x:number;y:number}> = {};
                         const cp = ((localDev as any).mapaPontos || []) as any[];
-                        // Incluir fileira ou grupo
-                        const gid = gruposMap[ponto.id];
-                        const fid = ponto.linhaSeqId;
+                        // Mover SOMENTE a bolinha selecionada (não arrastar fileira inteira)
                         cp.forEach((p: any) => {
-                          if (p.id === ponto.id || (gid && gruposMap[p.id] === gid) || (fid && p.linhaSeqId === fid)) {
+                          if (p.id === ponto.id) {
                             initPositions[p.id] = { x: p.xPercent, y: p.yPercent };
                           }
                         });
