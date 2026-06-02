@@ -16092,7 +16092,14 @@ VENDEDOR: ${vendedorLabel}`;
 
         const GroupTable = ({ rows }: { rows: Venda[] }) => (
           <div className="hidden sm:block overflow-x-auto -mx-6 px-6 sm:mx-0 sm:px-0">
-            <table className="w-full text-left border-separate border-spacing-y-2">
+            <table className="w-full text-left border-separate border-spacing-y-2 table-fixed">
+              <colgroup>
+                <col style={{width:'120px'}} />
+                <col style={{width:'auto'}} />
+                <col style={{width:'160px'}} />
+                <col style={{width:'130px'}} />
+                <col style={{width:'220px'}} />
+              </colgroup>
               <thead>
                 <tr className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                   <th className="pb-3 px-4">Tipo</th>
@@ -18278,75 +18285,7 @@ const ConfigSection = ({
           <SyncButton dbService={dbService} />
         </div>
 
-        {/* DADOS BANCÁRIOS E PIX */}
-        <div>
-          <h4 className="font-bold text-slate-800 mb-1 flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-            Dados Bancários e Pix
-          </h4>
-          <p className="text-xs text-slate-400 mb-3">Aparece no recibo de pagamento e nas cobranças.</p>
-          <div className="space-y-3">
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="label">Banco / Agência</label>
-                <input className="input-field font-mono" placeholder="Ex: 4375" value={formData.bancoAgencia || ""} onChange={(e) => setFormData({ ...formData, bancoAgencia: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Conta Corrente</label>
-                <input className="input-field font-mono" placeholder="Ex: 13.005479-0" value={formData.bancoContaCorrente || ""} onChange={(e) => setFormData({ ...formData, bancoContaCorrente: e.target.value })} />
-              </div>
-            </div>
-            <div>
-              <label className="label">Titular da conta</label>
-              <input className="input-field" placeholder="Nome completo ou razão social" value={formData.bancoTitular || ""} onChange={(e) => setFormData({ ...formData, bancoTitular: e.target.value })} />
-            </div>
-            <div>
-              <label className="label">CNPJ / CPF</label>
-              <input className="input-field font-mono" placeholder="Ex: 60.659.875/0001-21" value={formData.bancoCnpj || ""} onChange={(e) => setFormData({ ...formData, bancoCnpj: e.target.value })} />
-            </div>
-            <div>
-              <label className="label">Nome Fantasia</label>
-              <input className="input-field" placeholder="Ex: Imobiliária Geo Florestal" value={formData.bancoNomeFantasia || ""} onChange={(e) => setFormData({ ...formData, bancoNomeFantasia: e.target.value })} />
-            </div>
-            <div className="border-t border-slate-100 pt-3">
-              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Pix</p>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="label">Tipo de chave</label>
-                  <select className="input-field" value={formData.pixTipo || "cnpj"} onChange={(e) => setFormData({ ...formData, pixTipo: e.target.value })}>
-                    <option value="cpf">CPF</option>
-                    <option value="cnpj">CNPJ</option>
-                    <option value="email">E-mail</option>
-                    <option value="telefone">Telefone</option>
-                    <option value="aleatoria">Chave aleatória</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="label">Chave Pix</label>
-                  <input className="input-field font-mono" placeholder="Chave Pix" value={formData.pixChave || ""} onChange={(e) => setFormData({ ...formData, pixChave: e.target.value })} />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3 mt-3">
-                <div>
-                  <label className="label">Nome no Pix</label>
-                  <input className="input-field" placeholder="Nome do recebedor" value={formData.pixNome || ""} onChange={(e) => setFormData({ ...formData, pixNome: e.target.value })} />
-                </div>
-                <div>
-                  <label className="label">Cidade</label>
-                  <input className="input-field" placeholder="Cidade" value={formData.pixCidade || ""} onChange={(e) => setFormData({ ...formData, pixCidade: e.target.value })} />
-                </div>
-              </div>
-            </div>
-            {(formData.pixChave || formData.bancoContaCorrente) && (
-              <div className="p-3 bg-slate-900 rounded-xl space-y-1.5">
-                <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">✓ Dados cadastrados</p>
-                {formData.bancoAgencia && <p className="text-xs font-mono text-white">Ag: {formData.bancoAgencia} | CC: {formData.bancoContaCorrente}</p>}
-                {formData.bancoTitular && <p className="text-xs text-slate-300">{formData.bancoTitular}</p>}
-                {formData.pixChave && <p className="text-xs font-mono text-emerald-400">Pix: {formData.pixChave}</p>}
-              </div>
-            )}
-          </div>
-        </div>
+
 
         {/* ORDEM DAS ABAS — apenas admin */}
         {isAdmin && (
