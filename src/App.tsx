@@ -2340,6 +2340,9 @@ const LotDashboard = ({
   const [legendaPos, setLegendaPos] = React.useState<{x:number;y:number}>(() => {
     try { const s = localStorage.getItem('legendaPrecoPos_' + (dev as any).id); return s ? JSON.parse(s) : {x:16,y:16}; } catch { return {x:16,y:16}; }
   });
+  const [legendaSize, setLegendaSize] = React.useState<'P'|'M'|'G'>(() => {
+    try { return (localStorage.getItem('legendaPrecoSize_' + (dev as any).id) as any) || 'M'; } catch { return 'M'; }
+  });
   const legendaDragRef = React.useRef<{startX:number;startY:number;startPosX:number;startPosY:number}|null>(null);
   const legendaRef = React.useRef<HTMLDivElement>(null);
 
@@ -6149,36 +6152,49 @@ const LotDashboard = ({
                   onTouchStart={startDrag}
                   style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:50, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}
                 >
-                  <div style={{ background:'rgba(10,15,26,0.85)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 2px 12px rgba(0,0,0,0.4)', padding:'6px 8px', minWidth:130, maxWidth:180 }}>
-                    <p style={{fontSize:8, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, marginBottom:5, marginTop:0}}>💰 Preços</p>
-                    {faixasPrecoGlobal.map((faixa: any) => {
-                      // Usar getLotInfoKey para achar corretamente entrada e parcelas
-                      const lotsFaixa = mapaPontos.filter(p => {
-                        const k = getLotInfoKey(p.quadra, p.lote);
-                        return (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
-                      });
-                      const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
-                      const entrada = infoFaixa?.entrada || 0;
-                      const parcelas = infoFaixa?.parcelas || 0;
-                      const avista = infoFaixa?.avista || parcelas === 0;
-                      const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
-                      return (
-                        <div key={faixa.preco} style={{display:'flex', alignItems:'center', gap:6, marginBottom:4}}>
-                          <div style={{width:10, height:10, borderRadius:'50%', background:faixa.color, border:'1.5px solid white', flexShrink:0}}/>
-                          <div style={{minWidth:0}}>
-                            <p style={{fontSize:10, fontWeight:900, color:'white', margin:0, lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                            {avista
-                              ? <p style={{fontSize:8, color:'#4ade80', margin:0}}>À Vista</p>
-                              : <>
-                                  {entrada > 0 && <p style={{fontSize:8, color:'rgba(255,255,255,0.45)', margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                                  {parcelas > 0 && <p style={{fontSize:8, color:faixa.color, margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
-                                </>
-                            }
+                  {(() => {
+                    const sz = legendaSize;
+                    const fs = sz==='P' ? {title:7,valor:9,sub:7,dot:8,pad:'4px 6px',gap:4,mb:3} : sz==='G' ? {title:10,valor:14,sub:10,dot:13,pad:'10px 12px',gap:8,mb:7} : {title:8,valor:11,sub:8,dot:10,pad:'7px 9px',gap:6,mb:5};
+                    return (
+                      <div style={{ background:'rgba(10,15,26,0.85)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 2px 12px rgba(0,0,0,0.4)', padding:fs.pad }}>
+                        {/* Header com controles P/M/G */}
+                        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
+                          <p style={{fontSize:fs.title, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
+                          <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
+                            {(['P','M','G'] as const).map(s => (
+                              <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+ localDev.id, s);}catch{}}}
+                                style={{width:fs.dot, height:fs.dot, borderRadius:3, background: sz===s ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.15)', color: sz===s ? '#0a0f1a' : 'rgba(255,255,255,0.5)', fontSize:fs.title-1, fontWeight:900, border:'none', cursor:'pointer', padding:0, display:'flex', alignItems:'center', justifyContent:'center', lineHeight:1}}>
+                                {s}
+                              </button>
+                            ))}
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                        {faixasPrecoGlobal.map((faixa: any) => {
+                          const lotsFaixa = mapaPontos.filter(p => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
+                          const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+                          const entrada = infoFaixa?.entrada || 0;
+                          const parcelas = infoFaixa?.parcelas || 0;
+                          const avista = infoFaixa?.avista || parcelas === 0;
+                          const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+                          return (
+                            <div key={faixa.preco} style={{display:'flex', alignItems:'center', gap:fs.gap, marginBottom:fs.mb}}>
+                              <div style={{width:fs.dot, height:fs.dot, borderRadius:'50%', background:faixa.color, border:'1.5px solid white', flexShrink:0}}/>
+                              <div style={{minWidth:0}}>
+                                <p style={{fontSize:fs.valor, fontWeight:900, color:'white', margin:0, lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                                {avista
+                                  ? <p style={{fontSize:fs.sub, color:'#4ade80', margin:0}}>À Vista</p>
+                                  : <>
+                                      {entrada > 0 && <p style={{fontSize:fs.sub, color:'rgba(255,255,255,0.45)', margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                                      {parcelas > 0 && <p style={{fontSize:fs.sub, color:faixa.color, margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
+                                    </>
+                                }
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
                 </div>
               );
             })()}
