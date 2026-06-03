@@ -933,9 +933,15 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
-    const allEmps = await db.select().from(empreendimentos);
-    const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
-    if (!emp) return res.status(404).json({ error: 'Empreendimento não encontrado' });
+    // Buscar direto por ID (PK = ID do empreendimento)
+    let empRows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
+    if (!empRows.length) {
+      const all = await db.select().from(empreendimentos);
+      const found = all.find((e: any) => e.data && (e.data as any).id === empId);
+      if (found) empRows = [found];
+    }
+    if (!empRows.length) return res.status(404).json({ error: 'Empreendimento nao encontrado: ' + empId });
+    const emp = empRows[0];
     // Dados do empreendimento ficam em emp.data (jsonb)
     const empData = (emp as any).data || {};
     const pontos: any[] = empData.mapaPontos || [];
@@ -982,12 +988,20 @@ app.get('/mapa/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
     // Buscar dados do empreendimento via rota pública
-    const allEmps = await db.select().from(empreendimentos);
-    const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
-    if (!emp) return res.status(404).send('<h2>Empreendimento não encontrado</h2>');
+    // Buscar direto por ID — a PK do banco é o mesmo ID do empreendimento
+    let empRows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
+    // Fallback: buscar pelo ID dentro do data JSON
+    if (!empRows.length) {
+      const all = await db.select().from(empreendimentos);
+      const found = all.find((e: any) => e.data && (e.data as any).id === empId);
+      if (found) empRows = [found];
+    }
+    if (!empRows.length) return res.status(404).send(`<h2 style="font-family:sans-serif;padding:40px">Empreendimento ${empId} não encontrado</h2>`);
+    const emp = empRows[0];
 
     // Dados do empreendimento ficam em emp.data (jsonb)
     const empData2 = (emp as any).data || {};
+    console.log('[Embed] empId:', empId, '| nome:', empData2.nome, '| mapaUrl:', empData2.mapaImagemUrl ? 'sim' : 'nao', '| pontos:', (empData2.mapaPontos||[]).length);
     const pontos: any[] = empData2.mapaPontos || [];
     const allVendasEmbed = await db.select().from(vendas);
     const vendasEmbed = allVendasEmbed.filter((v: any) => {
