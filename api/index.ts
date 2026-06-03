@@ -966,6 +966,215 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+
+// ── PÁGINA DE EMBED DO MAPA ─────────────────────────────────────────────────
+// Uso: <iframe src="https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO" />
+// Ou acesso direto: https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO
+app.get('/mapa/:id', async (req: any, res: any) => {
+  try {
+    const empId = req.params.id;
+    // Buscar dados do empreendimento via rota pública
+    const allEmps = await db.query.empreendimentos.findMany();
+    const emp = allEmps.find((e: any) => e.id === empId);
+    if (!emp) return res.status(404).send('<h2>Empreendimento não encontrado</h2>');
+
+    const allPontos = await db.query.mapasPontos.findMany();
+    const pontos = allPontos.filter((p: any) => p.empreendimentoId === empId);
+    const allVendas = await db.query.vendas.findMany();
+    const vendas = allVendas.filter((v: any) => v.empreendimentoId === empId && v.status !== 'cancelado' && v.status !== 'rascunho');
+
+    const pontosPublicos = pontos.map((p: any) => {
+      const venda = vendas.find((v: any) =>
+        String(v.quadra) === String(p.quadra) &&
+        (String(v.numeroLote) === String(p.lote) || String(v.lote) === String(p.lote))
+      );
+      const status = venda ? 'vendido' : (p.status || 'disponivel');
+      return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
+    });
+
+    const mapaUrl = (emp as any).mapaImagemUrl || '';
+    const nomeEmp = (emp as any).nome || 'Empreendimento';
+    const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
+    const total = pontosPublicos.length;
+
+    const html = `<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>${nomeEmp} — Mapa de Lotes</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: system-ui, sans-serif; background: #f8fafc; overflow: hidden; }
+  #header { background: #1a4a1a; color: white; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
+  #header h1 { font-size: 15px; font-weight: 700; }
+  #header .stats { font-size: 12px; opacity: 0.8; }
+  #legenda { display: flex; gap: 12px; padding: 8px 16px; background: white; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
+  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #475569; font-weight: 600; }
+  .leg-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
+  #mapa-container { position: relative; width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
+  #mapa-container:active { cursor: grabbing; }
+  #mapa-img { display: block; width: 100%; user-select: none; pointer-events: none; }
+  .bolinha { position: absolute; border-radius: 50%; border: 2px solid white; transform: translate(-50%, -50%); cursor: pointer; transition: transform 0.1s; font-size: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .bolinha:hover { transform: translate(-50%, -50%) scale(1.3); z-index: 10; }
+  .bolinha.disponivel { background: #2563eb; }
+  .bolinha.reservado { background: #d97706; }
+  .bolinha.vendido { background: #ef4444; }
+  #tooltip { position: fixed; background: #0f172a; color: white; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; pointer-events: none; display: none; z-index: 9999; white-space: nowrap; }
+  #rodape { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e2e8f0; padding: 6px 16px; font-size: 11px; color: #94a3b8; text-align: center; }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>${nomeEmp}</h1>
+  <span class="stats">${disponiveis} disponíveis de ${total} lotes</span>
+</div>
+<div id="legenda">
+  <div class="leg-item"><div class="leg-dot" style="background:#2563eb"></div> Disponível</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#d97706"></div> Reservado</div>
+  <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div> Vendido</div>
+</div>
+<div id="mapa-container">
+  <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes"/>
+  <div id="pontos"></div>
+</div>
+<div id="tooltip"></div>
+<div id="rodape">rumoaomilhao.imb.br — Toque em um lote para ver detalhes</div>
+<script>
+const pontos = ${JSON.stringify(pontosPublicos)};
+const COR = { disponivel: '#2563eb', reservado: '#d97706', vendido: '#ef4444' };
+const STATUS_LABEL = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
+
+const img = document.getElementById('mapa-img');
+const container = document.getElementById('mapa-container');
+const pontosDiv = document.getElementById('pontos');
+const tooltip = document.getElementById('tooltip');
+
+// Ajustar altura do container
+function ajustarAltura() {
+  const headerH = document.getElementById('header').offsetHeight;
+  const legendaH = document.getElementById('legenda').offsetHeight;
+  const rodapeH = 32;
+  container.style.height = (window.innerHeight - headerH - legendaH - rodapeH) + 'px';
+}
+ajustarAltura();
+window.addEventListener('resize', () => { ajustarAltura(); renderBolinhas(); });
+
+// Renderizar bolinhas
+function renderBolinhas() {
+  pontosDiv.innerHTML = '';
+  const w = img.offsetWidth;
+  const sz = Math.max(8, Math.round(w * 0.013));
+  pontos.forEach(p => {
+    const el = document.createElement('div');
+    el.className = 'bolinha ' + p.status;
+    el.style.left = p.x + '%';
+    el.style.top = p.y + '%';
+    el.style.width = sz + 'px';
+    el.style.height = sz + 'px';
+    el.style.background = COR[p.status] || '#2563eb';
+    el.addEventListener('mouseenter', (e) => {
+      tooltip.style.display = 'block';
+      tooltip.innerHTML = 'Q' + p.quadra + ' · L' + p.lote + '<br><span style="color:' + COR[p.status] + '">' + STATUS_LABEL[p.status] + '</span>';
+    });
+    el.addEventListener('mousemove', (e) => {
+      tooltip.style.left = (e.clientX + 12) + 'px';
+      tooltip.style.top = (e.clientY - 10) + 'px';
+    });
+    el.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+    el.addEventListener('click', () => {
+      alert('Quadra ' + p.quadra + ' · Lote ' + p.lote + '\nStatus: ' + STATUS_LABEL[p.status]);
+    });
+    pontosDiv.appendChild(el);
+  });
+}
+
+img.onload = renderBolinhas;
+if (img.complete) renderBolinhas();
+
+// Pan & Zoom
+let zoom = 1, panX = 0, panY = 0;
+let drag = null;
+
+function applyTransform() {
+  pontosDiv.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
+  pontosDiv.style.transformOrigin = '0 0';
+  img.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
+  img.style.transformOrigin = '0 0';
+}
+
+// Mouse pan
+container.addEventListener('mousedown', e => { drag = { x: e.clientX - panX, y: e.clientY - panY }; });
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  panX = e.clientX - drag.x; panY = e.clientY - drag.y;
+  applyTransform();
+});
+window.addEventListener('mouseup', () => { drag = null; });
+
+// Scroll zoom
+container.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = container.getBoundingClientRect();
+  const fx = e.clientX - rect.left, fy = e.clientY - rect.top;
+  const delta = e.deltaY < 0 ? 0.15 : -0.15;
+  const newZoom = Math.max(1, Math.min(8, zoom + delta));
+  const ratio = newZoom / zoom;
+  panX = fx - (fx - panX) * ratio;
+  panY = fy - (fy - panY) * ratio;
+  zoom = newZoom;
+  applyTransform();
+}, { passive: false });
+
+// Touch pinch & pan
+let touches = {};
+container.addEventListener('touchstart', e => {
+  [...e.changedTouches].forEach(t => touches[t.identifier] = { x: t.clientX, y: t.clientY });
+  if (e.touches.length === 1) drag = { x: e.touches[0].clientX - panX, y: e.touches[0].clientY - panY };
+});
+container.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const prev0 = touches[t0.identifier], prev1 = touches[t1.identifier];
+    if (!prev0 || !prev1) return;
+    const prevDist = Math.hypot(prev0.x - prev1.x, prev0.y - prev1.y);
+    const newDist  = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+    if (prevDist < 1) return;
+    const rect = container.getBoundingClientRect();
+    const fx = (t0.clientX + t1.clientX) / 2 - rect.left;
+    const fy = (t0.clientY + t1.clientY) / 2 - rect.top;
+    const ratio = newDist / prevDist;
+    const newZoom = Math.max(1, Math.min(8, zoom * ratio));
+    const zRatio = newZoom / zoom;
+    panX = fx - (fx - panX) * zRatio;
+    panY = fy - (fy - panY) * zRatio;
+    zoom = newZoom;
+    [...e.changedTouches].forEach(t => touches[t.identifier] = { x: t.clientX, y: t.clientY });
+    applyTransform();
+  } else if (e.touches.length === 1 && drag) {
+    panX = e.touches[0].clientX - drag.x;
+    panY = e.touches[0].clientY - drag.y;
+    applyTransform();
+  }
+}, { passive: false });
+container.addEventListener('touchend', e => {
+  [...e.changedTouches].forEach(t => delete touches[t.identifier]);
+  if (e.touches.length === 0) drag = null;
+});
+</script>
+</body>
+</html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('X-Frame-Options', 'ALLOWALL');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(html);
+  } catch (e: any) {
+    res.status(500).send('<h2>Erro: ' + e.message + '</h2>');
+  }
+});
+
 // Pré-reserva pública — salva como rascunho
 app.post('/api/publico/pre-reserva', async (req: any, res: any) => {
   try {
