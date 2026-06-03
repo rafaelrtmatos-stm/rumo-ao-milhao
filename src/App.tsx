@@ -6366,7 +6366,7 @@ const LotDashboard = ({
             window.addEventListener('touchend', onUp);
           };
           const sz = legendaSize;
-          const fs = sz==='P' ? {title:7,valor:9,sub:7,dot:8,pad:'4px 6px',gap:4,mb:3} : sz==='G' ? {title:10,valor:14,sub:10,dot:13,pad:'10px 12px',gap:8,mb:7} : {title:8,valor:11,sub:8,dot:10,pad:'7px 9px',gap:6,mb:5};
+          const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
           return (
             <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
               style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
@@ -6943,7 +6943,7 @@ const LotDashboard = ({
           {/* LEGENDA FLUTUANTE DE PREÇOS — mobile */}
           {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
             const sz = legendaSize;
-            const fs = sz==='P' ? {title:7,valor:9,sub:7,dot:8,pad:'4px 6px',gap:4,mb:3} : sz==='G' ? {title:10,valor:14,sub:10,dot:13,pad:'10px 12px',gap:8,mb:7} : {title:8,valor:11,sub:8,dot:10,pad:'7px 9px',gap:6,mb:5};
+            const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
             const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
               e.stopPropagation(); e.preventDefault();
               const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
