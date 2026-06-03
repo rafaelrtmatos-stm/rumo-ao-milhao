@@ -981,6 +981,29 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
 });
 
 
+// ── DIAGNÓSTICO PÚBLICO ─────────────────────────────────────────────────────
+app.get('/api/publico/diagnostico/:id', async (req: any, res: any) => {
+  try {
+    const empId = req.params.id;
+    const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
+    if (!rows.length) {
+      const all = await db.select({ id: empreendimentos.id }).from(empreendimentos);
+      return res.json({ encontrado: false, empId, idsNobanco: all.map((e:any) => e.id) });
+    }
+    const emp = rows[0];
+    const d = (emp as any).data || {};
+    return res.json({
+      encontrado: true,
+      empId,
+      nome: d.nome,
+      temMapaUrl: !!d.mapaImagemUrl,
+      mapaUrl: d.mapaImagemUrl ? d.mapaImagemUrl.substring(0, 80) + '...' : null,
+      temBase64: !!d.mapaImagemBase64,
+      totalPontos: (d.mapaPontos || []).length,
+    });
+  } catch(e: any) { res.status(500).json({ error: e.message }); }
+});
+
 // ── PÁGINA DE EMBED DO MAPA ─────────────────────────────────────────────────
 // Uso: <iframe src="https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO" />
 // Ou acesso direto: https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO
