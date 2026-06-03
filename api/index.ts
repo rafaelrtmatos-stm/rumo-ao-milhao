@@ -1261,7 +1261,7 @@ container.addEventListener('touchend', e => {
 // ── RESERVA ──
 const EMP_ID = '${empId}';
 const EMP_NOME = '${nomeEmp}';
-const SEU_WHATSAPP = '5593981234567'; // TODO: configurar número
+const SEU_WHATSAPP = '5593992332012';
 let loteAtual = null;
 
 function abrirFormulario(quadra, lote, el) {
