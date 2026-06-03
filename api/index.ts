@@ -740,6 +740,16 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   }
 });
 
+app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  try {
+    await db.delete(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_USER)));
+    res.json({ ok: true });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || "Failed to delete cliente" });
+  }
+});
+
 // Upsert individual de um empreendimento (sem mapaImagemBase64 — enviada via /mapa para evitar 413)
 app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
