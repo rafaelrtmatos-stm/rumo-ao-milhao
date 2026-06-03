@@ -3932,65 +3932,74 @@ const LotDashboard = ({
           ctx.strokeStyle = "#ffffff";
           ctx.stroke();
         });
-        // Desenhar legenda de preços no export se usePrecoColors=true
+        // Desenhar legenda de preços no export — fundo branco, letras pretas, tamanho em % da imagem
         if (usePrecoColors && faixasPrecoGlobal.length > 0) {
-          const PAD = 16, LW = 190, LH_BASE = 36 + faixasPrecoGlobal.length * 44;
-          const scale = imgW / (mapImageRef.current?.offsetWidth || imgW);
-          const lx = Math.round(legendaPos.x * scale);
-          const ly = Math.round(legendaPos.y * scale);
-          const lw = Math.round(LW * scale);
-          const lh = Math.round(LH_BASE * scale);
-          const r = Math.round(12 * scale);
-          // Fundo escuro
+          // Tamanho em % da largura da imagem (P=8%, M=12%, G=18%)
+          const pctLargura = legendaSize === 'P' ? 0.08 : legendaSize === 'G' ? 0.18 : 0.12;
+          const LW = Math.round(imgW * pctLargura);
+          const fontTitle = Math.round(LW * 0.07);
+          const fontValor = Math.round(LW * 0.09);
+          const fontSub   = Math.round(LW * 0.07);
+          const dotR      = Math.round(LW * 0.04);
+          const PAD       = Math.round(LW * 0.08);
+          const lineH     = Math.round(LW * 0.28);
+          const LH        = PAD*2 + fontTitle + faixasPrecoGlobal.length * lineH + PAD;
+          const r         = Math.round(LW * 0.06);
+          // Posição salva pelo usuário (em px do container, escalar para canvas)
+          const containerW = mapImageRef.current?.offsetWidth || imgW;
+          const containerH = mapImageRef.current?.offsetHeight || imgH;
+          const lx = Math.round((legendaPos.x / containerW) * imgW);
+          const ly = Math.round((legendaPos.y / containerH) * imgH);
+          // Fundo branco com borda sutil
           ctx.save();
-          ctx.globalAlpha = 0.88;
-          ctx.fillStyle = '#0a0f1a';
+          ctx.globalAlpha = 0.95;
+          ctx.fillStyle = '#ffffff';
+          ctx.shadowColor = 'rgba(0,0,0,0.15)';
+          ctx.shadowBlur = Math.round(LW * 0.05);
           ctx.beginPath();
-          ctx.roundRect(lx, ly, lw, lh, r);
+          ctx.roundRect(lx, ly, LW, LH, r);
           ctx.fill();
           ctx.restore();
+          // Borda fina
+          ctx.strokeStyle = '#e2e8f0';
+          ctx.lineWidth = Math.round(LW * 0.01);
+          ctx.beginPath(); ctx.roundRect(lx, ly, LW, LH, r); ctx.stroke();
           // Título
-          // Tamanho baseado em legendaSize (P/M/G)
-          const szF = legendaSize === 'P' ? {title:7,valor:9,sub:7,dot:6,lineH:36,pad:8} : legendaSize === 'G' ? {title:10,valor:14,sub:10,dot:10,lineH:52,pad:12} : {title:8,valor:11,sub:8,dot:8,lineH:44,pad:10};
-          ctx.fillStyle = 'rgba(255,255,255,0.35)';
-          ctx.font = `bold ${Math.round(szF.title*scale)}px system-ui, sans-serif`;
-          ctx.fillText('💰 PREÇOS', lx + Math.round(szF.pad*scale), ly + Math.round((szF.pad+szF.title)*scale));
+          ctx.fillStyle = '#64748b';
+          ctx.font = `bold ${fontTitle}px system-ui, sans-serif`;
+          ctx.fillText('TABELA DE PREÇOS', lx + PAD, ly + PAD + fontTitle);
           // Faixas
           faixasPrecoGlobal.forEach((faixa: any, fi: number) => {
-            const fy = ly + Math.round((szF.pad*2+szF.title + fi*szF.lineH)*scale);
-            const dotR = Math.round(szF.dot*scale/2);
-            const cx2 = lx + Math.round((szF.pad+dotR)*scale);
-            const cy2 = fy + Math.round((szF.lineH*0.3)*scale);
+            const fy = ly + PAD*2 + fontTitle + fi * lineH;
+            const cx2 = lx + PAD + dotR;
+            const cy2 = fy + lineH * 0.28;
             // Bolinha colorida
             ctx.beginPath();
             ctx.arc(cx2, cy2, dotR, 0, Math.PI*2);
             ctx.fillStyle = faixa.color;
             ctx.fill();
-            ctx.strokeStyle = 'white';
-            ctx.lineWidth = Math.round(1.5*scale);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = Math.round(dotR * 0.3);
             ctx.stroke();
             // Valor total
-            const tx = lx + Math.round((szF.pad*2+szF.dot)*scale);
-            ctx.fillStyle = 'white';
-            ctx.font = `bold ${Math.round(szF.valor*scale)}px system-ui, sans-serif`;
-            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), tx, fy + Math.round(szF.valor*scale*1.1));
-            // Entrada e parcelas — usar getLotInfoKey
-            const lotsFaixa = mapaPontos.filter((p: any) => {
-              const k = getLotInfoKey(p.quadra, p.lote);
-              return (localDev.lotesInfo as any)?.[k]?.preco === faixa.preco;
-            });
+            const tx = lx + PAD + dotR*2 + Math.round(LW*0.04);
+            ctx.fillStyle = '#0f172a';
+            ctx.font = `bold ${fontValor}px system-ui, sans-serif`;
+            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), tx, fy + fontValor);
+            // Entrada e parcelas
+            const lotsFaixa = mapaPontos.filter((p: any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
             const infoFx = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
             const entrada = infoFx?.entrada || 0;
             const parcelas = infoFx?.parcelas || 0;
             const avista = infoFx?.avista || parcelas === 0;
             const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
-            ctx.font = `${Math.round(szF.sub*scale)}px system-ui, sans-serif`;
+            ctx.font = `${fontSub}px system-ui, sans-serif`;
             if (avista) {
-              ctx.fillStyle = '#4ade80';
-              ctx.fillText('À Vista', tx, fy + Math.round((szF.valor+szF.sub+2)*scale));
+              ctx.fillStyle = '#16a34a';
+              ctx.fillText('À Vista', tx, fy + fontValor + fontSub + Math.round(fontSub*0.3));
             } else {
-              if (entrada>0) { ctx.fillStyle = 'rgba(255,255,255,0.5)'; ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), tx, fy + Math.round((szF.valor+szF.sub+2)*scale)); }
-              if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), tx, fy + Math.round((szF.valor+szF.sub*2+4)*scale)); }
+              if (entrada>0) { ctx.fillStyle = '#64748b'; ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), tx, fy + fontValor + fontSub + Math.round(fontSub*0.3)); }
+              if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), tx, fy + fontValor + fontSub*2 + Math.round(fontSub*0.6)); }
             }
           });
         }
@@ -5803,9 +5812,9 @@ const LotDashboard = ({
                         <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
                           <div style={{width:10,height:10,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
                           <div>
-                            <p style={{fontSize:10,fontWeight:900,color:'white',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                            <p style={{fontSize:10,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
                             {avista ? <p style={{fontSize:8,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                              {entrada>0&&<p style={{fontSize:8,color:'rgba(255,255,255,0.45)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                              {entrada>0&&<p style={{fontSize:8,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
                               {parcelas>0&&<p style={{fontSize:8,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlP).toLocaleString('pt-BR')}</p>}
                             </>}
                           </div>
@@ -6370,13 +6379,13 @@ const LotDashboard = ({
           return (
             <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
               style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
-              <div style={{ background:'rgba(10,15,26,0.88)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 2px 12px rgba(0,0,0,0.4)', padding:fs.pad }}>
+              <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
                 <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
-                  <p style={{fontSize:fs.title, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
+                  <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
                   <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
                     {(['P','M','G'] as const).map(s => (
                       <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
-                        style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.15)',color:sz===s?'#0a0f1a':'rgba(255,255,255,0.5)',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+                        style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
                         {s}
                       </button>
                     ))}
@@ -6393,9 +6402,9 @@ const LotDashboard = ({
                     <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
                       <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
                       <div>
-                        <p style={{fontSize:fs.valor,fontWeight:900,color:'white',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                        <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
                         {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                          {entrada>0&&<p style={{fontSize:fs.sub,color:'rgba(255,255,255,0.45)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                          {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
                           {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
                         </>}
                       </div>
@@ -6983,13 +6992,13 @@ const LotDashboard = ({
             return (
               <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
                 style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
-                <div style={{ background:'rgba(10,15,26,0.88)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(255,255,255,0.15)', boxShadow:'0 2px 12px rgba(0,0,0,0.4)', padding:fs.pad }}>
+                <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
                   <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
-                    <p style={{fontSize:fs.title, fontWeight:900, color:'rgba(255,255,255,0.35)', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
+                    <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
                     <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
                       {(['P','M','G'] as const).map(s => (
                         <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
-                          style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'rgba(255,255,255,0.9)':'rgba(255,255,255,0.15)',color:sz===s?'#0a0f1a':'rgba(255,255,255,0.5)',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+                          style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
                           {s}
                         </button>
                       ))}
@@ -7006,9 +7015,9 @@ const LotDashboard = ({
                       <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
                         <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
                         <div>
-                          <p style={{fontSize:fs.valor,fontWeight:900,color:'white',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                          <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
                           {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                            {entrada>0&&<p style={{fontSize:fs.sub,color:'rgba(255,255,255,0.45)',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                            {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
                             {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
                           </>}
                         </div>
