@@ -21273,18 +21273,46 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 );
               })()}
             </div>
-            {/* Botão Gerar PDF */}
+            {/* Botões: Imagem + PDF */}
             <div className="flex-shrink-0 p-4 border-t border-slate-100 flex gap-2">
+              {/* Baixar imagens separadas */}
               <button
                 onClick={async () => {
                   const docs = docPreviewModal.docs;
-                  const nomeCliente = (docPreviewModal as any).nomeCliente || 'Cliente';
+                  const nomeCliente = ((docPreviewModal as any).nomeCliente || 'Cliente')
+                    .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
+                  for (let i = 0; i < docs.length; i++) {
+                    const doc = docs[i];
+                    const ext = doc.url.split('.').pop()?.split('?')[0] || 'jpg';
+                    const nomeArq = docs.length === 1
+                      ? `${nomeCliente}.${ext}`
+                      : `${nomeCliente}_${i+1}.${ext}`;
+                    const resp = await fetch(doc.url);
+                    const blob = await resp.blob();
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url; a.download = nomeArq;
+                    document.body.appendChild(a); a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                    await new Promise(r => setTimeout(r, 400));
+                  }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-slate-100 text-slate-700 text-sm font-black active:scale-95 transition-all hover:bg-slate-200">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                Imagem{docPreviewModal.docs.length > 1 ? 's' : ''}
+              </button>
+              {/* Baixar PDF consolidado */}
+              <button
+                onClick={async () => {
+                  const docs = docPreviewModal.docs;
+                  const nomeCliente = ((docPreviewModal as any).nomeCliente || 'Cliente')
+                    .replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
                   try {
                     const { jsPDF } = await import('jspdf');
                     const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
                     let firstPage = true;
                     for (const doc of docs) {
-                      // Carregar imagem via fetch para evitar CORS
                       const resp = await fetch(doc.url);
                       const blob = await resp.blob();
                       const dataUrl = await new Promise<string>(resolve => {
@@ -21294,26 +21322,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                       });
                       if (!firstPage) pdf.addPage();
                       firstPage = false;
-                      // Detectar tipo de imagem
-                      const ext = doc.url.split('.').pop()?.toLowerCase() || 'jpg';
-                      const imgType = ext === 'png' ? 'PNG' : 'JPEG';
-                      // Adicionar imagem ocupando a página inteira (A4 = 210x297mm)
-                      try {
-                        pdf.addImage(dataUrl, imgType, 0, 0, 210, 297, undefined, 'FAST');
-                      } catch {
-                        // Se falhar com tipo detectado, tentar JPEG
-                        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
-                      }
+                      try { pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297, undefined, 'FAST'); }
+                      catch { try { pdf.addImage(dataUrl, 'PNG', 0, 0, 210, 297, undefined, 'FAST'); } catch {} }
                     }
-                    const nomeArquivo = nomeCliente.replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
-                    pdf.save(nomeArquivo + '.pdf');
-                  } catch (err: any) {
-                    alert('Erro ao gerar PDF: ' + (err?.message || err));
-                  }
+                    pdf.save(nomeCliente + '.pdf');
+                  } catch (err: any) { alert('Erro ao gerar PDF: ' + (err?.message || err)); }
                 }}
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#1a4a1a] text-white text-sm font-black active:scale-95 transition-all">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Baixar como PDF
+                PDF
               </button>
             </div>
           </div>
