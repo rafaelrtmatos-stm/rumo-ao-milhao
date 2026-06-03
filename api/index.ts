@@ -936,8 +936,8 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
     const allEmps = await db.select().from(empreendimentos);
     const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
     if (!emp) return res.status(404).json({ error: 'Empreendimento não encontrado' });
-    // Pontos ficam dentro do JSON do empreendimento (emp.data.mapaPontos)
-    const empData = (typeof (emp as any).data === 'object' && (emp as any).data !== null) ? (emp as any).data : emp;
+    // Dados do empreendimento ficam em emp.data (jsonb)
+    const empData = (emp as any).data || {};
     const pontos: any[] = empData.mapaPontos || [];
     const lotesInfo: any = empData.lotesInfo || {};
     const allVendas = await db.select().from(vendas);
@@ -986,23 +986,26 @@ app.get('/mapa/:id', async (req: any, res: any) => {
     const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
     if (!emp) return res.status(404).send('<h2>Empreendimento não encontrado</h2>');
 
-    // Pontos ficam dentro do JSON do empreendimento (emp.data.mapaPontos)
-    const empData2 = (typeof (emp as any).data === 'object' && (emp as any).data !== null) ? (emp as any).data : emp;
+    // Dados do empreendimento ficam em emp.data (jsonb)
+    const empData2 = (emp as any).data || {};
     const pontos: any[] = empData2.mapaPontos || [];
     const allVendasEmbed = await db.select().from(vendas);
     const vendasEmbed = allVendasEmbed.filter((v: any) => {
-      const vd = v.data || v;
-      return String(vd.empreendimentoId || v.empreendimentoId) === empId &&
+      const vd = (v.data || v) as any;
+      return String(vd.empreendimentoId) === empId &&
         vd.status !== 'cancelado' && vd.status !== 'rascunho';
     });
 
     const pontosPublicos = pontos.map((p: any) => {
       const venda = vendasEmbed.find((v: any) => {
-        const vd = v.data || v;
+        const vd = (v.data || v) as any;
         return String(vd.quadra) === String(p.quadra) &&
-          (String(vd.numeroLote) === String(p.lote) || String(vd.lote) === String(p.lote));
+          (String(vd.numeroLote) === String(p.lote));
       });
-      const status = venda ? 'vendido' : (p.status || 'disponivel');
+      // status do ponto: reservado se tiver venda rascunho no lotesInfo
+      const lotKey = String(p.quadra) + '-' + String(p.lote);
+      const lotInfo = (empData2.lotesInfo || {})[lotKey] || {};
+      const status = venda ? 'vendido' : (lotInfo.status || p.status || 'disponivel');
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
