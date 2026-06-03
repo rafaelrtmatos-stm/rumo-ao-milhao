@@ -933,27 +933,35 @@ app.post("/api/gemini/analyze-map", isAuthenticated, async (req, res) => {
 app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
-    const allEmps = await db.query.empreendimentos.findMany();
-    const emp = allEmps.find((e: any) => e.id === empId);
+    const allEmps = await db.select().from(empreendimentos);
+    const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
     if (!emp) return res.status(404).json({ error: 'Empreendimento não encontrado' });
-    const allPontos = await db.query.mapasPontos.findMany();
-    const pontos = allPontos.filter((p: any) => p.empreendimentoId === empId);
-    const allVendas = await db.query.vendas.findMany();
-    const vendas = allVendas.filter((v: any) => v.empreendimentoId === empId && v.status !== 'cancelado');
-    const precos = (emp as any).precos || {};
+    // Pontos ficam dentro do JSON do empreendimento (emp.data.mapaPontos)
+    const empData = (typeof (emp as any).data === 'object' && (emp as any).data !== null) ? (emp as any).data : emp;
+    const pontos: any[] = empData.mapaPontos || [];
+    const lotesInfo: any = empData.lotesInfo || {};
+    const allVendas = await db.select().from(vendas);
+    const vendasEmp = allVendas.filter((v: any) => {
+      const vData = v.data || v;
+      return String(vData.empreendimentoId || v.empreendimentoId) === empId && vData.status !== 'cancelado';
+    });
     const pontosPublicos = pontos.map((p: any) => {
-      const venda = vendas.find((v: any) => v.quadra === p.quadra && (v.numeroLote === p.lote || v.lote === p.lote));
-      const chave = 'Q' + p.quadra + '-L' + p.lote;
-      const chave2 = p.quadra + '-' + p.lote;
-      const precoLote = precos[chave] || precos[chave2] || null;
+      const venda = vendasEmp.find((v: any) => {
+        const vd = v.data || v;
+        return String(vd.quadra) === String(p.quadra) &&
+          (String(vd.numeroLote) === String(p.lote) || String(vd.lote) === String(p.lote));
+      });
+      const vd = venda ? (venda.data || venda) : null;
+      const infoKey = p.quadra + '-' + p.lote;
+      const info = lotesInfo[infoKey] || {};
       return {
         id: p.id, quadra: p.quadra, lote: p.lote || p.numeroLote,
         xPercent: p.xPercent, yPercent: p.yPercent,
-        status: venda ? (venda.status === 'rascunho' ? 'reservado' : 'vendido') : (p.status || 'disponivel'),
-        preco: precoLote ? (precoLote.valorTotal || 0) : 0,
-        valorEntrada: precoLote ? (precoLote.valorEntrada || 0) : 0,
-        quantidadeParcelas: precoLote ? (precoLote.quantidadeParcelas || 0) : 0,
-        valorParcela: precoLote ? (precoLote.valorParcela || 0) : 0,
+        status: vd ? (vd.status === 'rascunho' ? 'reservado' : 'vendido') : (p.status || 'disponivel'),
+        preco: info.preco || 0,
+        valorEntrada: info.entrada || 0,
+        quantidadeParcelas: info.parcelas || 0,
+        valorParcela: info.parcelas > 0 ? Math.round((info.preco - info.entrada) / info.parcelas) : 0,
       };
     });
     res.json({
@@ -974,26 +982,32 @@ app.get('/mapa/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
     // Buscar dados do empreendimento via rota pública
-    const allEmps = await db.query.empreendimentos.findMany();
-    const emp = allEmps.find((e: any) => e.id === empId);
+    const allEmps = await db.select().from(empreendimentos);
+    const emp = allEmps.find((e: any) => e.id === empId || (e.data && (e.data as any).id === empId));
     if (!emp) return res.status(404).send('<h2>Empreendimento não encontrado</h2>');
 
-    const allPontos = await db.query.mapasPontos.findMany();
-    const pontos = allPontos.filter((p: any) => p.empreendimentoId === empId);
-    const allVendas = await db.query.vendas.findMany();
-    const vendas = allVendas.filter((v: any) => v.empreendimentoId === empId && v.status !== 'cancelado' && v.status !== 'rascunho');
+    // Pontos ficam dentro do JSON do empreendimento (emp.data.mapaPontos)
+    const empData2 = (typeof (emp as any).data === 'object' && (emp as any).data !== null) ? (emp as any).data : emp;
+    const pontos: any[] = empData2.mapaPontos || [];
+    const allVendasEmbed = await db.select().from(vendas);
+    const vendasEmbed = allVendasEmbed.filter((v: any) => {
+      const vd = v.data || v;
+      return String(vd.empreendimentoId || v.empreendimentoId) === empId &&
+        vd.status !== 'cancelado' && vd.status !== 'rascunho';
+    });
 
     const pontosPublicos = pontos.map((p: any) => {
-      const venda = vendas.find((v: any) =>
-        String(v.quadra) === String(p.quadra) &&
-        (String(v.numeroLote) === String(p.lote) || String(v.lote) === String(p.lote))
-      );
+      const venda = vendasEmbed.find((v: any) => {
+        const vd = v.data || v;
+        return String(vd.quadra) === String(p.quadra) &&
+          (String(vd.numeroLote) === String(p.lote) || String(vd.lote) === String(p.lote));
+      });
       const status = venda ? 'vendido' : (p.status || 'disponivel');
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
-    const mapaUrl = (emp as any).mapaImagemUrl || '';
-    const nomeEmp = (emp as any).nome || 'Empreendimento';
+    const mapaUrl = empData2.mapaImagemUrl || (emp as any).mapaImagemUrl || '';
+    const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
 
