@@ -6103,7 +6103,7 @@ const LotDashboard = ({
     return (
       <div
         ref={mapContainerRef}
-        className="absolute inset-0 overflow-hidden select-none bg-slate-200"
+        className={`absolute inset-0 select-none bg-slate-200 ${colorMode === 'preco' ? 'overflow-visible' : 'overflow-hidden'}`}
         style={{cursor: 'grab'}}
         onWheel={handleMapWheel}
         onMouseDown={handleMapMousePanStart}
@@ -6119,7 +6119,7 @@ const LotDashboard = ({
             transformOrigin: '0 0',
           }}
         >
-          <div ref={mapImageRef} style={{position:'relative', display:'inline-block', width:'100%'}}>
+          <div ref={mapImageRef} style={{position:'relative', display:'inline-block', width:'100%', overflow:'visible'}}>
             <img
               src={mapaImagem}
               style={{display:'block', width:'100%', userSelect:'none', pointerEvents:'none'}}
