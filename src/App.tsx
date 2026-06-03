@@ -11432,14 +11432,26 @@ const VendasSection = ({
       }
     };
 
+    // Verificar se é reserva online (pré-cadastro) — só nome obrigatório
+    const isReservaOnline = (saleData as any).origemReserva === "site_publico" || (saleData as any).status === "rascunho";
+
     add("nome", "Nome completo do comprador", clientData.nome);
-    add("cpf", "CPF do comprador", clientData.cpf);
-    add("rg", "RG do comprador", clientData.rg);
-    add("empreendimentoId", "Empreendimento", saleData.empreendimentoId);
-    add("numeroLote", "Lote", saleData.numeroLote);
-    add("quadra", "Quadra", saleData.quadra);
-    addPositive("valorLote", "Valor total", saleData.valorLote);
-    add("vendedor", "Corretor / Vendedor", saleData.vendedor);
+
+    if (!isReservaOnline) {
+      // Venda normal — todos os campos obrigatórios
+      add("cpf", "CPF do comprador", clientData.cpf);
+      add("rg", "RG do comprador", clientData.rg);
+      add("empreendimentoId", "Empreendimento", saleData.empreendimentoId);
+      add("numeroLote", "Lote", saleData.numeroLote);
+      add("quadra", "Quadra", saleData.quadra);
+      addPositive("valorLote", "Valor total", saleData.valorLote);
+      add("vendedor", "Corretor / Vendedor", saleData.vendedor);
+    } else {
+      // Reserva online — só empreendimento obrigatório se informado
+      if (saleData.empreendimentoId) {
+        // Se escolheu empreendimento, lote e quadra ficam opcionais — preenche depois
+      }
+    }
 
     if (tipoVenda === "parcelado") {
       add("valorEntrada", "Entrada", saleData.valorEntrada);
@@ -11855,9 +11867,15 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     if (!validateVendaFields()) {
       return;
     }
-    if (!clientData.nome || !saleData.empreendimentoId) {
+    if (!clientData.nome) {
       triggerShake(vendasFormRef.current);
       return;
+    }
+
+    // Se era reserva online (rascunho) e agora tem lote+quadra+valor → promover para pendente
+    const isRascunho = (saleData as any).origemReserva === "site_publico" || saleData.status === "rascunho";
+    if (isRascunho && saleData.quadra && saleData.numeroLote && saleData.valorLote > 0) {
+      (saleData as any).status = "pendente";
     }
     if (clientData.cpf && cpfStatus(clientData.cpf) === "invalid") {
       setCpfErr("CPF inválido");
