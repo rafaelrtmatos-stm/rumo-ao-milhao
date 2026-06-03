@@ -1010,6 +1010,8 @@ app.get('/mapa/:id', async (req: any, res: any) => {
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
+    const markerSizePct = Number(empData2.markerSizePercent || 100);
+    const refWidth = Number(empData2.mapaMarkerReferenceWidth || 794);
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
@@ -1059,6 +1061,8 @@ app.get('/mapa/:id', async (req: any, res: any) => {
 <div id="rodape">rumoaomilhao.imb.br — Toque em um lote para ver detalhes</div>
 <script>
 const pontos = ${JSON.stringify(pontosPublicos)};
+const MARKER_SIZE_PCT = ${markerSizePct};
+const REF_WIDTH = ${refWidth};
 const COR = { disponivel: '#2563eb', reservado: '#d97706', vendido: '#ef4444' };
 const STATUS_LABEL = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
 
@@ -1087,7 +1091,9 @@ window.addEventListener('resize', () => {
 function renderBolinhas() {
   pontosDiv.innerHTML = '';
   const w = img.offsetWidth;
-  const sz = Math.max(8, Math.round(w * 0.013));
+  // Mesmo cálculo do app: BASE_SIZE_A4=10, radius=(10/2)*(w/refWidth)*pct
+  const pct = Math.max(40, Math.min(220, MARKER_SIZE_PCT)) / 100;
+  const sz = Math.max(6, Math.round(10 * (w / REF_WIDTH) * pct));
   pontos.forEach(p => {
     const el = document.createElement('div');
     el.className = 'bolinha ' + p.status;
