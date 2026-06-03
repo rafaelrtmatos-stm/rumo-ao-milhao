@@ -1075,7 +1075,7 @@ app.get('/mapa/:id', async (req: any, res: any) => {
     if (!mapaUrlOriginal) {
       return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Mapa não encontrado. Configure a URL do mapa no painel.</h2>');
     }
-    const mapaUrl = '/api/publico/mapa-imagem/' + empId;
+    const mapaUrl = mapaUrlOriginal; // URL direta do Supabase
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
@@ -1122,7 +1122,14 @@ app.get('/mapa/:id', async (req: any, res: any) => {
 </div>
 <div id="mapa-container">
   <div id="mapa-viewport" style="position:absolute;top:0;left:0;transform-origin:0 0;">
-    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes" style="display:block;user-select:none;pointer-events:none;" onerror="this.parentElement.innerHTML='<p style=padding:40px;color:#ef4444;font-weight:bold>Erro ao carregar mapa. URL: ${mapaUrl ? mapaUrl.substring(0,50)+"..." : "não encontrada"}</p>'"/>
+    <div id="loading" style="padding:40px;text-align:center;color:#64748b">
+      <div style="font-size:32px">⏳</div><p>Carregando mapa...</p>
+      <p id="url-debug" style="font-size:10px;word-break:break-all;color:#94a3b8">${mapaUrl.substring(0,80)}</p>
+    </div>
+    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes"
+      style="display:none;user-select:none;pointer-events:none;width:100%;"
+      onload="this.style.display='block';document.getElementById('loading').style.display='none';document.getElementById('mapa-viewport').style.width=this.offsetWidth+'px';renderBolinhas();"
+      onerror="document.getElementById('loading').innerHTML='<p style=color:#ef4444;padding:20px>Erro ao carregar imagem do mapa</p>'"/>
     <div id="pontos" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
   </div>
 </div>
@@ -1207,6 +1214,8 @@ window.addEventListener('resize', () => {
 // Renderizar bolinhas
 function renderBolinhas() {
   pontosDiv.innerHTML = '';
+  viewport.style.width = img.offsetWidth + 'px';
+  viewport.style.height = img.offsetHeight + 'px';
   const w = img.offsetWidth;
   // Mesmo cálculo do app: BASE_SIZE_A4=10, radius=(10/2)*(w/refWidth)*pct
   const pct = Math.max(40, Math.min(220, MARKER_SIZE_PCT)) / 100;
@@ -1247,13 +1256,12 @@ const viewport = document.getElementById('mapa-viewport');
 let zoom = 1, panX = 0, panY = 0;
 let drag = null;
 
-// Inicializar viewport com largura da imagem
-img.onload = function() {
+// onload já tratado no elemento img (atributo onload)
+// Fallback se imagem já estiver em cache
+if (img.complete && img.naturalWidth > 0) {
+  document.getElementById('loading').style.display = 'none';
   viewport.style.width = img.offsetWidth + 'px';
   renderBolinhas();
-};
-if (img.complete) {
-  viewport.style.width = img.offsetWidth + 'px';
 }
 
 function applyTransform() {
