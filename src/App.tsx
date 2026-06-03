@@ -16010,7 +16010,7 @@ VENDEDOR: ${vendedorLabel}`;
                   <button
                     onClick={() => {
                       const docs = (venda as any).documentos as {nome:string;url:string}[];
-                      setDocPreviewModal({ docs, idx: 0 });
+                      setDocPreviewModal({ docs, idx: 0, nomeCliente: venda.clienteNome } as any);
                     }}
                     className="flex flex-col items-center gap-1 p-3 bg-white text-blue-500 rounded-xl shadow-sm border border-border-subtle transition-all"
                   >
@@ -16151,7 +16151,7 @@ VENDEDOR: ${vendedorLabel}`;
                         title={`${(venda as any).documentos.length} documento(s)`}
                         onClick={() => {
                           const docs = (venda as any).documentos as {nome:string;url:string}[];
-                          setDocPreviewModal({ docs, idx: 0 });
+                          setDocPreviewModal({ docs, idx: 0, nomeCliente: venda.clienteNome } as any);
                         }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
                         <span className="truncate">Docs ({(venda as any).documentos.length})</span>
@@ -17809,7 +17809,7 @@ const AniversariosSection = ({
                           </div>
                         </div>
                         <button
-                          onClick={() => setDocPreviewModal({ docs: ((selectedClient as any).documentos || []), idx: i })}
+                          onClick={() => setDocPreviewModal({ docs: ((selectedClient as any).documentos || []), idx: i, nomeCliente: selectedClient.nome } as any)}
                           className="flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors"
                           title="Ver documento">
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -21273,15 +21273,48 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 );
               })()}
             </div>
-            {/* Botão Baixar */}
-            <div className="flex-shrink-0 p-4 border-t border-slate-100">
-              <a href={docPreviewModal.docs[docPreviewModal.idx]?.url}
-                download={docPreviewModal.docs[docPreviewModal.idx]?.nome}
-                target="_blank" rel="noopener noreferrer"
-                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#1a4a1a] text-white text-sm font-black active:scale-95 transition-all">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Baixar documento
-              </a>
+            {/* Botão Gerar PDF */}
+            <div className="flex-shrink-0 p-4 border-t border-slate-100 flex gap-2">
+              <button
+                onClick={async () => {
+                  const docs = docPreviewModal.docs;
+                  const nomeCliente = (docPreviewModal as any).nomeCliente || 'Cliente';
+                  try {
+                    const { jsPDF } = await import('jspdf');
+                    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+                    let firstPage = true;
+                    for (const doc of docs) {
+                      // Carregar imagem via fetch para evitar CORS
+                      const resp = await fetch(doc.url);
+                      const blob = await resp.blob();
+                      const dataUrl = await new Promise<string>(resolve => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result as string);
+                        reader.readAsDataURL(blob);
+                      });
+                      if (!firstPage) pdf.addPage();
+                      firstPage = false;
+                      // Detectar tipo de imagem
+                      const ext = doc.url.split('.').pop()?.toLowerCase() || 'jpg';
+                      const imgType = ext === 'png' ? 'PNG' : 'JPEG';
+                      // Adicionar imagem ocupando a página inteira (A4 = 210x297mm)
+                      try {
+                        pdf.addImage(dataUrl, imgType, 0, 0, 210, 297, undefined, 'FAST');
+                      } catch {
+                        // Se falhar com tipo detectado, tentar JPEG
+                        pdf.addImage(dataUrl, 'JPEG', 0, 0, 210, 297, undefined, 'FAST');
+                      }
+                    }
+                    const nomeArquivo = nomeCliente.replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
+                    pdf.save(nomeArquivo + '.pdf');
+                  } catch (err: any) {
+                    alert('Erro ao gerar PDF: ' + (err?.message || err));
+                  }
+                }}
+                className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#1a4a1a] text-white text-sm font-black active:scale-95 transition-all">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Baixar como PDF
+              </button>
             </div>
           </div>
         </div>
