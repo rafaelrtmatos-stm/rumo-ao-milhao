@@ -6173,6 +6173,86 @@ const LotDashboard = ({
           <button onClick={() => { setMapZoom(1); setMapPan({x:0,y:0}); }}
             style={{width:32,height:32,background:'rgba(255,255,255,.95)',border:'1px solid #e2e8f0',borderRadius:8,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>⊕</button>
         </div>
+        {/* LEGENDA FLUTUANTE DE PREÇOS — desktop, fora do viewport transformado */}
+        {/* LEGENDA FLUTUANTE — fora do viewport transformado, fixa no container */}
+        {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
+          const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
+            e.stopPropagation(); e.preventDefault();
+            const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+            const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+            legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
+            const container = mapContainerRef.current;
+            const onMove = (ev: MouseEvent | TouchEvent) => {
+              if (!legendaDragRef.current || !container) return;
+              ev.preventDefault();
+              const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+              const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+              const dx = cx - legendaDragRef.current.startX;
+              const dy = cy - legendaDragRef.current.startY;
+              const rect = container.getBoundingClientRect();
+              const legW = legendaRef.current?.offsetWidth || 160;
+              const legH = legendaRef.current?.offsetHeight || 120;
+              const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
+              const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
+              setLegendaPos(prev => {
+                const next = {x: nx, y: ny};
+                try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(next)); } catch {}
+                return next;
+              });
+            };
+            const onUp = () => {
+              legendaDragRef.current = null;
+              window.removeEventListener('mousemove', onMove);
+              window.removeEventListener('mouseup', onUp);
+              window.removeEventListener('touchmove', onMove as any);
+              window.removeEventListener('touchend', onUp);
+            };
+            window.addEventListener('mousemove', onMove);
+            window.addEventListener('mouseup', onUp);
+            window.addEventListener('touchmove', onMove as any, {passive:false});
+            window.addEventListener('touchend', onUp);
+          };
+          const sz = legendaSize;
+          const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
+          return (
+            <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
+              style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
+              <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
+                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
+                  <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
+                  <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
+                    {(['P','M','G'] as const).map(s => (
+                      <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
+                        style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
+                        {s}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                {faixasPrecoGlobal.map((faixa: any) => {
+                  const lotsFaixa = mapaPontos.filter(p => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
+                  const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+                  const entrada = infoFaixa?.entrada || 0;
+                  const parcelas = infoFaixa?.parcelas || 0;
+                  const avista = infoFaixa?.avista || parcelas === 0;
+                  const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+                  return (
+                    <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
+                      <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
+                      <div>
+                        <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
+                        {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
+                          {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
+                          {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
+                        </>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -6336,85 +6416,6 @@ const LotDashboard = ({
           {/* CLIMA */}
           <ClimaCard lat={lat} lng={lng} cidade={cidade} />
         </div>
-        {/* LEGENDA FLUTUANTE — fora do viewport transformado, fixa no container */}
-        {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
-          const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
-            e.stopPropagation(); e.preventDefault();
-            const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-            const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-            legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
-            const container = mapContainerRef.current;
-            const onMove = (ev: MouseEvent | TouchEvent) => {
-              if (!legendaDragRef.current || !container) return;
-              ev.preventDefault();
-              const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-              const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-              const dx = cx - legendaDragRef.current.startX;
-              const dy = cy - legendaDragRef.current.startY;
-              const rect = container.getBoundingClientRect();
-              const legW = legendaRef.current?.offsetWidth || 160;
-              const legH = legendaRef.current?.offsetHeight || 120;
-              const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
-              const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
-              setLegendaPos(prev => {
-                const next = {x: nx, y: ny};
-                try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(next)); } catch {}
-                return next;
-              });
-            };
-            const onUp = () => {
-              legendaDragRef.current = null;
-              window.removeEventListener('mousemove', onMove);
-              window.removeEventListener('mouseup', onUp);
-              window.removeEventListener('touchmove', onMove as any);
-              window.removeEventListener('touchend', onUp);
-            };
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-            window.addEventListener('touchmove', onMove as any, {passive:false});
-            window.addEventListener('touchend', onUp);
-          };
-          const sz = legendaSize;
-          const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
-          return (
-            <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
-              style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
-              <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
-                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
-                  <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
-                  <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
-                    {(['P','M','G'] as const).map(s => (
-                      <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
-                        style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
-                        {s}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                {faixasPrecoGlobal.map((faixa: any) => {
-                  const lotsFaixa = mapaPontos.filter(p => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
-                  const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
-                  const entrada = infoFaixa?.entrada || 0;
-                  const parcelas = infoFaixa?.parcelas || 0;
-                  const avista = infoFaixa?.avista || parcelas === 0;
-                  const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
-                  return (
-                    <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
-                      <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
-                      <div>
-                        <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                        {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                          {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                          {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
-                        </>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
       </div>
     );
   };
