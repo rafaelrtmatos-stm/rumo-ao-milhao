@@ -1009,11 +1009,11 @@ app.get('/mapa/:id', async (req: any, res: any) => {
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
-    // Tentar URL do Supabase primeiro, depois Base64
-    const mapaUrl = empData2.mapaImagemUrl
-      || empData2.mapaImagemBase64
-      || empData2.mapaImagemLeveBase64
-      || '';
+    // Usar URL do Supabase — Base64 é muito grande para HTML embed
+    const mapaUrl = empData2.mapaImagemUrl || '';
+    if (!mapaUrl) {
+      return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Mapa não encontrado. Configure a URL do mapa no painel.</h2>');
+    }
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
