@@ -1065,7 +1065,55 @@ app.get('/mapa/:id', async (req: any, res: any) => {
   </div>
 </div>
 <div id="tooltip"></div>
-<div id="rodape">rumoaomilhao.imb.br — Toque em um lote para ver detalhes</div>
+<div id="rodape">rumoaomilhao.imb.br — Toque em um lote disponível para reservar</div>
+
+<!-- Modal de reserva -->
+<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:white;border-radius:16px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
+    <div id="modal-header" style="background:#1a4a1a;color:white;padding:16px 20px;">
+      <h3 id="modal-titulo" style="margin:0;font-size:16px;font-weight:700;">Reservar Lote</h3>
+      <p id="modal-subtitulo" style="margin:4px 0 0;font-size:12px;opacity:0.7;"></p>
+    </div>
+    <div id="modal-body" style="padding:20px;">
+      <div id="form-reserva">
+        <div style="margin-bottom:14px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Nome completo *</label>
+          <input id="input-nome" type="text" placeholder="Seu nome completo"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;"/>
+        </div>
+        <div style="margin-bottom:20px;">
+          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">WhatsApp *</label>
+          <input id="input-telefone" type="tel" placeholder="(93) 99999-9999"
+            style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;"/>
+        </div>
+        <p id="erro-msg" style="color:#ef4444;font-size:12px;margin:0 0 12px;display:none;"></p>
+        <div style="display:flex;gap:10px;">
+          <button onclick="fecharModal()"
+            style="flex:1;padding:12px;border:1.5px solid #e5e7eb;border-radius:10px;background:white;font-size:14px;font-weight:600;cursor:pointer;color:#6b7280;">
+            Cancelar
+          </button>
+          <button id="btn-reservar" onclick="enviarReserva()"
+            style="flex:2;padding:12px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
+            Reservar lote
+          </button>
+        </div>
+      </div>
+      <div id="confirmacao" style="display:none;text-align:center;padding:10px 0;">
+        <div style="font-size:48px;margin-bottom:12px;">✅</div>
+        <h3 style="color:#1a4a1a;margin:0 0 8px;font-size:18px;">Pré-reserva confirmada!</h3>
+        <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Aguarde nosso contato para finalizar sua reserva.</p>
+        <a id="btn-whatsapp" href="#" target="_blank"
+          style="display:block;padding:12px;background:#25D366;color:white;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:10px;">
+          💬 Enviar confirmação pelo WhatsApp
+        </a>
+        <button onclick="fecharModal()"
+          style="width:100%;padding:12px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
+          OK
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
 <script>
 const pontos = ${JSON.stringify(pontosPublicos)};
 const MARKER_SIZE_PCT = ${markerSizePct};
@@ -1111,7 +1159,7 @@ function renderBolinhas() {
     el.style.background = COR[p.status] || '#2563eb';
     el.addEventListener('mouseenter', (e) => {
       tooltip.style.display = 'block';
-      tooltip.innerHTML = 'Q' + p.quadra + ' · L' + p.lote + '<br><span style="color:' + COR[p.status] + '">' + STATUS_LABEL[p.status] + '</span>';
+      tooltip.innerHTML = 'Q' + p.quadra + ' · L' + p.lote + ' — ' + STATUS_LABEL[p.status];
     });
     el.addEventListener('mousemove', (e) => {
       tooltip.style.left = (e.clientX + 12) + 'px';
@@ -1119,7 +1167,12 @@ function renderBolinhas() {
     });
     el.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
     el.addEventListener('click', () => {
-      alert('Quadra ' + p.quadra + ' · Lote ' + p.lote + '\nStatus: ' + STATUS_LABEL[p.status]);
+      tooltip.style.display = 'none';
+      if (p.status === 'disponivel') {
+        abrirFormulario(p.quadra, p.lote, el);
+      } else {
+        mostrarInfo(p.quadra, p.lote, p.status);
+      }
     });
     pontosDiv.appendChild(el);
   });
@@ -1204,6 +1257,92 @@ container.addEventListener('touchend', e => {
   [...e.changedTouches].forEach(t => delete touches[t.identifier]);
   if (e.touches.length === 0) drag = null;
 });
+
+// ── RESERVA ──
+const EMP_ID = '${empId}';
+const EMP_NOME = '${nomeEmp}';
+const SEU_WHATSAPP = '5593981234567'; // TODO: configurar número
+let loteAtual = null;
+
+function abrirFormulario(quadra, lote, el) {
+  loteAtual = { quadra, lote, el };
+  document.getElementById('modal-titulo').textContent = 'Reservar Lote Q' + quadra + ' · L' + lote;
+  document.getElementById('modal-subtitulo').textContent = EMP_NOME;
+  document.getElementById('form-reserva').style.display = 'block';
+  document.getElementById('confirmacao').style.display = 'none';
+  document.getElementById('input-nome').value = '';
+  document.getElementById('input-telefone').value = '';
+  document.getElementById('erro-msg').style.display = 'none';
+  const overlay = document.getElementById('modal-overlay');
+  overlay.style.display = 'flex';
+  setTimeout(() => document.getElementById('input-nome').focus(), 100);
+}
+
+function mostrarInfo(quadra, lote, status) {
+  const labels = { reservado: 'Reservado', vendido: 'Vendido' };
+  alert('Quadra ' + quadra + ' · Lote ' + lote + '\n' + (labels[status] || status));
+}
+
+function fecharModal() {
+  document.getElementById('modal-overlay').style.display = 'none';
+  loteAtual = null;
+}
+
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) fecharModal();
+});
+
+async function enviarReserva() {
+  const nome = document.getElementById('input-nome').value.trim();
+  const tel = document.getElementById('input-telefone').value.trim();
+  const erroEl = document.getElementById('erro-msg');
+  if (!nome || !tel) {
+    erroEl.textContent = 'Preencha nome e WhatsApp.';
+    erroEl.style.display = 'block';
+    return;
+  }
+  const btn = document.getElementById('btn-reservar');
+  btn.textContent = 'Reservando...';
+  btn.disabled = true;
+  try {
+    const resp = await fetch('/api/publico/reservar-lote', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        empreendimentoId: EMP_ID,
+        empreendimentoNome: EMP_NOME,
+        quadra: loteAtual.quadra,
+        lote: loteAtual.lote,
+        clienteNome: nome,
+        clienteTelefone: tel,
+      })
+    });
+    const data = await resp.json();
+    if (!resp.ok) {
+      erroEl.textContent = data.error || 'Erro ao reservar. Tente novamente.';
+      erroEl.style.display = 'block';
+      btn.textContent = 'Reservar lote';
+      btn.disabled = false;
+      return;
+    }
+    // Sucesso — atualizar bolinha para amarelo
+    loteAtual.el.style.background = '#d97706';
+    loteAtual.el.className = loteAtual.el.className.replace('disponivel', 'reservado');
+    // Atualizar pontos locais
+    const p = pontos.find(x => String(x.quadra) === String(loteAtual.quadra) && String(x.lote) === String(loteAtual.lote));
+    if (p) p.status = 'reservado';
+    // Mostrar confirmação com link WhatsApp
+    const msg = encodeURIComponent('Olá! Acabei de fazer uma pré-reserva.\nNome: ' + nome + '\nLote: Q' + loteAtual.quadra + ' L' + loteAtual.lote + '\nEmpreendimento: ' + EMP_NOME + '\nTelefone: ' + tel);
+    document.getElementById('btn-whatsapp').href = 'https://wa.me/' + SEU_WHATSAPP + '?text=' + msg;
+    document.getElementById('form-reserva').style.display = 'none';
+    document.getElementById('confirmacao').style.display = 'block';
+  } catch(e) {
+    erroEl.textContent = 'Erro de conexão. Tente novamente.';
+    erroEl.style.display = 'block';
+    btn.textContent = 'Reservar lote';
+    btn.disabled = false;
+  }
+}
 </script>
 </body>
 </html>`;
@@ -1249,6 +1388,72 @@ app.post('/api/publico/pre-reserva', async (req: any, res: any) => {
     console.log('[Pre-reserva] ' + body.clienteNome + ' Q' + body.quadra + 'L' + body.numeroLote);
     res.json({ ok: true, vendaId, clienteId });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+
+// ── RESERVA SIMPLIFICADA DO EMBED PÚBLICO ────────────────────────────────────
+app.post('/api/publico/reservar-lote', async (req: any, res: any) => {
+  try {
+    const { empreendimentoId, empreendimentoNome, quadra, lote, clienteNome, clienteTelefone } = req.body;
+    if (!empreendimentoId || !quadra || !lote || !clienteNome || !clienteTelefone)
+      return res.status(400).json({ error: 'Dados obrigatórios: empreendimentoId, quadra, lote, clienteNome, clienteTelefone' });
+
+    // Verificar se lote já está reservado/vendido
+    const todasVendas = await db.select().from(vendas);
+    const jaReservado = todasVendas.some((v: any) => {
+      const vd = v.data || v;
+      return String(vd.empreendimentoId) === String(empreendimentoId) &&
+        String(vd.quadra) === String(quadra) &&
+        String(vd.numeroLote) === String(lote) &&
+        vd.status !== 'cancelado';
+    });
+    if (jaReservado) return res.status(409).json({ error: 'Este lote já está reservado ou vendido.' });
+
+    // Criar cliente
+    const clienteId = 'CLI-' + Date.now();
+    await db.insert(clientes).values({
+      id: clienteId,
+      userId: SHARED_USER,
+      data: {
+        id: clienteId,
+        nome: clienteNome,
+        telefone1: clienteTelefone,
+        dataCadastro: new Date().toISOString(),
+        origemReserva: 'embed_publico',
+      }
+    } as any).onConflictDoNothing();
+
+    // Criar venda/reserva
+    const vendaId = 'VND-' + (Date.now() + 1);
+    await db.insert(vendas).values({
+      id: vendaId,
+      userId: SHARED_USER,
+      data: {
+        id: vendaId,
+        clienteId,
+        clienteNome,
+        clienteTelefone,
+        empreendimentoId,
+        empreendimentoNome: empreendimentoNome || '',
+        quadra: String(quadra),
+        numeroLote: String(lote),
+        valorLote: 0, valorEntrada: 0,
+        quantidadeParcelas: 0, valorParcela: 0,
+        dataVenda: new Date().toISOString().split('T')[0],
+        status: 'rascunho',
+        origemReserva: 'site_publico',
+        contratoGerado: false,
+        documentos: [],
+        createdAt: new Date().toISOString(),
+      }
+    } as any).onConflictDoNothing();
+
+    console.log('[Reserva Embed] ' + clienteNome + ' Q' + quadra + ' L' + lote + ' - ' + empreendimentoNome);
+    res.json({ ok: true, vendaId, clienteId, mensagem: 'Pré-reserva confirmada!' });
+  } catch (e: any) {
+    console.error('[Reserva Embed] Erro:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // Upload público de documento
