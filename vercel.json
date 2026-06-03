@@ -37,6 +37,10 @@
       }
     },
     {
+      "src": "/mapa/(.*)",
+      "dest": "/api/index.ts"
+    },
+    {
       "handle": "filesystem"
     },
     {

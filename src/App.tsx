@@ -16010,8 +16010,7 @@ VENDEDOR: ${vendedorLabel}`;
                   <button
                     onClick={() => {
                       const docs = (venda as any).documentos as {nome:string;url:string}[];
-                      if (docs.length === 1) { window.open(docs[0].url, '_blank'); return; }
-                      docs.forEach((d, i) => setTimeout(() => window.open(d.url, '_blank'), i * 300));
+                      setDocPreviewModal({ docs, idx: 0 });
                     }}
                     className="flex flex-col items-center gap-1 p-3 bg-white text-blue-500 rounded-xl shadow-sm border border-border-subtle transition-all"
                   >
@@ -16152,8 +16151,7 @@ VENDEDOR: ${vendedorLabel}`;
                         title={`${(venda as any).documentos.length} documento(s)`}
                         onClick={() => {
                           const docs = (venda as any).documentos as {nome:string;url:string}[];
-                          if (docs.length === 1) { window.open(docs[0].url, '_blank'); return; }
-                          docs.forEach((d, i) => setTimeout(() => window.open(d.url, '_blank'), i * 300));
+                          setDocPreviewModal({ docs, idx: 0 });
                         }}>
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6M9 15l3 3 3-3"/></svg>
                         <span className="truncate">Docs ({(venda as any).documentos.length})</span>
@@ -17810,11 +17808,12 @@ const AniversariosSection = ({
                             {doc.data && <p className="text-[10px] text-slate-400">{new Date(doc.data).toLocaleDateString('pt-BR')}</p>}
                           </div>
                         </div>
-                        <a href={doc.url} target="_blank" rel="noopener noreferrer"
+                        <button
+                          onClick={() => setDocPreviewModal({ docs: ((selectedClient as any).documentos || []), idx: i })}
                           className="flex-shrink-0 p-2 rounded-xl bg-blue-500 hover:bg-blue-600 text-white transition-colors"
-                          title="Baixar documento">
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        </a>
+                          title="Ver documento">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
                       </div>
                     ))}
                   </div>
@@ -20143,6 +20142,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [showPixModal, setShowPixModal] = useState(false);
+  const [docPreviewModal, setDocPreviewModal] = useState<{docs:{nome:string;url:string;tipo?:string}[];idx:number}|null>(null);
   // Usuários do sistema — carregado no App para uso em vendas/corretores
   const [appUsers, setAppUsers] = useState<{ id: string; email: string; profile: { nome?: string } }[]>([]);
   useEffect(function() {
@@ -21215,6 +21215,78 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           <button onClick={()=>setShowOfflineBanner(false)} style={{background:'none',border:'none',color:'white',cursor:'pointer',fontSize:18}}>×</button>
         </div>
       )}
+      {/* Modal Prévia de Documentos */}
+      {docPreviewModal && (
+        <div className="fixed inset-0 z-[9999] bg-black/80 flex flex-col items-center justify-center p-4"
+          onClick={() => setDocPreviewModal(null)}>
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden max-h-[90vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#1a4a1a] px-5 py-3 flex items-center justify-between flex-shrink-0">
+              <div className="flex items-center gap-2">
+                {docPreviewModal.docs.length > 1 && (
+                  <>
+                    <button onClick={() => setDocPreviewModal(p => p && p.idx > 0 ? {...p, idx: p.idx-1} : p)}
+                      className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white disabled:opacity-30"
+                      disabled={docPreviewModal.idx === 0}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M15 18l-6-6 6-6"/></svg>
+                    </button>
+                    <span className="text-white text-xs font-bold">{docPreviewModal.idx+1}/{docPreviewModal.docs.length}</span>
+                    <button onClick={() => setDocPreviewModal(p => p && p.idx < p.docs.length-1 ? {...p, idx: p.idx+1} : p)}
+                      className="w-7 h-7 rounded-lg bg-white/20 flex items-center justify-center text-white disabled:opacity-30"
+                      disabled={docPreviewModal.idx === docPreviewModal.docs.length-1}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M9 18l6-6-6-6"/></svg>
+                    </button>
+                  </>
+                )}
+                <span className="text-white text-sm font-black truncate max-w-[200px]">
+                  {docPreviewModal.docs[docPreviewModal.idx]?.nome || 'Documento'}
+                </span>
+              </div>
+              <button onClick={() => setDocPreviewModal(null)}
+                className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            {/* Prévia */}
+            <div className="flex-1 overflow-auto bg-slate-100 flex items-center justify-center p-4 min-h-[300px]">
+              {(() => {
+                const doc = docPreviewModal.docs[docPreviewModal.idx];
+                if (!doc) return null;
+                const isImg = /\.(jpg|jpeg|png|gif|webp|bmp)$/i.test(doc.url) || /image/.test(doc.tipo||'');
+                const isPdf = /\.pdf$/i.test(doc.url) || /pdf/.test(doc.tipo||'');
+                if (isImg) return (
+                  <img src={doc.url} alt={doc.nome} className="max-w-full max-h-[60vh] rounded-xl shadow-lg object-contain"/>
+                );
+                if (isPdf) return (
+                  <iframe src={doc.url} className="w-full h-[60vh] rounded-xl border-0" title={doc.nome}/>
+                );
+                // Arquivo genérico
+                return (
+                  <div className="text-center space-y-3">
+                    <div className="w-16 h-16 rounded-2xl bg-slate-200 flex items-center justify-center mx-auto">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    </div>
+                    <p className="text-slate-600 font-bold text-sm">{doc.nome}</p>
+                    <p className="text-slate-400 text-xs">Clique em baixar para abrir</p>
+                  </div>
+                );
+              })()}
+            </div>
+            {/* Botão Baixar */}
+            <div className="flex-shrink-0 p-4 border-t border-slate-100">
+              <a href={docPreviewModal.docs[docPreviewModal.idx]?.url}
+                download={docPreviewModal.docs[docPreviewModal.idx]?.nome}
+                target="_blank" rel="noopener noreferrer"
+                className="w-full flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#1a4a1a] text-white text-sm font-black active:scale-95 transition-all">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar documento
+              </a>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal PIX global */}
       {showPixModal && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center p-4" onClick={() => setShowPixModal(false)}>
