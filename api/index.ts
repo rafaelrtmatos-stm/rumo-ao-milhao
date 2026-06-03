@@ -1028,8 +1028,9 @@ app.get('/mapa/:id', async (req: any, res: any) => {
   .leg-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
   #mapa-container { position: relative; width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
   #mapa-container:active { cursor: grabbing; }
+  #mapa-viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
   #mapa-img { display: block; width: 100%; user-select: none; pointer-events: none; }
-  .bolinha { position: absolute; border-radius: 50%; border: 2px solid white; transform: translate(-50%, -50%); cursor: pointer; transition: transform 0.1s; font-size: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.3); }
+  .bolinha { position: absolute; border-radius: 50%; border: 2px solid white; transform: translate(-50%, -50%); cursor: pointer; font-size: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.1s; }
   .bolinha:hover { transform: translate(-50%, -50%) scale(1.3); z-index: 10; }
   .bolinha.disponivel { background: #2563eb; }
   .bolinha.reservado { background: #d97706; }
@@ -1049,8 +1050,10 @@ app.get('/mapa/:id', async (req: any, res: any) => {
   <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div> Vendido</div>
 </div>
 <div id="mapa-container">
-  <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes"/>
-  <div id="pontos"></div>
+  <div id="mapa-viewport" style="position:absolute;top:0;left:0;transform-origin:0 0;">
+    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes" style="display:block;user-select:none;pointer-events:none;"/>
+    <div id="pontos" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+  </div>
 </div>
 <div id="tooltip"></div>
 <div id="rodape">rumoaomilhao.imb.br — Toque em um lote para ver detalhes</div>
@@ -1072,7 +1075,13 @@ function ajustarAltura() {
   container.style.height = (window.innerHeight - headerH - legendaH - rodapeH) + 'px';
 }
 ajustarAltura();
-window.addEventListener('resize', () => { ajustarAltura(); renderBolinhas(); });
+window.addEventListener('resize', () => {
+  ajustarAltura();
+  if (img.complete) {
+    viewport.style.width = img.offsetWidth + 'px';
+    renderBolinhas();
+  }
+});
 
 // Renderizar bolinhas
 function renderBolinhas() {
@@ -1103,18 +1112,24 @@ function renderBolinhas() {
   });
 }
 
-img.onload = renderBolinhas;
-if (img.complete) renderBolinhas();
+// onload já definido acima no bloco Pan & Zoom
 
 // Pan & Zoom
+const viewport = document.getElementById('mapa-viewport');
 let zoom = 1, panX = 0, panY = 0;
 let drag = null;
 
+// Inicializar viewport com largura da imagem
+img.onload = function() {
+  viewport.style.width = img.offsetWidth + 'px';
+  renderBolinhas();
+};
+if (img.complete) {
+  viewport.style.width = img.offsetWidth + 'px';
+}
+
 function applyTransform() {
-  pontosDiv.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
-  pontosDiv.style.transformOrigin = '0 0';
-  img.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
-  img.style.transformOrigin = '0 0';
+  viewport.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
 }
 
 // Mouse pan
