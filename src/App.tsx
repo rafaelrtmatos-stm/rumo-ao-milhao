@@ -2684,7 +2684,7 @@ const LotDashboard = ({
     if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
     // Gerar imagem leve para imagens antigas que nao tem mapaImagemLeveBase64
     const original = (dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || "";
-    if (original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
+    if (false && original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
       gerarImagemLeve(original, 800, 0.3).then((leve) => {
         if (leve && leve !== original) {
           persistDev({ ...dev, mapaImagemLeveBase64: leve } as any);
@@ -3039,7 +3039,7 @@ const LotDashboard = ({
       clearTimeout((window as any).__zoomEndTimer);
       (window as any).__zoomEndTimer = setTimeout(() => {
         zoomingRef.current = false;
-        if (!((localDev as any).mapaPdfOriginalBase64)) void requestHighResolutionMap();
+        // Sem troca de resolução
       }, 400);
 
       // rAF — não bloquear thread principal durante pinch
@@ -3772,29 +3772,24 @@ const LotDashboard = ({
   const getBallPixelSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
 
-    // Largura real da IMAGEM do mapa na tela — usar offsetWidth da img diretamente
-    // Em landscape o container pode ser mais largo mas a img é limitada pela altura
-    const imgEl = mapImageRef.current;
-    // Pegar a imagem <img> dentro do mapImageRef
-    const imgTag = imgEl?.querySelector('img') as HTMLImageElement | null;
-    const imgWReal = imgTag?.offsetWidth || imgTag?.getBoundingClientRect().width || 0;
-    const mapWAtual = imgWReal
-      || (imgEl?.offsetWidth || 0)
-      || (mapRenderWidth > 0 ? mapRenderWidth : 0)
-      || (mapContainerRef.current?.offsetWidth || 0)
-      || 794; // fallback = largura A4 portrait (sem escala)
-
-    // Âncora A4: detecta orientação pela proporção da imagem salva
-    // mapaMarkerReferenceWidth é salvo no upload (794 portrait, 1123 landscape)
+    // Usar sempre refWidth como base fixa — bolinhas proporcionais ao mapa
+    // independente da orientação ou tamanho atual na tela
     const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
 
-    // fatorEscala: relação entre tela atual e documento A4 original
+    // Largura atual da imagem na tela para calcular a escala
+    const imgEl = mapImageRef.current;
+    const imgTag = imgEl?.querySelector('img') as HTMLImageElement | null;
+    const mapWAtual = imgTag?.offsetWidth
+      || imgTag?.getBoundingClientRect().width
+      || imgEl?.offsetWidth
+      || (mapRenderWidth > 0 ? mapRenderWidth : 0)
+      || refWidth;
+
+    // fatorEscala: relação entre tela atual e refWidth
     const fatorEscala = mapWAtual / refWidth;
 
-    // Tamanho base no A4 — calibrado para coincidir com o PDF exportado
-    // No PDF: 794px de largura, bolinha ~10px = 1.26% da largura
-    // BASE_SIZE_A4 = 10px equivale ao tamanho padrão ouro do PDF
-    const BASE_SIZE_A4 = 10;
+    // Tamanho base em % do refWidth — fixo e consistente
+    const BASE_SIZE_A4 = 10; // px no refWidth
     const scaledSize = BASE_SIZE_A4 * fatorEscala * pct;
 
     // No mobile com zoom baixo: escalar proporcionalmente ao zoom
