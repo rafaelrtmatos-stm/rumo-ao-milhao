@@ -17403,9 +17403,8 @@ const ClientesSection = ({
                   ? (() => { try { return new Date(cliente.nascimento + "T00:00:00").toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }); } catch { return cliente.nascimento; } })()
                   : "—";
                 return (
-                  <tr key={cliente.id} className="group">
-                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors cursor-pointer"
-                      onClick={() => setSelectedClient(cliente)}>
+                  <tr key={cliente.id} className="group cursor-pointer" onClick={() => setSelectedClient(cliente)}>
+                    <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-l-xl sm:rounded-l-2xl transition-colors">
                       <div className="font-bold text-primary-main hover:underline text-xs sm:text-sm truncate max-w-[80px] sm:max-w-none">
                         {cliente.nome}
                       </div>
