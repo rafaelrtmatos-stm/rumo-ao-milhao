@@ -1264,28 +1264,33 @@ function rgStatus(v: string | undefined | null): "empty" | "valid" | "invalid" {
 }
 
 function genderizeEstadoCivil(raw: string, genero: string): string {
+  // Normalizar: remover parênteses, acentos comuns e sufixo "a" para obter base neutra
   const base = (raw || "")
     .toLowerCase()
-    .replace(/[()]/g, "")
-    .replace(/\ba\b/g, "")
+    .replace(/[()]/g, "")      // remove ( )
+    .replace(/\(a\)/g, "")     // remove (a) explícito
+    .replace(/oa$/g, "o")      // solteiroa → solteiro, casadoa → casado
+    .replace(/[áà]/g, "a").replace(/[éê]/g, "e").replace(/[íî]/g, "i")
+    .replace(/[óô]/g, "o").replace(/[úû]/g, "u")
+    .replace(/\s+/g, " ")
     .trim();
   const masc: Record<string, string> = {
     solteiro: "Solteiro", solteira: "Solteiro", casado: "Casado", casada: "Casado",
-    divorciado: "Divorciado", divorciada: "Divorciado", viúvo: "Viúvo", viuvo: "Viúvo",
-    viúva: "Viúvo", viuva: "Viúvo", separado: "Separado", separada: "Separado",
-    "união estável": "União Estável",
+    divorciado: "Divorciado", divorciada: "Divorciado",
+    viuvo: "Viúvo", viuva: "Viúvo", separado: "Separado", separada: "Separado",
+    "uniao estavel": "União Estável", "uniao_estavel": "União Estável",
   };
   const fem: Record<string, string> = {
     solteiro: "Solteira", solteira: "Solteira", casado: "Casada", casada: "Casada",
-    divorciado: "Divorciada", divorciada: "Divorciada", viúvo: "Viúva", viuvo: "Viúva",
-    viúva: "Viúva", viuva: "Viúva", separado: "Separada", separada: "Separada",
-    "união estável": "União Estável",
+    divorciado: "Divorciada", divorciada: "Divorciada",
+    viuvo: "Viúva", viuva: "Viúva", separado: "Separada", separada: "Separada",
+    "uniao estavel": "União Estável", "uniao_estavel": "União Estável",
   };
   const outro: Record<string, string> = {
     solteiro: "Solteiro(a)", solteira: "Solteiro(a)", casado: "Casado(a)", casada: "Casado(a)",
-    divorciado: "Divorciado(a)", divorciada: "Divorciado(a)", viúvo: "Viúvo(a)", viuvo: "Viúvo(a)",
-    viúva: "Viúvo(a)", viuva: "Viúvo(a)", separado: "Separado(a)", separada: "Separado(a)",
-    "união estável": "União Estável",
+    divorciado: "Divorciado(a)", divorciada: "Divorciado(a)",
+    viuvo: "Viúvo(a)", viuva: "Viúvo(a)", separado: "Separado(a)", separada: "Separado(a)",
+    "uniao estavel": "União Estável", "uniao_estavel": "União Estável",
   };
   const map = genero === "F" ? fem : genero === "O" ? outro : masc;
   return map[base] || raw;
