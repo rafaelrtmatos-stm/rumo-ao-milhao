@@ -18088,15 +18088,16 @@ const ConfigSection = ({
       // Preservar edições do usuário que ainda não foram salvas
       ...Object.fromEntries(Object.entries(prev).filter(([k]) => !['id','createdAt','updatedAt'].includes(k))),
       // Mas atualizar campos PIX/empresa se vierem do banco e o form estiver vazio
-      chavePix: prev.chavePix || (config as any).chavePix || '',
-      nomeBeneficiario: prev.nomeBeneficiario || (config as any).nomeBeneficiario || '',
-      cidadeBeneficiario: prev.cidadeBeneficiario || (config as any).cidadeBeneficiario || '',
-      nomeFantasia: prev.nomeFantasia || (config as any).nomeFantasia || '',
-      cnpj: prev.cnpj || (config as any).cnpj || '',
+      chavePix: prev.chavePix || (config as any).chavePix || (config as any).pixChave || '',
+      nomeBeneficiario: prev.nomeBeneficiario || (config as any).nomeBeneficiario || (config as any).pixNome || '',
+      cidadeBeneficiario: prev.cidadeBeneficiario || (config as any).cidadeBeneficiario || (config as any).pixCidade || '',
+      nomeFantasia: prev.nomeFantasia || (config as any).nomeFantasia || (config as any).bancoNomeFantasia || '',
+      cnpj: prev.cnpj || (config as any).cnpj || (config as any).bancoCnpj || '',
       banco: prev.banco || (config as any).banco || '',
-      agencia: prev.agencia || (config as any).agencia || '',
-      contaBancaria: prev.contaBancaria || (config as any).contaBancaria || '',
+      agencia: prev.agencia || (config as any).agencia || (config as any).bancoAgencia || '',
+      contaBancaria: prev.contaBancaria || (config as any).contaBancaria || (config as any).bancoContaCorrente || '',
       tipoConta: prev.tipoConta || (config as any).tipoConta || '',
+      razaoSocial: prev.razaoSocial || (config as any).razaoSocial || (config as any).bancoTitular || '',
     }));
   }, [(config as any).chavePix, (config as any).nomeFantasia]);
   const [migrating, setMigrating] = useState(false);
@@ -18302,9 +18303,16 @@ const ConfigSection = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label">Nome Fantasia / Empresa</label>
-              <input className="input" placeholder="Ex: Imobiliária Rafael Tavares"
+              <input className="input" placeholder="Ex: Imobiliária Geo Florestal"
                 value={(formData as any).nomeFantasia || ''}
                 onChange={e => setFormData((p: any) => ({...p, nomeFantasia: e.target.value}))}
+              />
+            </div>
+            <div>
+              <label className="label">Razão Social</label>
+              <input className="input" placeholder="Ex: D SOUZA DE ANDRADE IMÓVEIS LTDA"
+                value={(formData as any).razaoSocial || ''}
+                onChange={e => setFormData((p: any) => ({...p, razaoSocial: e.target.value}))}
               />
             </div>
             <div>
@@ -20192,7 +20200,21 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         if (results[2].status === 'fulfilled') setSales(results[2].value);
         else console.error('Erro vendas:', results[2].reason);
 
-        if (results[3].status === 'fulfilled') setConfig(results[3].value);
+        if (results[3].status === 'fulfilled') {
+          const cfg = results[3].value as any;
+          // Migração: copiar campos antigos do PIX para os novos campos
+          const migrated = { ...cfg };
+          if (!migrated.chavePix && cfg.pixChave) migrated.chavePix = cfg.pixChave;
+          if (!migrated.nomeBeneficiario && cfg.pixNome) migrated.nomeBeneficiario = cfg.pixNome;
+          if (!migrated.cidadeBeneficiario && cfg.pixCidade) migrated.cidadeBeneficiario = cfg.pixCidade;
+          if (!migrated.nomeFantasia && cfg.bancoNomeFantasia) migrated.nomeFantasia = cfg.bancoNomeFantasia;
+          if (!migrated.cnpj && cfg.bancoCnpj) migrated.cnpj = cfg.bancoCnpj;
+          if (!migrated.banco && cfg.bancoAgencia) migrated.banco = cfg.banco || '';
+          if (!migrated.agencia && cfg.bancoAgencia) migrated.agencia = cfg.bancoAgencia;
+          if (!migrated.contaBancaria && cfg.bancoContaCorrente) migrated.contaBancaria = cfg.bancoContaCorrente;
+          if (!migrated.razaoSocial && cfg.bancoTitular) migrated.razaoSocial = cfg.bancoTitular;
+          setConfig(migrated);
+        }
         else console.error('Erro config:', results[3].reason);
 
         const anyFailed = results.some(r => r.status === 'rejected');
