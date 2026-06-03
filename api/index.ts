@@ -1004,6 +1004,30 @@ app.get('/api/publico/diagnostico/:id', async (req: any, res: any) => {
   } catch(e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// ── PROXY DE IMAGEM DO MAPA (evita CORS) ────────────────────────────────────
+app.get('/api/publico/mapa-imagem/:id', async (req: any, res: any) => {
+  try {
+    const empId = req.params.id;
+    const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
+    if (!rows.length) return res.status(404).send('Não encontrado');
+    const d = (rows[0] as any).data || {};
+    const url = d.mapaImagemUrl || '';
+    if (!url) return res.status(404).send('Sem URL de mapa');
+    // Fazer proxy da imagem
+    // Usar https nativo para proxy
+    const https = await import('https');
+    const http = await import('http');
+    const client = url.startsWith('https') ? https : http;
+    client.get(url, (imgResp: any) => {
+      res.setHeader('Content-Type', imgResp.headers['content-type'] || 'image/webp');
+      res.setHeader('Cache-Control', 'public, max-age=3600');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      imgResp.pipe(res);
+    }).on('error', (e: any) => res.status(502).send(e.message));
+    return;
+  } catch(e: any) { res.status(500).send(e.message); }
+});
+
 // ── PÁGINA DE EMBED DO MAPA ─────────────────────────────────────────────────
 // Uso: <iframe src="https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO" />
 // Ou acesso direto: https://rumoaomilhao.imb.br/mapa/ID_EMPREENDIMENTO
@@ -1046,11 +1070,12 @@ app.get('/mapa/:id', async (req: any, res: any) => {
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
-    // Usar URL do Supabase — Base64 é muito grande para HTML embed
-    const mapaUrl = empData2.mapaImagemUrl || '';
-    if (!mapaUrl) {
+    // Usar proxy local para evitar CORS com Supabase
+    const mapaUrlOriginal = empData2.mapaImagemUrl || '';
+    if (!mapaUrlOriginal) {
       return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Mapa não encontrado. Configure a URL do mapa no painel.</h2>');
     }
+    const mapaUrl = '/api/publico/mapa-imagem/' + empId;
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
