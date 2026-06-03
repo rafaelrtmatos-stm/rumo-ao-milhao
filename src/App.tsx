@@ -11302,7 +11302,7 @@ const VendasSection = ({
     genero: "M",
     rg: "",
     cpf: "",
-    estadoCivil: "Solteiro(a)",
+    estadoCivil: "solteiro",
     profissao: "",
     nascimento: "",
     cep: "",
@@ -11321,7 +11321,7 @@ const VendasSection = ({
     genero: "M",
     rg: "",
     cpf: "",
-    estadoCivil: "Solteiro(a)",
+    estadoCivil: "solteiro",
     profissao: "",
     nascimento: "",
   });
@@ -15535,7 +15535,7 @@ VENDEDOR: ${vendedorLabel}`;
                       <div>
                         <label className="label">Estado Civil</label>
                         <select className="input-field" value={novoCliente.estadoCivil || "solteiro"} onChange={(e) => setNovoCliente({ ...novoCliente, estadoCivil: e.target.value })}>
-                          {["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"].map((o) => <option key={o} value={o.toLowerCase()}>{o}</option>)}
+                          {[{v:"solteiro",l:"Solteiro(a)"},{v:"casado",l:"Casado(a)"},{v:"divorciado",l:"Divorciado(a)"},{v:"viuvo",l:"Viúvo(a)"},{v:"união estável",l:"União Estável"}].map((o) => <option key={o.v} value={o.v}>{o.l}</option>)}
                         </select>
                       </div>
                       <div>
@@ -17242,7 +17242,7 @@ VENDEDOR: ${vendedorLabel}`;
                     const novoId = `venda-${Date.now()}`;
                     const novoContrato = `CONT-${Date.now()}`;
                     const copia: Venda = { ...v, id: novoId, numeroContrato: novoContrato };
-                    onSaveVenda(copia, clients.find(c => c.id === copia.clienteId) || { id: copia.clienteId, nome: copia.clienteNome, nacionalidade: "Brasileira", genero: "M", rg: "", cpf: "", estadoCivil: "Solteiro(a)", profissao: "", nascimento: "", cep: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", telefone1: "", dataCadastro: new Date().toISOString() });
+                    onSaveVenda(copia, clients.find(c => c.id === copia.clienteId) || { id: copia.clienteId, nome: copia.clienteNome, nacionalidade: "Brasileira", genero: "M", rg: "", cpf: "", estadoCivil: "solteiro", profissao: "", nascimento: "", cep: "", endereco: "", numero: "", bairro: "", cidade: "", estado: "", telefone1: "", dataCadastro: new Date().toISOString() });
                     onEditVenda?.(copia);
                   }}
                   className="btn-secondary h-12 font-semibold flex items-center justify-center gap-2"
@@ -17409,7 +17409,7 @@ const ClientesSection = ({
                         {cliente.nome}
                       </div>
                       <div className="text-[7px] sm:text-[10px] text-slate-400 font-bold uppercase tracking-tighter sm:tracking-normal">
-                        {cliente.estadoCivil}
+                        {genderizeEstadoCivil(cliente.estadoCivil || '', cliente.genero || 'M')}
                       </div>
                     </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 transition-colors font-mono text-xs text-slate-500 hidden sm:table-cell">
@@ -17575,7 +17575,7 @@ const ClientesSection = ({
                     {((editForm.genero || "M") === "F"
                       ? ["Solteira", "Casada", "Divorciada", "Viúva", "União Estável"]
                       : (editForm.genero || "M") === "O"
-                        ? ["Solteiro(a)", "Casado(a)", "Divorciado(a)", "Viúvo(a)", "União Estável"]
+                        ? ["solteiro", "casado", "divorciado", "viuvo", "união estável"]
                         : ["Solteiro", "Casado", "Divorciado", "Viúvo", "União Estável"]
                     ).map((o) => <option key={o}>{o}</option>)}
                   </select>
