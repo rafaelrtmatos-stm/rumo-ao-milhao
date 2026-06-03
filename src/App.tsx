@@ -3771,14 +3771,16 @@ const LotDashboard = ({
   const getBallPixelSize = () => {
     const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
 
-    // Largura real do mapa na tela — prioriza o ResizeObserver (mais preciso)
-    // Fallback para refs se ResizeObserver ainda não atualizou
+    // Largura real da IMAGEM do mapa na tela — usar offsetWidth da img diretamente
+    // Em landscape o container pode ser mais largo mas a img é limitada pela altura
     const imgEl = mapImageRef.current;
-    const mapWAtual = (mapRenderWidth > 0 ? mapRenderWidth : 0)
+    // Pegar a imagem <img> dentro do mapImageRef
+    const imgTag = imgEl?.querySelector('img') as HTMLImageElement | null;
+    const imgWReal = imgTag?.offsetWidth || imgTag?.getBoundingClientRect().width || 0;
+    const mapWAtual = imgWReal
       || (imgEl?.offsetWidth || 0)
-      || (getActiveViewport()?.offsetWidth || 0)
+      || (mapRenderWidth > 0 ? mapRenderWidth : 0)
       || (mapContainerRef.current?.offsetWidth || 0)
-      || (mapViewportRef.current?.offsetWidth || 0)
       || 794; // fallback = largura A4 portrait (sem escala)
 
     // Âncora A4: detecta orientação pela proporção da imagem salva
