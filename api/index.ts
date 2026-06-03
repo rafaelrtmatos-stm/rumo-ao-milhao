@@ -966,8 +966,8 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
     });
     res.json({
       id: emp.id, nome: (emp as any).nome, cidade: (emp as any).cidade, estado: (emp as any).estado,
-      mapaImagemUrl: (emp as any).mapaImagemUrl,
-      mapaImagemBase64: (emp as any).mapaImagemLeveBase64 || (emp as any).mapaImagemBase64,
+      mapaImagemUrl: empData.mapaImagemUrl || '',
+      mapaImagemBase64: empData.mapaImagemLeveBase64 || empData.mapaImagemBase64 || '',
       totalLotes: (emp as any).totalLotes,
       pontos: pontosPublicos,
     });
@@ -1009,7 +1009,11 @@ app.get('/mapa/:id', async (req: any, res: any) => {
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
-    const mapaUrl = empData2.mapaImagemUrl || (emp as any).mapaImagemUrl || '';
+    // Tentar URL do Supabase primeiro, depois Base64
+    const mapaUrl = empData2.mapaImagemUrl
+      || empData2.mapaImagemBase64
+      || empData2.mapaImagemLeveBase64
+      || '';
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
@@ -1056,7 +1060,7 @@ app.get('/mapa/:id', async (req: any, res: any) => {
 </div>
 <div id="mapa-container">
   <div id="mapa-viewport" style="position:absolute;top:0;left:0;transform-origin:0 0;">
-    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes" style="display:block;user-select:none;pointer-events:none;"/>
+    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes" style="display:block;user-select:none;pointer-events:none;" onerror="this.parentElement.innerHTML='<p style=padding:40px;color:#ef4444;font-weight:bold>Erro ao carregar mapa. URL: ${mapaUrl ? mapaUrl.substring(0,50)+"..." : "não encontrada"}</p>'"/>
     <div id="pontos" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
   </div>
 </div>
