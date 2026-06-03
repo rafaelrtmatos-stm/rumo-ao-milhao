@@ -2919,9 +2919,9 @@ const LotDashboard = ({
         zoomingRef.current = false;
         void requestHighResolutionMap();
       }, 400);
-      // Zoom para o ponto do cursor
-      const viewport = mapViewportRef.current;
-      const rect = viewport?.getBoundingClientRect();
+      // Zoom para o ponto do cursor — usar container (sem transform) como referência
+      const container = mapContainerRef.current;
+      const rect = container?.getBoundingClientRect();
       const focalX = rect ? ev.clientX - rect.left : ev.clientX;
       const focalY = rect ? ev.clientY - rect.top : ev.clientY;
       setMapZoomAtPoint(mapZoomRef.current + clampedDelta, focalX, focalY);
@@ -2982,13 +2982,14 @@ const LotDashboard = ({
     setMapActive(true);
     if (e.touches.length >= 2) {
       e.preventDefault();
-      // Calcular ponto médio dos dois dedos RELATIVO ao viewport (não à página)
-      // Isso garante que o focal não derive se a página scrollou
-      const viewport = getActiveViewport() || mapViewportRef.current;
-      const rect = viewport?.getBoundingClientRect();
+      // Calcular ponto médio dos dois dedos RELATIVO ao container (sem transform)
+      // O container (mapContainerRef) não tem transform aplicado — é a referência correta
+      // O viewport (mapViewportRef) TEM transform e daria focal errado
+      const container = mapContainerRef.current;
+      const rect = container?.getBoundingClientRect();
       const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      // Focal relativo ao viewport — âncora fixa para todo o gesto
+      // Focal relativo ao container sem transform — âncora correta para zoom ancorado
       const focalX = rect ? midClientX - rect.left : midClientX;
       const focalY = rect ? midClientY - rect.top  : midClientY;
       mapTouchRef.current = {
