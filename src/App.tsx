@@ -6216,7 +6216,20 @@ const LotDashboard = ({
             window.addEventListener('touchend', onUp);
           };
           const sz = legendaSize;
-          const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
+          // Tamanho em % da largura do mapa — mesma lógica do PDF
+          const mapW = mapContainerRef.current?.offsetWidth || 794;
+          const pct = sz==='P' ? 0.08 : sz==='G' ? 0.18 : 0.12;
+          const LW_tela = Math.round(mapW * pct);
+          const fs = {
+            title: Math.round(LW_tela * 0.07),
+            valor: Math.round(LW_tela * 0.09),
+            sub:   Math.round(LW_tela * 0.07),
+            dot:   Math.round(LW_tela * 0.09),
+            pad:   `${Math.round(LW_tela*0.06)}px ${Math.round(LW_tela*0.08)}px`,
+            gap:   Math.round(LW_tela * 0.06),
+            mb:    Math.round(LW_tela * 0.05),
+            lw:    LW_tela,
+          };
           return (
             <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
               style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
@@ -6956,7 +6969,19 @@ const LotDashboard = ({
           {/* LEGENDA FLUTUANTE DE PREÇOS — mobile */}
           {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
             const sz = legendaSize;
-            const fs = sz==='P' ? {title:6,valor:7,sub:6,dot:6,pad:'3px 5px',gap:3,mb:2} : sz==='G' ? {title:9,valor:12,sub:8,dot:11,pad:'8px 10px',gap:6,mb:5} : {title:7,valor:9,sub:7,dot:8,pad:'5px 7px',gap:4,mb:3};
+            const mapWm = mapContainerRef.current?.offsetWidth || 375;
+            const pctM = sz==='P' ? 0.08 : sz==='G' ? 0.18 : 0.12;
+            const LW_m = Math.round(mapWm * pctM);
+            const fs = {
+              title: Math.round(LW_m * 0.07),
+              valor: Math.round(LW_m * 0.09),
+              sub:   Math.round(LW_m * 0.07),
+              dot:   Math.round(LW_m * 0.09),
+              pad:   `${Math.round(LW_m*0.06)}px ${Math.round(LW_m*0.08)}px`,
+              gap:   Math.round(LW_m * 0.06),
+              mb:    Math.round(LW_m * 0.05),
+              lw:    LW_m,
+            };
             const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
               e.stopPropagation(); e.preventDefault();
               const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
