@@ -17426,8 +17426,16 @@ const ClientesSection = ({
                     </td>
                     <td className="py-2.5 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-xl sm:rounded-r-2xl transition-colors text-center">
                       <div className="flex items-center justify-center gap-1.5">
+                        {/* Ver — abre card completo */}
                         <button
-                          onClick={() => openEdit(cliente)}
+                          onClick={(e) => { e.stopPropagation(); setSelectedClient(cliente); }}
+                          className="text-[10px] font-bold text-blue-500 hover:underline px-2 py-1 rounded-lg hover:bg-blue-50 transition-colors sm:hidden"
+                          title="Ver informações"
+                        >
+                          Ver
+                        </button>
+                        <button
+                          onClick={(e) => { e.stopPropagation(); openEdit(cliente); }}
                           className="text-[10px] font-bold text-primary-main hover:underline px-2 py-1 rounded-lg hover:bg-primary-main/10 transition-colors"
                         >
                           Editar
