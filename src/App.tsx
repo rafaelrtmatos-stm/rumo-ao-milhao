@@ -14863,9 +14863,14 @@ const ContratosSection = ({
       const pdfW = pdf.internal.pageSize.getWidth();
       const pdfH = (canvas.height * pdfW) / canvas.width;
       pdf.addImage(imgData, 'PNG', 0, 0, pdfW, pdfH);
-      const nome = selectedVenda?.clienteNome?.replace(/\s+/g, '-') || 'recibo';
+      const nomeCliente = (selectedVenda?.clienteNome || 'Cliente').replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
+      const nomeEmp = (selectedVenda?.empreendimentoNome || '').replace(/[^a-zA-ZÀ-ÿ0-9\s]/g, '').replace(/\s+/g, '_').trim();
+      const quadra = selectedVenda?.quadra || '';
+      const lote = selectedVenda?.numeroLote || '';
+      const partes = [nomeCliente, nomeEmp, quadra ? 'Q' + quadra : '', lote ? 'L' + lote : ''].filter(Boolean);
+      const nomeArquivo = partes.join('_') || 'recibo';
       const blob = pdf.output('blob');
-      triggerDownload(blob, `recibo-${nome}.pdf`);
+      triggerDownload(blob, `${nomeArquivo}.pdf`);
     } catch (e: unknown) {
       console.error('Erro ao gerar PDF:', e);
       alert('Erro ao gerar PDF: ' + (e instanceof Error ? e.message : String(e)));
@@ -19936,7 +19941,7 @@ async function gerarArtePixPng(params: {
 }
 
 // Componente PIX QR — usado no modal global do App
-function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantasia, banco, agencia, contaBancaria, tipoConta, onClose }: any) {
+function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantasia, razaoSocial, cnpj, banco, agencia, contaBancaria, tipoConta, onClose }: any) {
   const [qrSrc, setQrSrc] = React.useState('');
   React.useEffect(() => {
     if (!chavePix) return;
@@ -19954,7 +19959,15 @@ function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantas
     <>
       {qrSrc && <div className="flex justify-center"><div className="p-2 border-2 border-slate-200 rounded-2xl"><img src={qrSrc} alt="QR Code PIX" className="w-40 h-40"/></div></div>}
       <div className="space-y-2">
-        {[{l:'Chave PIX',v:chavePix},{l:'Beneficiário',v:nomeBeneficiario},{l:'Banco',v:banco},{l:'Agência',v:agencia},{l:'Conta',v:contaBancaria?(contaBancaria+(tipoConta?' ('+tipoConta+')':'')):null}].filter(i=>i.v).map(item=>(
+        {[
+        {l:'Nome Fantasia',v:nomeFantasia},
+        {l:'Razão Social',v:razaoSocial},
+        {l:'CNPJ',v:cnpj},
+        {l:'Chave PIX',v:chavePix},
+        {l:'Banco',v:banco},
+        {l:'Agência',v:agencia},
+        {l:'Conta',v:contaBancaria?(contaBancaria+(tipoConta?' ('+tipoConta+')':'')):null},
+      ].filter(i=>i.v).map(item=>(
           <div key={item.l} className="flex justify-between py-1.5 border-b border-slate-100">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">{item.l}</span>
             <span className="text-xs font-black text-slate-700">{item.v}</span>
@@ -19967,15 +19980,23 @@ function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantas
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
           Copiar chave
         </button>
-        {(navigator as any).share && (
-          <button onClick={() => {
-            const txt = [nomeFantasia?'🏢 '+nomeFantasia:'','💚 PIX','Chave: '+chavePix,banco?'🏦 '+banco:'',agencia?'Agência: '+agencia:'',contaBancaria?'Conta: '+contaBancaria:''].filter(Boolean).join(String.fromCharCode(10));
-            (navigator as any).share({ title: 'Dados PIX', text: txt });
+        <button onClick={async () => {
+            const txt = [nomeFantasia?'🏢 '+nomeFantasia:'',razaoSocial?'Razão: '+razaoSocial:'',cnpj?'CNPJ: '+cnpj:'','💚 PIX: '+chavePix,banco?'Banco: '+banco:'',agencia?'Ag: '+agencia:'',contaBancaria?'CC: '+contaBancaria+(tipoConta?' ('+tipoConta+')':''):''].filter(Boolean).join('
+');
+            try {
+              const arte = await gerarArtePixPng({ chavePix, nomeBeneficiario, nomeFantasia, cnpj, banco, agencia, contaBancaria, tipoConta, qrSrc });
+              if ((navigator as any).share) {
+                try {
+                  const resp = await fetch(arte); const blob = await resp.blob();
+                  const file = new File([blob], 'pix.png', { type: 'image/png' });
+                  await (navigator as any).share({ title: 'PIX ' + (nomeFantasia||''), text: txt, files: [file] });
+                } catch { await (navigator as any).share({ title: 'PIX', text: txt }); }
+              } else { const a = document.createElement('a'); a.href=arte; a.download='pix.png'; a.click(); }
+            } catch(e){ console.warn(e); }
           }} className="flex-1 py-3 rounded-2xl bg-slate-100 text-slate-700 text-xs font-black flex items-center justify-center gap-1.5 active:scale-95 transition-all">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
-            Compartilhar
-          </button>
-        )}
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>
+          Compartilhar
+        </button>
         <button onClick={async () => {
           try {
             const arte = await gerarArtePixPng({ chavePix, nomeBeneficiario, nomeFantasia, cnpj, banco, agencia, contaBancaria, tipoConta, qrSrc });
@@ -21357,7 +21378,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             </div>
             <div className="p-5 space-y-4">
               {(config as any).chavePix ? (
-                <PixQRBlock chavePix={(config as any).chavePix} nomeBeneficiario={(config as any).nomeBeneficiario} cidadeBeneficiario={(config as any).cidadeBeneficiario} nomeFantasia={(config as any).nomeFantasia} banco={(config as any).banco} agencia={(config as any).agencia} contaBancaria={(config as any).contaBancaria} tipoConta={(config as any).tipoConta} />
+                <PixQRBlock chavePix={(config as any).chavePix} nomeBeneficiario={(config as any).nomeBeneficiario} cidadeBeneficiario={(config as any).cidadeBeneficiario} nomeFantasia={(config as any).nomeFantasia} razaoSocial={(config as any).razaoSocial} cnpj={(config as any).cnpj} banco={(config as any).banco} agencia={(config as any).agencia} contaBancaria={(config as any).contaBancaria} tipoConta={(config as any).tipoConta} />
               ) : (
                 <div className="text-center py-4 space-y-2">
                   <p className="text-slate-500 text-sm font-bold">Chave PIX não configurada</p>
