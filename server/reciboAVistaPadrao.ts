@@ -323,10 +323,10 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   xml = rep(xml, "[EMPREENDIMENTO]", empreendimento.nome.toUpperCase());
   // Tenta substituir o grupo junto primeiro
   xml = rep(xml, "[LOTE] da Quadra [QUADRA], [RUA_DO_LOTE]",
-    `${venda.numeroLote} da Quadra ${venda.quadra}${venda.rua ? ", " + venda.rua : ""}`);
-  // Fallback individual
-  xml = rep(xml, "[LOTE]", venda.numeroLote);
-  xml = rep(xml, "[QUADRA]", venda.quadra);
+    `Lote ${venda.numeroLote} da Quadra ${venda.quadra}${venda.rua ? ", " + venda.rua : ""}`);
+  // Fallback individual — por extenso
+  xml = rep(xml, "[LOTE]", `Lote ${venda.numeroLote}`);
+  xml = rep(xml, "[QUADRA]", `Quadra ${venda.quadra}`);
   xml = rep(xml, "[RUA_DO_LOTE]", venda.rua || "");
   xml = rep(xml, "[FRENTE]", dimFrente);
   xml = rep(xml, "[LATERAL_DIREITA]", dimLatDir);

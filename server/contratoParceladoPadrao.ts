@@ -449,7 +449,7 @@ export async function gerarContratoParceladoPadrao(params: ContratoParams): Prom
     xml = rep(xml, T.EMP_COM, String(empreendimento.comunidade).trim());
   }
   xml = rep(xml, T.EMP_SLASH, `no município de ${empSlash},`);
-  xml = rep(xml, T.LOTE_QUADRA, `Lote ${vendaSegura.numeroLote} da Quadra (${String(vendaSegura.quadra).toUpperCase()})`);
+  xml = rep(xml, T.LOTE_QUADRA, `Lote ${vendaSegura.numeroLote} da Quadra ${vendaSegura.quadra}`);
   if (vendaSegura.rua) {
     xml = rep(xml, T.RUA, vendaSegura.rua);
   }

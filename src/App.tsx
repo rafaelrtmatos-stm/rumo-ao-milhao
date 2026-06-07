@@ -18104,7 +18104,7 @@ const ConfigSection = ({
       banco: prev.banco || (config as any).banco || '',
       agencia: prev.agencia || (config as any).agencia || (config as any).bancoAgencia || '',
       contaBancaria: prev.contaBancaria || (config as any).contaBancaria || (config as any).bancoContaCorrente || '',
-      tipoConta: prev.tipoConta || (config as any).tipoConta || '',
+      tipoConta: prev.tipoConta || (config as any).tipoConta || 'Corrente',
       razaoSocial: prev.razaoSocial || (config as any).razaoSocial || (config as any).bancoTitular || '',
     }));
   }, [(config as any).chavePix, (config as any).nomeFantasia]);
