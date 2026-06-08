@@ -10470,20 +10470,17 @@ const EmpreendimentosSection = ({
                 const temLotes = Object.keys(lotRegDev.lotesInfo || {}).length > 0 || Object.keys(lotRegDev.lotesPorQuadra || {}).length > 0;
                 const interpretarScript = (script: string) => {
                   const lotes: string[] = [];
-                  // Regex robusto: ponto final opcional, aceita espaço após lista
-                  const regex = /Q(\w+):([\ \d,]+?)(?:\.|\s+Q|\s+VALOR|\s+$)/g;
-                  let matchResult;
-                  // Normalizar: garantir ponto no fim de cada grupo Q para o regex funcionar
-                  const scriptNorm = script.replace(/Q(\w+):([\d.,\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
-                    function(match: string) { return match.trim().endsWith('.') ? match : match.trim() + '.'; }
+                  // Normalizar: garantir ponto no fim de cada grupo Q
+                  const scriptNorm = script.replace(/Q(\w+):([\d.\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
+                    (match: string) => match.trim().endsWith('.') ? match : match.trim() + '.'
                   );
-                  const regex2 = /Q(\w+):([\d.,\s]+?)\./g;
+                  // Separador APENAS ponto (.) — não vírgula nem ponto-e-vírgula
+                  const regex2 = /Q(\w+):([\d.\s]+?)\./g;
                   let m2;
                   while ((m2 = regex2.exec(scriptNorm)) !== null) {
                     const quadraNum = m2[1];
-                    // Aceitar "." ou "," como separador de lotes
-                    const nums = m2[2].split(/[.,]/).map(function(n: string) { return n.trim().replace(/[DIRdir]+$/, '').trim(); }).filter(Boolean);
-                    nums.forEach(function(nLote: string) { lotes.push('Q' + quadraNum + '·L' + nLote); });
+                    const nums = m2[2].split('.').map((n: string) => n.trim().replace(/[DIRdir]+$/, '').trim()).filter(Boolean);
+                    nums.forEach((nLote: string) => { lotes.push('Q' + quadraNum + '·L' + nLote); });
                   }
                   return lotes;
                 };
@@ -10570,11 +10567,17 @@ const EmpreendimentosSection = ({
                     const regras: typeof precosRegras = [];
                     let id = 1;
                     // Suporte a: VALOR:X ENTRADA:X PARCELAS:X  OU  VALOR:X AVISTA
-                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)(?:\s+ENTRADA:([\d.]*)\s+PARCELAS:(\d+)|\s+AVISTA)/gi;
+                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)(?:\s+ENTRADA:([\d.]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.]*))?|\s+AVISTA)/gi;
                     let m;
                     while ((m = regraRegex.exec(txt)) !== null) {
                       const avista = !m[3] && !m[4];
-                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', avista});
+                      const valorN = parseFloat(m[2]||'0');
+                      const entradaN = parseFloat(m[3]||'0');
+                      const parcelasN = parseInt(m[4]||'0');
+                      // Calcular parcela automaticamente se não informada
+                      const parcelaCalcN = m[5] ? parseFloat(m[5]) :
+                        (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
+                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', parcela: String(parcelaCalcN), avista});
                     }
                     // PADRAO ignorado — usar REGRA para todos os lotes
                     if (regras.length) { setPrecosRegras(regras); setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!"); }
@@ -10663,7 +10666,7 @@ const EmpreendimentosSection = ({
                         <textarea
                           value={precosScriptInput}
                           onChange={e => setPrecosScriptInput(e.target.value)}
-                          placeholder="REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4,5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1,2,3. VALOR:15000 ENTRADA:500 PARCELAS:50"
+                          placeholder="REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4.5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1.2.3. VALOR:15000 ENTRADA:500 PARCELAS:50"
                           className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
                           rows={5}
                           autoFocus
