@@ -8647,11 +8647,13 @@ const EmpreendimentosSection = ({
   const [mapaFlashLock, setMapaFlashLock] = useState(false);
   const [mapaFiltroDevs, setMapaFiltroDevs] = useState<Set<string>>(() => new Set());
   const [mapaFiltroAberto, setMapaFiltroAberto] = useState(false);
-  const devsVisiveis = mapaFiltroDevs.size === 0 ? developments : developments.filter(d => mapaFiltroDevs.has(d.id));
+  const devsVisiveis = (mapaFiltroDevs.size === 0 ? developments : developments.filter(d => mapaFiltroDevs.has(d.id)))
+    .filter(d => devCidade === "todas" || (d.cidade || "").toLowerCase().includes(devCidade.toLowerCase()) || devCidade.toLowerCase().includes((d.cidade || "").toLowerCase()));
   const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
+  const [devCidade, setDevCidade] = useState<string>("todas");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
 
@@ -9085,8 +9087,19 @@ const EmpreendimentosSection = ({
     return Math.max(0, recalc.lotesVendidos || dev.lotesVendidos || 0);
   };
 
+  // Cidades disponíveis detectadas automaticamente
+  const cidadesDisponiveis = Array.from(new Set(
+    developments.map(d => (d.cidade || "").trim()).filter(Boolean)
+  )).sort((a, b) => a.localeCompare(b, "pt-BR"));
+
   const filteredDevelopments = developments
     .filter((dev) => {
+      // Filtro por cidade
+      if (devCidade !== "todas") {
+        const cidadeDev = (dev.cidade || "").trim().toLowerCase();
+        const cidadeFiltro = devCidade.toLowerCase();
+        if (!cidadeDev.includes(cidadeFiltro) && !cidadeFiltro.includes(cidadeDev)) return false;
+      }
       const q = normalizeDevSearch(devSearch);
       if (!q) return true;
       return [dev.nome, dev.cidade, dev.estado, dev.comunidade, dev.endereco]
@@ -9281,6 +9294,24 @@ const EmpreendimentosSection = ({
         </div>
         );
       })()}
+
+      {/* FILTRO POR CIDADE */}
+      {cidadesDisponiveis.length > 1 && (
+        <div className="flex gap-2 flex-wrap">
+          <button
+            onClick={() => setDevCidade("todas")}
+            className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${devCidade === "todas" ? "bg-primary-main text-white shadow-lg" : "bg-white text-slate-500 border border-slate-200 hover:border-primary-main hover:text-primary-main"}`}>
+            🗺️ Todas as cidades
+          </button>
+          {cidadesDisponiveis.map(cidade => (
+            <button key={cidade}
+              onClick={() => setDevCidade(cidade)}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${devCidade === cidade ? "bg-primary-main text-white shadow-lg" : "bg-white text-slate-500 border border-slate-200 hover:border-primary-main hover:text-primary-main"}`}>
+              📍 {cidade}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="card-premium p-4 grid grid-cols-1 md:grid-cols-[1fr_260px] gap-3">
         <div className="relative">
