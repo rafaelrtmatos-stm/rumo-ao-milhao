@@ -991,6 +991,80 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
 });
 
 
+
+// ── CONVERTER BASE64 → SUPABASE STORAGE ─────────────────────────────────────
+app.post('/api/admin/converter-mapa-base64/:id', isAuthenticated, async (req: any, res: any) => {
+  try {
+    const empId = req.params.id;
+    const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
+    if (!rows.length) return res.status(404).json({ error: 'Empreendimento não encontrado' });
+    
+    const emp = rows[0];
+    const d = (emp as any).data || {};
+    
+    // Verificar se já tem URL do Supabase
+    if (d.mapaImagemUrl && d.mapaImagemUrl.includes('supabase.co')) {
+      return res.json({ ok: true, msg: 'Já tem URL do Supabase', url: d.mapaImagemUrl });
+    }
+    
+    // Pegar Base64
+    const base64 = d.mapaImagemBase64 || d.mapaImagemLeveBase64 || '';
+    if (!base64 || !base64.startsWith('data:')) {
+      return res.status(400).json({ error: 'Sem imagem Base64 para converter' });
+    }
+    
+    // Extrair tipo e dados
+    const match = base64.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return res.status(400).json({ error: 'Base64 inválido' });
+    
+    const mimeType = match[1];
+    const imgBuffer = Buffer.from(match[2], 'base64');
+    const ext = mimeType.includes('png') ? 'png' : mimeType.includes('webp') ? 'webp' : 'jpg';
+    const nome = `${empId}_${Date.now()}.${ext}`;
+    
+    // Upload para Supabase via API REST
+    const SUPABASE_URL = process.env.VITE_SUPABASE_URL || 'https://uftxcwcryqpkfdfxzlno.supabase.co';
+    const SUPABASE_KEY = process.env.VITE_SUPABASE_ANON_KEY || '';
+    
+    const uploadUrl = `${SUPABASE_URL}/storage/v1/object/mapas/${nome}`;
+    const fetch = (await import('node-fetch')).default as any;
+    const uploadResp = await fetch(uploadUrl, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_KEY}`,
+        'Content-Type': mimeType,
+        'x-upsert': 'true',
+      },
+      body: imgBuffer,
+    });
+    
+    if (!uploadResp.ok) {
+      const errText = await uploadResp.text();
+      return res.status(502).json({ error: 'Upload Supabase falhou: ' + errText });
+    }
+    
+    const publicUrl = `${SUPABASE_URL}/storage/v1/object/public/mapas/${nome}`;
+    
+    // Salvar URL no banco e limpar Base64
+    const newData = { 
+      ...d, 
+      mapaImagemUrl: publicUrl,
+      mapaImagemBase64: null,
+      mapaImagemLeveBase64: null,
+    };
+    
+    await db.update(empreendimentos)
+      .set({ data: newData as any })
+      .where(eq(empreendimentos.id, empId));
+    
+    console.log(`[converter] ${d.nome || empId}: Base64 → Supabase OK: ${publicUrl}`);
+    res.json({ ok: true, url: publicUrl, tamanho: imgBuffer.length });
+  } catch (e: any) {
+    console.error('[converter]', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── DIAGNÓSTICO PÚBLICO ─────────────────────────────────────────────────────
 app.get('/api/publico/diagnostico/:id', async (req: any, res: any) => {
   try {
