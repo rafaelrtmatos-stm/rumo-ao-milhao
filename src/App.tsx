@@ -17606,10 +17606,14 @@ const AniversariosSection = ({
   clients,
   sales = [],
   onViewContract,
+  isAdmin,
+  onDeleteCliente,
 }: {
   clients: Cliente[];
   sales?: Venda[];
   onViewContract?: (v: Venda) => void;
+  isAdmin?: boolean;
+  onDeleteCliente?: (id: string) => void;
 }) => {
   const today = new Date();
   const currentMonth = today.getMonth();
@@ -21198,6 +21202,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             clients={clients}
             sales={sales}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+            isAdmin={!!isAdmin}
+            onDeleteCliente={deleteCliente}
           />
         );
       case "calculadora":
