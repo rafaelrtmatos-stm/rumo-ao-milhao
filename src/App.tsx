@@ -16115,36 +16115,34 @@ VENDEDOR: ${vendedorLabel}`;
                 {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(venda.valorLote)}
               </td>
               <td className="py-4 px-2 sm:px-4 bg-slate-50 group-hover:bg-primary-main/5 rounded-r-2xl transition-colors text-center">
-                <div className="flex justify-center gap-1.5 flex-wrap">
-                  <button
-                    onClick={() => handleOpenGerarContratoForVenda(venda)}
-                    className={`px-2.5 py-2 rounded-xl shadow-sm border transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0 ${venda.contratoGerado ? "bg-surface-card text-primary-main border-border-subtle hover:bg-primary-main hover:text-primary-contrast" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
-                    title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}
-                  >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" className="flex-shrink-0"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
-                    <span className="truncate">{venda.contratoGerado ? "Ver" : "Gerar"}</span>
+                <div className="flex justify-center items-center gap-1">
+                  {/* Contrato */}
+                  <button onClick={() => handleOpenGerarContratoForVenda(venda)}
+                    className={`px-2 py-1.5 rounded-lg border transition-all flex items-center gap-1 text-[10px] font-bold whitespace-nowrap ${venda.contratoGerado ? "bg-white text-primary-main border-primary-main/30 hover:bg-primary-main hover:text-white" : "bg-primary-main/10 text-primary-main border-primary-main/20 hover:bg-primary-main hover:text-white"}`}
+                    title={venda.contratoGerado ? "Ver contrato" : "Gerar contrato"}>
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 1.5L18.5 9H13V3.5zM6 20V4h5v7h7v9H6z"/></svg>
+                    {venda.contratoGerado ? "Ver" : "Gerar"}
                   </button>
-                  <button
-                    onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
-                    className="px-2.5 py-2 bg-surface-card text-emerald-600 rounded-xl shadow-sm border border-border-subtle hover:bg-emerald-600 hover:text-white transition-all flex items-center justify-center gap-1 text-[11px] font-bold flex-1 min-w-0"
-                    title="Gerar recibo"
-                  >
-                    <FileCheck size={13} className="flex-shrink-0" />
-                    <span className="truncate">Recibo</span>
+                  {/* Recibo */}
+                  <button onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
+                    className="px-2 py-1.5 bg-white text-emerald-600 rounded-lg border border-emerald-200 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 text-[10px] font-bold whitespace-nowrap"
+                    title="Gerar recibo">
+                    <FileCheck size={11} />
+                    Recibo
                   </button>
-                  <button
-                    onClick={() => copyResumoVenda(venda)}
-                    className="p-2.5 bg-surface-card text-slate-500 rounded-xl shadow-sm border border-border-subtle hover:bg-slate-600 hover:text-white transition-all flex items-center justify-center"
-                    title="Copiar resumo"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                  {/* Copiar */}
+                  <button onClick={() => copyResumoVenda(venda)}
+                    className="px-2 py-1.5 bg-white text-slate-500 rounded-lg border border-slate-200 hover:bg-slate-600 hover:text-white transition-all flex items-center gap-1 text-[10px] font-bold whitespace-nowrap"
+                    title="Copiar resumo">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4a2 2 0 0 0-2 2v14h2V3h12V1zm3 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H8V7h11v14z"/></svg>
+                    Copiar
                   </button>
-                  <button
-                    onClick={() => handleEditarContrato(venda)}
-                    className="p-2.5 bg-surface-card text-amber-500 rounded-xl shadow-sm border border-border-subtle hover:bg-amber-500 hover:text-white transition-all flex items-center justify-center"
-                    title="Editar venda"
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                  {/* Editar */}
+                  <button onClick={() => handleEditarContrato(venda)}
+                    className="px-2 py-1.5 bg-white text-amber-500 rounded-lg border border-amber-200 hover:bg-amber-500 hover:text-white transition-all flex items-center gap-1 text-[10px] font-bold whitespace-nowrap"
+                    title="Editar venda">
+                    <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
+                    Editar
                   </button>
                   {/* Botão documentos — só aparece se houver documentos */}
                   {((venda as any).documentos?.length > 0) && (
@@ -18303,87 +18301,112 @@ const ConfigSection = ({
       <div className="card-premium space-y-8">
 
         {/* PIX & DADOS DA EMPRESA */}
-        <div>
-          <h4 className="font-bold text-slate-800 mb-3 flex items-center gap-2">
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
-            PIX &amp; Dados da Empresa
-          </h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="label">Nome Fantasia / Empresa</label>
-              <input className="input" placeholder="Ex: Imobiliária Geo Florestal"
-                value={(formData as any).nomeFantasia || ''}
-                onChange={e => setFormData((p: any) => ({...p, nomeFantasia: e.target.value}))}
-              />
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+            <div className="w-8 h-8 rounded-xl bg-emerald-50 flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><path d="M14 14h3v3M17 14h3M14 17v3M20 17v3M20 20h-3"/></svg>
             </div>
             <div>
-              <label className="label">Razão Social</label>
-              <input className="input" placeholder="Ex: D SOUZA DE ANDRADE IMÓVEIS LTDA"
-                value={(formData as any).razaoSocial || ''}
-                onChange={e => setFormData((p: any) => ({...p, razaoSocial: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">CNPJ</label>
-              <input className="input" placeholder="00.000.000/0001-00"
-                value={(formData as any).cnpj || ''}
-                onChange={e => setFormData((p: any) => ({...p, cnpj: e.target.value}))}
-              />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="label">Chave PIX</label>
-              <input className="input" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
-                value={(formData as any).chavePix || ''}
-                onChange={e => setFormData((p: any) => ({...p, chavePix: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">Nome do Beneficiário (PIX)</label>
-              <input className="input" placeholder="Ex: RAFAEL TAVARES" maxLength={25}
-                value={(formData as any).nomeBeneficiario || ''}
-                onChange={e => setFormData((p: any) => ({...p, nomeBeneficiario: e.target.value.toUpperCase()}))}
-              />
-            </div>
-            <div>
-              <label className="label">Cidade (PIX)</label>
-              <input className="input" placeholder="Ex: SANTAREM" maxLength={15}
-                value={(formData as any).cidadeBeneficiario || ''}
-                onChange={e => setFormData((p: any) => ({...p, cidadeBeneficiario: e.target.value.toUpperCase()}))}
-              />
-            </div>
-            <div>
-              <label className="label">Banco</label>
-              <input className="input" placeholder="Ex: Nubank, Bradesco, Caixa"
-                value={(formData as any).banco || ''}
-                onChange={e => setFormData((p: any) => ({...p, banco: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">Agência</label>
-              <input className="input" placeholder="Ex: 0001"
-                value={(formData as any).agencia || ''}
-                onChange={e => setFormData((p: any) => ({...p, agencia: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">Conta</label>
-              <input className="input" placeholder="Ex: 12345-6"
-                value={(formData as any).contaBancaria || ''}
-                onChange={e => setFormData((p: any) => ({...p, contaBancaria: e.target.value}))}
-              />
-            </div>
-            <div>
-              <label className="label">Tipo de Conta</label>
-              <select className="input" value={(formData as any).tipoConta || ''}
-                onChange={e => setFormData((p: any) => ({...p, tipoConta: e.target.value}))}>
-                <option value="">Selecionar</option>
-                <option value="Corrente">Corrente</option>
-                <option value="Poupança">Poupança</option>
-                <option value="Pagamento">Pagamento</option>
-              </select>
+              <h4 className="font-black text-slate-800 text-sm">PIX &amp; Dados da Empresa</h4>
+              <p className="text-[10px] text-slate-400">Salvo automaticamente no banco de dados</p>
             </div>
           </div>
-          <p className="text-[10px] text-slate-400 mt-2">Usado no QR Code PIX das vendas e no card da tela inicial.</p>
+
+          {/* Empresa */}
+          <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">🏢 Empresa</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="label">Nome Fantasia</label>
+                <input className="input" placeholder="Ex: Imobiliária Geo Florestal"
+                  value={(formData as any).nomeFantasia || ''}
+                  onChange={e => setFormData((p: any) => ({...p, nomeFantasia: e.target.value}))}/>
+              </div>
+              <div>
+                <label className="label">Razão Social</label>
+                <input className="input" placeholder="Ex: D SOUZA DE ANDRADE IMÓVEIS LTDA"
+                  value={(formData as any).razaoSocial || ''}
+                  onChange={e => setFormData((p: any) => ({...p, razaoSocial: e.target.value}))}/>
+              </div>
+              <div className="sm:col-span-2">
+                <label className="label">CNPJ</label>
+                <input className="input font-mono" placeholder="00.000.000/0001-00"
+                  value={(formData as any).cnpj || ''}
+                  onChange={e => setFormData((p: any) => ({...p, cnpj: e.target.value}))}/>
+              </div>
+            </div>
+          </div>
+
+          {/* PIX */}
+          <div className="bg-emerald-50 rounded-2xl p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600">💚 Chave PIX</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="label">Chave PIX</label>
+                <input className="input font-mono" placeholder="CPF, CNPJ, e-mail, telefone ou chave aleatória"
+                  value={(formData as any).chavePix || ''}
+                  onChange={e => setFormData((p: any) => ({...p, chavePix: e.target.value}))}/>
+              </div>
+              <div>
+                <label className="label">Nome do Beneficiário</label>
+                <input className="input" placeholder="Ex: RAFAEL TAVARES" maxLength={25}
+                  value={(formData as any).nomeBeneficiario || ''}
+                  onChange={e => setFormData((p: any) => ({...p, nomeBeneficiario: e.target.value.toUpperCase()}))}/>
+              </div>
+              <div>
+                <label className="label">Cidade</label>
+                <input className="input" placeholder="Ex: SANTAREM" maxLength={15}
+                  value={(formData as any).cidadeBeneficiario || ''}
+                  onChange={e => setFormData((p: any) => ({...p, cidadeBeneficiario: e.target.value.toUpperCase()}))}/>
+              </div>
+            </div>
+          </div>
+
+          {/* Dados Bancários */}
+          <div className="bg-slate-50 rounded-2xl p-4 space-y-3">
+            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">🏦 Dados Bancários</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="label">Banco</label>
+                <input className="input" placeholder="Ex: Santander, Nubank, Bradesco"
+                  value={(formData as any).banco || ''}
+                  onChange={e => setFormData((p: any) => ({...p, banco: e.target.value}))}/>
+              </div>
+              <div>
+                <label className="label">Agência</label>
+                <input className="input font-mono" placeholder="Ex: 4375"
+                  value={(formData as any).agencia || ''}
+                  onChange={e => setFormData((p: any) => ({...p, agencia: e.target.value}))}/>
+              </div>
+              <div>
+                <label className="label">Conta</label>
+                <input className="input font-mono" placeholder="Ex: 13.005479-0"
+                  value={(formData as any).contaBancaria || ''}
+                  onChange={e => setFormData((p: any) => ({...p, contaBancaria: e.target.value}))}/>
+              </div>
+              <div>
+                <label className="label">Tipo de Conta</label>
+                <select className="input" value={(formData as any).tipoConta || 'Corrente'}
+                  onChange={e => setFormData((p: any) => ({...p, tipoConta: e.target.value}))}>
+                  <option value="Corrente">Corrente</option>
+                  <option value="Poupança">Poupança</option>
+                  <option value="Pagamento">Pagamento</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Preview dos dados salvos */}
+          {((formData as any).chavePix || (formData as any).contaBancaria) && (
+            <div className="bg-slate-900 rounded-2xl p-4 space-y-1.5">
+              <p className="text-[10px] font-black uppercase tracking-widest text-emerald-400 mb-2">✓ Dados cadastrados</p>
+              {(formData as any).nomeFantasia && <p className="text-xs font-bold text-white">{(formData as any).nomeFantasia}</p>}
+              {(formData as any).razaoSocial && <p className="text-xs text-slate-300">{(formData as any).razaoSocial}</p>}
+              {(formData as any).cnpj && <p className="text-xs font-mono text-slate-400">CNPJ: {(formData as any).cnpj}</p>}
+              {(formData as any).banco && <p className="text-xs text-slate-300">🏦 {(formData as any).banco}{(formData as any).agencia ? ' · Ag: ' + (formData as any).agencia : ''}{(formData as any).contaBancaria ? ' · CC: ' + (formData as any).contaBancaria : ''}</p>}
+              {(formData as any).chavePix && <p className="text-xs font-mono text-emerald-400">PIX: {(formData as any).chavePix}</p>}
+            </div>
+          )}
         </div>
 
         {/* FORÇAR SINCRONIZAÇÃO */}
