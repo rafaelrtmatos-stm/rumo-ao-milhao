@@ -10474,14 +10474,15 @@ const EmpreendimentosSection = ({
                   const regex = /Q(\w+):([\ \d,]+?)(?:\.|\s+Q|\s+VALOR|\s+$)/g;
                   let matchResult;
                   // Normalizar: garantir ponto no fim de cada grupo Q para o regex funcionar
-                  const scriptNorm = script.replace(/Q(\w+):([\d,\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
+                  const scriptNorm = script.replace(/Q(\w+):([\d.,\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
                     function(match: string) { return match.trim().endsWith('.') ? match : match.trim() + '.'; }
                   );
-                  const regex2 = /Q(\w+):([\d,\s]+?)\./g;
+                  const regex2 = /Q(\w+):([\d.,\s]+?)\./g;
                   let m2;
                   while ((m2 = regex2.exec(scriptNorm)) !== null) {
                     const quadraNum = m2[1];
-                    const nums = m2[2].split(',').map(function(n: string) { return n.trim().replace(/[DIRdir]+$/, '').trim(); }).filter(Boolean);
+                    // Aceitar "." ou "," como separador de lotes
+                    const nums = m2[2].split(/[.,]/).map(function(n: string) { return n.trim().replace(/[DIRdir]+$/, '').trim(); }).filter(Boolean);
                     nums.forEach(function(nLote: string) { lotes.push('Q' + quadraNum + '·L' + nLote); });
                   }
                   return lotes;
@@ -10536,7 +10537,7 @@ const EmpreendimentosSection = ({
                         .map(limparLote)
                         .filter((v,i,a) => a.indexOf(v) === i) // deduplicar
                         .sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
-                      linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(",")}.`);
+                      linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(".")}.`);
                     });
                   } else if (quadrasConf.length) {
                     quadrasConf.forEach(q => {
@@ -10544,7 +10545,7 @@ const EmpreendimentosSection = ({
                       const lst: string[] = (typeof lts === "object" && !Array.isArray(lts)
                         ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
                         : (Array.isArray(lts) ? lts : [])).map(limparLote);
-                      linhas.push(`Q${q}: ${lst.length} lotes — ${lst.join(",")}.`);
+                      linhas.push(`Q${q}: ${lst.length} lotes — ${lst.join(".")}.`);
                     });
                   } else {
                     linhas.push("(Nenhum lote cadastrado no mapa ainda)");
@@ -10555,9 +10556,9 @@ const EmpreendimentosSection = ({
                   linhas.push("Cada REGRA define quais quadras/lotes têm o mesmo preço, entrada e parcelas.");
                   linhas.push("Todos os lotes devem estar em alguma REGRA. Crie quantas precisar.", "");
                   linhas.push("FORMATO (cole o resultado abaixo desta linha):");
-                  linhas.push("REGRA1: Q1:1,2,3. VALOR:25000 ENTRADA:1000 PARCELAS:60");
-                  linhas.push("REGRA2: Q2:1,2,3. VALOR:18000 ENTRADA:500 PARCELAS:48");
-                  linhas.push("REGRA3: Q3:1,2,3. VALOR:15000 ENTRADA:500 PARCELAS:50");
+                  linhas.push("REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400");
+                  linhas.push("REGRA2: Q2:1.2.3. VALOR:18000 ENTRADA:500 PARCELAS:48 PARCELA:364");
+                  linhas.push("REGRA3: Q3:1.2.3. VALOR:15000 ENTRADA:500 PARCELAS:50 PARCELA:290");
                   const txt = linhas.join("\n");
                   try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
@@ -10585,7 +10586,14 @@ const EmpreendimentosSection = ({
                   const info = {...(lotRegDev.lotesInfo || {})} as any;
                   const aplicados: string[] = [];
                   precosRegras.forEach(r => {
-                    interpretarScript(r.script).forEach(tag => {
+                    // Calcular valorParcela automaticamente se não informado
+                  const valorNum = parseFloat(String(r.valor).replace(/\./g,'').replace(',','.')) || 0;
+                  const entradaNum = parseFloat(String(r.entrada).replace(/\./g,'').replace(',','.')) || 0;
+                  const parcelasNum = parseInt(r.parcelas) || 0;
+                  const parcelaCalc = r.parcela
+                    ? parseFloat(String(r.parcela).replace(/\./g,'').replace(',','.')) || 0
+                    : parcelasNum > 0 ? Math.round((valorNum - entradaNum) / parcelasNum) : 0;
+                  interpretarScript(r.script).forEach(tag => {
                       // tag = "Q1·L5" → quadra=1, lote=5
                       const m = tag.match(/Q(\w+)·L(\w+)/);
                       if (!m) return;
@@ -10594,9 +10602,15 @@ const EmpreendimentosSection = ({
                       const quadraReal = findQuadraName(lotRegDev, qRaw) || qRaw;
                       const key = getLotInfoKey(quadraReal, l);
                       if (!info[key]) info[key] = {};
-                      info[key].preco = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
-                      info[key].entrada = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
-                      info[key].parcelas = parseInt(r.parcelas) || 0;
+                      const prc2 = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
+                      const ent2 = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
+                      const par2 = parseInt(r.parcelas) || 0;
+                      const vlParc2 = parcelaCalc || (par2 > 0 ? Math.round((prc2 - ent2) / par2) : 0);
+                      info[key].preco = prc2;
+                      info[key].entrada = ent2;
+                      info[key].parcelas = par2;
+                      info[key].parcela = vlParc2;
+                      info[key].valorParcela = vlParc2;
                       info[key].avista = (r as any).avista || false;
                       aplicados.push('Q' + qRaw + '·L' + l);
                     });
