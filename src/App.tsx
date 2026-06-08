@@ -9114,7 +9114,7 @@ const EmpreendimentosSection = ({
 
   return (
     <div className="space-y-8">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div className="flex items-center gap-3">
           <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast shadow-lg shadow-primary-main/20">
             <Building2 size={24} />
@@ -9128,19 +9128,17 @@ const EmpreendimentosSection = ({
             </p>
           </div>
         </div>
-        <div className="flex gap-2 w-full sm:w-auto">
-
-          <button
-            onClick={() => {
-              if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
-              else openAddForm();
-            }}
-            className="btn-primary flex-1 sm:flex-none"
-          >
-            {isAdding ? <X size={20} /> : <Plus size={20} />}
-            <span>{isAdding ? "Cancelar" : "Novo Loteamento"}</span>
-          </button>
-        </div>
+        <button
+          onClick={() => {
+            if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
+            else openAddForm();
+          }}
+          className="flex items-center gap-2 px-4 py-2.5 bg-primary-main text-white rounded-2xl text-sm font-black active:scale-95 transition-all hover:bg-primary-dark flex-shrink-0"
+        >
+          {isAdding ? <X size={16} /> : <Plus size={16} />}
+          <span className="hidden sm:inline">{isAdding ? "Cancelar" : "Novo Loteamento"}</span>
+          <span className="sm:hidden">{isAdding ? "Cancelar" : "Novo"}</span>
+        </button>
       </div>
 
       {/* MAPA GLOBAL */}
