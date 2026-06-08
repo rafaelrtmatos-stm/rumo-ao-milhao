@@ -14853,7 +14853,7 @@ const ContratosSection = ({
           '[class*="bg-"] { background-color: white !important; }',
           '[class*="text-"] { color: black !important; }',
           '[class*="border-"] { border-color: #d1d5db !important; }',
-        ].join('\n');
+        ].join(String.fromCharCode(10));
         clonedEl.ownerDocument.head.appendChild(style);
       },
     });

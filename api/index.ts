@@ -1055,391 +1055,387 @@ app.get('/api/publico/mapa-imagem/:id', async (req: any, res: any) => {
 app.get('/mapa/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
-    // Buscar dados do empreendimento via rota pública
-    // Buscar direto por ID — a PK do banco é o mesmo ID do empreendimento
+    const modoReserva = req.query.reserva === '1';
+
+    // Buscar empreendimento
     let empRows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
-    // Fallback: buscar pelo ID dentro do data JSON
     if (!empRows.length) {
       const all = await db.select().from(empreendimentos);
       const found = all.find((e: any) => e.data && (e.data as any).id === empId);
       if (found) empRows = [found];
     }
-    if (!empRows.length) return res.status(404).send(`<h2 style="font-family:sans-serif;padding:40px">Empreendimento ${empId} não encontrado</h2>`);
-    const emp = empRows[0];
+    if (!empRows.length) return res.status(404).send(`<h2 style="font-family:sans-serif;padding:40px">Empreendimento não encontrado: ${empId}</h2>`);
 
-    // Dados do empreendimento ficam em emp.data (jsonb)
-    const empData2 = (emp as any).data || {};
-    console.log('[Embed] empId:', empId, '| nome:', empData2.nome, '| mapaUrl:', empData2.mapaImagemUrl ? 'sim' : 'nao', '| pontos:', (empData2.mapaPontos||[]).length);
-    const pontos: any[] = empData2.mapaPontos || [];
-    const allVendasEmbed = await db.select().from(vendas);
-    const vendasEmbed = allVendasEmbed.filter((v: any) => {
+    const emp = empRows[0];
+    const d = (emp as any).data || {};
+
+    // Imagem do mapa — URL ou Base64
+    const mapaUrl = d.mapaImagemUrl || '';
+    const base64Raw = d.mapaImagemBase64 || d.mapaImagemLeveBase64 || '';
+    // Usar proxy para ambos os casos
+    const imgSrc = mapaUrl ? `/api/publico/mapa-imagem/${empId}` : (base64Raw ? `/api/publico/mapa-imagem/${empId}` : '');
+
+    if (!imgSrc) {
+      return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Nenhuma imagem de mapa cadastrada. Faça upload no painel.</h2>');
+    }
+
+    const pontos: any[] = d.mapaPontos || [];
+    const nomeEmp = d.nome || 'Empreendimento';
+    const disponiveis = pontos.filter((p: any) => !p.status || p.status === 'disponivel').length;
+    const total = pontos.length;
+    const markerSizePct = Number(d.markerSizePercent || 100);
+    const refWidth = Number(d.mapaMarkerReferenceWidth || 794);
+
+    // Buscar vendas para status dos lotes
+    const todasVendas = await db.select().from(vendas);
+    const vendasEmp = todasVendas.filter((v: any) => {
       const vd = (v.data || v) as any;
-      return String(vd.empreendimentoId) === empId &&
-        vd.status !== 'cancelado' && vd.status !== 'rascunho';
+      return String(vd.empreendimentoId) === empId && vd.status !== 'cancelado';
     });
 
     const pontosPublicos = pontos.map((p: any) => {
-      const venda = vendasEmbed.find((v: any) => {
+      const venda = vendasEmp.find((v: any) => {
         const vd = (v.data || v) as any;
-        return String(vd.quadra) === String(p.quadra) &&
-          (String(vd.numeroLote) === String(p.lote));
+        return String(vd.quadra) === String(p.quadra) && String(vd.numeroLote) === String(p.lote);
       });
-      // status do ponto: reservado se tiver venda rascunho no lotesInfo
-      const lotKey = String(p.quadra) + '-' + String(p.lote);
-      const lotInfo = (empData2.lotesInfo || {})[lotKey] || {};
-      const status = venda ? 'vendido' : (lotInfo.status || p.status || 'disponivel');
+      const status = venda
+        ? ((venda.data || venda as any).status === 'rascunho' ? 'reservado' : 'vendido')
+        : (p.status || 'disponivel');
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
-
-    // Usar URL do Supabase ou proxy Base64
-    const mapaUrlOriginal = empData2.mapaImagemUrl || '';
-    const temBase64 = !!(empData2.mapaImagemBase64 || empData2.mapaImagemLeveBase64);
-    if (!mapaUrlOriginal && !temBase64) {
-      return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Mapa não encontrado. Configure a URL do mapa no painel.</h2>');
-    }
-    // Se tem URL usa direto; senão usa proxy que serve o Base64
-    const mapaUrl = mapaUrlOriginal || ('/api/publico/mapa-imagem/' + empId);
-    const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
-    const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
-    const total = pontosPublicos.length;
-    const markerSizePct = Number(empData2.markerSizePercent || 100);
-    const refWidth = Number(empData2.mapaMarkerReferenceWidth || 794);
 
     const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"/>
 <title>${nomeEmp} — Mapa de Lotes</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: system-ui, sans-serif; background: #f8fafc; overflow: hidden; }
-  #header { background: #1a4a1a; color: white; padding: 10px 16px; display: flex; align-items: center; justify-content: space-between; }
-  #header h1 { font-size: 15px; font-weight: 700; }
-  #header .stats { font-size: 12px; opacity: 0.8; }
-  #legenda { display: flex; gap: 12px; padding: 8px 16px; background: white; border-bottom: 1px solid #e2e8f0; flex-wrap: wrap; }
-  .leg-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #475569; font-weight: 600; }
-  .leg-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid white; box-shadow: 0 0 0 1px rgba(0,0,0,0.15); }
-  #mapa-container { position: relative; width: 100%; overflow: hidden; touch-action: none; cursor: grab; }
-  #mapa-container:active { cursor: grabbing; }
-  #mapa-viewport { position: absolute; top: 0; left: 0; transform-origin: 0 0; }
-  #mapa-img { display: block; width: 100%; user-select: none; pointer-events: none; }
-  .bolinha { position: absolute; border-radius: 50%; border: 2px solid white; transform: translate(-50%, -50%); cursor: pointer; font-size: 0; box-shadow: 0 1px 4px rgba(0,0,0,0.3); transition: transform 0.1s; }
-  .bolinha:hover { transform: translate(-50%, -50%) scale(1.3); z-index: 10; }
-  .bolinha.disponivel { background: #2563eb; }
-  .bolinha.reservado { background: #d97706; }
-  .bolinha.vendido { background: #ef4444; }
-  #tooltip { position: fixed; background: #0f172a; color: white; padding: 6px 10px; border-radius: 8px; font-size: 12px; font-weight: 600; pointer-events: none; display: none; z-index: 9999; white-space: nowrap; }
-  #rodape { position: fixed; bottom: 0; left: 0; right: 0; background: white; border-top: 1px solid #e2e8f0; padding: 6px 16px; font-size: 11px; color: #94a3b8; text-align: center; }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;font-family:system-ui,sans-serif;background:#1a1a2e}
+  #header{background:#1a4a1a;color:white;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0;z-index:10}
+  #header h1{font-size:15px;font-weight:800;letter-spacing:-0.3px}
+  #header .stats{font-size:11px;opacity:0.75}
+  #legenda{display:flex;gap:14px;padding:7px 16px;background:white;border-bottom:1px solid #e2e8f0;flex-shrink:0}
+  .leg{display:flex;align-items:center;gap:5px;font-size:11px;color:#475569;font-weight:600}
+  .leg-dot{width:11px;height:11px;border-radius:50%;border:1.5px solid white;box-shadow:0 0 0 1px rgba(0,0,0,0.15)}
+  #wrap{position:relative;flex:1;overflow:hidden;touch-action:none;cursor:grab;background:#f1f5f9}
+  #wrap:active{cursor:grabbing}
+  #viewport{position:absolute;top:0;left:0;transform-origin:0 0;will-change:transform}
+  #mapa-img{display:block;max-width:none;user-select:none;pointer-events:none}
+  #pontos{position:absolute;top:0;left:0;pointer-events:auto}
+  .bolinha{position:absolute;border-radius:50%;border:2px solid white;transform:translate(-50%,-50%);box-shadow:0 1px 4px rgba(0,0,0,0.35);transition:transform 0.12s;cursor:${modoReserva ? 'pointer' : 'default'}}
+  ${modoReserva ? '.bolinha.disponivel:hover{transform:translate(-50%,-50%) scale(1.4);z-index:10}' : ''}
+  .disponivel{background:#2563eb}
+  .reservado{background:#d97706}
+  .vendido{background:#ef4444}
+  .indisponivel{background:#94a3b8}
+  #tooltip{position:fixed;background:rgba(15,23,42,0.92);color:white;padding:5px 10px;border-radius:8px;font-size:11px;font-weight:600;pointer-events:none;display:none;z-index:9999;white-space:nowrap;backdrop-filter:blur(4px)}
+  #loading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:#64748b;gap:12px;z-index:5}
+  #loading .spinner{width:36px;height:36px;border:3px solid #e2e8f0;border-top-color:#1a4a1a;border-radius:50%;animation:spin 0.8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  #footer{background:white;border-top:1px solid #e2e8f0;padding:5px 16px;font-size:10px;color:#94a3b8;text-align:center;flex-shrink:0}
+  #app{display:flex;flex-direction:column;width:100%;height:100vh}
+  /* Modal reserva */
+  #modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:9999;align-items:center;justify-content:center;padding:16px}
+  .modal-box{background:white;border-radius:18px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.4)}
+  .modal-head{background:#1a4a1a;color:white;padding:14px 18px;display:flex;align-items:center;justify-content:space-between}
+  .modal-head h3{font-size:15px;font-weight:700;margin:0}
+  .modal-head p{font-size:11px;opacity:0.7;margin:3px 0 0}
+  .modal-body{padding:18px}
+  .field{margin-bottom:13px}
+  .field label{display:block;font-size:11px;font-weight:700;color:#374151;margin-bottom:5px;text-transform:uppercase;letter-spacing:0.4px}
+  .field input{width:100%;padding:10px 13px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;outline:none;transition:border-color 0.15s}
+  .field input:focus{border-color:#1a4a1a}
+  .erro{color:#ef4444;font-size:11px;margin:0 0 10px;display:none}
+  .btns{display:flex;gap:10px}
+  .btn-cancel{flex:1;padding:11px;border:1.5px solid #e5e7eb;border-radius:10px;background:white;font-size:13px;font-weight:600;cursor:pointer;color:#6b7280}
+  .btn-ok{flex:2;padding:11px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer}
+  #confirmacao{display:none;text-align:center;padding:10px 0}
+  #confirmacao .icon{font-size:44px;margin-bottom:10px}
+  #confirmacao h3{color:#1a4a1a;font-size:17px;margin:0 0 7px}
+  #confirmacao p{color:#6b7280;font-size:13px;margin:0 0 18px}
+  .btn-wpp{display:block;padding:11px;background:#25D366;color:white;border-radius:10px;font-weight:700;font-size:13px;text-decoration:none;margin-bottom:8px}
+  .btn-fechar{width:100%;padding:11px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer}
 </style>
 </head>
 <body>
-<div id="header">
-  <h1>${nomeEmp}</h1>
-  <span class="stats">${disponiveis} disponíveis de ${total} lotes</span>
-</div>
-<div id="legenda">
-  <div class="leg-item"><div class="leg-dot" style="background:#2563eb"></div> Disponível</div>
-  <div class="leg-item"><div class="leg-dot" style="background:#d97706"></div> Reservado</div>
-  <div class="leg-item"><div class="leg-dot" style="background:#ef4444"></div> Vendido</div>
-</div>
-<div id="mapa-container">
-  <div id="mapa-viewport" style="position:absolute;top:0;left:0;transform-origin:0 0;">
-    <div id="loading" style="padding:40px;text-align:center;color:#64748b">
-      <div style="font-size:32px">⏳</div><p>Carregando mapa...</p>
-      <p id="url-debug" style="font-size:10px;word-break:break-all;color:#94a3b8">${mapaUrl.substring(0,80)}</p>
-    </div>
-    <img id="mapa-img" src="${mapaUrl}" alt="Mapa de lotes"
-      style="display:none;user-select:none;pointer-events:none;width:100%;"
-      onload="this.style.display='block';document.getElementById('loading').style.display='none';document.getElementById('mapa-viewport').style.width=this.offsetWidth+'px';renderBolinhas();"
-      onerror="document.getElementById('loading').innerHTML='<p style=color:#ef4444;padding:20px>Erro ao carregar imagem do mapa</p>'"/>
-    <div id="pontos" style="position:absolute;top:0;left:0;width:100%;height:100%;"></div>
+<div id="app">
+  <div id="header">
+    <h1>${nomeEmp}</h1>
+    <span class="stats">${disponiveis} disponíveis · ${total} lotes</span>
   </div>
+  <div id="legenda">
+    <div class="leg"><div class="leg-dot" style="background:#2563eb"></div>Disponível</div>
+    <div class="leg"><div class="leg-dot" style="background:#d97706"></div>Reservado</div>
+    <div class="leg"><div class="leg-dot" style="background:#ef4444"></div>Vendido</div>
+    <div class="leg"><div class="leg-dot" style="background:#94a3b8"></div>Indisponível</div>
+  </div>
+  <div id="wrap">
+    <div id="loading"><div class="spinner"></div><p>Carregando mapa...</p></div>
+    <div id="viewport">
+      <img id="mapa-img" src="${imgSrc}" alt="Mapa"/>
+      <div id="pontos"></div>
+    </div>
+  </div>
+  <div id="footer">rumoaomilhao.imb.br · Toque para ver detalhes</div>
 </div>
 <div id="tooltip"></div>
-<div id="rodape">rumoaomilhao.imb.br — Toque em um lote disponível para reservar</div>
 
-<!-- Modal de reserva -->
-<div id="modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.6);z-index:9999;align-items:center;justify-content:center;padding:16px;">
-  <div style="background:white;border-radius:16px;width:100%;max-width:400px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.3);">
-    <div id="modal-header" style="background:#1a4a1a;color:white;padding:16px 20px;">
-      <h3 id="modal-titulo" style="margin:0;font-size:16px;font-weight:700;">Reservar Lote</h3>
-      <p id="modal-subtitulo" style="margin:4px 0 0;font-size:12px;opacity:0.7;"></p>
+${modoReserva ? `
+<div id="modal-overlay" style="display:none">
+  <div class="modal-box">
+    <div class="modal-head">
+      <div><h3 id="modal-titulo">Reservar Lote</h3><p id="modal-sub"></p></div>
+      <button onclick="fecharModal()" style="background:rgba(255,255,255,0.2);border:none;color:white;width:28px;height:28px;border-radius:8px;cursor:pointer;font-size:16px">✕</button>
     </div>
-    <div id="modal-body" style="padding:20px;">
-      <div id="form-reserva">
-        <div style="margin-bottom:14px;">
-          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">Nome completo *</label>
-          <input id="input-nome" type="text" placeholder="Seu nome completo"
-            style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;"/>
-        </div>
-        <div style="margin-bottom:20px;">
-          <label style="display:block;font-size:12px;font-weight:700;color:#374151;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.5px;">WhatsApp *</label>
-          <input id="input-telefone" type="tel" placeholder="(93) 99999-9999"
-            style="width:100%;padding:10px 14px;border:1.5px solid #e5e7eb;border-radius:10px;font-size:14px;box-sizing:border-box;outline:none;"/>
-        </div>
-        <p id="erro-msg" style="color:#ef4444;font-size:12px;margin:0 0 12px;display:none;"></p>
-        <div style="display:flex;gap:10px;">
-          <button onclick="fecharModal()"
-            style="flex:1;padding:12px;border:1.5px solid #e5e7eb;border-radius:10px;background:white;font-size:14px;font-weight:600;cursor:pointer;color:#6b7280;">
-            Cancelar
-          </button>
-          <button id="btn-reservar" onclick="enviarReserva()"
-            style="flex:2;padding:12px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
-            Reservar lote
-          </button>
+    <div class="modal-body">
+      <div id="form-res">
+        <div class="field"><label>Nome completo *</label><input id="inp-nome" type="text" placeholder="Seu nome"/></div>
+        <div class="field"><label>WhatsApp *</label><input id="inp-tel" type="tel" placeholder="(93) 99999-9999"/></div>
+        <p class="erro" id="erro-msg"></p>
+        <div class="btns">
+          <button class="btn-cancel" onclick="fecharModal()">Cancelar</button>
+          <button class="btn-ok" id="btn-res" onclick="enviarReserva()">Reservar</button>
         </div>
       </div>
-      <div id="confirmacao" style="display:none;text-align:center;padding:10px 0;">
-        <div style="font-size:48px;margin-bottom:12px;">✅</div>
-        <h3 style="color:#1a4a1a;margin:0 0 8px;font-size:18px;">Pré-reserva confirmada!</h3>
-        <p style="color:#6b7280;font-size:14px;margin:0 0 20px;">Aguarde nosso contato para finalizar sua reserva.</p>
-        <a id="btn-whatsapp" href="#" target="_blank"
-          style="display:block;padding:12px;background:#25D366;color:white;border-radius:10px;font-weight:700;font-size:14px;text-decoration:none;margin-bottom:10px;">
-          💬 Enviar confirmação pelo WhatsApp
-        </a>
-        <button onclick="fecharModal()"
-          style="width:100%;padding:12px;background:#1a4a1a;color:white;border:none;border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;">
-          OK
-        </button>
+      <div id="confirmacao">
+        <div class="icon">✅</div>
+        <h3>Pré-reserva confirmada!</h3>
+        <p>Aguarde nosso contato para finalizar.</p>
+        <a class="btn-wpp" id="btn-wpp" href="#" target="_blank">💬 Confirmar pelo WhatsApp</a>
+        <button class="btn-fechar" onclick="fecharModal()">OK</button>
       </div>
     </div>
   </div>
-</div>
+</div>` : ''}
+
 <script>
-const pontos = ${JSON.stringify(pontosPublicos)};
-const MARKER_SIZE_PCT = ${markerSizePct};
-const REF_WIDTH = ${refWidth};
-const COR = { disponivel: '#2563eb', reservado: '#d97706', vendido: '#ef4444' };
-const STATUS_LABEL = { disponivel: 'Disponível', reservado: 'Reservado', vendido: 'Vendido' };
+const PONTOS = ${JSON.stringify(pontosPublicos)};
+const EMP_ID = '${empId}';
+const EMP_NOME = '${nomeEmp}';
+const REF_W = ${refWidth};
+const MARKER_PCT = ${markerSizePct};
+const MODO_RESERVA = ${modoReserva};
+const WPP = '5593992332012';
+const COR = {disponivel:'#2563eb',reservado:'#d97706',vendido:'#ef4444',indisponivel:'#94a3b8'};
+const STATUS_LABEL = {disponivel:'Disponível',reservado:'Reservado',vendido:'Vendido',indisponivel:'Indisponível'};
 
 const img = document.getElementById('mapa-img');
-const container = document.getElementById('mapa-container');
-const pontosDiv = document.getElementById('pontos');
+const pontosCont = document.getElementById('pontos');
+const viewport = document.getElementById('viewport');
+const wrap = document.getElementById('wrap');
 const tooltip = document.getElementById('tooltip');
+const loading = document.getElementById('loading');
 
-// Ajustar altura do container
-function ajustarAltura() {
-  const headerH = document.getElementById('header').offsetHeight;
-  const legendaH = document.getElementById('legenda').offsetHeight;
-  const rodapeH = 32;
-  container.style.height = (window.innerHeight - headerH - legendaH - rodapeH) + 'px';
+// Tamanho do container
+function getWrapSize() {
+  return { w: wrap.offsetWidth, h: wrap.offsetHeight };
 }
-ajustarAltura();
-window.addEventListener('resize', () => {
-  ajustarAltura();
-  if (img.complete) {
-    viewport.style.width = img.offsetWidth + 'px';
-    renderBolinhas();
-  }
-});
 
 // Renderizar bolinhas
 function renderBolinhas() {
-  pontosDiv.innerHTML = '';
-  viewport.style.width = img.offsetWidth + 'px';
-  viewport.style.height = img.offsetHeight + 'px';
-  const w = img.offsetWidth;
-  // Mesmo cálculo do app: BASE_SIZE_A4=10, radius=(10/2)*(w/refWidth)*pct
-  const pct = Math.max(40, Math.min(220, MARKER_SIZE_PCT)) / 100;
-  const sz = Math.max(6, Math.round(10 * (w / REF_WIDTH) * pct));
-  pontos.forEach(p => {
+  pontosCont.innerHTML = '';
+  const imgW = img.offsetWidth;
+  const imgH = img.offsetHeight;
+  if (!imgW || !imgH) return;
+  viewport.style.width = imgW + 'px';
+  viewport.style.height = imgH + 'px';
+  const pct = Math.max(40, Math.min(220, MARKER_PCT)) / 100;
+  const sz = Math.max(6, Math.round(10 * (imgW / REF_W) * pct));
+  PONTOS.forEach(p => {
+    if (p.x == null || p.y == null) return;
     const el = document.createElement('div');
-    el.className = 'bolinha ' + p.status;
+    el.className = 'bolinha ' + (p.status || 'disponivel');
     el.style.left = p.x + '%';
     el.style.top = p.y + '%';
     el.style.width = sz + 'px';
     el.style.height = sz + 'px';
-    el.style.background = COR[p.status] || '#2563eb';
-    el.addEventListener('mouseenter', (e) => {
-      tooltip.style.display = 'block';
-      tooltip.innerHTML = 'Q' + p.quadra + ' · L' + p.lote + ' — ' + STATUS_LABEL[p.status];
-    });
-    el.addEventListener('mousemove', (e) => {
-      tooltip.style.left = (e.clientX + 12) + 'px';
-      tooltip.style.top = (e.clientY - 10) + 'px';
-    });
-    el.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
-    if (MODO_RESERVA) {
-      el.addEventListener('click', () => {
-        tooltip.style.display = 'none';
-        if (p.status === 'disponivel') {
-          abrirFormulario(p.quadra, p.lote, el);
-        } else {
-          mostrarInfo(p.quadra, p.lote, p.status);
-        }
-      });
+    el.style.background = COR[p.status] || COR.disponivel;
+    el.dataset.quadra = p.quadra;
+    el.dataset.lote = p.lote;
+    el.dataset.status = p.status;
+    pontosCont.appendChild(el);
+  });
+  loading.style.display = 'none';
+  // Centralizar mapa
+  centralizarMapa();
+}
+
+function centralizarMapa() {
+  const imgW = img.offsetWidth;
+  const imgH = img.offsetHeight;
+  const { w, h } = getWrapSize();
+  const scaleX = w / imgW;
+  const scaleY = h / imgH;
+  zoom = Math.min(scaleX, scaleY, 1);
+  panX = (w - imgW * zoom) / 2;
+  panY = (h - imgH * zoom) / 2;
+  applyTransform(false);
+}
+
+// Tooltip
+pontosCont.addEventListener('mouseover', e => {
+  const el = e.target.closest('.bolinha');
+  if (!el) return;
+  tooltip.style.display = 'block';
+  tooltip.textContent = 'Q' + el.dataset.quadra + ' · L' + el.dataset.lote + ' — ' + (STATUS_LABEL[el.dataset.status] || el.dataset.status);
+});
+pontosCont.addEventListener('mousemove', e => {
+  tooltip.style.left = (e.clientX + 14) + 'px';
+  tooltip.style.top = (e.clientY - 12) + 'px';
+});
+pontosCont.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
+
+// Clique (só se MODO_RESERVA)
+if (MODO_RESERVA) {
+  pontosCont.addEventListener('click', e => {
+    const el = e.target.closest('.bolinha');
+    if (!el) return;
+    tooltip.style.display = 'none';
+    if (el.dataset.status === 'disponivel') {
+      abrirFormulario(el.dataset.quadra, el.dataset.lote, el);
     }
-    pontosDiv.appendChild(el);
   });
 }
 
-// onload já definido acima no bloco Pan & Zoom
+// Carregar imagem
+img.onload = () => { renderBolinhas(); };
+img.onerror = () => { loading.innerHTML = '<p style="color:#ef4444;padding:20px;text-align:center">Erro ao carregar imagem do mapa</p>'; };
+if (img.complete && img.naturalWidth) { renderBolinhas(); }
 
-// Pan & Zoom
-const viewport = document.getElementById('mapa-viewport');
+// Resize
+window.addEventListener('resize', () => { renderBolinhas(); });
+
+// ── ZOOM & PAN ──
 let zoom = 1, panX = 0, panY = 0;
-let drag = null;
+const MIN_ZOOM = 0.3, MAX_ZOOM = 8;
 
-// onload já tratado no elemento img (atributo onload)
-// Fallback se imagem já estiver em cache
-if (img.complete && img.naturalWidth > 0) {
-  document.getElementById('loading').style.display = 'none';
-  viewport.style.width = img.offsetWidth + 'px';
-  renderBolinhas();
+function applyTransform(animate) {
+  viewport.style.transition = animate ? 'transform 0.15s ease' : 'none';
+  viewport.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + zoom + ')';
 }
 
-function applyTransform() {
-  viewport.style.transform = \`translate(\${panX}px,\${panY}px) scale(\${zoom})\`;
+function clampPan() {
+  const imgW = img.offsetWidth * zoom;
+  const imgH = img.offsetHeight * zoom;
+  const { w, h } = getWrapSize();
+  const minPanX = Math.min(0, w - imgW);
+  const minPanY = Math.min(0, h - imgH);
+  panX = Math.max(minPanX, Math.min(panX, imgW > w ? 0 : (w - imgW) / 2));
+  panY = Math.max(minPanY, Math.min(panY, imgH > h ? 0 : (h - imgH) / 2));
 }
 
-// Mouse pan
-container.addEventListener('mousedown', e => { drag = { x: e.clientX - panX, y: e.clientY - panY }; });
-window.addEventListener('mousemove', e => {
-  if (!drag) return;
-  panX = e.clientX - drag.x; panY = e.clientY - drag.y;
-  applyTransform();
-});
-window.addEventListener('mouseup', () => { drag = null; });
-
-// Scroll zoom
-container.addEventListener('wheel', e => {
-  e.preventDefault();
-  const rect = container.getBoundingClientRect();
-  const fx = e.clientX - rect.left, fy = e.clientY - rect.top;
-  const delta = e.deltaY < 0 ? 0.15 : -0.15;
-  const newZoom = Math.max(1, Math.min(8, zoom + delta));
+function zoomAt(newZoom, fx, fy) {
+  newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, newZoom));
   const ratio = newZoom / zoom;
   panX = fx - (fx - panX) * ratio;
   panY = fy - (fy - panY) * ratio;
   zoom = newZoom;
-  applyTransform();
+  clampPan();
+  applyTransform(false);
+}
+
+// Mouse pan
+let drag = null;
+wrap.addEventListener('mousedown', e => { drag = { x: e.clientX - panX, y: e.clientY - panY }; });
+window.addEventListener('mousemove', e => {
+  if (!drag) return;
+  panX = e.clientX - drag.x;
+  panY = e.clientY - drag.y;
+  clampPan();
+  applyTransform(false);
+});
+window.addEventListener('mouseup', () => { drag = null; });
+
+// Scroll zoom
+wrap.addEventListener('wheel', e => {
+  e.preventDefault();
+  const rect = wrap.getBoundingClientRect();
+  const delta = e.deltaY < 0 ? 0.15 : -0.15;
+  zoomAt(zoom + delta, e.clientX - rect.left, e.clientY - rect.top);
 }, { passive: false });
 
-// Touch pinch & pan
+// Touch
 let touches = {};
-container.addEventListener('touchstart', e => {
+wrap.addEventListener('touchstart', e => {
   [...e.changedTouches].forEach(t => touches[t.identifier] = { x: t.clientX, y: t.clientY });
   if (e.touches.length === 1) drag = { x: e.touches[0].clientX - panX, y: e.touches[0].clientY - panY };
-});
-container.addEventListener('touchmove', e => {
+  else drag = null;
+}, { passive: true });
+
+wrap.addEventListener('touchmove', e => {
   e.preventDefault();
   if (e.touches.length === 2) {
     const t0 = e.touches[0], t1 = e.touches[1];
-    const prev0 = touches[t0.identifier], prev1 = touches[t1.identifier];
-    if (!prev0 || !prev1) return;
-    const prevDist = Math.hypot(prev0.x - prev1.x, prev0.y - prev1.y);
-    const newDist  = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
-    if (prevDist < 1) return;
-    const rect = container.getBoundingClientRect();
+    const p0 = touches[t0.identifier], p1 = touches[t1.identifier];
+    if (!p0 || !p1) return;
+    const prevD = Math.hypot(p0.x - p1.x, p0.y - p1.y);
+    const newD  = Math.hypot(t0.clientX - t1.clientX, t0.clientY - t1.clientY);
+    if (prevD < 1) return;
+    const rect = wrap.getBoundingClientRect();
     const fx = (t0.clientX + t1.clientX) / 2 - rect.left;
     const fy = (t0.clientY + t1.clientY) / 2 - rect.top;
-    const ratio = newDist / prevDist;
-    const newZoom = Math.max(1, Math.min(8, zoom * ratio));
-    const zRatio = newZoom / zoom;
-    panX = fx - (fx - panX) * zRatio;
-    panY = fy - (fy - panY) * zRatio;
-    zoom = newZoom;
+    zoomAt(zoom * (newD / prevD), fx, fy);
     [...e.changedTouches].forEach(t => touches[t.identifier] = { x: t.clientX, y: t.clientY });
-    applyTransform();
   } else if (e.touches.length === 1 && drag) {
     panX = e.touches[0].clientX - drag.x;
     panY = e.touches[0].clientY - drag.y;
-    applyTransform();
+    clampPan();
+    applyTransform(false);
   }
 }, { passive: false });
-container.addEventListener('touchend', e => {
+
+wrap.addEventListener('touchend', e => {
   [...e.changedTouches].forEach(t => delete touches[t.identifier]);
   if (e.touches.length === 0) drag = null;
-});
+}, { passive: true });
 
+${modoReserva ? `
 // ── RESERVA ──
-const EMP_ID = '${empId}';
-// MODO_RESERVA: ativar com ?reserva=1 na URL
-const MODO_RESERVA = new URLSearchParams(window.location.search).get('reserva') === '1';
-const EMP_NOME = '${nomeEmp}';
-const SEU_WHATSAPP = '5593992332012';
 let loteAtual = null;
-
 function abrirFormulario(quadra, lote, el) {
   loteAtual = { quadra, lote, el };
-  document.getElementById('modal-titulo').textContent = 'Reservar Lote Q' + quadra + ' · L' + lote;
-  document.getElementById('modal-subtitulo').textContent = EMP_NOME;
-  document.getElementById('form-reserva').style.display = 'block';
+  document.getElementById('modal-titulo').textContent = 'Q' + quadra + ' · L' + lote;
+  document.getElementById('modal-sub').textContent = EMP_NOME;
+  document.getElementById('form-res').style.display = 'block';
   document.getElementById('confirmacao').style.display = 'none';
-  document.getElementById('input-nome').value = '';
-  document.getElementById('input-telefone').value = '';
+  document.getElementById('inp-nome').value = '';
+  document.getElementById('inp-tel').value = '';
   document.getElementById('erro-msg').style.display = 'none';
-  const overlay = document.getElementById('modal-overlay');
-  overlay.style.display = 'flex';
-  setTimeout(() => document.getElementById('input-nome').focus(), 100);
+  const ov = document.getElementById('modal-overlay');
+  ov.style.display = 'flex';
+  setTimeout(() => document.getElementById('inp-nome').focus(), 100);
 }
-
-function mostrarInfo(quadra, lote, status) {
-  const labels = { reservado: 'Reservado', vendido: 'Vendido' };
-  alert('Quadra ' + quadra + ' · Lote ' + lote + '\n' + (labels[status] || status));
-}
-
 function fecharModal() {
   document.getElementById('modal-overlay').style.display = 'none';
   loteAtual = null;
 }
-
 document.getElementById('modal-overlay').addEventListener('click', function(e) {
   if (e.target === this) fecharModal();
 });
-
 async function enviarReserva() {
-  const nome = document.getElementById('input-nome').value.trim();
-  const tel = document.getElementById('input-telefone').value.trim();
-  const erroEl = document.getElementById('erro-msg');
-  if (!nome || !tel) {
-    erroEl.textContent = 'Preencha nome e WhatsApp.';
-    erroEl.style.display = 'block';
-    return;
-  }
-  const btn = document.getElementById('btn-reservar');
-  btn.textContent = 'Reservando...';
-  btn.disabled = true;
+  const nome = document.getElementById('inp-nome').value.trim();
+  const tel = document.getElementById('inp-tel').value.trim();
+  const err = document.getElementById('erro-msg');
+  if (!nome || !tel) { err.textContent = 'Preencha nome e WhatsApp.'; err.style.display = 'block'; return; }
+  const btn = document.getElementById('btn-res');
+  btn.textContent = 'Reservando...'; btn.disabled = true;
   try {
-    const resp = await fetch('/api/publico/reservar-lote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        empreendimentoId: EMP_ID,
-        empreendimentoNome: EMP_NOME,
-        quadra: loteAtual.quadra,
-        lote: loteAtual.lote,
-        clienteNome: nome,
-        clienteTelefone: tel,
-      })
+    const r = await fetch('/api/publico/reservar-lote', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ empreendimentoId: EMP_ID, empreendimentoNome: EMP_NOME, quadra: loteAtual.quadra, lote: loteAtual.lote, clienteNome: nome, clienteTelefone: tel })
     });
-    const data = await resp.json();
-    if (!resp.ok) {
-      erroEl.textContent = data.error || 'Erro ao reservar. Tente novamente.';
-      erroEl.style.display = 'block';
-      btn.textContent = 'Reservar lote';
-      btn.disabled = false;
-      return;
-    }
-    // Sucesso — atualizar bolinha para amarelo
+    const data = await r.json();
+    if (!r.ok) { err.textContent = data.error || 'Erro. Tente novamente.'; err.style.display = 'block'; btn.textContent = 'Reservar'; btn.disabled = false; return; }
     loteAtual.el.style.background = '#d97706';
-    loteAtual.el.className = loteAtual.el.className.replace('disponivel', 'reservado');
-    // Atualizar pontos locais
-    const p = pontos.find(x => String(x.quadra) === String(loteAtual.quadra) && String(x.lote) === String(loteAtual.lote));
-    if (p) p.status = 'reservado';
-    // Mostrar confirmação com link WhatsApp
-    const msg = encodeURIComponent('Olá! Acabei de fazer uma pré-reserva.\nNome: ' + nome + '\nLote: Q' + loteAtual.quadra + ' L' + loteAtual.lote + '\nEmpreendimento: ' + EMP_NOME + '\nTelefone: ' + tel);
-    document.getElementById('btn-whatsapp').href = 'https://wa.me/' + SEU_WHATSAPP + '?text=' + msg;
-    document.getElementById('form-reserva').style.display = 'none';
+    loteAtual.el.className = loteAtual.el.className.replace('disponivel','reservado');
+    const msg = encodeURIComponent('Olá! Pré-reserva: ' + nome + ' · Q' + loteAtual.quadra + ' L' + loteAtual.lote + ' · ' + EMP_NOME + ' · Tel: ' + tel);
+    document.getElementById('btn-wpp').href = 'https://wa.me/' + WPP + '?text=' + msg;
+    document.getElementById('form-res').style.display = 'none';
     document.getElementById('confirmacao').style.display = 'block';
-  } catch(e) {
-    erroEl.textContent = 'Erro de conexão. Tente novamente.';
-    erroEl.style.display = 'block';
-    btn.textContent = 'Reservar lote';
-    btn.disabled = false;
-  }
-}
+  } catch(e) { err.textContent = 'Erro de conexão.'; err.style.display = 'block'; btn.textContent = 'Reservar'; btn.disabled = false; }
+}` : '// Modo visualização — sem reserva'}
 </script>
 </body>
 </html>`;
@@ -1449,11 +1445,11 @@ async function enviarReserva() {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.send(html);
   } catch (e: any) {
-    res.status(500).send('<h2>Erro: ' + e.message + '</h2>');
+    res.status(500).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Erro: ' + e.message + '</h2>');
   }
 });
 
-// Pré-reserva pública — salva como rascunho
+
 app.post('/api/publico/pre-reserva', async (req: any, res: any) => {
   try {
     const body = req.body;
