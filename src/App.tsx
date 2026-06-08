@@ -20054,8 +20054,7 @@ function PixQRBlock({ chavePix, nomeBeneficiario, cidadeBeneficiario, nomeFantas
           Copiar chave
         </button>
         <button onClick={async () => {
-            const txt = [nomeFantasia?'🏢 '+nomeFantasia:'',razaoSocial?'Razão: '+razaoSocial:'',cnpj?'CNPJ: '+cnpj:'','💚 PIX: '+chavePix,banco?'Banco: '+banco:'',agencia?'Ag: '+agencia:'',contaBancaria?'CC: '+contaBancaria+(tipoConta?' ('+tipoConta+')':''):''].filter(Boolean).join('
-');
+            const txt = [nomeFantasia?'🏢 '+nomeFantasia:'',razaoSocial?'Razão: '+razaoSocial:'',cnpj?'CNPJ: '+cnpj:'','💚 PIX: '+chavePix,banco?'Banco: '+banco:'',agencia?'Ag: '+agencia:'',contaBancaria?'CC: '+contaBancaria+(tipoConta?' ('+tipoConta+')':''):''].filter(Boolean).join(String.fromCharCode(10));
             try {
               const arte = await gerarArtePixPng({ chavePix, nomeBeneficiario, nomeFantasia, cnpj, banco, agencia, contaBancaria, tipoConta, qrSrc });
               if ((navigator as any).share) {
