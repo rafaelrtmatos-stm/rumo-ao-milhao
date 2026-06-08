@@ -1260,14 +1260,16 @@ function renderBolinhas() {
       tooltip.style.top = (e.clientY - 10) + 'px';
     });
     el.addEventListener('mouseleave', () => { tooltip.style.display = 'none'; });
-    el.addEventListener('click', () => {
-      tooltip.style.display = 'none';
-      if (p.status === 'disponivel') {
-        abrirFormulario(p.quadra, p.lote, el);
-      } else {
-        mostrarInfo(p.quadra, p.lote, p.status);
-      }
-    });
+    if (MODO_RESERVA) {
+      el.addEventListener('click', () => {
+        tooltip.style.display = 'none';
+        if (p.status === 'disponivel') {
+          abrirFormulario(p.quadra, p.lote, el);
+        } else {
+          mostrarInfo(p.quadra, p.lote, p.status);
+        }
+      });
+    }
     pontosDiv.appendChild(el);
   });
 }
@@ -1353,6 +1355,8 @@ container.addEventListener('touchend', e => {
 
 // ── RESERVA ──
 const EMP_ID = '${empId}';
+// MODO_RESERVA: ativar com ?reserva=1 na URL
+const MODO_RESERVA = new URLSearchParams(window.location.search).get('reserva') === '1';
 const EMP_NOME = '${nomeEmp}';
 const SEU_WHATSAPP = '5593992332012';
 let loteAtual = null;
