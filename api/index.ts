@@ -1022,18 +1022,29 @@ app.get('/api/publico/mapa-imagem/:id', async (req: any, res: any) => {
     if (!rows.length) return res.status(404).send('Não encontrado');
     const d = (rows[0] as any).data || {};
     const url = d.mapaImagemUrl || '';
-    if (!url) return res.status(404).send('Sem URL de mapa');
-    // Fazer proxy da imagem
-    // Usar https nativo para proxy
-    const https = await import('https');
-    const http = await import('http');
-    const client = url.startsWith('https') ? https : http;
-    client.get(url, (imgResp: any) => {
-      res.setHeader('Content-Type', imgResp.headers['content-type'] || 'image/webp');
-      res.setHeader('Cache-Control', 'public, max-age=3600');
-      res.setHeader('Access-Control-Allow-Origin', '*');
-      imgResp.pipe(res);
-    }).on('error', (e: any) => res.status(502).send(e.message));
+    const base64Data = d.mapaImagemBase64 || d.mapaImagemLeveBase64 || '';
+    if (!url && !base64Data) return res.status(404).send('Sem imagem de mapa');
+    // Se tem URL do Supabase, fazer proxy
+    if (url) {
+      const https = await import('https');
+      const http = await import('http');
+      const client = url.startsWith('https') ? https : http;
+      client.get(url, (imgResp: any) => {
+        res.setHeader('Content-Type', imgResp.headers['content-type'] || 'image/webp');
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+        res.setHeader('Access-Control-Allow-Origin', '*');
+        imgResp.pipe(res);
+      }).on('error', (e: any) => res.status(502).send(e.message));
+      return;
+    }
+    // Servir Base64 diretamente
+    const match = base64Data.match(/^data:([^;]+);base64,(.+)$/);
+    if (!match) return res.status(500).send('Base64 invalido');
+    const imgBuffer = Buffer.from(match[2], 'base64');
+    res.setHeader('Content-Type', match[1]);
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.send(imgBuffer);
     return;
   } catch(e: any) { res.status(500).send(e.message); }
 });
@@ -1080,12 +1091,14 @@ app.get('/mapa/:id', async (req: any, res: any) => {
       return { quadra: p.quadra, lote: p.lote, x: p.xPercent, y: p.yPercent, status };
     });
 
-    // Usar proxy local para evitar CORS com Supabase
+    // Usar URL do Supabase ou proxy Base64
     const mapaUrlOriginal = empData2.mapaImagemUrl || '';
-    if (!mapaUrlOriginal) {
+    const temBase64 = !!(empData2.mapaImagemBase64 || empData2.mapaImagemLeveBase64);
+    if (!mapaUrlOriginal && !temBase64) {
       return res.status(404).send('<h2 style="font-family:sans-serif;padding:40px;color:#ef4444">Mapa não encontrado. Configure a URL do mapa no painel.</h2>');
     }
-    const mapaUrl = mapaUrlOriginal; // URL direta do Supabase
+    // Se tem URL usa direto; senão usa proxy que serve o Base64
+    const mapaUrl = mapaUrlOriginal || ('/api/publico/mapa-imagem/' + empId);
     const nomeEmp = empData2.nome || (emp as any).nome || 'Empreendimento';
     const disponiveis = pontosPublicos.filter(p => p.status === 'disponivel').length;
     const total = pontosPublicos.length;
