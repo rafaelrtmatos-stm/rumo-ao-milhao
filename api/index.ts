@@ -993,7 +993,7 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
 
 
 // ── CONVERTER BASE64 → SUPABASE STORAGE ─────────────────────────────────────
-app.post('/api/admin/converter-mapa-base64/:id', isAuthenticated, async (req: any, res: any) => {
+app.post('/api/admin/converter-mapa-base64/:id', async (req: any, res: any) => {
   try {
     const empId = req.params.id;
     const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.id, empId));
