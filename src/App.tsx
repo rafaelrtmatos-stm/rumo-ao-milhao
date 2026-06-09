@@ -8647,13 +8647,13 @@ const EmpreendimentosSection = ({
   const [mapaFlashLock, setMapaFlashLock] = useState(false);
   const [mapaFiltroDevs, setMapaFiltroDevs] = useState<Set<string>>(() => new Set());
   const [mapaFiltroAberto, setMapaFiltroAberto] = useState(false);
+  const [devCidade, setDevCidade] = useState<string>("todas");
   const devsVisiveis = (mapaFiltroDevs.size === 0 ? developments : developments.filter(d => mapaFiltroDevs.has(d.id)))
     .filter(d => devCidade === "todas" || (d.cidade || "").toLowerCase().includes(devCidade.toLowerCase()) || devCidade.toLowerCase().includes((d.cidade || "").toLowerCase()));
   const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
   const [devSort, setDevSort] = useState<"recentes" | "antigos" | "nomeAZ" | "nomeZA" | "maisDisponiveis" | "maisVendidos" | "comMapa" | "semMapa" | "ativos" | "inativos">("nomeAZ");
-  const [devCidade, setDevCidade] = useState<string>("todas");
   const devFormRef = useRef<HTMLFormElement>(null);
   const [selectedDevForMap, setSelectedDevForMap] = useState<Empreendimento | null>(null);
 
