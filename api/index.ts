@@ -992,6 +992,35 @@ app.get('/api/publico/empreendimento/:id', async (req: any, res: any) => {
 
 
 
+
+// ── NORMALIZAR CIDADES DOS EMPREENDIMENTOS ───────────────────────────────────
+app.post('/api/admin/normalizar-cidades', isAuthenticated, async (_req: any, res: any) => {
+  try {
+    const rows = await db.select().from(empreendimentos);
+    let atualizados = 0;
+    for (const emp of rows) {
+      const d = (emp as any).data || {};
+      const cidadeOriginal = (d.cidade || '').trim();
+      let cidadeNova = cidadeOriginal;
+      const lower = cidadeOriginal.toLowerCase();
+      if (lower.includes('santar')) cidadeNova = 'Santarém';
+      else if (lower.includes('alenq')) cidadeNova = 'Alenquer';
+      else if (lower.includes('monte')) cidadeNova = 'Monte Alegre';
+      
+      if (cidadeNova !== cidadeOriginal) {
+        await db.update(empreendimentos)
+          .set({ data: { ...d, cidade: cidadeNova, estado: 'Pará' } as any })
+          .where(eq(empreendimentos.id, emp.id));
+        console.log(`[normalizar] ${d.nome}: "${cidadeOriginal}" → "${cidadeNova}"`);
+        atualizados++;
+      }
+    }
+    res.json({ ok: true, atualizados, total: rows.length });
+  } catch (e: any) {
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ── CONVERTER BASE64 → SUPABASE STORAGE ─────────────────────────────────────
 app.post('/api/admin/converter-mapa-base64/:id', async (req: any, res: any) => {
   try {

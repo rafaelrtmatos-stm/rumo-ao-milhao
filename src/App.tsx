@@ -8623,7 +8623,7 @@ const EmpreendimentosSection = ({
   isAdmin?: boolean;
 }) => {
   const emptyForm: Partial<Empreendimento> = {
-    nome: "", endereco: "", cidade: "", estado: "", totalLotes: 0,
+    nome: "", endereco: "", cidade: "", estado: "Pará", totalLotes: 0,
     descricao: "", comunidade: "", mapaLocalizacaoUrl: "", quadras: "", ruas: "", ruasPorQuadra: {}, ruasFaixas: [], lotesPorQuadra: {},
   } as any;
   const [isAdding, setIsAdding] = useState(false);
@@ -8649,7 +8649,7 @@ const EmpreendimentosSection = ({
   const [mapaFiltroAberto, setMapaFiltroAberto] = useState(false);
   const [devCidade, setDevCidade] = useState<string>("todas");
   const devsVisiveis = (mapaFiltroDevs.size === 0 ? developments : developments.filter(d => mapaFiltroDevs.has(d.id)))
-    .filter(d => devCidade === "todas" || (d.cidade || "").toLowerCase().includes(devCidade.toLowerCase()) || devCidade.toLowerCase().includes((d.cidade || "").toLowerCase()));
+    .filter(d => devCidade === "todas" || normalizarCidade(d.cidade || "") === devCidade);
   const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
   const [devViewMode, setDevViewMode] = useState<'grade'|'lista'>('grade');
   const [menuAbertoId, setMenuAbertoId] = useState<string | null>(null);
@@ -9088,17 +9088,26 @@ const EmpreendimentosSection = ({
   };
 
   // Cidades disponíveis detectadas automaticamente
+  // Normalizar cidade para comparação
+  const normalizarCidade = (c: string) => {
+    const s = (c || "").trim().toLowerCase()
+      .replace(/santarém|santarem|santarÉm/i, 'Santarém')
+      .replace(/alenquer/i, 'Alenquer')
+      .replace(/monte alegre/i, 'Monte Alegre');
+    if (s.includes('santar')) return 'Santarém';
+    if (s.includes('alenq')) return 'Alenquer';
+    if (s.includes('monte')) return 'Monte Alegre';
+    return (c || "").trim();
+  };
   const cidadesDisponiveis = Array.from(new Set(
-    developments.map(d => (d.cidade || "").trim()).filter(Boolean)
+    developments.map(d => normalizarCidade(d.cidade || "")).filter(Boolean)
   )).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const filteredDevelopments = developments
     .filter((dev) => {
       // Filtro por cidade
       if (devCidade !== "todas") {
-        const cidadeDev = (dev.cidade || "").trim().toLowerCase();
-        const cidadeFiltro = devCidade.toLowerCase();
-        if (!cidadeDev.includes(cidadeFiltro) && !cidadeFiltro.includes(cidadeDev)) return false;
+        if (normalizarCidade(dev.cidade || "") !== devCidade) return false;
       }
       const q = normalizeDevSearch(devSearch);
       if (!q) return true;
@@ -9475,24 +9484,24 @@ const EmpreendimentosSection = ({
 
               <div className="md:col-span-1">
                 <label className="label">Cidade</label>
-                <input
-                  className="input-field"
-                  value={formData.cidade}
-                  onChange={(e) =>
-                    setFormData({ ...formData, cidade: e.target.value })
-                  }
-                  placeholder="0"
-                />
+                <select
+                  className="input-field font-bold"
+                  value={formData.cidade || ''}
+                  onChange={(e) => setFormData({ ...formData, cidade: e.target.value, estado: 'Pará' })}
+                >
+                  <option value="">Selecionar cidade</option>
+                  <option value="Santarém">Santarém</option>
+                  <option value="Alenquer">Alenquer</option>
+                  <option value="Monte Alegre">Monte Alegre</option>
+                </select>
               </div>
               <div className="md:col-span-1">
                 <label className="label">Estado</label>
                 <input
-                  className="input-field font-bold"
-                  value={formData.estado}
-                  onChange={(e) =>
-                    setFormData({ ...formData, estado: e.target.value })
-                  }
-                  placeholder="0"
+                  className="input-field font-bold bg-slate-50 text-slate-500"
+                  value="Pará"
+                  readOnly
+                  placeholder="Pará"
                 />
               </div>
 
