@@ -8648,6 +8648,16 @@ const EmpreendimentosSection = ({
   const [mapaFiltroDevs, setMapaFiltroDevs] = useState<Set<string>>(() => new Set());
   const [mapaFiltroAberto, setMapaFiltroAberto] = useState(false);
   const [devCidade, setDevCidade] = useState<string>("todas");
+
+  // Normalizar cidade — deve estar antes de devsVisiveis
+  const normalizarCidade = (c: string) => {
+    const s = (c || "").trim().toLowerCase();
+    if (s.includes('santar')) return 'Santarém';
+    if (s.includes('alenq')) return 'Alenquer';
+    if (s.includes('monte')) return 'Monte Alegre';
+    return (c || "").trim();
+  };
+
   const devsVisiveis = (mapaFiltroDevs.size === 0 ? developments : developments.filter(d => mapaFiltroDevs.has(d.id)))
     .filter(d => devCidade === "todas" || normalizarCidade(d.cidade || "") === devCidade);
   const globalMapResizeRef = useRef<{ dragging: boolean; startY: number; startH: number }>({ dragging: false, startY: 0, startH: 0 });
@@ -9088,17 +9098,6 @@ const EmpreendimentosSection = ({
   };
 
   // Cidades disponíveis detectadas automaticamente
-  // Normalizar cidade para comparação
-  const normalizarCidade = (c: string) => {
-    const s = (c || "").trim().toLowerCase()
-      .replace(/santarém|santarem|santarÉm/i, 'Santarém')
-      .replace(/alenquer/i, 'Alenquer')
-      .replace(/monte alegre/i, 'Monte Alegre');
-    if (s.includes('santar')) return 'Santarém';
-    if (s.includes('alenq')) return 'Alenquer';
-    if (s.includes('monte')) return 'Monte Alegre';
-    return (c || "").trim();
-  };
   const cidadesDisponiveis = Array.from(new Set(
     developments.map(d => normalizarCidade(d.cidade || "")).filter(Boolean)
   )).sort((a, b) => a.localeCompare(b, "pt-BR"));
