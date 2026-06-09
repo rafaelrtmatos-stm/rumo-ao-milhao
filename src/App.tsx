@@ -20905,6 +20905,29 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     dbService.upsertVenda(venda).catch(console.error);
   };
 
+  // States do card PIX estático na aba Início — devem ficar no nível do componente
+  const [pixStaticQR, setPixStaticQR] = React.useState<string>('');
+  const [pixCarregando, setPixCarregando] = React.useState(false);
+  React.useEffect(() => {
+    if (!(config as any).chavePix) return;
+    setPixCarregando(true);
+    import('qrcode').then(({ default: QRCode }) => {
+      const descPix = ((config as any).nomeFantasia || 'EMPRESA').substring(0, 25);
+      const payloadPix = gerarPixPayload({
+        chavePix: (config as any).chavePix,
+        nomeBeneficiario: (config as any).nomeBeneficiario || descPix,
+        cidadeBeneficiario: (config as any).cidadeBeneficiario || 'SANTAREM',
+        valor: 0.01,
+        descricao: descPix,
+        txid: '***',
+      });
+      QRCode.toDataURL(payloadPix, { width: 220, margin: 2 }).then(qr => {
+        setPixStaticQR(qr);
+        setPixCarregando(false);
+      });
+    });
+  }, [(config as any).chavePix]);
+
   const renderSection = () => {
     switch (section) {
       case "inicio":
@@ -21036,28 +21059,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
             {/* Card PIX da empresa */}
             {(config as any).chavePix && (() => {
-              const [pixStaticQR, setPixStaticQR] = React.useState<string>('');
-              const [pixCarregando, setPixCarregando] = React.useState(false);
-              React.useEffect(() => {
-                if (!(config as any).chavePix) return;
-                setPixCarregando(true);
-                import('qrcode').then(({ default: QRCode }) => {
-                  const descPix = ((config as any).nomeFantasia || 'EMPRESA').substring(0, 25);
-                  const payloadPix = gerarPixPayload({
-                    chavePix: (config as any).chavePix,
-                    nomeBeneficiario: (config as any).nomeBeneficiario || descPix,
-                    cidadeBeneficiario: (config as any).cidadeBeneficiario || 'SANTAREM',
-                    valor: 0.01,
-                    descricao: descPix,
-                    txid: '***',
-                  });
-                  QRCode.toDataURL(payloadPix, { width: 220, margin: 2 }).then(qr => {
-                    setPixStaticQR(qr);
-                    setPixCarregando(false);
-                  });
-                });
-              }, [(config as any).chavePix]);
-
               return (
                 <div className="card-premium overflow-hidden">
                   {/* Header verde */}
