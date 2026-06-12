@@ -21555,18 +21555,27 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                     return;
                   }
                   // Montar venda fake para gerar recibo no mesmo formato
+                  // Encontrar empreendimento selecionado
+                  const empSel = developments.find(d => d.nome === reciboAvulsoData.empreendimento);
+                  const valorNum = parseFloat(reciboAvulsoData.valor.replace(/[^0-9,]/g,'').replace(',','.')) || 0;
                   const vendaFake = {
                     id: 'avulso-' + Date.now(),
                     clienteNome: reciboAvulsoData.clienteNome,
                     clienteCpf: reciboAvulsoData.clienteCpf,
+                    empreendimentoId: empSel?.id || '',
                     empreendimentoNome: reciboAvulsoData.empreendimento,
                     quadra: reciboAvulsoData.quadra,
                     numeroLote: reciboAvulsoData.lote,
-                    valorEntrada: parseFloat(reciboAvulsoData.valor.replace(/[^\d,]/g,'').replace(',','.')) || 0,
-                    valorLote: 0, quantidadeParcelas: 0, valorParcela: 0,
+                    valorEntrada: valorNum,
+                    valorLote: valorNum,
+                    quantidadeParcelas: 0,
+                    valorParcela: 0,
                     vendedor: reciboAvulsoData.vendedor,
                     dataVenda: new Date().toISOString().split('T')[0],
                     avista: true,
+                    status: 'confirmado',
+                    contratoGerado: false,
+                    documentos: [],
                     reciboObservacao: reciboAvulsoData.observacao,
                   } as any;
                   setSelectedVenda(vendaFake);
