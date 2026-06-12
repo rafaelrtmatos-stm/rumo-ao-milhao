@@ -14790,7 +14790,7 @@ const ContratosSection = ({
         </div>
         <div>
           <p class="label-sm">Localização</p>
-          <p class="valor-item">Q:${quadra} / L:${lote}</p>
+          <p class="valor-item">Lote ${lote} da Quadra ${quadra}</p>
         </div>
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
@@ -20248,6 +20248,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [showPixModal, setShowPixModal] = useState(false);
+  const [showReciboAvulso, setShowReciboAvulso] = useState(false);
+  const [reciboAvulsoData, setReciboAvulsoData] = useState({
+    clienteNome: '', clienteCpf: '', quadra: '', lote: '',
+    empreendimento: '', valor: '', observacao: '', vendedor: ''
+  });
   const [docPreviewModal, setDocPreviewModal] = useState<{docs:{nome:string;url:string;tipo?:string}[];idx:number}|null>(null);
   // Usuários do sistema — carregado no App para uso em vendas/corretores
   const [appUsers, setAppUsers] = useState<{ id: string; email: string; profile: { nome?: string } }[]>([]);
@@ -21057,6 +21062,20 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
               ))}
             </div>
 
+            {/* Botão Recibo Avulso */}
+            <button
+              onClick={() => setShowReciboAvulso(true)}
+              className="w-full flex items-center gap-3 p-4 bg-white rounded-2xl shadow-sm border border-slate-100 hover:border-emerald-200 hover:bg-emerald-50 transition-all active:scale-95">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center flex-shrink-0">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+              </div>
+              <div className="text-left">
+                <p className="font-black text-slate-800 text-sm">Gerar Recibo Avulso</p>
+                <p className="text-xs text-slate-400">Sem precisar de venda cadastrada</p>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2" className="ml-auto"><path d="M9 18l6-6-6-6"/></svg>
+            </button>
+
             {/* Card PIX da empresa */}
             {(config as any).chavePix && (() => {
               return (
@@ -21440,6 +21459,124 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 className="flex-1 flex items-center justify-center gap-2 py-3 rounded-2xl bg-[#1a4a1a] text-white text-sm font-black active:scale-95 transition-all">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 PDF
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Recibo Avulso */}
+      {showReciboAvulso && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-6"
+          onClick={() => setShowReciboAvulso(false)}>
+          <div className="bg-white w-full sm:max-w-lg rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
+            onClick={e => e.stopPropagation()}>
+            {/* Header */}
+            <div className="bg-[#1a4a1a] px-6 py-4 flex items-center justify-between flex-shrink-0">
+              <div>
+                <h3 className="text-white font-black text-base">Recibo Avulso</h3>
+                <p className="text-white/60 text-xs mt-0.5">Dados do PIX já preenchidos automaticamente</p>
+              </div>
+              <button onClick={() => setShowReciboAvulso(false)}
+                className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-white">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            {/* Form */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="col-span-2">
+                  <label className="label">Nome do Cliente *</label>
+                  <input className="input-field" placeholder="Nome completo"
+                    value={reciboAvulsoData.clienteNome}
+                    onChange={e => setReciboAvulsoData(p => ({...p, clienteNome: e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="label">CPF</label>
+                  <input className="input-field font-mono" placeholder="000.000.000-00"
+                    value={reciboAvulsoData.clienteCpf}
+                    onChange={e => setReciboAvulsoData(p => ({...p, clienteCpf: e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="label">Empreendimento</label>
+                  <select className="input-field"
+                    value={reciboAvulsoData.empreendimento}
+                    onChange={e => setReciboAvulsoData(p => ({...p, empreendimento: e.target.value}))}>
+                    <option value="">Selecionar</option>
+                    {developments.map(d => <option key={d.id} value={d.nome}>{d.nome}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="label">Quadra *</label>
+                  <input className="input-field font-mono" placeholder="Ex: 1"
+                    value={reciboAvulsoData.quadra}
+                    onChange={e => setReciboAvulsoData(p => ({...p, quadra: e.target.value}))}/>
+                </div>
+                <div>
+                  <label className="label">Lote *</label>
+                  <input className="input-field font-mono" placeholder="Ex: 5"
+                    value={reciboAvulsoData.lote}
+                    onChange={e => setReciboAvulsoData(p => ({...p, lote: e.target.value}))}/>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Valor Recebido *</label>
+                  <input className="input-field font-mono" placeholder="Ex: R$ 5.000,00"
+                    value={reciboAvulsoData.valor}
+                    onChange={e => setReciboAvulsoData(p => ({...p, valor: e.target.value}))}/>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Vendedor / Corretor</label>
+                  <input className="input-field" placeholder="Nome do corretor"
+                    value={reciboAvulsoData.vendedor}
+                    onChange={e => setReciboAvulsoData(p => ({...p, vendedor: e.target.value}))}/>
+                </div>
+                <div className="col-span-2">
+                  <label className="label">Observação</label>
+                  <textarea className="input-field resize-none" rows={2} placeholder="Ex: Entrada do lote"
+                    value={reciboAvulsoData.observacao}
+                    onChange={e => setReciboAvulsoData(p => ({...p, observacao: e.target.value}))}/>
+                </div>
+              </div>
+              {/* Preview dados PIX */}
+              {(config as any).chavePix && (
+                <div className="bg-emerald-50 rounded-2xl p-3 border border-emerald-100">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-emerald-600 mb-1.5">✓ Dados PIX automáticos</p>
+                  <p className="text-xs text-slate-700 font-bold">{(config as any).nomeFantasia || ''}</p>
+                  <p className="text-xs text-slate-500">{(config as any).banco || ''} · PIX: {(config as any).chavePix || ''}</p>
+                </div>
+              )}
+            </div>
+            {/* Botão gerar */}
+            <div className="flex-shrink-0 p-4 border-t border-slate-100">
+              <button
+                onClick={async () => {
+                  if (!reciboAvulsoData.clienteNome || !reciboAvulsoData.quadra || !reciboAvulsoData.lote || !reciboAvulsoData.valor) {
+                    alert('Preencha: Nome, Quadra, Lote e Valor');
+                    return;
+                  }
+                  // Montar venda fake para gerar recibo no mesmo formato
+                  const vendaFake = {
+                    id: 'avulso-' + Date.now(),
+                    clienteNome: reciboAvulsoData.clienteNome,
+                    clienteCpf: reciboAvulsoData.clienteCpf,
+                    empreendimentoNome: reciboAvulsoData.empreendimento,
+                    quadra: reciboAvulsoData.quadra,
+                    numeroLote: reciboAvulsoData.lote,
+                    valorEntrada: parseFloat(reciboAvulsoData.valor.replace(/[^\d,]/g,'').replace(',','.')) || 0,
+                    valorLote: 0, quantidadeParcelas: 0, valorParcela: 0,
+                    vendedor: reciboAvulsoData.vendedor,
+                    dataVenda: new Date().toISOString().split('T')[0],
+                    avista: true,
+                    reciboObservacao: reciboAvulsoData.observacao,
+                  } as any;
+                  setSelectedVenda(vendaFake);
+                  setReciboObservacao(reciboAvulsoData.observacao);
+                  setShowReciboAvulso(false);
+                  setTimeout(() => setShowReciboModal(true), 200);
+                }}
+                className="w-full py-3.5 bg-[#1a4a1a] text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                Gerar Recibo
               </button>
             </div>
           </div>
