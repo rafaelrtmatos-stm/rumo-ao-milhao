@@ -6777,13 +6777,7 @@ const LotDashboard = ({
           ) : (
             <div className="flex items-center gap-2">
 
-              {canEditMap && (
-                <label className="h-9 px-3 rounded-2xl border border-slate-200 bg-white text-slate-700 text-xs font-black flex items-center gap-1.5 active:scale-90 transition-all cursor-pointer">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                  {mapaImagem ? 'Trocar' : 'Carregar'}
-                  <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" className="hidden" onChange={handleImageUpload}/>
-                </label>
-              )}
+
               <button onClick={onClose}
                 className="w-9 h-9 rounded-2xl border border-slate-200 bg-white flex items-center justify-center active:scale-90 transition-all">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -6821,12 +6815,14 @@ const LotDashboard = ({
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
               Preços
             </button>
-            {/* Botão Carregar/Trocar mapa */}
-            <label className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 cursor-pointer text-slate-400 hover:text-slate-600`}>
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-              {mapaImagem ? "Trocar" : "Carregar"}
-              <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" className="hidden" onChange={handleImageUpload}/>
-            </label>
+            {/* Botão Carregar/Trocar mapa — só no modo edição */}
+            {isEditingMap && (
+              <label className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 cursor-pointer text-slate-400 hover:text-slate-600`}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                {mapaImagem ? "Trocar" : "Carregar"}
+                <input type="file" accept="image/png,image/jpeg,image/jpg,image/webp,application/pdf" className="hidden" onChange={handleImageUpload}/>
+              </label>
+            )}
             <button onClick={() => { setMode("global"); if (isEditingMap) cancelarEdicaoMapa(); }}
               className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${mode === "global" ? "bg-[#1a4a1a] text-white shadow" : "text-slate-400"}`}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg>
