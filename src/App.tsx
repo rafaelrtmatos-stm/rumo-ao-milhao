@@ -21465,6 +21465,31 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         </div>
       )}
 
+      {/* Barra de progresso de upload global — aparece em qualquer tela */}
+      {mapUploadProgress > 0 && mapUploadProgress < 100 && (
+        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
+          <div className="h-1 bg-slate-200">
+            <div className="h-full bg-[#1a4a1a] transition-all duration-300"
+              style={{width: mapUploadProgress + '%'}}/>
+          </div>
+          <div className="flex justify-center mt-1">
+            <div className="bg-[#1a4a1a] text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
+              ⬆ Enviando... {mapUploadProgress}%
+            </div>
+          </div>
+        </div>
+      )}
+      {mapUploadProgress === 100 && (
+        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
+          <div className="h-1 bg-emerald-500"/>
+          <div className="flex justify-center mt-1">
+            <div className="bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
+              ✅ Upload concluído!
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal Recibo Avulso */}
       {showReciboAvulso && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-6"
