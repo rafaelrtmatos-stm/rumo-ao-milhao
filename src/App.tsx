@@ -6738,6 +6738,21 @@ const LotDashboard = ({
 
     return (
       <>
+      {/* Barra de progresso de upload — topo da tela */}
+      {mapUploadProgress > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
+          <div className="h-1 bg-slate-200">
+            <div className="h-full transition-all duration-300"
+              style={{width: Math.min(mapUploadProgress, 100) + '%', background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}/>
+          </div>
+          <div className="flex justify-center mt-1">
+            <div className="text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg"
+              style={{background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}>
+              {mapUploadProgress >= 100 ? '✅ Upload concluído!' : '⬆ Enviando... ' + mapUploadProgress + '%'}
+            </div>
+          </div>
+        </div>
+      )}
       <div className="fixed inset-0 z-[500] flex flex-col overflow-hidden"
         style={{ background: '#f5f7fb', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
 
@@ -21584,22 +21599,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Gerar Recibo
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Barra de progresso de upload global */}
-      {mapUploadProgress > 0 && (
-        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
-          <div className="h-1 bg-slate-200">
-            <div className="h-full transition-all duration-300"
-              style={{width: (mapUploadProgress >= 100 ? 100 : mapUploadProgress) + '%', background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}/>
-          </div>
-          <div className="flex justify-center mt-1">
-            <div className="text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg"
-              style={{background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}>
-              {mapUploadProgress >= 100 ? '✅ Upload concluído!' : '⬆ Enviando... ' + mapUploadProgress + '%'}
             </div>
           </div>
         </div>
