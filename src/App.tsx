@@ -21462,31 +21462,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         </div>
       )}
 
-      {/* Barra de progresso de upload global — aparece em qualquer tela */}
-      {mapUploadProgress > 0 && mapUploadProgress < 100 && (
-        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
-          <div className="h-1 bg-slate-200">
-            <div className="h-full bg-[#1a4a1a] transition-all duration-300"
-              style={{width: mapUploadProgress + '%'}}/>
-          </div>
-          <div className="flex justify-center mt-1">
-            <div className="bg-[#1a4a1a] text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
-              ⬆ Enviando... {mapUploadProgress}%
-            </div>
-          </div>
-        </div>
-      )}
-      {mapUploadProgress === 100 && (
-        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
-          <div className="h-1 bg-emerald-500"/>
-          <div className="flex justify-center mt-1">
-            <div className="bg-emerald-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg">
-              ✅ Upload concluído!
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Modal Recibo Avulso */}
       {showReciboAvulso && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-end sm:items-center justify-center p-0 sm:p-6"
@@ -21609,6 +21584,22 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
                 Gerar Recibo
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Barra de progresso de upload global */}
+      {mapUploadProgress > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[99999] pointer-events-none">
+          <div className="h-1 bg-slate-200">
+            <div className="h-full transition-all duration-300"
+              style={{width: (mapUploadProgress >= 100 ? 100 : mapUploadProgress) + '%', background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}/>
+          </div>
+          <div className="flex justify-center mt-1">
+            <div className="text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg"
+              style={{background: mapUploadProgress >= 100 ? '#16a34a' : '#1a4a1a'}}>
+              {mapUploadProgress >= 100 ? '✅ Upload concluído!' : '⬆ Enviando... ' + mapUploadProgress + '%'}
             </div>
           </div>
         </div>
