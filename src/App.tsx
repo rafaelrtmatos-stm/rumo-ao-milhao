@@ -11384,7 +11384,7 @@ const VendasSection = ({
     telefone2: "",
   });
   const [hasSecondBuyer, setHasSecondBuyer] = useState(false);
-  const [lotesAdicionais, setLotesAdicionais] = useState<{quadra: string; lote: string}[]>([]);
+  const [lotesAdicionais, setLotesAdicionais] = useState<{quadra: string; lotes: string}[]>([]);
   const [secondBuyerData, setSecondBuyerData] = useState<Venda["comprador2"]>({
     nome: "",
     nacionalidade: "Brasileira",
@@ -12050,7 +12050,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
         },
         secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
         hasSecondBuyer,
-        lotesAdicionais: lotesAdicionais.filter(l => l.quadra && l.lote),
+        lotesAdicionais: lotesAdicionais.filter(l => l.quadra && l.lotes),
         observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
       });
       localStorage.setItem('venda_rascunho', JSON.stringify({
@@ -12684,10 +12684,10 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                     setFichaFilled(filled);
                     // Lotes adicionais da ficha
                     if (parsed.lotesExtras && parsed.lotesExtras.length > 0) {
-                      setLotesAdicionais(parsed.lotesExtras.map((l: string) => ({
+                      setLotesAdicionais([{
                         quadra: parsed.quadra || '',
-                        lote: l
-                      })));
+                        lotes: parsed.lotesExtras.join(', ')
+                      }]);
                     }
                     setFichaSuccess(true);
                     if (filled.length > 0) {
@@ -13134,44 +13134,48 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
 
           {/* --- Lotes Adicionais --- */}
           <div className="mt-6 pt-6 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-3">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
                 <div className="p-2 bg-slate-50 text-slate-400 rounded-xl">
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
                 </div>
-                <h4 className="font-bold text-slate-700">Lotes Adicionais</h4>
+                <h4 className="font-bold text-slate-700 text-sm">Quadras e Lotes Adicionais</h4>
               </div>
               <button type="button"
-                onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lote: ''}])}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-main/30 bg-primary-main/10 text-primary-main transition-all font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white active:scale-95">
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                + Lote
+                onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lotes: ''}])}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary-main/30 bg-primary-main/10 text-primary-main transition-all font-bold text-xs hover:bg-primary-main hover:text-white active:scale-95">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                + Quadra
               </button>
             </div>
             {lotesAdicionais.length === 0 && (
-              <p className="text-xs text-slate-400 text-center py-2">Clique em "+ Lote" para adicionar mais quadras e lotes a esta venda.</p>
+              <p className="text-xs text-slate-400 italic">Clique em "+ Quadra" para adicionar mais quadras e lotes.</p>
             )}
             {lotesAdicionais.map((lot, idx) => (
-              <div key={idx} className="flex gap-2 mb-2 items-center">
-                <div className="flex-1">
-                  <input className="input-field font-mono font-bold" placeholder="Quadra"
-                    value={lot.quadra}
-                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
+              <div key={idx} className="bg-slate-50 rounded-2xl p-3 mb-2 space-y-2">
+                <div className="flex gap-2 items-center">
+                  <div className="flex-1">
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra</label>
+                    <input className="input-field font-mono font-bold" placeholder="Ex: A"
+                      value={lot.quadra}
+                      onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
+                  </div>
+                  <button type="button"
+                    onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
+                    className="w-8 h-8 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center flex-shrink-0 mt-5">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
                 </div>
-                <div className="flex-1">
-                  <input className="input-field font-mono font-bold" placeholder="Lote"
-                    value={lot.lote}
-                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lote: e.target.value} : l))}/>
+                <div>
+                  <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Lotes (separe por vírgula)</label>
+                  <input className="input-field font-mono" placeholder="Ex: 1, 5, 8, 12"
+                    value={lot.lotes}
+                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lotes: e.target.value} : l))}/>
                 </div>
-                <button type="button"
-                  onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
-                  className="w-9 h-9 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center flex-shrink-0">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
               </div>
             ))}
             {lotesAdicionais.length > 0 && (
-              <p className="text-[10px] text-slate-400 mt-1">Aparecem no recibo e contrato.</p>
+              <p className="text-[10px] text-slate-400 mt-1">Aparecem no recibo por extenso.</p>
             )}
           </div>
 
@@ -14861,9 +14865,13 @@ const ContratosSection = ({
         <div>
           <p class="label-sm">Localização</p>
           <p class="valor-item">Lote ${lote} da Quadra ${quadra}</p>
-          ${(selectedVenda as any)?.lotesAdicionais?.filter((l:any)=>l.quadra&&l.lote).map((l:any) =>
-            '<p class="valor-item">Lote ' + l.lote + ' da Quadra ' + l.quadra + '</p>'
-          ).join('') || ''}
+          ${(selectedVenda as any)?.lotesAdicionais?.filter((l:any)=>l.quadra&&(l.lotes||l.lote)).map((l:any) => {
+            const lotesArr = (l.lotes || l.lote || '').split(',').map((x:string) => x.trim()).filter(Boolean);
+            const txt = lotesArr.length > 1
+              ? 'Lotes ' + lotesArr.join(', ') + ' da Quadra ' + l.quadra
+              : 'Lote ' + (lotesArr[0]||'') + ' da Quadra ' + l.quadra;
+            return '<p class="valor-item">' + txt + '</p>';
+          }).join('') || ''}
         </div>
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
@@ -20326,6 +20334,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     clienteNome: '', clienteCpf: '', quadra: '', lote: '',
     empreendimento: '', valor: '', observacao: '', vendedor: ''
   });
+  const [avulsoLotesAdicionais, setAvulsoLotesAdicionais] = useState<{quadra: string; lotes: string}[]>([]);
   const [docPreviewModal, setDocPreviewModal] = useState<{docs:{nome:string;url:string;tipo?:string}[];idx:number}|null>(null);
   // Usuários do sistema — carregado no App para uso em vendas/corretores
   const [appUsers, setAppUsers] = useState<{ id: string; email: string; profile: { nome?: string } }[]>([]);
@@ -21591,6 +21600,41 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                     value={reciboAvulsoData.lote}
                     onChange={e => setReciboAvulsoData(p => ({...p, lote: e.target.value}))}/>
                 </div>
+                {/* Quadras e lotes adicionais no avulso */}
+                <div className="col-span-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="label mb-0">Quadras/Lotes adicionais</label>
+                    <button type="button"
+                      onClick={() => setAvulsoLotesAdicionais(prev => [...prev, {quadra:'', lotes:''}])}
+                      className="text-xs font-black text-primary-main flex items-center gap-1 px-2 py-1 rounded-lg bg-primary-main/10 hover:bg-primary-main hover:text-white transition-all">
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                      + Quadra
+                    </button>
+                  </div>
+                  {avulsoLotesAdicionais.map((lot, idx) => (
+                    <div key={idx} className="bg-slate-50 rounded-xl p-2.5 mb-2 space-y-2">
+                      <div className="flex gap-2 items-end">
+                        <div className="flex-1">
+                          <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block">Quadra</label>
+                          <input className="input-field font-mono text-sm" placeholder="Ex: B"
+                            value={lot.quadra}
+                            onChange={e => setAvulsoLotesAdicionais(prev => prev.map((l,i) => i===idx?{...l,quadra:e.target.value.toUpperCase()}:l))}/>
+                        </div>
+                        <button type="button" onClick={() => setAvulsoLotesAdicionais(prev => prev.filter((_,i)=>i!==idx))}
+                          className="w-8 h-8 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white flex items-center justify-center flex-shrink-0">
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-black uppercase text-slate-400 mb-1 block">Lotes (vírgula)</label>
+                        <input className="input-field font-mono text-sm" placeholder="Ex: 3, 7, 11"
+                          value={lot.lotes}
+                          onChange={e => setAvulsoLotesAdicionais(prev => prev.map((l,i) => i===idx?{...l,lotes:e.target.value}:l))}/>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
                 <div className="col-span-2">
                   <label className="label">Valor Recebido *</label>
                   <input className="input-field font-mono" placeholder="Ex: R$ 5.000,00"
@@ -21651,9 +21695,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                     documentos: [],
                     reciboObservacao: reciboAvulsoData.observacao,
                   } as any;
+                  vendaFake.lotesAdicionais = avulsoLotesAdicionais.filter(l => l.quadra && l.lotes);
                   setSelectedVenda(vendaFake);
                   setReciboObservacao(reciboAvulsoData.observacao);
                   setShowReciboAvulso(false);
+                  setAvulsoLotesAdicionais([]);
                   setTimeout(() => setShowReciboModal(true), 200);
                 }}
                 className="w-full py-3.5 bg-[#1a4a1a] text-white rounded-2xl font-black text-sm active:scale-95 transition-all flex items-center justify-center gap-2">
