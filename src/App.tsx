@@ -13132,53 +13132,6 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
             </div>
           </div>
 
-          {/* --- Lotes Adicionais --- */}
-          <div className="mt-6 pt-6 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <div className="p-2 bg-slate-50 text-slate-400 rounded-xl">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-                </div>
-                <h4 className="font-bold text-slate-700 text-sm">Quadras e Lotes Adicionais</h4>
-              </div>
-              <button type="button"
-                onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lotes: ''}])}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-primary-main/30 bg-primary-main/10 text-primary-main transition-all font-bold text-xs hover:bg-primary-main hover:text-white active:scale-95">
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                + Quadra
-              </button>
-            </div>
-            {lotesAdicionais.length === 0 && (
-              <p className="text-xs text-slate-400 italic">Clique em "+ Quadra" para adicionar mais quadras e lotes.</p>
-            )}
-            {lotesAdicionais.map((lot, idx) => (
-              <div key={idx} className="bg-slate-50 rounded-2xl p-3 mb-2 space-y-2">
-                <div className="flex gap-2 items-center">
-                  <div className="flex-1">
-                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra</label>
-                    <input className="input-field font-mono font-bold" placeholder="Ex: A"
-                      value={lot.quadra}
-                      onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
-                  </div>
-                  <button type="button"
-                    onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
-                    className="w-8 h-8 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center flex-shrink-0 mt-5">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                </div>
-                <div>
-                  <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Lotes (separe por vírgula)</label>
-                  <input className="input-field font-mono" placeholder="Ex: 1, 5, 8, 12"
-                    value={lot.lotes}
-                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lotes: e.target.value} : l))}/>
-                </div>
-              </div>
-            ))}
-            {lotesAdicionais.length > 0 && (
-              <p className="text-[10px] text-slate-400 mt-1">Aparecem no recibo por extenso.</p>
-            )}
-          </div>
-
           {/* --- Segundo Comprador --- */}
           <div className="mt-8 pt-8 border-t border-slate-100">
             <div className="flex items-center justify-between mb-6">
@@ -13503,44 +13456,73 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                 </motion.div>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:col-span-2">
-              <div>
-                <label className="label">Lote</label>
-                <input
-                  required
-                  data-sale-field="numeroLote"
-                  className={`input-field font-mono font-bold${requiredSaleFieldClass("numeroLote")}`}
-                  value={saleData.numeroLote}
-                  onChange={(e) => {
-                    clearInvalidSaleField("numeroLote");
-                    setSaleData({ ...saleData, numeroLote: e.target.value });
-                  }}
-                  placeholder="0"
-                />
+            {/* Quadras e Lotes — principal + adicionais */}
+            <div className="sm:col-span-2 space-y-3">
+              <div className="flex items-center justify-between">
+                <label className="label mb-0">Quadra e Lote(s)</label>
+                <button type="button"
+                  onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lotes: ''}])}
+                  className="flex items-center gap-1 text-xs font-black text-primary-main px-2.5 py-1.5 rounded-xl bg-primary-main/10 hover:bg-primary-main hover:text-white transition-all active:scale-95">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                  + Quadra
+                </button>
               </div>
-              <div>
-                <label className="label">Quadra</label>
-                <input
-                  required
-                  list="quadras-list"
-                  data-sale-field="quadra"
-                  className={`input-field font-mono font-bold${requiredSaleFieldClass("quadra")}`}
-                  value={saleData.quadra}
-                  onChange={(e) => {
-                    clearInvalidSaleField("quadra");
-                    setSaleData({ ...saleData, quadra: e.target.value.toUpperCase() });
-                  }}
-                  placeholder="A"
-                />
-                <datalist id="quadras-list">
-                  {developments
-                    .find((d) => d.id === saleData.empreendimentoId)
-                    ?.quadras?.split(",")
-                    .map((q) => (
-                      <option key={q.trim()} value={q.trim()} />
-                    ))}
-                </datalist>
+              {/* Quadra/Lote principal */}
+              <div className="bg-slate-50 rounded-2xl p-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra *</label>
+                    <input
+                      required
+                      list="quadras-list"
+                      data-sale-field="quadra"
+                      className={`input-field font-mono font-bold${requiredSaleFieldClass("quadra")}`}
+                      value={saleData.quadra}
+                      onChange={(e) => { clearInvalidSaleField("quadra"); setSaleData({ ...saleData, quadra: e.target.value.toUpperCase() }); }}
+                      placeholder="Ex: A"/>
+                    <datalist id="quadras-list">
+                      {developments.find((d) => d.id === saleData.empreendimentoId)?.quadras?.split(",").map((q) => (
+                        <option key={q.trim()} value={q.trim()} />
+                      ))}
+                    </datalist>
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Lote(s) *</label>
+                    <input
+                      required
+                      data-sale-field="numeroLote"
+                      className={`input-field font-mono font-bold${requiredSaleFieldClass("numeroLote")}`}
+                      value={saleData.numeroLote}
+                      onChange={(e) => { clearInvalidSaleField("numeroLote"); setSaleData({ ...saleData, numeroLote: e.target.value }); }}
+                      placeholder="Ex: 2 ou 2, 5, 8"/>
+                  </div>
+                </div>
               </div>
+              {/* Quadras/Lotes adicionais */}
+              {lotesAdicionais.map((lot, idx) => (
+                <div key={idx} className="bg-slate-50 rounded-2xl p-3 space-y-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra</label>
+                      <input className="input-field font-mono font-bold" placeholder="Ex: B"
+                        value={lot.quadra}
+                        onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Lote(s)</label>
+                      <input className="input-field font-mono" placeholder="Ex: 3, 7"
+                        value={lot.lotes}
+                        onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lotes: e.target.value} : l))}/>
+                    </div>
+                  </div>
+                  <button type="button"
+                    onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
+                    className="text-[10px] text-red-400 hover:text-red-600 font-bold flex items-center gap-1">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    Remover esta quadra
+                  </button>
+                </div>
+              ))}
             </div>
 
             {/* Aviso: lote já vendido */}
@@ -14864,7 +14846,12 @@ const ContratosSection = ({
         </div>
         <div>
           <p class="label-sm">Localização</p>
-          <p class="valor-item">Lote ${lote} da Quadra ${quadra}</p>
+          <p class="valor-item">${(() => {
+            const lotesArr = lote.split(',').map((x:string)=>x.trim()).filter(Boolean);
+            return lotesArr.length > 1
+              ? 'Lotes ' + lotesArr.join(', ') + ' da Quadra ' + quadra
+              : 'Lote ' + (lotesArr[0]||lote) + ' da Quadra ' + quadra;
+          })()}</p>
           ${(selectedVenda as any)?.lotesAdicionais?.filter((l:any)=>l.quadra&&(l.lotes||l.lote)).map((l:any) => {
             const lotesArr = (l.lotes || l.lote || '').split(',').map((x:string) => x.trim()).filter(Boolean);
             const txt = lotesArr.length > 1
