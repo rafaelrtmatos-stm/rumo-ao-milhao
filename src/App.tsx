@@ -189,7 +189,12 @@ function parseFicha(text: string): Record<string, any> {
     else if (["CONTATO SECUNDARIO", "TELEFONE 2", "FONE 2", "TEL 2", "CELULAR 2"].includes(key)) {
       result.telefone2 = val.split("/")[0].trim();
     }
-    else if (key === "LOTE") { result.lote = val; }
+    else if (key === "LOTE") {
+      // Suporte a múltiplos lotes: "5, 8, 12" ou "5/8/12"
+      const lotes = val.split(/[,\/;]/).map((l:string) => l.trim()).filter(Boolean);
+      result.lote = lotes[0] || val;
+      if (lotes.length > 1) result.lotesExtras = lotes.slice(1);
+    }
     else if (key === "QUADRA") { result.quadra = val; }
     else if (key === "EMPREENDIMENTO") { result.empreendimento = val; }
     else if (["VALOR TOTAL", "VALOR"].includes(key)) { result.valorTotal = cleanCurrency(val); }
@@ -11379,6 +11384,7 @@ const VendasSection = ({
     telefone2: "",
   });
   const [hasSecondBuyer, setHasSecondBuyer] = useState(false);
+  const [lotesAdicionais, setLotesAdicionais] = useState<{quadra: string; lote: string}[]>([]);
   const [secondBuyerData, setSecondBuyerData] = useState<Venda["comprador2"]>({
     nome: "",
     nacionalidade: "Brasileira",
@@ -11468,6 +11474,7 @@ const VendasSection = ({
         setSecondBuyerData({ ...editingEntry.venda.comprador2 });
       } else {
         setHasSecondBuyer(false);
+    setLotesAdicionais([]);
       }
       setLastSavedVenda(null);
       setCpfMatch(null);
@@ -12043,6 +12050,7 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
         },
         secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
         hasSecondBuyer,
+        lotesAdicionais: lotesAdicionais.filter(l => l.quadra && l.lote),
         observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
       });
       localStorage.setItem('venda_rascunho', JSON.stringify({
@@ -12674,6 +12682,13 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                     if (parsed.numeroParcelas) filled.push("Parcelas");
                     if (parsed.valorParcela) filled.push("Valor Parcela");
                     setFichaFilled(filled);
+                    // Lotes adicionais da ficha
+                    if (parsed.lotesExtras && parsed.lotesExtras.length > 0) {
+                      setLotesAdicionais(parsed.lotesExtras.map((l: string) => ({
+                        quadra: parsed.quadra || '',
+                        lote: l
+                      })));
+                    }
                     setFichaSuccess(true);
                     if (filled.length > 0) {
                       setTimeout(() => setShowColarFicha(false), 1800);
@@ -13115,6 +13130,49 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                 placeholder="(00) 00000-0000"
               />
             </div>
+          </div>
+
+          {/* --- Lotes Adicionais --- */}
+          <div className="mt-6 pt-6 border-t border-slate-100">
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-slate-50 text-slate-400 rounded-xl">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+                </div>
+                <h4 className="font-bold text-slate-700">Lotes Adicionais</h4>
+              </div>
+              <button type="button"
+                onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lote: ''}])}
+                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-primary-main/30 bg-primary-main/10 text-primary-main transition-all font-bold text-xs uppercase tracking-widest hover:bg-primary-main hover:text-white active:scale-95">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                + Lote
+              </button>
+            </div>
+            {lotesAdicionais.length === 0 && (
+              <p className="text-xs text-slate-400 text-center py-2">Clique em "+ Lote" para adicionar mais quadras e lotes a esta venda.</p>
+            )}
+            {lotesAdicionais.map((lot, idx) => (
+              <div key={idx} className="flex gap-2 mb-2 items-center">
+                <div className="flex-1">
+                  <input className="input-field font-mono font-bold" placeholder="Quadra"
+                    value={lot.quadra}
+                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
+                </div>
+                <div className="flex-1">
+                  <input className="input-field font-mono font-bold" placeholder="Lote"
+                    value={lot.lote}
+                    onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lote: e.target.value} : l))}/>
+                </div>
+                <button type="button"
+                  onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
+                  className="w-9 h-9 rounded-xl bg-red-50 text-red-400 hover:bg-red-500 hover:text-white transition-all flex items-center justify-center flex-shrink-0">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+              </div>
+            ))}
+            {lotesAdicionais.length > 0 && (
+              <p className="text-[10px] text-slate-400 mt-1">Aparecem no recibo e contrato.</p>
+            )}
           </div>
 
           {/* --- Segundo Comprador --- */}
@@ -14803,6 +14861,9 @@ const ContratosSection = ({
         <div>
           <p class="label-sm">Localização</p>
           <p class="valor-item">Lote ${lote} da Quadra ${quadra}</p>
+          ${(selectedVenda as any)?.lotesAdicionais?.filter((l:any)=>l.quadra&&l.lote).map((l:any) =>
+            '<p class="valor-item">Lote ' + l.lote + ' da Quadra ' + l.quadra + '</p>'
+          ).join('') || ''}
         </div>
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
