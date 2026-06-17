@@ -11384,7 +11384,8 @@ const VendasSection = ({
     telefone2: "",
   });
   const [hasSecondBuyer, setHasSecondBuyer] = useState(false);
-  const [lotesAdicionais, setLotesAdicionais] = useState<{quadra: string; lotes: string}[]>([]);
+  const [lotesAdicionais, setLotesAdicionais] = useState<{quadra: string; lotes: string; precos?: {lote:string; entrada:string; parcelas:string; valorParcela:string}[]}[]>([]);
+  const [precosDiferentes, setPrecosDiferentes] = useState(false);
   const [secondBuyerData, setSecondBuyerData] = useState<Venda["comprador2"]>({
     nome: "",
     nacionalidade: "Brasileira",
@@ -11475,6 +11476,7 @@ const VendasSection = ({
       } else {
         setHasSecondBuyer(false);
     setLotesAdicionais([]);
+    setPrecosDiferentes(false);
       }
       setLastSavedVenda(null);
       setCpfMatch(null);
@@ -12051,6 +12053,10 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
         secondBuyerData: hasSecondBuyer ? secondBuyerData : undefined,
         hasSecondBuyer,
         lotesAdicionais: lotesAdicionais.filter(l => l.quadra && l.lotes),
+        precosDiferentes,
+        precosIndividuais: precosDiferentes ? Object.entries(saleData as any)
+          .filter(([k]) => k.startsWith('preco_'))
+          .reduce((acc, [k,v]) => ({...acc, [k]: v}), {}) : {},
         observacao: "Rascunho criado offline. Validar lote e concluir venda somente quando a internet voltar.",
       });
       localStorage.setItem('venda_rascunho', JSON.stringify({
@@ -13457,29 +13463,35 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
               )}
             </div>
             {/* Quadras e Lotes — principal + adicionais */}
-            <div className="sm:col-span-2 space-y-3">
-              <div className="flex items-center justify-between">
-                <label className="label mb-0">Quadra e Lote(s)</label>
-                <button type="button"
-                  onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lotes: ''}])}
-                  className="flex items-center gap-1 text-xs font-black text-primary-main px-2.5 py-1.5 rounded-xl bg-primary-main/10 hover:bg-primary-main hover:text-white transition-all active:scale-95">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                  + Quadra
-                </button>
+            <div className="sm:col-span-2 space-y-2">
+              <div className="flex items-center justify-between mb-1">
+                <label className="label mb-0">Quadras e Lotes</label>
+                <div className="flex items-center gap-2">
+                  {/* Toggle preços diferentes */}
+                  <button type="button"
+                    onClick={() => setPrecosDiferentes(p => !p)}
+                    className={`text-[10px] font-black px-2.5 py-1.5 rounded-xl border transition-all ${precosDiferentes ? 'bg-amber-50 border-amber-300 text-amber-700' : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'}`}>
+                    💰 Preços por lote
+                  </button>
+                  <button type="button"
+                    onClick={() => setLotesAdicionais(prev => [...prev, {quadra: '', lotes: ''}])}
+                    className="flex items-center gap-1 text-[11px] font-black text-white bg-primary-main px-3 py-1.5 rounded-xl hover:bg-primary-dark transition-all active:scale-95">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Quadra
+                  </button>
+                </div>
               </div>
+
               {/* Quadra/Lote principal */}
-              <div className="bg-slate-50 rounded-2xl p-3 space-y-2">
+              <div className="border border-slate-200 rounded-2xl p-3 space-y-2 bg-white">
                 <div className="grid grid-cols-2 gap-2">
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra *</label>
-                    <input
-                      required
-                      list="quadras-list"
-                      data-sale-field="quadra"
+                    <input required list="quadras-list" data-sale-field="quadra"
                       className={`input-field font-mono font-bold${requiredSaleFieldClass("quadra")}`}
                       value={saleData.quadra}
                       onChange={(e) => { clearInvalidSaleField("quadra"); setSaleData({ ...saleData, quadra: e.target.value.toUpperCase() }); }}
-                      placeholder="Ex: A"/>
+                      placeholder="Ex: 1"/>
                     <datalist id="quadras-list">
                       {developments.find((d) => d.id === saleData.empreendimentoId)?.quadras?.split(",").map((q) => (
                         <option key={q.trim()} value={q.trim()} />
@@ -13488,23 +13500,53 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                   </div>
                   <div>
                     <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Lote(s) *</label>
-                    <input
-                      required
-                      data-sale-field="numeroLote"
+                    <input required data-sale-field="numeroLote"
                       className={`input-field font-mono font-bold${requiredSaleFieldClass("numeroLote")}`}
                       value={saleData.numeroLote}
                       onChange={(e) => { clearInvalidSaleField("numeroLote"); setSaleData({ ...saleData, numeroLote: e.target.value }); }}
                       placeholder="Ex: 2 ou 2, 5, 8"/>
                   </div>
                 </div>
+                {/* Preços individuais por lote — principal */}
+                {precosDiferentes && saleData.numeroLote && (
+                  <div className="pt-2 border-t border-slate-100 space-y-2">
+                    <p className="text-[9px] font-black uppercase text-amber-600">💰 Preços individuais — Quadra {saleData.quadra}</p>
+                    {saleData.numeroLote.split(',').map((l:string) => l.trim()).filter(Boolean).map((loteNum:string) => (
+                      <div key={loteNum} className="grid grid-cols-3 gap-1.5 items-end">
+                        <div className="col-span-3">
+                          <p className="text-[9px] font-black text-slate-500">Lote {loteNum}</p>
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-400 block mb-0.5">Entrada</label>
+                          <input className="input-field text-xs font-mono" placeholder="R$ 0"
+                            value={(saleData as any)[`preco_${saleData.quadra}_${loteNum}_entrada`] || ''}
+                            onChange={e => setSaleData({...saleData, [`preco_${saleData.quadra}_${loteNum}_entrada`]: e.target.value} as any)}/>
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-400 block mb-0.5">Parcelas</label>
+                          <input className="input-field text-xs font-mono" placeholder="0x"
+                            value={(saleData as any)[`preco_${saleData.quadra}_${loteNum}_parcelas`] || ''}
+                            onChange={e => setSaleData({...saleData, [`preco_${saleData.quadra}_${loteNum}_parcelas`]: e.target.value} as any)}/>
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-400 block mb-0.5">Valor</label>
+                          <input className="input-field text-xs font-mono" placeholder="R$ 0"
+                            value={(saleData as any)[`preco_${saleData.quadra}_${loteNum}_valor`] || ''}
+                            onChange={e => setSaleData({...saleData, [`preco_${saleData.quadra}_${loteNum}_valor`]: e.target.value} as any)}/>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+
               {/* Quadras/Lotes adicionais */}
               {lotesAdicionais.map((lot, idx) => (
-                <div key={idx} className="bg-slate-50 rounded-2xl p-3 space-y-2">
+                <div key={idx} className="border border-slate-200 rounded-2xl p-3 space-y-2 bg-white">
                   <div className="grid grid-cols-2 gap-2">
                     <div>
                       <label className="text-[10px] font-black uppercase text-slate-400 mb-1 block">Quadra</label>
-                      <input className="input-field font-mono font-bold" placeholder="Ex: B"
+                      <input className="input-field font-mono font-bold" placeholder="Ex: 2"
                         value={lot.quadra}
                         onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, quadra: e.target.value.toUpperCase()} : l))}/>
                     </div>
@@ -13515,11 +13557,40 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                         onChange={e => setLotesAdicionais(prev => prev.map((l,i) => i===idx ? {...l, lotes: e.target.value} : l))}/>
                     </div>
                   </div>
+                  {/* Preços individuais por lote — adicionais */}
+                  {precosDiferentes && lot.lotes && (
+                    <div className="pt-2 border-t border-slate-100 space-y-2">
+                      <p className="text-[9px] font-black uppercase text-amber-600">💰 Preços — Quadra {lot.quadra || '?'}</p>
+                      {lot.lotes.split(',').map((l:string) => l.trim()).filter(Boolean).map((loteNum:string) => (
+                        <div key={loteNum} className="grid grid-cols-3 gap-1.5">
+                          <div className="col-span-3"><p className="text-[9px] font-black text-slate-500">Lote {loteNum}</p></div>
+                          <div>
+                            <label className="text-[9px] text-slate-400 block mb-0.5">Entrada</label>
+                            <input className="input-field text-xs font-mono" placeholder="R$ 0"
+                              value={(lot as any)[`entrada_${loteNum}`] || ''}
+                              onChange={e => setLotesAdicionais(prev => prev.map((l2,i) => i===idx ? {...l2, [`entrada_${loteNum}`]: e.target.value} : l2))}/>
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-slate-400 block mb-0.5">Parcelas</label>
+                            <input className="input-field text-xs font-mono" placeholder="0x"
+                              value={(lot as any)[`parcelas_${loteNum}`] || ''}
+                              onChange={e => setLotesAdicionais(prev => prev.map((l2,i) => i===idx ? {...l2, [`parcelas_${loteNum}`]: e.target.value} : l2))}/>
+                          </div>
+                          <div>
+                            <label className="text-[9px] text-slate-400 block mb-0.5">Valor</label>
+                            <input className="input-field text-xs font-mono" placeholder="R$ 0"
+                              value={(lot as any)[`valor_${loteNum}`] || ''}
+                              onChange={e => setLotesAdicionais(prev => prev.map((l2,i) => i===idx ? {...l2, [`valor_${loteNum}`]: e.target.value} : l2))}/>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                   <button type="button"
                     onClick={() => setLotesAdicionais(prev => prev.filter((_,i) => i !== idx))}
-                    className="text-[10px] text-red-400 hover:text-red-600 font-bold flex items-center gap-1">
+                    className="text-[10px] text-red-400 hover:text-red-600 font-bold flex items-center gap-1 pt-1">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    Remover esta quadra
+                    Remover
                   </button>
                 </div>
               ))}
