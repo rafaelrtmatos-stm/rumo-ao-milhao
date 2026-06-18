@@ -175,17 +175,12 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
         });
       }
 
-      // 4. Imagem do mapa separada — só enviar se não for muito grande (limite Vercel 4.5MB)
-      // Se já tem URL do Supabase, não precisa enviar Base64
+      // 4. Imagem do mapa — NUNCA enviar Base64 pelo servidor (limite Vercel 4.5MB)
+      // O upload de imagem vai direto para o Supabase via uploadMapaImagem()
+      // Aqui só limpamos o Base64 do servidor se ainda existir
       const base64Val = (item as any).mapaImagemBase64 || '';
-      const jaTemUrl = !!(item as any).mapaImagemUrl;
-      const base64Size = base64Val.length;
-      if (base64Val && !jaTemUrl && base64Size < 3_000_000) {
-        await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
-          mapaImagemBase64: base64Val,
-        });
-      } else if (base64Val && (jaTemUrl || base64Size >= 3_000_000)) {
-        // Já tem URL do Supabase ou Base64 muito grande — limpar o Base64 no servidor
+      if (base64Val) {
+        // Limpar Base64 do servidor — já foi ou será enviado ao Supabase
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
           mapaImagemBase64: null,
         });
