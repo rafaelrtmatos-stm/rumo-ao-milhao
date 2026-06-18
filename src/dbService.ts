@@ -175,10 +175,19 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
         });
       }
 
-      // 4. Imagem do mapa separada
-      if ((item as any).mapaImagemBase64) {
+      // 4. Imagem do mapa separada — só enviar se não for muito grande (limite Vercel 4.5MB)
+      // Se já tem URL do Supabase, não precisa enviar Base64
+      const base64Val = (item as any).mapaImagemBase64 || '';
+      const jaTemUrl = !!(item as any).mapaImagemUrl;
+      const base64Size = base64Val.length;
+      if (base64Val && !jaTemUrl && base64Size < 3_000_000) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
-          mapaImagemBase64: (item as any).mapaImagemBase64,
+          mapaImagemBase64: base64Val,
+        });
+      } else if (base64Val && (jaTemUrl || base64Size >= 3_000_000)) {
+        // Já tem URL do Supabase ou Base64 muito grande — limpar o Base64 no servidor
+        await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
+          mapaImagemBase64: null,
         });
       }
 
