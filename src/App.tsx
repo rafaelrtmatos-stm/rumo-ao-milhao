@@ -4689,6 +4689,24 @@ const LotDashboard = ({
     if (massaAcao === "alinharHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "horizontal"); return; }
     if (massaAcao === "alinharVertical") { alinharMarcadoresSelecionados(massaSelIds, "vertical"); return; }
     if (massaAcao === "distribuirHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "distribuirHorizontal"); return; }
+    if (massaAcao === "clonar") {
+      const offset = 3;
+      const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+      const selecionados = currentPontos.filter((p: any) => massaSelIds.has(p.id));
+      if (selecionados.length === 0) { alert("Nenhuma bolinha selecionada."); return; }
+      const clones = selecionados.map((p: any) => ({
+        ...p,
+        id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+        linhaSeqId: p.linhaSeqId ? `seq-clone-${Date.now()}` : undefined,
+        xPercent: Math.min(99, p.xPercent + offset),
+        yPercent: Math.min(99, p.yPercent + offset),
+      }));
+      pushUndo(currentPontos, `Clonar ${selecionados.length} selecionados`);
+      const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...currentPontos, ...clones] } as any, sales);
+      persistDev(nextDev);
+      setMassaSelIds(new Set());
+      return;
+    }
     if (massaAcao === "excluir") {
       const ok = window.confirm(`Excluir ${massaSelIds.size} bolinha(s)? Esta ação não pode ser desfeita.`);
       if (!ok) return;
@@ -5240,14 +5258,14 @@ const LotDashboard = ({
           {/* PAINEL LATERAL FLUTUANTE — só desktop */}
           {painelRecolhido ? (
             // Painel recolhido - apenas barra vertical
-            <div className="hidden lg:flex lg:absolute lg:top-3 lg:right-3 lg:z-20">
+            <div className="hidden lg:flex lg:absolute lg:top-3 lg:left-3 lg:z-20">
               <button
                 type="button"
                 onClick={() => setPainelRecolhido(false)}
                 className="flex flex-col items-center justify-center gap-2 px-2 py-6 rounded-xl bg-white shadow-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all group"
                 title="Expandir painel de opções"
               >
-                <ChevronLeft size={16} className="group-hover:scale-110 transition-transform" />
+                <ChevronRight size={16} className="group-hover:scale-110 transition-transform" />
                 <div className="flex flex-col gap-0.5" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
                   <span className="text-[10px] font-black uppercase tracking-widest">OPÇÕES</span>
                 </div>
@@ -5255,15 +5273,15 @@ const LotDashboard = ({
             </div>
           ) : (
             // Painel expandido
-            <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:right-3 lg:z-20 flex flex-col gap-2 transition-all duration-300 lg:mt-0 ${isEditingMap ? "flex w-full lg:w-[280px]" : "hidden"}`}>
+            <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:left-3 lg:z-30 flex flex-col gap-2 transition-all duration-300 lg:mt-0 lg:shadow-2xl lg:rounded-2xl ${isEditingMap ? "flex w-full lg:w-[300px]" : "hidden"}`}>
               {/* Botao recolher */}
               <button
                 type="button"
                 onClick={() => setPainelRecolhido(true)}
-                className="self-end w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex transition-all hover:scale-105"
+                className="self-start w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex transition-all hover:scale-105"
                 title="Recolher painel"
               >
-                <ChevronRight size={16} />
+                <ChevronLeft size={16} />
               </button>
               <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
             {/* MODO VISUALIZAÇÃO */}
@@ -5471,6 +5489,7 @@ const LotDashboard = ({
                   <option value="alinharHorizontal">Alinhar horizontalmente</option>
                   <option value="alinharVertical">Alinhar verticalmente</option>
                   <option value="distribuirHorizontal">Distribuir/alinhar pela sequência</option>
+                  <option value="clonar">⧉ Clonar selecionados</option>
                 </select>
                 <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
               </div>
@@ -5969,26 +5988,7 @@ const LotDashboard = ({
               return (
                 <>
                   <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
-                  {/* Fileira: clonar quadra inteira */}
-                  {fileira.length > 1 && (
-                    <button className="w-full py-2 rounded-xl text-[11px] font-black uppercase bg-violet-100 text-violet-800 hover:bg-violet-200"
-                      onClick={() => {
-                        const offset = 3;
-                        const clones = fileira.map((p: any) => ({
-                          ...p,
-                          id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                          linhaSeqId: `seq-clone-${Date.now()}`,
-                          xPercent: Math.min(99, p.xPercent + offset),
-                          yPercent: Math.min(99, p.yPercent + offset),
-                        }));
-                        pushUndo(currentPontos, `Clonar fileira Q${ponto.quadra}`);
-                        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...currentPontos, ...clones] } as any, sales);
-                        persistDev(nextDev);
-                        setSelectedPoint(null);
-                      }}>
-                      ⧉ Clonar fileira inteira ({fileira.length} lotes)
-                    </button>
-                  )}
+                  {/* Clonagem movida para Edição em massa → Escolher ação → Clonar selecionados */}
                   {/* Fileira: editar extremo redefine quantidade */}
                   {fileira.length > 1 && (isFirst || isLast) && (
                     <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 space-y-2">
