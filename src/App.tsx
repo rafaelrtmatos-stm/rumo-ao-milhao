@@ -8807,6 +8807,8 @@ const EmpreendimentosSection = ({
     // Para cada quadra do script, detectar lotes sobressalentes no gerenciador
     const lotesParaRemover: { quadra: string; lote: string }[] = [];
     const lotesSobressalentesNegar: { quadra: string; lote: string }[] = []; // usuário disse NÃO
+    const sobressalentesComVenda: { quadra: string; lote: string; cliente: string }[] = [];
+    const sobressalentesSemVenda: { quadra: string; lote: string }[] = [];
 
     for (const [quadra, lotesScript] of Object.entries(scriptPorQuadra)) {
       const lotesGerenciador = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[quadra]);
@@ -8814,30 +8816,43 @@ const EmpreendimentosSection = ({
       const sobressalentes = lotesGerenciador.filter(l => !scriptSet.has(String(l).toUpperCase()));
 
       for (const lote of sobressalentes) {
-        // Verificar se tem bolinha no mapa
-        const temBolinha = ((lotRegDev as any).mapaPontos || []).some((p: any) =>
-          String(p.quadra).toUpperCase() === String(quadra).toUpperCase() &&
-          String(p.lote).toUpperCase() === String(lote).toUpperCase()
-        );
-        // Verificar se tem venda
         const venda = sales.find(v =>
           v.empreendimentoId === lotRegDev.id &&
           String(v.quadra) === String(quadra) &&
           String(v.numeroLote) === String(lote)
         );
-
-        let aviso = "O lote Q" + quadra + ":" + lote + " nao esta no script.";
-        if (temBolinha) aviso += "\n\u26A0 Este lote TEM BOLINHA no mapa.";
-        if (venda) aviso += "\n\uD83D\uDD34 Tem VENDA vinculada (" + ((venda as any)?.clienteNome || "cliente") + ").";
-        aviso += "\n\nDeseja EXCLUIR este lote do gerenciador?";
-
-        const excluir = window.confirm(aviso);
-        if (excluir) {
-          lotesParaRemover.push({ quadra, lote });
+        if (venda) {
+          sobressalentesComVenda.push({ quadra, lote, cliente: (venda as any)?.clienteNome || "cliente" });
         } else {
-          lotesSobressalentesNegar.push({ quadra, lote });
+          sobressalentesSemVenda.push({ quadra, lote });
         }
       }
+    }
+
+    // Mostrar UM resumo único em vez de confirm por lote
+    const totalSobressalentes = sobressalentesComVenda.length + sobressalentesSemVenda.length;
+    if (totalSobressalentes > 0) {
+      let resumo = totalSobressalentes + " lote(s) estão no gerenciador mas NÃO aparecem no script colado:\n\n";
+      if (sobressalentesComVenda.length > 0) {
+        resumo += "⚠️ " + sobressalentesComVenda.length + " COM VENDA vinculada (não serão excluídos automaticamente):\n";
+        resumo += sobressalentesComVenda.slice(0, 10).map(l => "Q" + l.quadra + ":" + l.lote + " (" + l.cliente + ")").join(", ");
+        if (sobressalentesComVenda.length > 10) resumo += "... e mais " + (sobressalentesComVenda.length - 10);
+        resumo += "\n\n";
+      }
+      if (sobressalentesSemVenda.length > 0) {
+        resumo += sobressalentesSemVenda.length + " SEM venda — Q/Lote: ";
+        resumo += sobressalentesSemVenda.slice(0, 15).map(l => "Q" + l.quadra + ":" + l.lote).join(", ");
+        if (sobressalentesSemVenda.length > 15) resumo += "... e mais " + (sobressalentesSemVenda.length - 15);
+        resumo += "\n\nEXCLUIR esses lotes sem venda do gerenciador?";
+      }
+      const excluirSemVenda = sobressalentesSemVenda.length > 0 ? window.confirm(resumo) : (alert(resumo), false);
+      if (excluirSemVenda) {
+        lotesParaRemover.push(...sobressalentesSemVenda);
+      } else {
+        lotesSobressalentesNegar.push(...sobressalentesSemVenda);
+      }
+      // Lotes com venda NUNCA são excluídos automaticamente
+      lotesSobressalentesNegar.push(...sobressalentesComVenda.map(({quadra, lote}) => ({quadra, lote})));
     }
 
     // ── 2. Atualizar lotesInfo (status das bolinhas) ─────────────────────────
