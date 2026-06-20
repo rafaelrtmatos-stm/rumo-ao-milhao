@@ -16898,8 +16898,50 @@ VENDEDOR: ${vendedorLabel}`;
                         </p>
                       </div>
                       <div>
-                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Quadra/Lote</p>
-                        <p className="font-bold text-slate-800">Q:{selectedVenda.quadra} / L:{selectedVenda.numeroLote}</p>
+                        <p className="text-[10px] font-bold text-slate-400 uppercase mb-1">Localização</p>
+                        {(() => {
+                          const lotesArr = String(selectedVenda.numeroLote || '').split(',').map(x => x.trim()).filter(Boolean);
+                          const pDif = (selectedVenda as any)?.precosDiferentes;
+                          const pInd = (selectedVenda as any)?.precosIndividuais || {};
+                          if (!pDif || lotesArr.length <= 1) {
+                            const txt = lotesArr.length > 1
+                              ? `Lotes ${lotesArr.join(', ')} da Quadra ${selectedVenda.quadra}`
+                              : `Lote ${lotesArr[0] || selectedVenda.numeroLote} da Quadra ${selectedVenda.quadra}`;
+                            return <p className="font-bold text-slate-800">{txt}</p>;
+                          }
+                          return lotesArr.map((lNum) => {
+                            const e = pInd[`preco_${selectedVenda.quadra}_${lNum}_entrada`] || '';
+                            const p = pInd[`preco_${selectedVenda.quadra}_${lNum}_parcelas`] || '';
+                            const v = pInd[`preco_${selectedVenda.quadra}_${lNum}_valor`] || '';
+                            const preco = (e || (p && v)) ? ` · ${e ? `Entrada: R$${e} ` : ''}${p && v ? `${p}×R$${v}` : ''}` : '';
+                            return (
+                              <p key={lNum} className="font-bold text-slate-800">
+                                Lote {lNum} da Quadra {selectedVenda.quadra}{preco}
+                              </p>
+                            );
+                          });
+                        })()}
+                        {(selectedVenda as any)?.lotesAdicionais?.filter((l: any) => l.quadra && (l.lotes || l.lote)).map((l: any, li: number) => {
+                          const pDif = (selectedVenda as any)?.precosDiferentes;
+                          const lotesArr = String(l.lotes || l.lote || '').split(',').map((x: string) => x.trim()).filter(Boolean);
+                          if (!pDif || lotesArr.length <= 1) {
+                            const txt = lotesArr.length > 1
+                              ? `Lotes ${lotesArr.join(', ')} da Quadra ${l.quadra}`
+                              : `Lote ${lotesArr[0] || ''} da Quadra ${l.quadra}`;
+                            return <p key={li} className="font-bold text-slate-800">{txt}</p>;
+                          }
+                          return lotesArr.map((lNum: string) => {
+                            const e = (l as any)[`entrada_${lNum}`] || '';
+                            const p = (l as any)[`parcelas_${lNum}`] || '';
+                            const v = (l as any)[`valor_${lNum}`] || '';
+                            const preco = (e || (p && v)) ? ` · ${e ? `Entrada: R$${e} ` : ''}${p && v ? `${p}×R$${v}` : ''}` : '';
+                            return (
+                              <p key={`${li}-${lNum}`} className="font-bold text-slate-800">
+                                Lote {lNum} da Quadra {l.quadra}{preco}
+                              </p>
+                            );
+                          });
+                        })}
                       </div>
                       {selectedVenda.rua && (
                         <div>
