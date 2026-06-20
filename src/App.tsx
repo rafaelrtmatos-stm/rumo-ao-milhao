@@ -8785,7 +8785,8 @@ const EmpreendimentosSection = ({
   };
 
   const importarScriptFromModal = () => {
-    if (!lotRegDev || !scriptPasteText.trim()) return;
+    if (!lotRegDev) { alert("Erro: nenhum empreendimento selecionado. Feche e abra o gerenciador de lotes novamente."); return; }
+    if (!scriptPasteText.trim()) { alert("Cole o texto do script antes de importar."); return; }
     const parsed = parseLotScriptByQuadra(scriptPasteText);
     if (parsed.errors.length > 0) {
       alert("Corrija o script:\n\n" + parsed.errors.slice(0, 5).join("\n"));
@@ -8871,7 +8872,7 @@ const EmpreendimentosSection = ({
         return `Q${quadra}:${lote} → ${(v as any)?.clienteNome || v?.clienteId || "?"}`;
       }).join("\n");
       const ok = window.confirm("⚠️ Lotes com X têm VENDA vinculada:\n\n" + msg + "\n\nExcluir mesmo assim?");
-      if (!ok) return;
+      if (!ok) { setScriptMsg("❌ Importação cancelada — lotes com venda não foram excluídos."); return; }
     }
     // Processar exclusões via X
     itensExcluir.forEach(({ quadra, lote }) => {
@@ -8926,9 +8927,9 @@ const EmpreendimentosSection = ({
     setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(devAtualizado, newLotesInfo, sales) : null);
 
     const removidos = lotesParaRemover.length;
-    setScriptMsg(
-      `✓ Importado: ${created} criado(s), ${updated} atualizado(s)${excluidos > 0 ? `, ${excluidos} excluído(s) via X` : ""}${removidos > 0 ? `, ${removidos} removido(s) do gerenciador` : ""}. Gerenciador sincronizado!`
-    );
+    const msgFinal = `✓ Importado com sucesso!\n\n${created} lote(s) criado(s)\n${updated} lote(s) atualizado(s)${excluidos > 0 ? `\n${excluidos} excluído(s) via X` : ""}${removidos > 0 ? `\n${removidos} removido(s) do gerenciador` : ""}\n\nGerenciador sincronizado!`;
+    setScriptMsg(msgFinal);
+    alert(msgFinal);
     setScriptPasteText("");
   };
 
