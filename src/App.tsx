@@ -730,19 +730,54 @@ function deleteLotFromEmpreendimento(dev: Empreendimento, key: string, vendas: V
 function applyLotesInfoPatchToEmpreendimento(dev: Empreendimento, info: Record<string, any>, vendas: Venda[] = []): Empreendimento {
   let nextDev: Empreendimento = dev;
   const nextLotesInfo: Record<string, any> = { ...(dev.lotesInfo || {}) };
+
+  // Pré-computar quais (quadra,lote) já existem no gerenciador para evitar chamadas repetidas
+  // de ensureLotExistsInEmpreendimento (que reconstrói arrays a cada chamada).
+  const existingKeysSet = new Set<string>();
+  Object.entries(dev.lotesPorQuadra || {}).forEach(([quadraName, entry]) => {
+    getLotesDeQuadra(entry).forEach((lote) => {
+      existingKeysSet.add(`${quadraName.toUpperCase()}|${normalizeLotKeyPart(lote)}`);
+    });
+  });
+
+  const itemsToEnsure: { quadra: string; lote: string }[] = [];
+  Object.entries(info || {}).forEach(([rawKey]) => {
+    const key = rawKey.toUpperCase();
+    const [quadra, ...loteParts] = key.split("-");
+    const lote = loteParts.join("-");
+    const lookupKey = `${quadra.toUpperCase()}|${normalizeLotKeyPart(lote)}`;
+    if (!existingKeysSet.has(lookupKey)) {
+      itemsToEnsure.push({ quadra, lote });
+    }
+  });
+
+  // Só roda a criação em lote se houver lotes realmente novos (caso raro nesse fluxo)
+  if (itemsToEnsure.length > 0) {
+    nextDev = ensureLotsExistBatch(nextDev, itemsToEnsure);
+  }
+
   Object.entries(info || {}).forEach(([rawKey, rawInfo]) => {
     const key = rawKey.toUpperCase();
     const [quadra, ...loteParts] = key.split("-");
     const lote = loteParts.join("-");
-    const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, lote);
-    nextDev = ensured.dev;
-    nextLotesInfo[ensured.lotInfoKey] = { ...(nextLotesInfo[ensured.lotInfoKey] || {}), ...(rawInfo || {}) };
+    const quadraName = findQuadraName(nextDev, quadra) || normalizeLotText(quadra);
+    const lotInfoKey = getLotInfoKey(quadraName, normalizeLotText(lote));
+    nextLotesInfo[lotInfoKey] = { ...(nextLotesInfo[lotInfoKey] || {}), ...(rawInfo || {}) };
   });
+
+  // Indexar vendas ativas por chave "quadra|lote" uma única vez (evita O(pontos × vendas))
+  const vendaPorLote = new Map<string, Venda>();
+  vendas.forEach((v) => {
+    if (v.empreendimentoId !== nextDev.id) return;
+    if ((v as any).status === "cancelado") return;
+    vendaPorLote.set(`${String(v.quadra).toUpperCase()}|${String(v.numeroLote).toUpperCase()}`, v);
+  });
+
   const nextMapaPontos = ((nextDev as any).mapaPontos || []).map((ponto: any) => {
     const key = getLotInfoKey(ponto.quadra, ponto.lote);
     const changed = nextLotesInfo[key];
     if (!changed?.status) return ponto;
-    const venda = findVendaAtivaDoLote(vendas, nextDev.id, ponto.quadra, ponto.lote);
+    const venda = vendaPorLote.get(`${String(ponto.quadra).toUpperCase()}|${String(ponto.lote).toUpperCase()}`);
     return {
       ...ponto,
       status: venda ? "indisponivel" : normalizeMapaStatus(changed.status),
@@ -854,15 +889,12 @@ function ensureLotExistsInEmpreendimento(dev: Empreendimento, quadra: string, lo
   const currentLotesPorQuadra = { ...(dev.lotesPorQuadra || {}) };
   const currentEntry = currentLotesPorQuadra[quadraName] || {};
   const currentLots = getLotesDeQuadra(currentEntry);
-  const lotExistsInQuadra = currentLots.some((l) => normalizeLotKeyPart(l) === normalizeLotKeyPart(loteText));
+  const loteTextNorm = normalizeLotKeyPart(loteText);
+  const lotsSet = new Set(currentLots.map((l) => normalizeLotKeyPart(l)));
+  const lotExistsInQuadra = lotsSet.has(loteTextNorm);
 
   if (!lotExistsInQuadra) {
-    const uniqueLots: string[] = [];
-    [...currentLots, loteText].filter(Boolean).forEach((item) => {
-      if (!uniqueLots.some((existing) => normalizeLotKeyPart(existing) === normalizeLotKeyPart(item))) {
-        uniqueLots.push(item);
-      }
-    });
+    const uniqueLots = [...currentLots, loteText];
     uniqueLots.sort((a, b) => {
       const na = Number(a);
       const nb = Number(b);
@@ -883,6 +915,60 @@ function ensureLotExistsInEmpreendimento(dev: Empreendimento, quadra: string, lo
     quadraName,
     lotInfoKey,
   };
+}
+
+// Versão em lote (batch) — processa múltiplos lotes de uma vez sem recriar arrays repetidamente.
+// Usada na importação de scripts grandes (centenas de lotes) para evitar travamento da UI.
+function ensureLotsExistBatch(dev: Empreendimento, items: { quadra: string; lote: string }[]): Empreendimento {
+  let quadras = getQuadraList(dev);
+  const quadrasSet = new Set(quadras.map((q) => q.toUpperCase()));
+  const lotesPorQuadra: Record<string, any> = { ...(dev.lotesPorQuadra || {}) };
+  // Cache de Sets por quadra para lookup O(1)
+  const lotsSetCache = new Map<string, Set<string>>();
+  const lotsArrCache = new Map<string, string[]>();
+
+  for (const { quadra, lote } of items) {
+    const quadraText = normalizeLotText(quadra);
+    const loteText = normalizeLotText(lote);
+    const existingQuadra = quadras.find((q) => q.toUpperCase() === quadraText.toUpperCase());
+    const quadraName = existingQuadra || quadraText;
+    if (!existingQuadra) {
+      quadras = [...quadras, quadraName];
+      quadrasSet.add(quadraName.toUpperCase());
+    }
+
+    let lotsSet = lotsSetCache.get(quadraName);
+    let lotsArr = lotsArrCache.get(quadraName);
+    if (!lotsSet) {
+      lotsArr = getLotesDeQuadra(lotesPorQuadra[quadraName] || {});
+      lotsSet = new Set(lotsArr.map((l) => normalizeLotKeyPart(l)));
+      lotsSetCache.set(quadraName, lotsSet);
+      lotsArrCache.set(quadraName, lotsArr);
+    }
+
+    const loteNorm = normalizeLotKeyPart(loteText);
+    if (!lotsSet.has(loteNorm)) {
+      lotsSet.add(loteNorm);
+      lotsArr!.push(loteText);
+    }
+  }
+
+  // Ordenar e salvar cada quadra alterada apenas uma vez
+  for (const [quadraName, lotsArr] of lotsArrCache.entries()) {
+    const sorted = [...lotsArr].sort((a, b) => {
+      const na = Number(a);
+      const nb = Number(b);
+      if (Number.isFinite(na) && Number.isFinite(nb)) return na - nb;
+      return String(a).localeCompare(String(b), "pt-BR", { numeric: true });
+    });
+    lotesPorQuadra[quadraName] = { especificos: sorted.join(",") };
+  }
+
+  return {
+    ...dev,
+    quadras: quadras.join(", "),
+    lotesPorQuadra,
+  } as Empreendimento;
 }
 
 function updateLoteStatusInEmpreendimento(
@@ -8726,6 +8812,7 @@ const EmpreendimentosSection = ({
   const [showPrecosInput, setShowPrecosInput] = useState(false);
   const [showScriptModal, setShowScriptModal] = useState(false);
   const [scriptPasteText, setScriptPasteText] = useState("");
+  const [importandoScript, setImportandoScript] = useState(false);
   const [scriptMsg, setScriptMsg] = useState("");
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
@@ -8787,6 +8874,19 @@ const EmpreendimentosSection = ({
   const importarScriptFromModal = () => {
     if (!lotRegDev) { alert("Erro: nenhum empreendimento selecionado. Feche e abra o gerenciador de lotes novamente."); return; }
     if (!scriptPasteText.trim()) { alert("Cole o texto do script antes de importar."); return; }
+    setImportandoScript(true);
+    // setTimeout(0) força o navegador a renderizar o "Processando..." antes do trabalho pesado e síncrono começar
+    setTimeout(() => {
+      try {
+        executarImportacaoScript();
+      } finally {
+        setImportandoScript(false);
+      }
+    }, 30);
+  };
+
+  const executarImportacaoScript = () => {
+    if (!lotRegDev) return;
     const parsed = parseLotScriptByQuadra(scriptPasteText);
     if (parsed.errors.length > 0) {
       alert("Corrija o script:\n\n" + parsed.errors.slice(0, 5).join("\n"));
@@ -11066,11 +11166,16 @@ const EmpreendimentosSection = ({
                     />
                   </div>
                 <button
-                  disabled={!scriptPasteText.trim()}
+                  disabled={!scriptPasteText.trim() || importandoScript}
                   onClick={importarScriptFromModal}
-                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors ${scriptPasteText.trim() ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${scriptPasteText.trim() && !importandoScript ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
                 >
-                  Importar Script
+                  {importandoScript ? (
+                    <>
+                      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
+                      Processando lotes...
+                    </>
+                  ) : "Importar Script"}
                 </button>
               </div>
             </motion.div>
