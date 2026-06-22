@@ -3795,26 +3795,23 @@ const LotDashboard = ({
     try {
       const url = await uploadMapaImagem(file, localDev.id, (pct) => setMapUploadProgress(pct));
       precacheMapaUrl(url); // pré-cacheia para offline
-      // Detectar orientação real da imagem e salvar referência A4
-      const imgRef = new Image();
-      imgRef.crossOrigin = 'anonymous';
-      imgRef.onload = () => {
-        const nw = imgRef.naturalWidth;
-        const nh = imgRef.naturalHeight;
-        const isLandscape = nw > nh;
-        // A4 a 96dpi: portrait=794×1123px, landscape=1123×794px
-        // Usamos a largura como âncora pois o mapa sempre ocupa 100% da largura
-        const a4RefWidth = isLandscape ? 1123 : 794;
-        persistDev({
-          ...localDev,
-          mapaImagemUrl: url,
-          mapaMarkerReferenceWidth: a4RefWidth,
-          mapaOrientacao: isLandscape ? "landscape" : "portrait",
-          mapaImagemNaturalWidth: nw,
-          mapaImagemNaturalHeight: nh,
-        } as any);
-      };
-      imgRef.src = url;
+      // Detectar orientação real da imagem ANTES de salvar — evita dois persistDev concorrentes
+      // (a chamada duplicada causava race condition: o save feito dentro do onload, baseado em
+      // um snapshot antigo de localDev, podia sobrescrever o mapaImagemUrl recém-salvo com vazio)
+      const { isLandscape, nw, nh } = await new Promise<{ isLandscape: boolean; nw: number; nh: number }>((resolve) => {
+        const imgRef = new Image();
+        imgRef.crossOrigin = 'anonymous';
+        imgRef.onload = () => {
+          resolve({ isLandscape: imgRef.naturalWidth > imgRef.naturalHeight, nw: imgRef.naturalWidth, nh: imgRef.naturalHeight });
+        };
+        imgRef.onerror = () => {
+          // Se falhar ao carregar (ex: CORS), assume portrait como padrão e segue o save mesmo assim
+          resolve({ isLandscape: false, nw: 0, nh: 0 });
+        };
+        imgRef.src = url;
+      });
+      // A4 a 96dpi: portrait=794×1123px, landscape=1123×794px
+      const a4RefWidth = isLandscape ? 1123 : 794;
       persistDev({
         ...localDev,
         mapaImagemUrl: url,
@@ -3826,7 +3823,10 @@ const LotDashboard = ({
         mapaPdfOriginalName: "",
         mapaPontos: mapaPontos,
         mapaAltaResolucao: true,
-        mapaMarkerReferenceWidth: 1000,
+        mapaMarkerReferenceWidth: a4RefWidth,
+        mapaOrientacao: isLandscape ? "landscape" : "portrait",
+        mapaImagemNaturalWidth: nw,
+        mapaImagemNaturalHeight: nh,
       } as Empreendimento);
       setMode("mapa");
       setTimeout(() => setMapUploadProgress(0), 2000);

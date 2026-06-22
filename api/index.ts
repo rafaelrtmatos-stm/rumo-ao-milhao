@@ -764,12 +764,16 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
       .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
     if (existing?.data) {
       const prev = existing.data as any;
+      const estaDefinindoImagemAlternativa = !!(item.mapaImagemBase64 || item.mapaPdfOriginalBase64 || item.mapaPdfUrl);
       dataToSave = {
         ...item,
         // Preservar imagens se não vieram no payload
         ...((!item.mapaImagemBase64 && prev.mapaImagemBase64) ? { mapaImagemBase64: prev.mapaImagemBase64 } : {}),
         ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
         ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
+        // Proteção contra race condition: nunca apagar uma mapaImagemUrl já salva com um payload vazio,
+        // exceto quando uma imagem alternativa (Base64/PDF) está sendo definida nesse mesmo save (limpeza intencional).
+        ...((!item.mapaImagemUrl && prev.mapaImagemUrl && !estaDefinindoImagemAlternativa) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
         // CRÍTICO: preservar mapaPontos e lotesInfo — nunca apagar bolinhas!
         ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
         ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
