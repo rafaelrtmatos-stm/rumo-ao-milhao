@@ -106,6 +106,10 @@ import PickLocationMap from "./components/PickLocationMap";
 import { uploadMapaImagem, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
 import ReservaPublica from "./components/ReservaPublica";
+import * as pdfjsLibLocal from "pdfjs-dist";
+// Vite empacota o worker como asset local (sem depender de CDN externo como cdnjs.cloudflare.com,
+// que pode ser bloqueado por extensões de segurança/antivírus/políticas de rede corporativa)
+import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.min.js?url";
 
 const OFFLINE_DRAFTS_KEY = "venda_rascunhos_offline";
 
@@ -3179,23 +3183,15 @@ const LotDashboard = ({
   }, [mapAction]);
 
   const loadPdfJsIfNeeded = async () => {
-    if ((window as any).pdfjsLib) return (window as any).pdfjsLib;
-    await new Promise<void>((resolve, reject) => {
-      const existing = document.querySelector('script[data-pdfjs="true"]') as HTMLScriptElement | null;
-      if (existing) {
-        existing.addEventListener("load", () => resolve(), { once: true });
-        existing.addEventListener("error", () => reject(new Error("Falha ao carregar PDF.js")), { once: true });
-        return;
-      }
-      const script = document.createElement("script");
-      script.src = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
-      script.dataset.pdfjs = "true";
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Falha ao carregar PDF.js"));
-      document.head.appendChild(script);
-    });
-    (window as any).pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
-    return (window as any).pdfjsLib;
+    // pdf.js agora vem empacotado localmente no build (via pdfjs-dist), sem depender
+    // de CDN externo (cdnjs.cloudflare.com), que pode ser bloqueado por extensões de
+    // segurança, antivírus corporativo ou políticas de rede — causa raiz de falhas
+    // intermitentes ao renderizar mapas em PDF.
+    if (!(pdfjsLibLocal as any).GlobalWorkerOptions.workerSrc) {
+      (pdfjsLibLocal as any).GlobalWorkerOptions.workerSrc = pdfjsWorkerUrl;
+    }
+    (window as any).pdfjsLib = pdfjsLibLocal;
+    return pdfjsLibLocal as any;
   };
 
   const arrayBufferToDataUrl = (buffer: ArrayBuffer, mime = "application/pdf") => {
