@@ -12249,8 +12249,14 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
         return;
       }
       if (lotSituation.status === "indisponivel") {
-        alert("Este lote está marcado como indisponível no empreendimento. Libere o lote ou escolha outro antes de continuar.");
-        return;
+        // Aqui é garantido que NÃO existe venda ativa vinculada a este lote
+        // (getLotStatusForSale já retorna "vendido" antes disso, se houver).
+        // Por isso, em vez de bloquear, apenas avisamos e deixamos o usuário decidir.
+        const continuar = window.confirm(
+          "⚠️ Este lote está marcado como indisponível no empreendimento (sem venda vinculada).\n\n" +
+          "Deseja continuar e registrar esta venda mesmo assim?"
+        );
+        if (!continuar) return;
       }
       if (!lotSituation.exists) {
         setPendingMissingLotSale({ venda, cliente });
