@@ -14261,6 +14261,8 @@ const ContratosSection = ({
   const [pixQRData, setPixQRData] = useState<string>('');
   const [reciboObservacao, setReciboObservacao] = useState("");
   const [comCarimbo, setComCarimbo] = useState(false);
+  const [reciboCidade, setReciboCidade] = useState('');
+  const [reciboCorretor, setReciboCorretor] = useState('');
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -16894,6 +16896,26 @@ VENDEDOR: ${vendedorLabel}`;
                   </span>
                   <input type="checkbox" checked={comCarimbo} onChange={(e) => setComCarimbo(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
                 </label>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Corretor</label>
+                    <input className="input-field text-sm"
+                      placeholder="Nome do corretor"
+                      value={reciboCorretor}
+                      onChange={e => setReciboCorretor(e.target.value)}/>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Cidade</label>
+                    <select className="input-field text-sm"
+                      value={reciboCidade}
+                      onChange={e => setReciboCidade(e.target.value)}>
+                      <option value="">Selecionar</option>
+                      <option value="Santarém">Santarém</option>
+                      <option value="Alenquer">Alenquer</option>
+                      <option value="Monte Alegre">Monte Alegre</option>
+                    </select>
+                  </div>
+                </div>
                 <div className="mb-3">
                   <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Observação no recibo <span className="font-normal text-slate-400">(opcional)</span></label>
                   <textarea
@@ -16951,7 +16973,145 @@ VENDEDOR: ${vendedorLabel}`;
                 </div>
               </div>
               <div className="flex-1 overflow-auto p-4 sm:p-8 bg-slate-100/50">
-                <div ref={reciboRef} style={{width:'1080px',height:'1350px',flexShrink:0,margin:'0 auto',position:'relative'}} className="bg-white p-[80px] text-black font-sans border border-slate-200 flex flex-col">
+                <div ref={reciboRef} style={{width:'900px',height:'1260px',flexShrink:0,margin:'0 auto',position:'relative',fontFamily:'-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif'}} className="bg-white border border-slate-200 flex flex-col overflow-hidden rounded-[24px]">
+                  {/* CABEÇALHO */}
+                  <div style={{background:'#1a4a1a',padding:'36px 40px 32px',textAlign:'center',color:'white',flexShrink:0}}>
+                    <p style={{fontSize:'13px',fontWeight:800,letterSpacing:'3px',textTransform:'uppercase',opacity:0.65,marginBottom:'10px'}}>
+                      {(config as any).nomeFantasia || 'Imobiliária'}
+                    </p>
+                    <h1 style={{fontSize:'28px',fontWeight:800,marginBottom:'6px',letterSpacing:'-0.5px'}}>Recibo de Venda</h1>
+                    <p style={{fontSize:'13px',opacity:0.6}}>
+                      {new Date().toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'})}
+                    </p>
+                  </div>
+
+                  {/* VALOR EM DESTAQUE */}
+                  <div style={{background:'#f5fff5',borderBottom:'1px solid #e0f0e0',padding:'24px 40px',textAlign:'center',flexShrink:0}}>
+                    <p style={{fontSize:'11px',fontWeight:800,color:'#888',textTransform:'uppercase',letterSpacing:'1.5px',marginBottom:'8px'}}>Valor recebido</p>
+                    <p style={{fontSize:'40px',fontWeight:800,color:'#1a4a1a',letterSpacing:'-1.5px',lineHeight:1}}>
+                      {new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(
+                        selectedVenda.quantidadeParcelas === 0 ? selectedVenda.valorLote : selectedVenda.valorEntrada
+                      )}
+                    </p>
+                    <p style={{fontSize:'12px',color:'#888',marginTop:'6px'}}>
+                      {selectedVenda.quantidadeParcelas === 0 ? 'Pagamento à vista' : 'Entrada / Sinal'}
+                    </p>
+                  </div>
+
+                  {/* CORPO */}
+                  <div style={{flex:1,padding:'0 40px',overflowY:'hidden'}}>
+
+                    {/* SEÇÃO: IMÓVEL */}
+                    <div style={{paddingTop:'20px',paddingBottom:'4px'}}>
+                      <p style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'2px',color:'#aaa',paddingBottom:'8px',borderBottom:'1px solid #f0f0f0',marginBottom:'4px'}}>Imóvel</p>
+                      {[
+                        ['Empreendimento', selectedVenda.empreendimentoNome],
+                        ['Cidade', reciboCidade || (() => { const d = developments.find(x => x.id === selectedVenda.empreendimentoId); return d?.cidade || 'Santarém'; })()],
+                      ].map(([label, valor]) => (
+                        <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                          <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>{label}</span>
+                          <span style={{fontSize:'13px',color:'#1a4a1a',fontWeight:700,textAlign:'right'}}>{valor}</span>
+                        </div>
+                      ))}
+                      {/* Lotes por extenso */}
+                      {(() => {
+                        const lotesArr = String(selectedVenda.numeroLote || '').split(',').map((x:string) => x.trim()).filter(Boolean);
+                        const txt = lotesArr.length > 1
+                          ? `Lotes ${lotesArr.join(', ')} da Quadra ${selectedVenda.quadra}`
+                          : `Lote ${lotesArr[0] || selectedVenda.numeroLote} da Quadra ${selectedVenda.quadra}`;
+                        return (
+                          <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Lote / Quadra</span>
+                            <span style={{fontSize:'13px',color:'#111',fontWeight:700,textAlign:'right'}}>{txt}</span>
+                          </div>
+                        );
+                      })()}
+                      {(selectedVenda as any)?.lotesAdicionais?.filter((l:any)=>l.quadra&&(l.lotes||l.lote)).map((l:any,li:number)=>{
+                        const lotesArr = String(l.lotes||l.lote||'').split(',').map((x:string)=>x.trim()).filter(Boolean);
+                        const txt = lotesArr.length>1?`Lotes ${lotesArr.join(', ')} da Quadra ${l.quadra}`:`Lote ${lotesArr[0]||''} da Quadra ${l.quadra}`;
+                        return (
+                          <div key={li} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Lote adicional</span>
+                            <span style={{fontSize:'13px',color:'#111',fontWeight:700,textAlign:'right'}}>{txt}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* SEÇÃO: COMPRADOR */}
+                    <div style={{paddingTop:'16px',paddingBottom:'4px'}}>
+                      <p style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'2px',color:'#aaa',paddingBottom:'8px',borderBottom:'1px solid #f0f0f0',marginBottom:'4px'}}>Comprador</p>
+                      {[
+                        ['Nome', selectedVenda.clienteNome],
+                        ['CPF', client?.cpf || '—'],
+                      ].map(([label, valor]) => (
+                        <div key={label} style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                          <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>{label}</span>
+                          <span style={{fontSize:'13px',color:'#111',fontWeight:700,textAlign:'right'}}>{valor}</span>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* SEÇÃO: CONDIÇÕES */}
+                    <div style={{paddingTop:'16px',paddingBottom:'4px'}}>
+                      <p style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'2px',color:'#aaa',paddingBottom:'8px',borderBottom:'1px solid #f0f0f0',marginBottom:'4px'}}>Condições de pagamento</p>
+                      {selectedVenda.valorLote > 0 && (
+                        <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                          <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Valor total</span>
+                          <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorLote)}</span>
+                        </div>
+                      )}
+                      {selectedVenda.quantidadeParcelas > 0 && (
+                        <>
+                          <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Entrada</span>
+                            <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorEntrada)}</span>
+                          </div>
+                          <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Parcelas</span>
+                            <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{selectedVenda.quantidadeParcelas}× {new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorParcela)}</span>
+                          </div>
+                        </>
+                      )}
+                    </div>
+
+                    {/* SEÇÃO: CORRETOR */}
+                    <div style={{paddingTop:'16px'}}>
+                      <p style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'2px',color:'#aaa',paddingBottom:'8px',borderBottom:'1px solid #f0f0f0',marginBottom:'4px'}}>Responsável</p>
+                      <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                        <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Corretor</span>
+                        <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{reciboCorretor || selectedVenda.vendedor || (config as any).nomeBeneficiario || '—'}</span>
+                      </div>
+                      {(config as any).creci && (
+                        <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
+                          <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>CRECI</span>
+                          <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{(config as any).creci}</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* OBSERVAÇÃO */}
+                    {reciboObservacao && (
+                      <div style={{marginTop:'16px',background:'#fffbeb',border:'1px solid #fde68a',borderRadius:'12px',padding:'12px 16px'}}>
+                        <p style={{fontSize:'10px',fontWeight:800,color:'#92400e',textTransform:'uppercase',letterSpacing:'1px',marginBottom:'4px'}}>Observação</p>
+                        <p style={{fontSize:'12px',color:'#78350f'}}>{reciboObservacao}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* RODAPÉ */}
+                  <div style={{background:'#f9fafb',borderTop:'1px solid #f0f0f0',padding:'16px 40px',textAlign:'center',flexShrink:0}}>
+                    <p style={{fontSize:'12px',fontWeight:700,color:'#374151',marginBottom:'3px'}}>{(config as any).nomeFantasia || 'Imobiliária'}</p>
+                    <p style={{fontSize:'11px',color:'#9ca3af'}}>{(config as any).razaoSocial || ''}{(config as any).cnpj ? ` · CNPJ: ${(config as any).cnpj}` : ''}</p>
+                    <div style={{marginTop:'12px',display:'inline-block',background:'#dcfce7',color:'#166534',fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'1px',padding:'4px 14px',borderRadius:'20px'}}>✓ Recibo confirmado</div>
+                    {comCarimbo && (
+                      <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%) rotate(-25deg)',border:'6px solid #ef4444',borderRadius:'8px',padding:'8px 20px',opacity:0.18,pointerEvents:'none'}}>
+                        <p style={{fontSize:'60px',fontWeight:900,color:'#ef4444',letterSpacing:'4px',whiteSpace:'nowrap'}}>PAGO</p>
+                        <p style={{fontSize:'14px',fontWeight:700,color:'#ef4444',textAlign:'center'}}>{new Date().toLocaleDateString('pt-BR')}</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
                   <div className="flex justify-between items-start border-b-4 border-slate-900 pb-8 mb-10">
                     <div>
                       <h1 className="text-4xl font-black italic tracking-tighter text-slate-900">RECIBO</h1>
@@ -17094,27 +17254,6 @@ VENDEDOR: ${vendedorLabel}`;
                       )}
                     </div>
                   </div>
-                  {/* Carimbo PAGO — capturado junto com o recibo no canvas */}
-                  {comCarimbo && (
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '120px',
-                      right: '80px',
-                      transform: 'rotate(-20deg)',
-                      border: '8px solid #16a34a',
-                      borderRadius: '16px',
-                      padding: '12px 36px',
-                      color: '#16a34a',
-                      fontSize: '72px',
-                      fontWeight: 900,
-                      fontFamily: 'serif',
-                      opacity: 0.75,
-                      letterSpacing: '6px',
-                      pointerEvents: 'none',
-                      userSelect: 'none',
-                    }}>PAGO<div style={{ fontSize: '18px', letterSpacing: '1px', marginTop: '4px', fontFamily: 'Arial, sans-serif' }}>{new Date().toLocaleDateString('pt-BR')}</div></div>
-                  )}
-                </div>
               </div>
             </motion.div>
           </div>
