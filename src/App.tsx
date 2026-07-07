@@ -16977,7 +16977,7 @@ VENDEDOR: ${vendedorLabel}`;
                   {/* CABEÇALHO */}
                   <div style={{background:'#1a4a1a',padding:'36px 40px 32px',textAlign:'center',color:'white',flexShrink:0}}>
                     <p style={{fontSize:'13px',fontWeight:800,letterSpacing:'3px',textTransform:'uppercase',opacity:0.65,marginBottom:'10px'}}>
-                      {(config as any).nomeFantasia || 'Imobiliária'}
+                      {(appConfig as any).nomeFantasia || 'Imobiliária'}
                     </p>
                     <h1 style={{fontSize:'28px',fontWeight:800,marginBottom:'6px',letterSpacing:'-0.5px'}}>Recibo de Venda</h1>
                     <p style={{fontSize:'13px',opacity:0.6}}>
@@ -17080,12 +17080,12 @@ VENDEDOR: ${vendedorLabel}`;
                       <p style={{fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'2px',color:'#aaa',paddingBottom:'8px',borderBottom:'1px solid #f0f0f0',marginBottom:'4px'}}>Responsável</p>
                       <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
                         <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Corretor</span>
-                        <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{reciboCorretor || selectedVenda.vendedor || (config as any).nomeBeneficiario || '—'}</span>
+                        <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{reciboCorretor || selectedVenda.vendedor || (appConfig as any).nomeBeneficiario || '—'}</span>
                       </div>
-                      {(config as any).creci && (
+                      {(appConfig as any).creci && (
                         <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
                           <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>CRECI</span>
-                          <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{(config as any).creci}</span>
+                          <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{(appConfig as any).creci}</span>
                         </div>
                       )}
                     </div>
@@ -17101,8 +17101,8 @@ VENDEDOR: ${vendedorLabel}`;
 
                   {/* RODAPÉ */}
                   <div style={{background:'#f9fafb',borderTop:'1px solid #f0f0f0',padding:'16px 40px',textAlign:'center',flexShrink:0}}>
-                    <p style={{fontSize:'12px',fontWeight:700,color:'#374151',marginBottom:'3px'}}>{(config as any).nomeFantasia || 'Imobiliária'}</p>
-                    <p style={{fontSize:'11px',color:'#9ca3af'}}>{(config as any).razaoSocial || ''}{(config as any).cnpj ? ` · CNPJ: ${(config as any).cnpj}` : ''}</p>
+                    <p style={{fontSize:'12px',fontWeight:700,color:'#374151',marginBottom:'3px'}}>{(appConfig as any).nomeFantasia || 'Imobiliária'}</p>
+                    <p style={{fontSize:'11px',color:'#9ca3af'}}>{(appConfig as any).razaoSocial || ''}{(appConfig as any).cnpj ? ` · CNPJ: ${(appConfig as any).cnpj}` : ''}</p>
                     <div style={{marginTop:'12px',display:'inline-block',background:'#dcfce7',color:'#166534',fontSize:'10px',fontWeight:800,textTransform:'uppercase',letterSpacing:'1px',padding:'4px 14px',borderRadius:'20px'}}>✓ Recibo confirmado</div>
                     {comCarimbo && (
                       <div style={{position:'absolute',top:'50%',left:'50%',transform:'translate(-50%,-50%) rotate(-25deg)',border:'6px solid #ef4444',borderRadius:'8px',padding:'8px 20px',opacity:0.18,pointerEvents:'none'}}>
