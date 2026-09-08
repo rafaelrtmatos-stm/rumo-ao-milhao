@@ -4,7 +4,7 @@
  * Armazena empreendimentos, clientes, vendas, config e fila de sync.
  */
 
-import Dexie, { Table } from 'dexie';
+import Dexie, { type Table } from 'dexie';
 import { Empreendimento, Cliente, Venda, AppConfig } from './types';
 
 // Marca de sync em cada registro

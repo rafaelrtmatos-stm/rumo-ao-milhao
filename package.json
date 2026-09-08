@@ -1,15 +1,11 @@
 {
-  "name": "react-example",
+  "name": "rumo-ao-milhao",
   "version": "0.0.0",
   "type": "module",
-  "engines": {
-    "node": "20.x"
-  },
   "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "build:frontend": "vite build",
-    "build:api": "npx esbuild api/index.ts --bundle --platform=node --format=esm --outfile=dist/server/index.mjs --external:pg-native --external:@sparticuz/chromium --external:puppeteer-core",
+    "dev": "tsx server/server.ts",
+    "build": "vite build && esbuild server/server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
+    "start": "node dist/server.cjs",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -69,6 +65,7 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.14.0",
     "@vitejs/plugin-react": "^5.0.4",
+    "@vitejs/plugin-react-swc": "^4.3.3",
     "autoprefixer": "^10.4.21",
     "esbuild": "^0.25.0",
     "tailwindcss": "^4.1.14",
