@@ -4429,8 +4429,9 @@ const LotDashboard = ({
                     className="input-field min-h-[64px] text-[11px] font-mono leading-relaxed"
                     value={(localDev as any).mapaScriptRegras ?? ""}
                     onChange={(e) => setLocalDev((d) => ({ ...d, mapaScriptRegras: e.target.value }))}
-                    placeholder={"Ex: Q1:Regra1 Q2:Regra1 ; Q7:Regra2 Q8:Regra3 Q9:Regra4
-(Separe grupos por ponto-e-vírgula)"}
+                    placeholder={
+                      "Ex: Q1:Regra1 Q2:Regra1 ; Q7:Regra2 Q8:Regra3 Q9:Regra4\n(Separe grupos por ponto-e-vírgula)"
+                    }
                   />
                   {/* Mini-legenda de cores */}
                   <div className="flex flex-wrap gap-2">

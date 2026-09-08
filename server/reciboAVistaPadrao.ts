@@ -26,9 +26,15 @@ function corrigirSimplesmenteNoXml(xml: string): string {
 
 import AdmZip from "adm-zip";
 import path from "path";
-import { fileURLToPath } from "url";
+import fs from "fs";
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
+function getTemplatePath(filename: string): string {
+  const fromCwd = path.join(process.cwd(), "attached_assets", filename);
+  if (fs.existsSync(fromCwd)) return fromCwd;
+  const localFallback = path.join(process.cwd(), "dist", "attached_assets", filename);
+  if (fs.existsSync(localFallback)) return localFallback;
+  return fromCwd;
+}
 
 // ─── Utilitários ─────────────────────────────────────────────────────────────
 
@@ -250,7 +256,7 @@ export async function gerarReciboAVistaPadrao(params: ReciboAVistaParams): Promi
   const valorFormatado = numExt(valorTotal);
 
   // ── Carregar template ──────────────────────────────────────────────────────
-  const templatePath = path.join(__dirname, "..", "attached_assets", "recibo_avista_template.docx");
+  const templatePath = getTemplatePath("recibo_avista_template.docx");
   const zip = new AdmZip(templatePath);
   let xml = zip.readAsText("word/document.xml");
 
