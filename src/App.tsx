@@ -1391,6 +1391,12 @@ function genderizeEstadoCivil(raw: string, genero: string): string {
   return map[base] || raw;
 }
 
+function isMararuOuBelaVista(nome?: string): boolean {
+  if (!nome) return false;
+  const n = String(nome).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  return n.includes("mararu") || n.includes("bela vista");
+}
+
 type GeneroBinario = "M" | "F";
 
 function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
@@ -11914,7 +11920,9 @@ QUADRA: ${lastSavedVenda.quadra}
 EMPREENDIMENTO: ${lastSavedVenda.empreendimentoNome.toUpperCase()}
 VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
 ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
-QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}
+${isMararuOuBelaVista(lastSavedVenda.empreendimentoNome)
+  ? (lastSavedVenda.quantidadeParcelas > 0 ? `PLANO: ${lastSavedVenda.quantidadeParcelas}x` : 'PAGAMENTO: À VISTA')
+  : `QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}`}
 DATA DE VENCIMENTO: ${diaVenc}
 VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2 || "")].filter(Boolean).map(v => v.toUpperCase()).join("/ ")}`;
 
@@ -15068,6 +15076,11 @@ const ContratosSection = ({
             return '<p class="valor-item">' + txt + '</p>';
           }).join('') || ''}
         </div>
+        ${!isAvista && selectedVenda.quantidadeParcelas > 0 ? `
+        <div>
+          <p class="label-sm">${isMararuOuBelaVista(empreendimento) ? 'Plano' : 'Parcelas'}</p>
+          <p class="valor-item">${isMararuOuBelaVista(empreendimento) ? `${selectedVenda.quantidadeParcelas}x` : `${selectedVenda.quantidadeParcelas}× ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorParcela)}`}</p>
+        </div>` : ''}
         ${rua ? `<div class="imovel-col-full"><p class="label-sm">Logradouro</p><p class="valor-item">${rua}</p></div>` : ''}
       </div>
       ${reciboObservacao ? `
@@ -15321,7 +15334,9 @@ QUADRA: ${venda.quadra}
 EMPREENDIMENTO: ${venda.empreendimentoNome.toUpperCase()}
 VALOR TOTAL: ${brl(venda.valorLote)}
 ENTRADA: ${brl(venda.valorEntrada)}
-QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}
+${isMararuOuBelaVista(venda.empreendimentoNome)
+  ? (venda.quantidadeParcelas > 0 ? `PLANO: ${venda.quantidadeParcelas}x` : 'PAGAMENTO: À VISTA')
+  : `QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}`}
 DATA DE VENCIMENTO: ${diaVenc}
 VENDEDOR: ${vendedorLabel}`;
 
@@ -16795,8 +16810,15 @@ VENDEDOR: ${vendedorLabel}`;
                           <p className="font-bold text-slate-800">{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorLote - selectedVenda.valorEntrada)}</p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Parcelas</p>
-                          <p className="font-bold text-slate-800">{selectedVenda.quantidadeParcelas}x de {new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}</p>
+                          <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">
+                            {isMararuOuBelaVista(selectedVenda.empreendimentoNome) ? 'Plano' : 'Parcelas'}
+                          </p>
+                          <p className="font-bold text-slate-800">
+                            {isMararuOuBelaVista(selectedVenda.empreendimentoNome)
+                              ? `${selectedVenda.quantidadeParcelas}x`
+                              : `${selectedVenda.quantidadeParcelas}x de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}`
+                            }
+                          </p>
                         </div>
                         <div>
                           <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Vencimento</p>
@@ -17080,8 +17102,15 @@ VENDEDOR: ${vendedorLabel}`;
                             <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorEntrada)}</span>
                           </div>
                           <div style={{display:'flex',justifyContent:'space-between',padding:'8px 0',borderBottom:'1px solid #f7f7f7'}}>
-                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>Parcelas</span>
-                            <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>{selectedVenda.quantidadeParcelas}× {new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorParcela)}</span>
+                            <span style={{fontSize:'12px',color:'#999',fontWeight:500}}>
+                              {isMararuOuBelaVista(selectedVenda.empreendimentoNome) ? 'Plano' : 'Parcelas'}
+                            </span>
+                            <span style={{fontSize:'13px',color:'#111',fontWeight:700}}>
+                              {isMararuOuBelaVista(selectedVenda.empreendimentoNome)
+                                ? `${selectedVenda.quantidadeParcelas}x`
+                                : `${selectedVenda.quantidadeParcelas}× ${new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL'}).format(selectedVenda.valorParcela)}`
+                              }
+                            </span>
                           </div>
                         </>
                       )}
@@ -17192,7 +17221,10 @@ VENDEDOR: ${vendedorLabel}`;
                             const e = pInd[`preco_${selectedVenda.quadra}_${lNum}_entrada`] || '';
                             const p = pInd[`preco_${selectedVenda.quadra}_${lNum}_parcelas`] || '';
                             const v = pInd[`preco_${selectedVenda.quadra}_${lNum}_valor`] || '';
-                            const preco = (e || (p && v)) ? ` · ${e ? `Entrada: R$${e} ` : ''}${p && v ? `${p}×R$${v}` : ''}` : '';
+                            const isMararu = isMararuOuBelaVista(selectedVenda.empreendimentoNome);
+                            const preco = (e || p)
+                              ? ` · ${e ? `Entrada: R$${e} ` : ''}${isMararu ? (p ? `Plano ${p}x` : '') : (p && v ? `${p}×R$${v}` : '')}`
+                              : '';
                             return (
                               <p key={lNum} className="font-bold text-slate-800">
                                 Lote {lNum} da Quadra {selectedVenda.quadra}{preco}
@@ -17213,7 +17245,10 @@ VENDEDOR: ${vendedorLabel}`;
                             const e = (l as any)[`entrada_${lNum}`] || '';
                             const p = (l as any)[`parcelas_${lNum}`] || '';
                             const v = (l as any)[`valor_${lNum}`] || '';
-                            const preco = (e || (p && v)) ? ` · ${e ? `Entrada: R$${e} ` : ''}${p && v ? `${p}×R$${v}` : ''}` : '';
+                            const isMararu = isMararuOuBelaVista(selectedVenda.empreendimentoNome);
+                            const preco = (e || p)
+                              ? ` · ${e ? `Entrada: R$${e} ` : ''}${isMararu ? (p ? `Plano ${p}x` : '') : (p && v ? `${p}×R$${v}` : '')}`
+                              : '';
                             return (
                               <p key={`${li}-${lNum}`} className="font-bold text-slate-800">
                                 Lote {lNum} da Quadra {l.quadra}{preco}
