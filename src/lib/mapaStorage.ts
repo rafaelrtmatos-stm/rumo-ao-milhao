@@ -2,13 +2,28 @@
  * mapaStorage.ts
  * Upload binário de mapas para Supabase Storage.
  */
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY as string;
 const BUCKET = 'mapas';
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !key) {
+    return null;
+  }
+  if (!supabaseClient) {
+    try {
+      supabaseClient = createClient(url, key);
+    } catch (e) {
+      console.warn('[mapaStorage] Falha ao inicializar Supabase:', e);
+      return null;
+    }
+  }
+  return supabaseClient;
+}
 
 /** Comprime imagem para WEBP e faz upload binário. Retorna URL pública. */
 export async function uploadMapaImagem(
@@ -26,45 +41,52 @@ export async function uploadMapaImagem(
   const webpFile = new File([webpBlob], `mapa.webp`, { type: 'image/webp' });
   const nome = `${empreendimentoId}_${Date.now()}.webp`;
 
-  // 3. Tentar upload direto
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(nome, webpFile, {
-      contentType: 'image/webp',
-      upsert: true,
-      duplex: 'half',
-    } as any);
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      // 3. Tentar upload direto
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(nome, webpFile, {
+          contentType: 'image/webp',
+          upsert: true,
+          duplex: 'half',
+        } as any);
 
-  if (!error) {
-    onProgress?.(90);
-    const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(nome);
-    onProgress?.(100);
-    return urlData.publicUrl;
+      if (!error) {
+        onProgress?.(90);
+        const { data: urlData } = supabase.storage.from(BUCKET).getPublicUrl(nome);
+        onProgress?.(100);
+        return urlData.publicUrl;
+      }
+
+      console.warn('[storage] Upload direto falhou:', error.message, '— tentando com path de usuário');
+
+      // 4. Fallback: tentar com userId no path
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || 'shared';
+      const nomeAlt = `${userId}/${nome}`;
+
+      const { error: error2 } = await supabase.storage
+        .from(BUCKET)
+        .upload(nomeAlt, webpFile, {
+          contentType: 'image/webp',
+          upsert: true,
+        });
+
+      if (!error2) {
+        onProgress?.(90);
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
+        onProgress?.(100);
+        return data.publicUrl;
+      }
+      console.warn('[storage] Upload WEBP falhou:', error2.message);
+    } catch (err: any) {
+      console.warn('[storage] Erro na comunicação com Supabase:', err?.message || err);
+    }
   }
 
-  console.warn('[storage] Upload direto falhou:', error.message, '— tentando com path de usuário');
-
-  // 4. Fallback: tentar com userId no path
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id || 'shared';
-  const nomeAlt = `${userId}/${nome}`;
-
-  const { error: error2 } = await supabase.storage
-    .from(BUCKET)
-    .upload(nomeAlt, webpFile, {
-      contentType: 'image/webp',
-      upsert: true,
-    });
-
-  if (!error2) {
-    onProgress?.(90);
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
-    onProgress?.(100);
-    return data.publicUrl;
-  }
-
-  // 5. Último fallback: base64 (funciona sem storage)
-  console.warn('[storage] Upload WEBP falhou, usando base64:', error2.message);
+  // 5. Último fallback: base64 (funciona sem storage configurado)
   onProgress?.(70);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -72,7 +94,7 @@ export async function uploadMapaImagem(
       onProgress?.(100);
       resolve(reader.result as string);
     };
-    reader.onerror = () => reject(new Error('Falha ao ler imagem: ' + error2.message));
+    reader.onerror = () => reject(new Error('Falha ao ler imagem'));
     reader.readAsDataURL(webpFile);
   });
 }
@@ -107,7 +129,7 @@ async function comprimirParaWebP(file: File, quality: number): Promise<Blob> {
   });
 }
 
-/** Upload de PDF — armazena binário, retorna URL. */
+/** Upload de PDF — armazena binário se Supabase configurado, ou retorna base64. */
 export async function uploadMapaPDF(
   file: File,
   empreendimentoId: string,
@@ -116,38 +138,45 @@ export async function uploadMapaPDF(
   onProgress?.(10);
   const nome = `${empreendimentoId}_${Date.now()}.pdf`;
 
-  const { error } = await supabase.storage
-    .from(BUCKET)
-    .upload(nome, file, { contentType: 'application/pdf', upsert: true });
+  const supabase = getSupabase();
+  if (supabase) {
+    try {
+      const { error } = await supabase.storage
+        .from(BUCKET)
+        .upload(nome, file, { contentType: 'application/pdf', upsert: true });
 
-  if (!error) {
-    onProgress?.(90);
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
-    onProgress?.(100);
-    return data.publicUrl;
-  }
+      if (!error) {
+        onProgress?.(90);
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
+        onProgress?.(100);
+        return data.publicUrl;
+      }
 
-  // Fallback com userId
-  const { data: { session } } = await supabase.auth.getSession();
-  const userId = session?.user?.id || 'shared';
-  const nomeAlt = `${userId}/${nome}`;
-  const { error: error2 } = await supabase.storage
-    .from(BUCKET)
-    .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
+      // Fallback com userId
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || 'shared';
+      const nomeAlt = `${userId}/${nome}`;
+      const { error: error2 } = await supabase.storage
+        .from(BUCKET)
+        .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
 
-  if (!error2) {
-    onProgress?.(90);
-    const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
-    onProgress?.(100);
-    return data.publicUrl;
+      if (!error2) {
+        onProgress?.(90);
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(nomeAlt);
+        onProgress?.(100);
+        return data.publicUrl;
+      }
+      console.warn('[storage] Upload PDF falhou:', error2.message);
+    } catch (err: any) {
+      console.warn('[storage] Erro na comunicação com Supabase (PDF):', err?.message || err);
+    }
   }
 
   // Último fallback: base64
-  console.warn('[storage] Upload PDF falhou, usando base64:', error2.message);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('Falha ao ler PDF: ' + error2.message));
+    reader.onerror = () => reject(new Error('Falha ao ler PDF'));
     reader.readAsDataURL(file);
   });
 }

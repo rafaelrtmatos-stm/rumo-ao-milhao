@@ -69,11 +69,17 @@ export function getAuthToken(): string | null {
 }
 
 export function setAuthToken(token: string) {
-  try { localStorage.setItem(TOKEN_KEY, token); } catch {}
+  try {
+    localStorage.setItem(TOKEN_KEY, token);
+    localStorage.setItem('token', token);
+  } catch {}
 }
 
 export function clearAuthToken() {
-  try { localStorage.removeItem(TOKEN_KEY); } catch {}
+  try {
+    localStorage.removeItem(TOKEN_KEY);
+    localStorage.removeItem('token');
+  } catch {}
 }
 
 export { authFetch } from "./lib/authFetch";

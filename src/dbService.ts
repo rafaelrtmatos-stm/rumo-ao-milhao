@@ -103,10 +103,8 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
       // Timeout de 8s para evitar pending infinito
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), 8000);
-      const res = await fetch('/api/empreendimentos', {
-        headers: (() => { const t = localStorage.getItem('rumo_auth_token'); return t ? { Authorization: `Bearer ${t}` } : {}; })(),
+      const res = await authFetch('/api/empreendimentos', {
         signal: controller.signal,
-        cache: 'no-store',
       }).finally(() => clearTimeout(timer));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const items: Empreendimento[] = await res.json();
@@ -244,10 +242,8 @@ async function getClientes(): Promise<Cliente[]> {
     try {
       const controller2 = new AbortController();
       const timer2 = setTimeout(() => controller2.abort(), 8000);
-      const res2 = await fetch('/api/clientes', {
-        headers: (() => { const t = localStorage.getItem('rumo_auth_token'); return t ? { Authorization: `Bearer ${t}` } : {}; })(),
+      const res2 = await authFetch('/api/clientes', {
         signal: controller2.signal,
-        cache: 'no-store',
       }).finally(() => clearTimeout(timer2));
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
       const items: Cliente[] = await res2.json();

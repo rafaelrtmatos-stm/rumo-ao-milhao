@@ -8771,6 +8771,16 @@ const EmpreendimentosSection = ({
     document.body.style.overflow = selectedDevForMap ? 'hidden' : '';
     return () => { document.body.style.overflow = ''; };
   }, [selectedDevForMap]);
+
+  // Sincronizar selectedDevForMap automaticamente quando developments for atualizado
+  useEffect(() => {
+    if (selectedDevForMap) {
+      const updated = developments.find(d => d.id === selectedDevForMap.id);
+      if (updated && updated !== selectedDevForMap) {
+        setSelectedDevForMap(updated);
+      }
+    }
+  }, [developments]);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
@@ -9685,10 +9695,8 @@ const EmpreendimentosSection = ({
                       }
                       // 2. Link encurtado: tentar via servidor
                       try {
-                        const token = localStorage.getItem('token');
-                        const res = await fetch('/api/resolve-maps-url', {
+                        const res = await authFetch('/api/resolve-maps-url', {
                           method: 'POST',
-                          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                           body: JSON.stringify({ url: val }),
                         });
                         const data = await res.json();
@@ -9734,10 +9742,8 @@ const EmpreendimentosSection = ({
                         }
                         // Link encurtado: resolver via servidor
                         try {
-                          const token = localStorage.getItem('token');
-                          const res = await fetch('/api/resolve-maps-url', {
+                          const res = await authFetch('/api/resolve-maps-url', {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
                             body: JSON.stringify({ url: val }),
                           });
                           const data = await res.json();
@@ -12086,8 +12092,14 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     let documentos: any[] = [];
     if (docTipoVenda && docFrenteVenda && docEtapaVenda === 'pronto') {
       try {
+        const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+        const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (!sbUrl || !sbKey) {
+          console.warn('[storage] Supabase não configurado para upload de documentos');
+          return;
+        }
         const { createClient } = await import('@supabase/supabase-js');
-        const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
+        const sb = createClient(sbUrl, sbKey);
         const nomeBase = (cliente.nome || 'Cliente').replace(/[^a-zA-Z0-9]/g, '_').replace(/_+/g, '_');
 
         const uploadDoc = async (file: File, sufixo: string) => {
@@ -20818,10 +20830,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                   // Link encurtado (goo.gl): resolver via servidor
                   if (!lat && (mapsUrl.includes('goo.gl') || mapsUrl.includes('maps.app'))) {
                     try {
-                      const token = localStorage.getItem('token');
-                      const r = await fetch('/api/resolve-maps-url', {
+                      const r = await authFetch('/api/resolve-maps-url', {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
                         body: JSON.stringify({ url: mapsUrl }),
                       });
                       const data = await r.json();
@@ -20842,10 +20852,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
                   const recalc = recalcularEstatisticasEmpreendimento(updated, []);
                   setDevelopments(prev => prev.map(p => p.id === recalc.id ? { ...recalc, coordsResolvidas: true } as any : p));
                   // Salvar apenas lat/lng sem imagem (evita 413)
-                  const token = localStorage.getItem('token');
-                  fetch('/api/empreendimentos/' + d.id, {
+                  authFetch('/api/empreendimentos/' + d.id, {
                     method: 'PUT',
-                    headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: 'Bearer ' + token } : {}) },
                     body: JSON.stringify({ ...d, lat, lng, coordsResolvidas: true, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
                   }).catch(() => {});
                 }
@@ -20926,10 +20934,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       // Helper: salva apenas as coords (sem imagem base64 para evitar 413)
       const salvarApenasCoordenadas = (lat: number, lng: number) => {
         setDevelopments(prev => prev.map(d => d.id === devRecalculado.id ? { ...d, lat, lng } : d));
-        const token = localStorage.getItem('token');
-        fetch(`/api/empreendimentos/${devRecalculado.id}`, {
+        authFetch(`/api/empreendimentos/${devRecalculado.id}`, {
           method: 'PUT',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ ...devRecalculado, lat, lng, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
         }).catch(() => {});
       };
@@ -20945,10 +20951,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
       if (!found) {
         // Link encurtado (goo.gl, maps.app.goo.gl): resolver no servidor
-        const token = localStorage.getItem('token');
-        fetch('/api/resolve-maps-url', {
+        authFetch('/api/resolve-maps-url', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
           body: JSON.stringify({ url: mapsLink }),
         })
           .then(r => r.json())
@@ -20976,9 +20980,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           if (results?.[0]?.lat) {
             const lat = parseFloat(results[0].lat), lng = parseFloat(results[0].lon);
             setDevelopments(prev => prev.map(d => d.id === devRecalculado.id ? { ...d, lat, lng } : d));
-            fetch(`/api/empreendimentos/${devRecalculado.id}`, {
+            authFetch(`/api/empreendimentos/${devRecalculado.id}`, {
               method: 'PUT',
-              headers: { 'Content-Type': 'application/json', ...(localStorage.getItem('token') ? { Authorization: `Bearer ${localStorage.getItem('token')}` } : {}) },
               body: JSON.stringify({ ...devRecalculado, lat, lng, mapaImagemBase64: undefined, mapaImagemLeveBase64: undefined, mapaImagemHighResBase64: undefined, mapaImagemMedResBase64: undefined, mapaPdfOriginalBase64: undefined }),
             }).catch(() => {});
           }
@@ -21099,10 +21102,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     setDevelopments(updated);
     if (devAtualizado) {
       persistEmpreendimentoAtualizado(devAtualizado);
-      // Sincronizar selectedDevForMap imediatamente
-      if (selectedDevForMap?.id === id) {
-        setSelectedDevForMap(devAtualizado);
-      }
     }
   };
 
@@ -21694,17 +21693,21 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
               const docs = (cliente as any)?.documentos as {url?:string;nome?:string}[] || [];
               if (docs.length > 0) {
                 try {
-                  const { createClient } = await import('@supabase/supabase-js');
-                  const sb = createClient(import.meta.env.VITE_SUPABASE_URL, import.meta.env.VITE_SUPABASE_ANON_KEY);
-                  const paths = docs.map(d => {
-                    if (!d.url) return null;
-                    const url = new URL(d.url);
-                    const parts = url.pathname.split('/documentos/');
-                    return parts[1] || null;
-                  }).filter(Boolean) as string[];
-                  if (paths.length > 0) {
-                    await sb.storage.from('documentos').remove(paths);
-                    console.log('[Storage] Removidos:', paths);
+                  const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+                  const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+                  if (sbUrl && sbKey) {
+                    const { createClient } = await import('@supabase/supabase-js');
+                    const sb = createClient(sbUrl, sbKey);
+                    const paths = docs.map(d => {
+                      if (!d.url) return null;
+                      const url = new URL(d.url);
+                      const parts = url.pathname.split('/documentos/');
+                      return parts[1] || null;
+                    }).filter(Boolean) as string[];
+                    if (paths.length > 0) {
+                      await sb.storage.from('documentos').remove(paths);
+                      console.log('[Storage] Removidos:', paths);
+                    }
                   }
                 } catch (err) { console.warn('Erro ao remover docs do Supabase:', err); }
               }
