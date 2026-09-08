@@ -8,6 +8,7 @@ import { empreendimentos, clientes, vendas, appConfig } from "../shared/schema.j
 import { eq, and, ne } from "drizzle-orm";
 import type { RequestHandler } from "express";
 import { localUsersService } from "./localUsersService.js";
+import { supabase } from "./supabase.js";
 import { gerarContratoParceladoPadrao } from "./contratoParceladoPadrao.js";
 import { gerarReciboAVistaPadrao } from "./reciboAVistaPadrao.js";
 import { GoogleGenAI } from "@google/genai";
@@ -369,9 +370,28 @@ function safeParseJson(text: string | undefined | null): any {
 app.get("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
+    if (supabase) {
+      const { data, error } = await supabase.from("empreendimentos").select("id, data");
+      if (!error && data && data.length > 0) {
+        const items = data.map((r: any) => ({
+          ...(r.data || {}),
+          id: r.id || r.data?.id,
+        }));
+        for (const item of items) {
+          if (item.id) inMemoryEmpreendimentos.set(item.id, item);
+        }
+        return res.json(items);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[Empreendimentos] Supabase fetch error, falling back:", e?.message);
+  }
+  try {
     if (isDbAvailable) {
-      const rows = await db.select().from(empreendimentos).where(eq(empreendimentos.userId, SHARED_DATA_USER));
-      return res.json(rows.map((r: any) => r.data));
+      const rows = await db.select().from(empreendimentos);
+      if (rows && rows.length > 0) {
+        return res.json(rows.map((r: any) => r.data));
+      }
     }
   } catch (e: any) {
     console.warn("[Empreendimentos] DB fetch error, falling back to memory:", e?.message);
@@ -384,6 +404,14 @@ app.post("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
     const items: any[] = req.body;
     for (const item of items) {
       inMemoryEmpreendimentos.set(item.id, item);
+    }
+    if (supabase) {
+      const rows = items.map((item) => ({
+        id: item.id,
+        user_id: SHARED_DATA_USER,
+        data: item,
+      }));
+      await supabase.from("empreendimentos").upsert(rows);
     }
     if (isDbAvailable) {
       const existing = await db.select({ id: empreendimentos.id }).from(empreendimentos).where(eq(empreendimentos.userId, SHARED_DATA_USER));
@@ -424,6 +452,13 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     };
     inMemoryEmpreendimentos.set(req.params.id, dataToSave);
 
+    if (supabase) {
+      await supabase.from("empreendimentos").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: dataToSave,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(empreendimentos)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: dataToSave })
@@ -445,6 +480,13 @@ app.put("/api/empreendimentos/:id/pontos", isAuthenticated, async (req: any, res
     const updatedData = { ...existing, mapaPontos };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
 
+    if (supabase) {
+      await supabase.from("empreendimentos").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: updatedData,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
@@ -464,6 +506,13 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
     const updatedData = { ...existing, lotesInfo };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
 
+    if (supabase) {
+      await supabase.from("empreendimentos").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: updatedData,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
@@ -483,6 +532,13 @@ app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) 
     const updatedData = { ...existing, mapaImagemBase64: mapaImagemBase64 ?? null };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
 
+    if (supabase) {
+      await supabase.from("empreendimentos").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: updatedData,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
@@ -497,6 +553,9 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
   try {
     const { id } = req.params;
     inMemoryEmpreendimentos.delete(id);
+    if (supabase) {
+      await supabase.from("empreendimentos").delete().eq("id", id);
+    }
     if (isDbAvailable) {
       await db.delete(empreendimentos).where(and(eq(empreendimentos.id, id), eq(empreendimentos.userId, SHARED_DATA_USER)));
     }
@@ -511,9 +570,28 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
 app.get("/api/clientes", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
+    if (supabase) {
+      const { data, error } = await supabase.from("clientes").select("id, data");
+      if (!error && data && data.length > 0) {
+        const items = data.map((r: any) => ({
+          ...(r.data || {}),
+          id: r.id || r.data?.id,
+        }));
+        for (const it of items) {
+          if (it.id) inMemoryClientes.set(it.id, it);
+        }
+        return res.json(items);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[Clientes] Supabase fetch error:", e?.message);
+  }
+  try {
     if (isDbAvailable) {
-      const rows = await db.select().from(clientes).where(eq(clientes.userId, SHARED_DATA_USER));
-      return res.json(rows.map((r: any) => r.data));
+      const rows = await db.select().from(clientes);
+      if (rows && rows.length > 0) {
+        return res.json(rows.map((r: any) => r.data));
+      }
     }
   } catch (e: any) {
     console.warn("[Clientes] DB fetch error, falling back to memory:", e?.message);
@@ -523,14 +601,18 @@ app.get("/api/clientes", isAuthenticated, async (req: any, res) => {
 
 app.get("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
+  const mem = inMemoryClientes.get(req.params.id);
+  if (mem) return res.json(mem);
   try {
+    if (supabase) {
+      const { data, error } = await supabase.from("clientes").select("id, data").eq("id", req.params.id).maybeSingle();
+      if (!error && data?.data) return res.json({ ...data.data, id: data.id });
+    }
     if (isDbAvailable) {
-      const [row] = await db.select().from(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_DATA_USER)));
+      const [row] = await db.select().from(clientes).where(eq(clientes.id, req.params.id));
       if (row) return res.json(row.data);
     }
   } catch {}
-  const mem = inMemoryClientes.get(req.params.id);
-  if (mem) return res.json(mem);
   res.status(404).json({ error: "Cliente não encontrado" });
 });
 
@@ -539,6 +621,14 @@ app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
     const items: any[] = req.body;
     for (const item of items) {
       inMemoryClientes.set(item.id, item);
+    }
+    if (supabase) {
+      const rows = items.map((item) => ({
+        id: item.id,
+        user_id: SHARED_DATA_USER,
+        data: item,
+      }));
+      await supabase.from("clientes").upsert(rows);
     }
     if (isDbAvailable) {
       const existing = await db.select({ id: clientes.id }).from(clientes).where(eq(clientes.userId, SHARED_DATA_USER));
@@ -565,6 +655,13 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
     const item = req.body;
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryClientes.set(req.params.id, item);
+    if (supabase) {
+      await supabase.from("clientes").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: item,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(clientes)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: item })
@@ -580,6 +677,9 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
 app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryClientes.delete(req.params.id);
+    if (supabase) {
+      await supabase.from("clientes").delete().eq("id", req.params.id);
+    }
     if (isDbAvailable) {
       await db.delete(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_DATA_USER)));
     }
@@ -594,9 +694,28 @@ app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
 app.get("/api/vendas", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
+    if (supabase) {
+      const { data, error } = await supabase.from("vendas").select("id, data");
+      if (!error && data && data.length > 0) {
+        const items = data.map((r: any) => ({
+          ...(r.data || {}),
+          id: r.id || r.data?.id,
+        }));
+        for (const it of items) {
+          if (it.id) inMemoryVendas.set(it.id, it);
+        }
+        return res.json(items);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[Vendas] Supabase fetch error:", e?.message);
+  }
+  try {
     if (isDbAvailable) {
-      const rows = await db.select().from(vendas).where(eq(vendas.userId, SHARED_DATA_USER));
-      return res.json(rows.map((r: any) => r.data));
+      const rows = await db.select().from(vendas);
+      if (rows && rows.length > 0) {
+        return res.json(rows.map((r: any) => r.data));
+      }
     }
   } catch (e: any) {
     console.warn("[Vendas] DB fetch error, falling back to memory:", e?.message);
@@ -609,6 +728,14 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
     const items: any[] = req.body;
     for (const item of items) {
       inMemoryVendas.set(item.id, item);
+    }
+    if (supabase) {
+      const rows = items.map((item) => ({
+        id: item.id,
+        user_id: SHARED_DATA_USER,
+        data: item,
+      }));
+      await supabase.from("vendas").upsert(rows);
     }
     if (isDbAvailable) {
       const existing = await db.select({ id: vendas.id }).from(vendas).where(eq(vendas.userId, SHARED_DATA_USER));
@@ -635,6 +762,13 @@ app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
     const item = req.body;
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryVendas.set(req.params.id, item);
+    if (supabase) {
+      await supabase.from("vendas").upsert({
+        id: req.params.id,
+        user_id: SHARED_DATA_USER,
+        data: item,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(vendas)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: item })
@@ -650,6 +784,9 @@ app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
 app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryVendas.delete(req.params.id);
+    if (supabase) {
+      await supabase.from("vendas").delete().eq("id", req.params.id);
+    }
     if (isDbAvailable) {
       await db.delete(vendas).where(and(eq(vendas.id, req.params.id), eq(vendas.userId, SHARED_DATA_USER)));
     }
@@ -664,8 +801,19 @@ app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
 app.get("/api/config", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
+    if (supabase) {
+      const { data, error } = await supabase.from("app_config").select("data").limit(1);
+      if (!error && data && data.length > 0 && data[0].data) {
+        inMemoryConfig = data[0].data;
+        return res.json(data[0].data);
+      }
+    }
+  } catch (e: any) {
+    console.warn("[Config] Supabase fetch error:", e?.message);
+  }
+  try {
     if (isDbAvailable) {
-      const [row] = await db.select().from(appConfig).where(eq(appConfig.userId, SHARED_DATA_USER));
+      const [row] = await db.select().from(appConfig);
       if (row?.data) return res.json(row.data);
     }
   } catch (e: any) {
@@ -678,6 +826,12 @@ app.post("/api/config", isAuthenticated, async (req: any, res) => {
   try {
     const config = req.body;
     inMemoryConfig = config;
+    if (supabase) {
+      await supabase.from("app_config").upsert({
+        user_id: SHARED_DATA_USER,
+        data: config,
+      });
+    }
     if (isDbAvailable) {
       await db.insert(appConfig).values({ userId: SHARED_DATA_USER, data: config }).onConflictDoUpdate({ target: appConfig.userId, set: { data: config } });
     }
@@ -791,20 +945,51 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res) =
   }
 });
 
+// --- Preload Supabase Data into Memory Cache ---
+async function preloadSupabaseData() {
+  if (!supabase) return;
+  try {
+    const { data: emps, error: errEmps } = await supabase.from("empreendimentos").select("id, data");
+    if (!errEmps && emps && emps.length > 0) {
+      for (const r of emps) {
+        const item = { ...(r.data || {}), id: r.id || r.data?.id };
+        if (item.id) inMemoryEmpreendimentos.set(item.id, item);
+      }
+      console.log(`[Supabase] Carregados ${inMemoryEmpreendimentos.size} empreendimentos no cache.`);
+    }
+
+    const { data: cls, error: errCls } = await supabase.from("clientes").select("id, data");
+    if (!errCls && cls && cls.length > 0) {
+      for (const r of cls) {
+        const item = { ...(r.data || {}), id: r.id || r.data?.id };
+        if (item.id) inMemoryClientes.set(item.id, item);
+      }
+      console.log(`[Supabase] Carregados ${inMemoryClientes.size} clientes no cache.`);
+    }
+
+    const { data: vds, error: errVds } = await supabase.from("vendas").select("id, data");
+    if (!errVds && vds && vds.length > 0) {
+      for (const r of vds) {
+        const item = { ...(r.data || {}), id: r.id || r.data?.id };
+        if (item.id) inMemoryVendas.set(item.id, item);
+      }
+      console.log(`[Supabase] Carregadas ${inMemoryVendas.size} vendas no cache.`);
+    }
+
+    const { data: cfg, error: errCfg } = await supabase.from("app_config").select("data").limit(1);
+    if (!errCfg && cfg && cfg.length > 0 && cfg[0].data) {
+      inMemoryConfig = cfg[0].data;
+      console.log(`[Supabase] Configuração carregada com sucesso.`);
+    }
+  } catch (e: any) {
+    console.warn("[Supabase] Falha ao pré-carregar dados:", e?.message);
+  }
+}
+
 // --- Setup / Admin seed ---
 async function seedAdminIfNeeded() {
   try {
-    const count = await localUsersService.count();
-    if (count === 0) {
-      const email = process.env.ADMIN_EMAIL;
-      const password = process.env.ADMIN_PASSWORD;
-      if (!email || !password) {
-        console.log("[Setup] Defina ADMIN_EMAIL e ADMIN_PASSWORD nas variáveis para auto-criar o admin inicial.");
-        return;
-      }
-      await localUsersService.create({ id: `lu-admin-${Date.now()}`, email, password, isAdmin: true });
-      console.log(`[Setup] Admin criado com sucesso: ${email}`);
-    }
+    await localUsersService.ensureDefaultAdmin();
   } catch (e: any) {
     console.error("[Setup] Falha ao criar admin:", e?.message);
   }
@@ -883,6 +1068,7 @@ async function startServer() {
   const PORT = 3000;
   httpServer.listen(PORT, "0.0.0.0", async () => {
     console.log(`Server running on http://0.0.0.0:${PORT}`);
+    await preloadSupabaseData();
     await seedAdminIfNeeded();
   });
 }

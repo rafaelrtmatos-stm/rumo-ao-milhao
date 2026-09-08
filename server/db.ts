@@ -3,11 +3,14 @@ import pg from "pg";
 import * as schema from "../shared/schema.js";
 const { Pool } = pg;
 
+const rawDbUrl = process.env.DATABASE_URL;
+const isPgUrl = !!rawDbUrl && (rawDbUrl.startsWith("postgres://") || rawDbUrl.startsWith("postgresql://"));
+
 export let isDbAvailable = false;
 
 export const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || undefined,
-  ssl: process.env.NODE_ENV === "production" && process.env.DATABASE_URL && !process.env.DATABASE_URL.includes("localhost")
+  connectionString: isPgUrl ? rawDbUrl : undefined,
+  ssl: process.env.NODE_ENV === "production" && isPgUrl && !rawDbUrl.includes("localhost")
     ? { rejectUnauthorized: false }
     : false,
   connectionTimeoutMillis: 2000,
@@ -21,8 +24,8 @@ pool.on("error", () => {
 export const db = drizzle(pool, { schema });
 
 export async function initDatabaseTables() {
-  if (!process.env.DATABASE_URL) {
-    console.log("[DB] No DATABASE_URL configured. Running with in-memory persistence.");
+  if (!isPgUrl) {
+    console.log("[DB] No valid PostgreSQL DATABASE_URL configured. Running with Supabase and file storage.");
     isDbAvailable = false;
     return;
   }

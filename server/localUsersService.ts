@@ -1,4 +1,6 @@
 import bcrypt from "bcryptjs";
+import fs from "fs";
+import path from "path";
 import { db, isDbAvailable } from "./db.js";
 import { localUsers } from "../shared/schema.js";
 import { eq, count as drizzleCount } from "drizzle-orm";
@@ -19,8 +21,99 @@ export interface LocalUser {
   created_at: Date | null;
 }
 
-// In-memory fallback store
+const DATA_DIR = path.resolve(process.cwd(), "data");
+const USERS_FILE = path.join(DATA_DIR, "local_users.json");
+
+// In-memory store
 const inMemoryUsers = new Map<string, LocalUser>();
+
+function loadUsersFromFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(USERS_FILE)) {
+      const raw = fs.readFileSync(USERS_FILE, "utf-8");
+      const list = JSON.parse(raw);
+      for (const u of list) {
+        inMemoryUsers.set(u.id, {
+          ...u,
+          created_at: u.created_at ? new Date(u.created_at) : new Date(),
+        });
+      }
+    }
+  } catch (e) {
+    console.warn("[LocalUsers] Erro ao carregar usuários do arquivo:", e);
+  }
+}
+
+function saveUsersToFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    const list = Array.from(inMemoryUsers.values());
+    fs.writeFileSync(USERS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[LocalUsers] Erro ao salvar usuários no arquivo:", e);
+  }
+}
+
+function ensureDefaultAdmin() {
+  const adminPassword = process.env.ADMIN_PASSWORD || "Geper3tp@";
+  const passwordHash = bcrypt.hashSync(adminPassword, 10);
+
+  const defaultEmails = [
+    "rafaelrtamatos@gmail.com.br",
+    "rafaelrtmatos@gmail.com.br",
+    "rafaelrtmatos@gmail.com",
+    process.env.ADMIN_EMAIL,
+  ].filter(Boolean) as string[];
+
+  let seeded = false;
+  for (const email of defaultEmails) {
+    const normalized = email.toLowerCase().trim();
+    const exists = Array.from(inMemoryUsers.values()).some(
+      (u) => u.email.toLowerCase() === normalized
+    );
+    if (!exists) {
+      const id = `lu-admin-${normalized.replace(/[^a-z0-9]/g, "_")}`;
+      const user: LocalUser = {
+        id,
+        email: normalized,
+        password_hash: passwordHash,
+        is_admin: true,
+        permissions: {
+          empreendimentos: true,
+          mapa: true,
+          tabela: true,
+          contratos: true,
+          clientes: true,
+          aniversarios: true,
+          calculadora: true,
+          config: true,
+          usuarios: true,
+        },
+        profile: {
+          nome: "Rafael Matos (Administrador)",
+        },
+        created_at: new Date(),
+      };
+      inMemoryUsers.set(id, user);
+      seeded = true;
+    }
+  }
+  if (seeded) {
+    saveUsersToFile();
+    console.log("[LocalUsers] Administrador(es) padrão inicializados com sucesso.");
+  }
+}
+
+// Inicializar na carga do módulo
+loadUsersFromFile();
+if (inMemoryUsers.size === 0) {
+  ensureDefaultAdmin();
+}
 
 function toLocalUser(row: any): LocalUser {
   return {
@@ -88,7 +181,8 @@ export const localUsersService = {
     try {
       if (isDbAvailable) {
         const [result] = await db.select({ count: drizzleCount() }).from(localUsers);
-        return Number(result?.count ?? 0);
+        const c = Number(result?.count ?? 0);
+        if (c > 0) return c;
       }
     } catch (e: any) {
       console.warn("[LocalUsers] DB count fallback to memory:", e?.message);
@@ -103,7 +197,17 @@ export const localUsersService = {
       email: params.email.toLowerCase().trim(),
       password_hash: passwordHash,
       is_admin: params.isAdmin,
-      permissions: {},
+      permissions: {
+        empreendimentos: true,
+        mapa: true,
+        tabela: true,
+        contratos: true,
+        clientes: true,
+        aniversarios: true,
+        calculadora: true,
+        config: true,
+        usuarios: params.isAdmin,
+      },
       profile: {},
       created_at: new Date(),
     };
@@ -121,6 +225,7 @@ export const localUsersService = {
         if (row) {
           const u = toLocalUser(row);
           inMemoryUsers.set(u.id, u);
+          saveUsersToFile();
           return u;
         }
       }
@@ -128,6 +233,7 @@ export const localUsersService = {
       console.warn("[LocalUsers] DB create fallback to memory:", e?.message);
     }
     inMemoryUsers.set(userObj.id, userObj);
+    saveUsersToFile();
     return userObj;
   },
 
@@ -140,6 +246,7 @@ export const localUsersService = {
       console.warn("[LocalUsers] DB deleteById fallback to memory:", e?.message);
     }
     inMemoryUsers.delete(id);
+    saveUsersToFile();
   },
 
   async verifyPassword(user: LocalUser, password: string): Promise<boolean> {
@@ -160,6 +267,7 @@ export const localUsersService = {
     const existing = inMemoryUsers.get(id);
     if (existing) {
       existing.permissions = permissions;
+      saveUsersToFile();
     }
   },
 
@@ -177,6 +285,9 @@ export const localUsersService = {
     const existing = inMemoryUsers.get(id);
     if (existing) {
       existing.profile = { ...existing.profile, ...profile };
+      saveUsersToFile();
     }
   },
+
+  ensureDefaultAdmin,
 };

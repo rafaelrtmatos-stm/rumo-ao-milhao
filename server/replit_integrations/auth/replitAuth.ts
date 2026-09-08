@@ -23,10 +23,12 @@ export function getSession() {
   const isProduction = process.env.NODE_ENV === "production";
 
   const PgSession = connectPgSimple(session);
+  const rawDbUrl = process.env.DATABASE_URL;
+  const isPgUrl = !!rawDbUrl && (rawDbUrl.startsWith("postgres://") || rawDbUrl.startsWith("postgresql://"));
 
-  const store = process.env.DATABASE_URL
+  const store = isPgUrl
     ? new PgSession({
-        conString: process.env.DATABASE_URL,
+        conString: rawDbUrl,
         tableName: "session",
         createTableIfMissing: true,
       })
