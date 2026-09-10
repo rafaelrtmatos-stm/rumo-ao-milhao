@@ -140,6 +140,40 @@ async function comprimirParaWebP(file: File, quality: number): Promise<Blob> {
   });
 }
 
+/** Upload de imagem a partir de DataURL ou Blob — salva no Supabase Storage e retorna URL pública */
+export async function uploadDataUrlOuBlobAsWebP(
+  dataUrlOrBlob: string | Blob,
+  empreendimentoId: string,
+  fileNamePrefix = 'preview'
+): Promise<string> {
+  const supabase = getSupabase();
+  let webpFile: File;
+  if (typeof dataUrlOrBlob === 'string') {
+    const res = await fetch(dataUrlOrBlob);
+    const blob = await res.blob();
+    webpFile = new File([blob], `${empreendimentoId}_${fileNamePrefix}.webp`, { type: 'image/webp' });
+  } else {
+    webpFile = new File([dataUrlOrBlob], `${empreendimentoId}_${fileNamePrefix}.webp`, { type: 'image/webp' });
+  }
+
+  const nome = `${empreendimentoId}_${Date.now()}_${fileNamePrefix}.webp`;
+  if (supabase) {
+    try {
+      const { error } = await supabase.storage.from(BUCKET).upload(nome, webpFile, {
+        contentType: 'image/webp',
+        upsert: true,
+      });
+      if (!error) {
+        const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
+        return data.publicUrl;
+      }
+    } catch (e) {
+      console.warn('[storage] Upload preview falhou:', e);
+    }
+  }
+  return typeof dataUrlOrBlob === 'string' ? dataUrlOrBlob : URL.createObjectURL(dataUrlOrBlob);
+}
+
 /** Upload de PDF — armazena binário se Supabase configurado, ou retorna base64. */
 export async function uploadMapaPDF(
   file: File,
