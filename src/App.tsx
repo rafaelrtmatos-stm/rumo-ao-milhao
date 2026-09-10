@@ -11,7 +11,7 @@
 // - Sair da edição somente ao clicar em Salvar / OK
 // - Nome exportado: empreendimento + dia da semana + data + hora
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   LayoutDashboard,
   Home,
