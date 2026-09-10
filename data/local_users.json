@@ -5,7 +5,10 @@
     "password_hash": "$2b$10$ta3konI6X9KDxvOGyL66hOO6xP2VR4U1KlGSkL3nGFd3MoQKEaPe.",
     "is_admin": true,
     "permissions": {
+      "dashboard": true,
+      "vendas": true,
       "empreendimentos": true,
+      "proprietarios": true,
       "mapa": true,
       "tabela": true,
       "contratos": true,
@@ -26,7 +29,10 @@
     "password_hash": "$2b$10$ta3konI6X9KDxvOGyL66hOO6xP2VR4U1KlGSkL3nGFd3MoQKEaPe.",
     "is_admin": true,
     "permissions": {
+      "dashboard": true,
+      "vendas": true,
       "empreendimentos": true,
+      "proprietarios": true,
       "mapa": true,
       "tabela": true,
       "contratos": true,
@@ -47,7 +53,10 @@
     "password_hash": "$2b$10$ta3konI6X9KDxvOGyL66hOO6xP2VR4U1KlGSkL3nGFd3MoQKEaPe.",
     "is_admin": true,
     "permissions": {
+      "dashboard": true,
+      "vendas": true,
       "empreendimentos": true,
+      "proprietarios": true,
       "mapa": true,
       "tabela": true,
       "contratos": true,

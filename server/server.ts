@@ -439,14 +439,18 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
 
     const prev = inMemoryEmpreendimentos.get(req.params.id) || {};
-    const estaDefinindoImagemAlternativa = !!(item.mapaImagemBase64 || item.mapaPdfOriginalBase64 || item.mapaPdfUrl);
     const dataToSave = {
       ...prev,
       ...item,
       ...((!item.mapaImagemBase64 && prev.mapaImagemBase64) ? { mapaImagemBase64: prev.mapaImagemBase64 } : {}),
       ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
+      ...((!item.mapaImagemMedResBase64 && prev.mapaImagemMedResBase64) ? { mapaImagemMedResBase64: prev.mapaImagemMedResBase64 } : {}),
+      ...((!item.mapaImagemHighResBase64 && prev.mapaImagemHighResBase64) ? { mapaImagemHighResBase64: prev.mapaImagemHighResBase64 } : {}),
       ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
-      ...((!item.mapaImagemUrl && prev.mapaImagemUrl && !estaDefinindoImagemAlternativa) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
+      ...((!item.mapaImagemUrl && prev.mapaImagemUrl) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
+      ...((!item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
+      ...((!item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
+      ...((!item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
       ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
       ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
     };
@@ -526,10 +530,17 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
 app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    const { mapaImagemBase64 } = req.body;
+    const { mapaImagemBase64, mapaImagemUrl, mapaPdfUrl, mapaPdfOriginalName, mapaPdfPagina } = req.body;
     if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
     const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
-    const updatedData = { ...existing, mapaImagemBase64: mapaImagemBase64 ?? null };
+    const updatedData = {
+      ...existing,
+      ...(mapaImagemUrl ? { mapaImagemUrl } : {}),
+      ...(mapaPdfUrl ? { mapaPdfUrl } : {}),
+      ...(mapaPdfOriginalName ? { mapaPdfOriginalName } : {}),
+      ...(mapaPdfPagina ? { mapaPdfPagina } : {}),
+      ...(mapaImagemBase64 !== undefined ? { mapaImagemBase64: mapaImagemBase64 ?? null } : {}),
+    };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
 
     if (supabase) {

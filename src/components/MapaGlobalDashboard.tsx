@@ -176,7 +176,7 @@ const MapaGlobalDashboard = forwardRef<MapaGlobalHandle, Props>(function MapaGlo
 
   const devsFiltrados = useMemo(() => {
     let list = devsComLoc;
-    if (filtro === "com_mapa") list = list.filter(d => d.mapaImagemBase64 || d.mapaPdfOriginalBase64 || d.mapaImagemUrl);
+    if (filtro === "com_mapa") list = list.filter(d => d.mapaImagemBase64 || d.mapaPdfOriginalBase64 || d.mapaImagemUrl || (d as any).mapaPdfUrl);
     if (filtro === "mais_vendidos") list = [...list].sort((a, b) => (b.lotesVendidos ?? 0) - (a.lotesVendidos ?? 0)).slice(0, 10);
     if (filtro === "disponiveis") list = list.filter(d => (d.lotesDisponiveis ?? 0) > 0);
     if (busca.trim()) {

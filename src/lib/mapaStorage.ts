@@ -37,9 +37,20 @@ export async function uploadMapaImagem(
   const webpBlob = await comprimirParaWebP(file, 0.82);
   onProgress?.(40);
 
-  // 2. Garantir que é um File com tipo correto
-  const webpFile = new File([webpBlob], `mapa.webp`, { type: 'image/webp' });
-  const nome = `${empreendimentoId}_${Date.now()}.webp`;
+  return uploadMapaBlob(webpBlob, empreendimentoId, onProgress, 'webp', 'image/webp');
+}
+
+/** Faz upload direto de um Blob (WEBP/PNG) para o Supabase Storage. Retorna URL pública. */
+export async function uploadMapaBlob(
+  blob: Blob,
+  empreendimentoId: string,
+  onProgress?: (pct: number) => void,
+  ext: string = 'webp',
+  contentType: string = 'image/webp'
+): Promise<string> {
+  onProgress?.(40);
+  const nome = `${empreendimentoId}_${Date.now()}.${ext}`;
+  const file = new File([blob], `mapa.${ext}`, { type: contentType });
 
   const supabase = getSupabase();
   if (supabase) {
@@ -47,8 +58,8 @@ export async function uploadMapaImagem(
       // 3. Tentar upload direto
       const { error } = await supabase.storage
         .from(BUCKET)
-        .upload(nome, webpFile, {
-          contentType: 'image/webp',
+        .upload(nome, file, {
+          contentType,
           upsert: true,
           duplex: 'half',
         } as any);
@@ -60,7 +71,7 @@ export async function uploadMapaImagem(
         return urlData.publicUrl;
       }
 
-      console.warn('[storage] Upload direto falhou:', error.message, '— tentando com path de usuário');
+      console.warn('[storage] Upload direto falhou:', error.message, '— tentando com path alternativo');
 
       // 4. Fallback: tentar com userId no path
       const { data: { session } } = await supabase.auth.getSession();
@@ -69,8 +80,8 @@ export async function uploadMapaImagem(
 
       const { error: error2 } = await supabase.storage
         .from(BUCKET)
-        .upload(nomeAlt, webpFile, {
-          contentType: 'image/webp',
+        .upload(nomeAlt, file, {
+          contentType,
           upsert: true,
         });
 
@@ -80,9 +91,9 @@ export async function uploadMapaImagem(
         onProgress?.(100);
         return data.publicUrl;
       }
-      console.warn('[storage] Upload WEBP falhou:', error2.message);
+      console.warn('[storage] Upload blob falhou:', error2.message);
     } catch (err: any) {
-      console.warn('[storage] Erro na comunicação com Supabase:', err?.message || err);
+      console.warn('[storage] Erro na comunicação com Supabase (blob):', err?.message || err);
     }
   }
 
@@ -94,8 +105,8 @@ export async function uploadMapaImagem(
       onProgress?.(100);
       resolve(reader.result as string);
     };
-    reader.onerror = () => reject(new Error('Falha ao ler imagem'));
-    reader.readAsDataURL(webpFile);
+    reader.onerror = () => reject(new Error('Falha ao ler blob'));
+    reader.readAsDataURL(blob);
   });
 }
 

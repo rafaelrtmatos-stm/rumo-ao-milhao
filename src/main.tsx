@@ -35,14 +35,14 @@ export const ALL_SECTIONS = [
 export const DEFAULT_NON_ADMIN_PERMISSIONS: Record<string, boolean> = {
   dashboard: true,
   vendas: true,
-  empreendimentos: false,
-  proprietarios: false,
+  empreendimentos: true,
+  proprietarios: true,
   contratos: true,
   clientes: true,
   aniversarios: true,
   calculadora: true,
   config: false,
-  usuarios: true,
+  usuarios: false,
 };
 
 // ── JWT helpers ───────────────────────────────────────────────────────────────

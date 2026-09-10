@@ -103,7 +103,7 @@ import ClimaCard from "./components/ClimaCard";
 import SolOeste from "./components/SolOeste";
 import MapaGlobalDashboard, { MapaGlobalHandle } from "./components/MapaGlobalDashboard";
 import PickLocationMap from "./components/PickLocationMap";
-import { uploadMapaImagem, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
+import { uploadMapaImagem, uploadMapaBlob, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
 import ReservaPublica from "./components/ReservaPublica";
 import * as pdfjsLibLocal from "pdfjs-dist";
@@ -1827,7 +1827,7 @@ const BottomNav = ({
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Venda", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: FileText },
-    { id: "empreendimentos", label: "Mapa", icon: MapPin },
+    { id: "empreendimentos", label: "Empreend.", icon: Building2 },
   ];
 
   return (
@@ -1926,12 +1926,14 @@ const DashboardSection = ({
   clients,
   onNavigate,
   onViewContract,
+  onNovoEmpreendimento,
 }: {
   sales: Venda[];
   developments: Empreendimento[];
   clients: Cliente[];
   onNavigate?: (s: Section) => void;
   onViewContract?: (v: Venda) => void;
+  onNovoEmpreendimento?: () => void;
 }) => {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
   const totalLotesDisponiveis = developments.reduce(
@@ -1995,14 +1997,25 @@ const DashboardSection = ({
           <PieChartIcon className="text-primary-main" />
           Visão Geral
         </h3>
-        <button
-          onClick={() => exportToCSV(sales)}
-          className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
-        >
-          <Download size={14} />
-          <span className="hidden sm:inline">Exportar Vendas</span>
-          <span className="sm:hidden">Exportar</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+          <button
+            type="button"
+            onClick={() => onNovoEmpreendimento ? onNovoEmpreendimento() : onNavigate?.("empreendimentos")}
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
+            title="Adicionar novo empreendimento"
+          >
+            <Plus size={14} />
+            <span>+ Adicionar Empreendimento</span>
+          </button>
+          <button
+            onClick={() => exportToCSV(sales)}
+            className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200"
+          >
+            <Download size={14} />
+            <span className="hidden sm:inline">Exportar Vendas</span>
+            <span className="sm:hidden">Exportar</span>
+          </button>
+        </div>
       </div>
 
       {/* Cards principais — 2 colunas no celular, 4 no desktop */}
@@ -2437,7 +2450,7 @@ const LotDashboard = ({
   onMarkerSaved?: (quadra: string, lote: string, status: MapaLoteStatus, observacao: string) => void;
 }) => {
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
-  const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos" | "precos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl ? "mapa" : "quadradinhos");
+  const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos" | "precos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64 ? "mapa" : "quadradinhos");
   // colorMode: "status" = cores por disponível/reservado/indisponível; "preco" = cores por faixa de preço
   const colorMode = mode === "precos" ? "preco" : "status";
 
@@ -2604,6 +2617,10 @@ const LotDashboard = ({
   const [mapaUploadPdfPages, setMapaUploadPdfPages] = useState<number>(1);  // total de páginas do PDF selecionado
   const [mapaUploadPdfPage, setMapaUploadPdfPage] = useState(1);            // página escolhida
   const [mapaUploadLoading, setMapaUploadLoading] = useState(false);
+
+  // Estados de renderização e recuperação de PDF salvo
+  const [pdfRenderedUrl, setPdfRenderedUrl] = useState<string>("");
+  const [loadingPdfMap, setLoadingPdfMap] = useState<boolean>(false);
 
   // Detecção automática de bolinhas via IA
   const [detectandoBolinhas, setDetectandoBolinhas] = useState(false);
@@ -2787,7 +2804,7 @@ const LotDashboard = ({
     const incomingMarkerSize = Number((dev as any).mapaMarkerSizePercent ?? 100);
     if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
-    if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl)) setMode("quadradinhos");
+    if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64)) setMode("quadradinhos");
     // Gerar imagem leve para imagens antigas que nao tem mapaImagemLeveBase64
     const original = (dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || "";
     if (false && original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
@@ -2972,7 +2989,56 @@ const LotDashboard = ({
 
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
-  const mapaImagemOriginal = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || "";
+  const mapaImagemOriginal = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || pdfRenderedUrl || "";
+
+  // Auto-recuperação e fixação de mapa quando há mapaPdfUrl no banco mas mapaImagemUrl ainda não foi gerado
+  useEffect(() => {
+    const pdfUrl = (localDev as any).mapaPdfUrl;
+    const hasImage = !!((localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || pdfRenderedUrl);
+    if (!hasImage && pdfUrl) {
+      let cancelled = false;
+      setLoadingPdfMap(true);
+      (async () => {
+        try {
+          console.log('[LotDashboard] Recuperando mapa a partir do PDF salvo:', pdfUrl);
+          const res = await fetch(pdfUrl);
+          if (!res.ok) throw new Error(`HTTP ${res.status} ao baixar PDF`);
+          const buf = await res.arrayBuffer();
+          const targetPagina = (localDev as any).mapaPdfPagina || 1;
+          const { blob, dataUrl, width: nw, height: nh } = await renderPdfPageToBlob(buf, 2.0, targetPagina);
+          if (cancelled) return;
+          setPdfRenderedUrl(dataUrl);
+
+          // Salvar como imagem definitiva no Supabase Storage para fixar para sempre
+          try {
+            const imgUrl = await uploadMapaBlob(blob, localDev.id, undefined, 'webp', 'image/webp');
+            if (!cancelled && imgUrl && imgUrl.startsWith('http')) {
+              const isLandscape = nw > nh;
+              const a4RefWidth = isLandscape ? 1123 : 794;
+              const updated = {
+                ...localDev,
+                mapaImagemUrl: imgUrl,
+                mapaImagemNaturalWidth: nw,
+                mapaImagemNaturalHeight: nh,
+                mapaOrientacao: isLandscape ? "landscape" : "portrait",
+                mapaMarkerReferenceWidth: a4RefWidth,
+              } as Empreendimento;
+              setLocalDev(updated);
+              onSaveDev(updated);
+              console.log('[LotDashboard] Mapa do PDF fixado no banco com sucesso:', imgUrl);
+            }
+          } catch (uploadErr) {
+            console.warn('[LotDashboard] Erro ao salvar imagem renderizada no storage:', uploadErr);
+          }
+        } catch (e) {
+          console.error('[LotDashboard] Falha ao renderizar PDF salvo:', e);
+        } finally {
+          if (!cancelled) setLoadingPdfMap(false);
+        }
+      })();
+      return () => { cancelled = true; };
+    }
+  }, [localDev.id, (localDev as any).mapaPdfUrl, (localDev as any).mapaImagemUrl]);
   // Imagem leve: versao comprimida gerada no upload (30% qualidade, 800px)
   // Se nao existir ainda (imagens antigas), usa a original como fallback
   const mapaImagemLeveBase64 = (localDev as any).mapaImagemLeveBase64 || "";
@@ -3245,14 +3311,15 @@ const LotDashboard = ({
     });
   };
 
-  const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number) => {
+  const renderPdfPageToPng = async (buffer: ArrayBuffer, scale: number, pageNum = 1) => {
     // Yield para não bloquear o browser antes de iniciar
     await new Promise(r => setTimeout(r, 0));
     const pdfjsLib = await loadPdfJsIfNeeded();
     // Yield após carregar lib
     await new Promise(r => setTimeout(r, 0));
     const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
-    const page = await pdfDoc.getPage(1);
+    const targetPage = Math.min(Math.max(1, pageNum), pdfDoc.numPages);
+    const page = await pdfDoc.getPage(targetPage);
     const viewport = page.getViewport({ scale });
     // Limitar resolução máxima para não travar celular
     const maxPx = 4000;
@@ -3272,6 +3339,36 @@ const LotDashboard = ({
     // Yield após renderizar
     await new Promise(r => setTimeout(r, 0));
     return canvas.toDataURL("image/png", 0.92);
+  };
+
+  const renderPdfPageToBlob = async (buffer: ArrayBuffer, scale: number, pageNum = 1) => {
+    await new Promise(r => setTimeout(r, 0));
+    const pdfjsLib = await loadPdfJsIfNeeded();
+    await new Promise(r => setTimeout(r, 0));
+    const pdfDoc = await pdfjsLib.getDocument({ data: buffer.slice(0) }).promise;
+    const totalPages = pdfDoc.numPages;
+    const targetPage = Math.min(Math.max(1, pageNum), totalPages);
+    const page = await pdfDoc.getPage(targetPage);
+    const viewport = page.getViewport({ scale });
+    const maxPx = 4000;
+    const finalScale = viewport.width > maxPx || viewport.height > maxPx
+      ? scale * (maxPx / Math.max(viewport.width, viewport.height))
+      : scale;
+    const vp = finalScale !== scale ? page.getViewport({ scale: finalScale }) : viewport;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.floor(vp.width);
+    canvas.height = Math.floor(vp.height);
+    const ctx = canvas.getContext("2d")!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    await new Promise(r => setTimeout(r, 0));
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    await new Promise(r => setTimeout(r, 0));
+    const dataUrl = canvas.toDataURL("image/png", 0.92);
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error("toBlob failed")), "image/webp", 0.88);
+    });
+    return { blob, dataUrl, width: canvas.width, height: canvas.height, totalPages };
   };
 
   // ── OPÇÃO C: renderização direta do PDF no canvas ──────────────────────────
@@ -3752,41 +3849,49 @@ const LotDashboard = ({
     }
     setMapUploadProgress(10);
     if (isPDF) {
-      // Upload PDF binário para Supabase Storage + renderizar preview local
       try {
         setMapUploadProgress(15);
-        const pdfUrl = await uploadMapaPDF(file, localDev.id, (pct) => setMapUploadProgress(Math.round(pct * 0.5)));
-        // Renderizar preview local para usar como imagem do mapa
-        const reader2 = new FileReader();
-        reader2.onload = async () => {
-          try {
-            const originalBuffer = reader2.result as ArrayBuffer;
-            setMapUploadProgress(60);
-            const previewImage = await renderPdfPageToPng(originalBuffer, 1.5);
-            setMapUploadProgress(85);
-            const highImage = await renderPdfPageToPng(originalBuffer, 2.5);
-            setMapUploadProgress(95);
-            persistDev({
-              ...localDev,
-              mapaImagemBase64: previewImage,
-              mapaImagemHighResBase64: highImage,
-              mapaPdfOriginalBase64: "",
-              mapaPdfOriginalName: file.name,
-              mapaPdfUrl: pdfUrl,
-              mapaImagemUrl: "",
-              mapaPontos: mapaPontos,
-              mapaAltaResolucao: true,
-              mapaMarkerReferenceWidth: 1000,
-            } as Empreendimento);
-            setMode("mapa");
-            setMapUploadProgress(100);
-            setTimeout(() => setMapUploadProgress(0), 2000);
-          } catch(err2) {
-            setMapUploadProgress(0);
-            alert("Erro ao renderizar PDF.\n" + String((err2 as any)?.message || err2));
-          }
-        };
-        reader2.readAsArrayBuffer(file);
+        // 1. Upload do arquivo PDF binário para Supabase Storage
+        const pdfUrl = await uploadMapaPDF(file, localDev.id, (pct) => setMapUploadProgress(Math.round(pct * 0.35)));
+        setMapUploadProgress(40);
+
+        // 2. Renderizar a página escolhida do PDF em alta resolução
+        const originalBuffer = await file.arrayBuffer();
+        setMapUploadProgress(60);
+        const { blob, dataUrl, width: nw, height: nh } = await renderPdfPageToBlob(originalBuffer, 2.0, pdfPage);
+        setMapUploadProgress(75);
+
+        // 3. Fazer upload da imagem renderizada (.webp) para o Supabase Storage
+        const imgUrl = await uploadMapaBlob(blob, localDev.id, (pct) => setMapUploadProgress(75 + Math.round(pct * 0.2)), 'webp', 'image/webp');
+        precacheMapaUrl(imgUrl);
+        setMapUploadProgress(95);
+
+        const isLandscape = nw > nh;
+        const a4RefWidth = isLandscape ? 1123 : 794;
+
+        // 4. Salvar permanentemente no banco com URLs públicas fixadas
+        persistDev({
+          ...localDev,
+          mapaImagemUrl: imgUrl,
+          mapaPdfUrl: pdfUrl,
+          mapaPdfOriginalName: file.name,
+          mapaPdfPagina: pdfPage,
+          mapaImagemBase64: dataUrl,
+          mapaImagemLeveBase64: "",
+          mapaImagemMedResBase64: "",
+          mapaImagemHighResBase64: "",
+          mapaPdfOriginalBase64: "",
+          mapaPontos: mapaPontos,
+          mapaAltaResolucao: true,
+          mapaMarkerReferenceWidth: a4RefWidth,
+          mapaOrientacao: isLandscape ? "landscape" : "portrait",
+          mapaImagemNaturalWidth: nw,
+          mapaImagemNaturalHeight: nh,
+        } as Empreendimento);
+
+        setMode("mapa");
+        setMapUploadProgress(100);
+        setTimeout(() => setMapUploadProgress(0), 1500);
       } catch (err) {
         setMapUploadProgress(0);
         alert("Falha no upload do PDF.\n" + String((err as any)?.message || err));
@@ -5140,16 +5245,23 @@ const LotDashboard = ({
               className={`relative bg-white w-full select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", willChange: "transform" }}
             >
+              {loadingPdfMap && !mapaImagem && (
+                <div className="flex flex-col items-center justify-center p-16 text-slate-500 gap-3 min-h-[350px]">
+                  <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="font-bold text-sm text-slate-700">Carregando mapa do PDF salvo...</p>
+                  <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
+                </div>
+              )}
               {(localDev as any).mapaPdfOriginalBase64 ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
-              ) : (
+              ) : mapaImagem ? (
                 <>
                   {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
                     <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
                   )}
                   <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
                 </>
-              )}
+              ) : null}
 
               {/* Preview bolinhas + linha para multi-lote */}
               {renderSeqPreviewBalls()}
@@ -5859,16 +5971,23 @@ const LotDashboard = ({
                   willChange: "transform",
                 }}
               >
-                {(localDev as any).mapaPdfOriginalBase64 ? (
-                  <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
-                ) : (
-                  <>
-                    {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
-                      <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
-                    )}
-                    <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
-                  </>
-                )}
+              {loadingPdfMap && !mapaImagem && (
+                <div className="flex flex-col items-center justify-center p-16 text-slate-500 gap-3 min-h-[350px]">
+                  <div className="w-8 h-8 border-3 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                  <p className="font-bold text-sm text-slate-700">Carregando mapa do PDF salvo...</p>
+                  <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
+                </div>
+              )}
+              {(localDev as any).mapaPdfOriginalBase64 ? (
+                <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
+              ) : mapaImagem ? (
+                <>
+                  {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
+                    <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
+                  )}
+                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                </>
+              ) : null}
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
@@ -8635,11 +8754,33 @@ const LotDashboard = ({
                 <div className="bg-slate-50 rounded-xl p-3">
                   <p className="text-xs font-bold text-slate-600 mb-2">Página ({mapaUploadPdfPages} páginas)</p>
                   <div className="flex items-center gap-3">
-                    <button onClick={() => setMapaUploadPdfPage(p => Math.max(1,p-1))} disabled={mapaUploadPdfPage<=1}
-                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 text-lg">‹</button>
+                    <button onClick={async () => {
+                      const nextP = Math.max(1, mapaUploadPdfPage - 1);
+                      setMapaUploadPdfPage(nextP);
+                      const f = mapaUploadFiles[mapaUploadPageIdx];
+                      if (f && f.type === 'application/pdf') {
+                        try {
+                          const buf = await f.arrayBuffer();
+                          const p = await renderPdfPageToPng(buf, 1.0, nextP);
+                          setMapaUploadPreviews(prev => { const n = [...prev]; n[mapaUploadPageIdx] = p; return n; });
+                        } catch {}
+                      }
+                    }} disabled={mapaUploadPdfPage<=1}
+                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 text-lg hover:bg-slate-50">‹</button>
                     <span className="text-sm font-bold flex-1 text-center">{mapaUploadPdfPage} / {mapaUploadPdfPages}</span>
-                    <button onClick={() => setMapaUploadPdfPage(p => Math.min(mapaUploadPdfPages,p+1))} disabled={mapaUploadPdfPage>=mapaUploadPdfPages}
-                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 text-lg">›</button>
+                    <button onClick={async () => {
+                      const nextP = Math.min(mapaUploadPdfPages, mapaUploadPdfPage + 1);
+                      setMapaUploadPdfPage(nextP);
+                      const f = mapaUploadFiles[mapaUploadPageIdx];
+                      if (f && f.type === 'application/pdf') {
+                        try {
+                          const buf = await f.arrayBuffer();
+                          const p = await renderPdfPageToPng(buf, 1.0, nextP);
+                          setMapaUploadPreviews(prev => { const n = [...prev]; n[mapaUploadPageIdx] = p; return n; });
+                        } catch {}
+                      }
+                    }} disabled={mapaUploadPdfPage>=mapaUploadPdfPages}
+                      className="w-8 h-8 rounded-lg border border-slate-200 flex items-center justify-center disabled:opacity-40 text-lg hover:bg-slate-50">›</button>
                   </div>
                 </div>
               )}
@@ -8709,6 +8850,8 @@ const EmpreendimentosSection = ({
   proprietarios = [],
   canEditMap = false,
   isAdmin = false,
+  autoOpenAdd,
+  onAutoOpenHandled,
 }: {
   developments: Empreendimento[];
   sales: Venda[];
@@ -8726,6 +8869,8 @@ const EmpreendimentosSection = ({
   proprietarios?: Proprietario[];
   canEditMap?: boolean;
   isAdmin?: boolean;
+  autoOpenAdd?: boolean;
+  onAutoOpenHandled?: () => void;
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "Pará", totalLotes: 0,
@@ -9135,6 +9280,13 @@ const EmpreendimentosSection = ({
     setIsAdding(true);
   };
 
+  useEffect(() => {
+    if (autoOpenAdd) {
+      openAddForm();
+      onAutoOpenHandled?.();
+    }
+  }, [autoOpenAdd]);
+
   const openEditForm = (dev: Empreendimento) => {
     setEditingDev(dev);
     setFormData({
@@ -9299,11 +9451,12 @@ const EmpreendimentosSection = ({
             if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
             else openAddForm();
           }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-primary-main text-white rounded-2xl text-sm font-black active:scale-95 transition-all hover:bg-primary-dark flex-shrink-0"
+          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black active:scale-95 transition-all shadow-md shadow-emerald-600/20 flex-shrink-0 cursor-pointer"
+          title="Adicionar novo empreendimento"
         >
           {isAdding ? <X size={16} /> : <Plus size={16} />}
-          <span className="hidden sm:inline">{isAdding ? "Cancelar" : "Novo Loteamento"}</span>
-          <span className="sm:hidden">{isAdding ? "Cancelar" : "Novo"}</span>
+          <span className="hidden sm:inline">{isAdding ? "Cancelar Cadastro" : "Adicionar Empreendimento"}</span>
+          <span className="sm:hidden">{isAdding ? "Cancelar" : "+ Empreendimento"}</span>
         </button>
       </div>
 
@@ -9516,9 +9669,9 @@ const EmpreendimentosSection = ({
                 <div className="flex items-center justify-between gap-2 mb-3">
                   <div className="min-w-0">
                     <h3 className="text-base font-black text-slate-900 truncate">
-                      {editingDev ? `Editando: ${editingDev.nome}` : "Novo Loteamento"}
+                      {editingDev ? `Editando: ${editingDev.nome}` : "Novo Empreendimento"}
                     </h3>
-                    <p className="text-xs text-slate-400">{editingDev ? "Apenas este empreendimento" : "Preencha os dados abaixo"}</p>
+                    <p className="text-xs text-slate-400">{editingDev ? "Apenas este empreendimento" : "Preencha os dados abaixo para cadastrar o empreendimento"}</p>
                   </div>
                   <button type="button"
                     onClick={() => { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }}
@@ -10152,7 +10305,7 @@ const EmpreendimentosSection = ({
           const vendidos = dev.lotesVendidos ?? 0;
           const total = dev.totalLotes ?? 0;
           const pct = total > 0 ? Math.round((vendidos / total) * 100) : 0;
-          const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl;
+          const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl || !!(dev as any).mapaPdfUrl;
           const temGps = !!getEmpreendimentoMapsUrl(dev);
           const numQuadras = (dev.quadras || "").split(",").filter(Boolean).length;
           const menuAberto = menuAbertoId === dev.id;
@@ -10285,10 +10438,11 @@ const EmpreendimentosSection = ({
               Sua base de empreendimentos está vazia.
             </p>
             <button
-              onClick={() => setIsAdding(true)}
-              className="btn-ghost text-sm mt-2 font-bold px-8"
+              onClick={() => openAddForm()}
+              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black mt-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-2"
             >
-              Adicionar Primeiro Loteamento
+              <Plus size={16} />
+              Adicionar Primeiro Empreendimento
             </button>
           </div>
         )}
@@ -20759,6 +20913,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     venda: Venda;
     cliente: Cliente | null;
   } | null>(null);
+  const [openAddEmpreendimentoTrigger, setOpenAddEmpreendimentoTrigger] = useState(false);
+  const handleNovoEmpreendimento = () => {
+    setSection("empreendimentos");
+    setOpenAddEmpreendimentoTrigger(true);
+  };
 
   useEffect(() => {
     let subDevs: { unsubscribe: () => void } | null = null;
@@ -21288,6 +21447,36 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
     dbService.saveClientes(updatedClients).catch(console.error);
   };
 
+  const handleDeleteCliente = async (id: string) => {
+    if (!window.confirm('Excluir este cliente permanentemente? Isso também removerá os documentos do Supabase. Esta ação não pode ser desfeita.')) return;
+    // Deletar arquivos do Supabase Storage antes de remover do banco
+    const cliente = clients.find(c => c.id === id);
+    const docs = (cliente as any)?.documentos as {url?:string;nome?:string}[] || [];
+    if (docs.length > 0) {
+      try {
+        const sbUrl = import.meta.env.VITE_SUPABASE_URL;
+        const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+        if (sbUrl && sbKey) {
+          const { createClient } = await import('@supabase/supabase-js');
+          const sb = createClient(sbUrl, sbKey);
+          const paths = docs.map(d => {
+            if (!d.url) return null;
+            const url = new URL(d.url);
+            const parts = url.pathname.split('/documentos/');
+            return parts[1] || null;
+          }).filter(Boolean) as string[];
+          if (paths.length > 0) {
+            await sb.storage.from('documentos').remove(paths);
+            console.log('[Storage] Removidos:', paths);
+          }
+        }
+      } catch (err) { console.warn('Erro ao remover docs do Supabase:', err); }
+    }
+    setClients(prev => prev.filter(c => c.id !== id));
+    dbService.deleteClienteById(id).catch(console.error);
+  };
+  const deleteCliente = handleDeleteCliente;
+
   const updateVendaStatus = (
     vendaId: string,
     newStatus: "pendente" | "pago" | "cancelado",
@@ -21644,6 +21833,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             clients={clients}
             onNavigate={(s) => setSection(s)}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
+            onNovoEmpreendimento={handleNovoEmpreendimento}
           />
         );
       case "empreendimentos":
@@ -21662,6 +21852,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             proprietarios={config.proprietarios || []}
             canEditMap={!!isAdmin || userPermissions?.editar_mapas === true}
             isAdmin={!!isAdmin}
+            autoOpenAdd={openAddEmpreendimentoTrigger}
+            onAutoOpenHandled={() => setOpenAddEmpreendimentoTrigger(false)}
           />
         );
       case "proprietarios":
@@ -21721,34 +21913,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
               setClients(updatedList);
               dbService.upsertCliente(updated).catch(console.error);
             }}
-            onDeleteCliente={async (id) => {
-              if (!window.confirm('Excluir este cliente permanentemente? Isso também removerá os documentos do Supabase. Esta ação não pode ser desfeita.')) return;
-              // Deletar arquivos do Supabase Storage antes de remover do banco
-              const cliente = clients.find(c => c.id === id);
-              const docs = (cliente as any)?.documentos as {url?:string;nome?:string}[] || [];
-              if (docs.length > 0) {
-                try {
-                  const sbUrl = import.meta.env.VITE_SUPABASE_URL;
-                  const sbKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-                  if (sbUrl && sbKey) {
-                    const { createClient } = await import('@supabase/supabase-js');
-                    const sb = createClient(sbUrl, sbKey);
-                    const paths = docs.map(d => {
-                      if (!d.url) return null;
-                      const url = new URL(d.url);
-                      const parts = url.pathname.split('/documentos/');
-                      return parts[1] || null;
-                    }).filter(Boolean) as string[];
-                    if (paths.length > 0) {
-                      await sb.storage.from('documentos').remove(paths);
-                      console.log('[Storage] Removidos:', paths);
-                    }
-                  }
-                } catch (err) { console.warn('Erro ao remover docs do Supabase:', err); }
-              }
-              setClients(prev => prev.filter(c => c.id !== id));
-              dbService.deleteClienteById(id).catch(console.error);
-            }}
+            onDeleteCliente={handleDeleteCliente}
           />
         );
       case "aniversarios":
@@ -21758,7 +21923,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             sales={sales}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
             isAdmin={!!isAdmin}
-            onDeleteCliente={deleteCliente}
+            onDeleteCliente={handleDeleteCliente}
           />
         );
       case "calculadora":
@@ -21795,7 +21960,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           />
         );
       default:
-        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
+        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} onNovoEmpreendimento={handleNovoEmpreendimento} />;
     }
   };
 
@@ -22170,7 +22335,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         userEmail={userEmail}
       />
 
-      <main className={`flex-1 min-w-0 w-full max-w-full overflow-x-hidden ${forceDesktop ? "ml-72" : "lg:ml-72"} no-print transition-all duration-300 ${section === "empreendimentos" ? "p-0 pt-16 lg:pt-0 pb-0 flex flex-col" : "p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 " + (forceDesktop ? "pb-10" : "pb-32 lg:pb-10")}`}>
+      <main className={`flex-1 min-w-0 w-full max-w-full overflow-x-hidden ${forceDesktop ? "ml-72" : "lg:ml-72"} no-print transition-all duration-300 p-4 sm:p-8 lg:p-10 pt-24 lg:pt-32 ${forceDesktop ? "pb-10" : "pb-32 lg:pb-10"}`}>
         <Header
           title={getTitle()}
           toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}

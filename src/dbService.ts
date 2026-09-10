@@ -100,25 +100,27 @@ async function apiDelete(path: string): Promise<void> {
 async function getEmpreendimentos(): Promise<Empreendimento[]> {
   if (navigator.onLine) {
     try {
-      // Timeout de 8s para evitar pending infinito
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 8000);
+      const timer = setTimeout(() => controller.abort(), 25000);
       const res = await authFetch('/api/empreendimentos', {
         signal: controller.signal,
       }).finally(() => clearTimeout(timer));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const items: Empreendimento[] = await res.json();
-      const now = Date.now();
-      for (const item of items) {
-        const local = await db.empreendimentos.get(item.id);
-        if (!local || local.syncStatus === 'synced') {
-          const base64 = (local?.data as any)?.mapaImagemBase64;
-          const merged = base64 ? { ...item, mapaImagemBase64: base64 } : item;
-          await db.empreendimentos.put({ id: item.id, data: merged, syncStatus: 'synced', updatedAt: now });
+      try {
+        const now = Date.now();
+        for (const item of items) {
+          const local = await db.empreendimentos.get(item.id);
+          if (!local || local.syncStatus === 'synced') {
+            const base64 = (local?.data as any)?.mapaImagemBase64;
+            const merged = base64 ? { ...item, mapaImagemBase64: base64 } : item;
+            await db.empreendimentos.put({ id: item.id, data: merged, syncStatus: 'synced', updatedAt: now });
+          }
         }
+      } catch (cacheErr) {
+        console.warn('[db] Falha ao persistir cache local de empreendimentos:', cacheErr);
       }
-      const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
-      return records.map(r => injectCoordenadas(r.data));
+      return items.map(r => injectCoordenadas(r));
     } catch (err) {
       console.warn('[db] getEmpreendimentos API falhou, usando cache:', err);
     }
@@ -173,15 +175,13 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
         });
       }
 
-      // 4. Imagem do mapa — NUNCA enviar Base64 pelo servidor (limite Vercel 4.5MB)
-      // O upload de imagem vai direto para o Supabase via uploadMapaImagem()
-      // Aqui só limpamos o Base64 do servidor se ainda existir
+      // 4. Imagem do mapa — se já possui mapaImagemUrl permanente, limpa base64 antigo para liberar espaço
+      const hasUrl = !!(item as any).mapaImagemUrl;
       const base64Val = (item as any).mapaImagemBase64 || '';
-      if (base64Val) {
-        // Limpar Base64 do servidor — já foi ou será enviado ao Supabase
+      if (hasUrl && base64Val) {
         await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
           mapaImagemBase64: null,
-        });
+        }).catch(() => {});
       }
 
       await db.empreendimentos.update(item.id, { syncStatus: 'synced' });
@@ -241,18 +241,22 @@ async function getClientes(): Promise<Cliente[]> {
   if (navigator.onLine) {
     try {
       const controller2 = new AbortController();
-      const timer2 = setTimeout(() => controller2.abort(), 8000);
+      const timer2 = setTimeout(() => controller2.abort(), 25000);
       const res2 = await authFetch('/api/clientes', {
         signal: controller2.signal,
       }).finally(() => clearTimeout(timer2));
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
       const items: Cliente[] = await res2.json();
-      const now = Date.now();
-      for (const item of items) {
-        const local = await db.clientes.get(item.id);
-        if (!local || local.syncStatus === 'synced') {
-          await db.clientes.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
+      try {
+        const now = Date.now();
+        for (const item of items) {
+          const local = await db.clientes.get(item.id);
+          if (!local || local.syncStatus === 'synced') {
+            await db.clientes.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
+          }
         }
+      } catch (cacheErr) {
+        console.warn('[db] Falha ao persistir cache local de clientes:', cacheErr);
       }
       return items;
     } catch (err) {

@@ -73,10 +73,10 @@ function ensureDefaultAdmin() {
   let seeded = false;
   for (const email of defaultEmails) {
     const normalized = email.toLowerCase().trim();
-    const exists = Array.from(inMemoryUsers.values()).some(
+    const existing = Array.from(inMemoryUsers.values()).find(
       (u) => u.email.toLowerCase() === normalized
     );
-    if (!exists) {
+    if (!existing) {
       const id = `lu-admin-${normalized.replace(/[^a-z0-9]/g, "_")}`;
       const user: LocalUser = {
         id,
@@ -84,7 +84,10 @@ function ensureDefaultAdmin() {
         password_hash: passwordHash,
         is_admin: true,
         permissions: {
+          dashboard: true,
+          vendas: true,
           empreendimentos: true,
+          proprietarios: true,
           mapa: true,
           tabela: true,
           contratos: true,
@@ -101,19 +104,31 @@ function ensureDefaultAdmin() {
       };
       inMemoryUsers.set(id, user);
       seeded = true;
+    } else {
+      let updated = false;
+      if (!existing.is_admin) {
+        existing.is_admin = true;
+        updated = true;
+      }
+      if (!bcrypt.compareSync(adminPassword, existing.password_hash)) {
+        existing.password_hash = passwordHash;
+        updated = true;
+      }
+      if (updated) {
+        inMemoryUsers.set(existing.id, existing);
+        seeded = true;
+      }
     }
   }
   if (seeded) {
     saveUsersToFile();
-    console.log("[LocalUsers] Administrador(es) padrão inicializados com sucesso.");
+    console.log("[LocalUsers] Administrador(es) padrão sincronizados com sucesso.");
   }
 }
 
 // Inicializar na carga do módulo
 loadUsersFromFile();
-if (inMemoryUsers.size === 0) {
-  ensureDefaultAdmin();
-}
+ensureDefaultAdmin();
 
 function toLocalUser(row: any): LocalUser {
   return {
