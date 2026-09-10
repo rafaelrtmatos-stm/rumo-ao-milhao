@@ -70,6 +70,8 @@ import {
   Download,
   GripHorizontal,
   RotateCcw,
+  Crosshair,
+  Sliders,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
