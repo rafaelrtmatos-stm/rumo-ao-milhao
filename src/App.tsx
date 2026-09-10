@@ -1926,14 +1926,12 @@ const DashboardSection = ({
   clients,
   onNavigate,
   onViewContract,
-  onNovoEmpreendimento,
 }: {
   sales: Venda[];
   developments: Empreendimento[];
   clients: Cliente[];
   onNavigate?: (s: Section) => void;
   onViewContract?: (v: Venda) => void;
-  onNovoEmpreendimento?: () => void;
 }) => {
   const totalRevenue = sales.reduce((acc, sale) => acc + sale.valorLote, 0);
   const totalLotesDisponiveis = developments.reduce(
@@ -1997,25 +1995,14 @@ const DashboardSection = ({
           <PieChartIcon className="text-primary-main" />
           Visão Geral
         </h3>
-        <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
-          <button
-            type="button"
-            onClick={() => onNovoEmpreendimento ? onNovoEmpreendimento() : onNavigate?.("empreendimentos")}
-            className="flex items-center gap-1.5 px-3 sm:px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-sm active:scale-95 transition-all"
-            title="Adicionar novo empreendimento"
-          >
-            <Plus size={14} />
-            <span>+ Adicionar Empreendimento</span>
-          </button>
-          <button
-            onClick={() => exportToCSV(sales)}
-            className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200"
-          >
-            <Download size={14} />
-            <span className="hidden sm:inline">Exportar Vendas</span>
-            <span className="sm:hidden">Exportar</span>
-          </button>
-        </div>
+        <button
+          onClick={() => exportToCSV(sales)}
+          className="btn-ghost text-xs px-3 sm:px-4 py-2 border-slate-200 self-start sm:self-auto"
+        >
+          <Download size={14} />
+          <span className="hidden sm:inline">Exportar Vendas</span>
+          <span className="sm:hidden">Exportar</span>
+        </button>
       </div>
 
       {/* Cards principais — 2 colunas no celular, 4 no desktop */}
@@ -21833,7 +21820,6 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             clients={clients}
             onNavigate={(s) => setSection(s)}
             onViewContract={(v) => { setSection("contratos"); setContractToOpen(v); }}
-            onNovoEmpreendimento={handleNovoEmpreendimento}
           />
         );
       case "empreendimentos":
@@ -21960,7 +21946,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
           />
         );
       default:
-        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} onNovoEmpreendimento={handleNovoEmpreendimento} />;
+        return <DashboardSection sales={sales} developments={developments} clients={clients} onNavigate={(s) => setSection(s)} />;
     }
   };
 
