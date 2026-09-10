@@ -68,6 +68,8 @@ import {
   Trophy,
   Medal,
   Download,
+  GripHorizontal,
+  RotateCcw,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -2525,8 +2527,8 @@ const LotDashboard = ({
   const [mobileNovaQuadra, setMobileNovaQuadra] = useState("");
   const [mobileNovoLote, setMobileNovoLote] = useState("");
   const [mobileNovoStatus, setMobileNovoStatus] = useState<MapaLoteStatus>("disponivel");
-  // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa
-  const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa">("visualizar");
+  // mapAction: "visualizar" = modo leitura, "editar" = edição geral (marcador ao clicar), "massa" = edição em massa, "quadras" = gerenciador de quadras e lotes
+  const [mapAction, setMapAction] = useState<"visualizar" | "editar" | "massa" | "quadras">("visualizar");
 
   // Novo marcador unificado: fase "idle" | "formulario" | "aguardando_segundo"
   // lote pode ser "1" (único) ou "1,2,3,4" (múltiplos → linha entre dois pontos)
@@ -2592,8 +2594,115 @@ const LotDashboard = ({
   const [mapUndoStack, setMapUndoStack] = useState<{ pontos: any[]; label: string }[]>([]);
   const [mapRedoStack, setMapRedoStack] = useState<{ pontos: any[]; label: string }[]>([]);
 
-  // Painel lateral recolhivel
+  // Painel lateral "Editar mapa" arrastável e recolhível no PC
   const [painelRecolhido, setPainelRecolhido] = useState(false);
+  const [editPainelPos, setEditPainelPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('mapaEditPainelPos_' + (dev as any)?.id);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const [isDraggingEditPainel, setIsDraggingEditPainel] = useState(false);
+  const editPainelRef = useRef<HTMLDivElement>(null);
+  const editPainelDragRef = useRef<{
+    startX: number;
+    startY: number;
+    startPosX: number;
+    startPosY: number;
+  } | null>(null);
+
+  const startDragEditPainel = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('button, input, select, textarea, label, a')) return;
+    e.stopPropagation();
+    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
+
+    const panel = editPainelRef.current;
+    if (!panel) return;
+    const container = panel.parentElement;
+    if (!container) return;
+
+    const panelRect = panel.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+
+    const curPosX = panelRect.left - containerRect.left;
+    const curPosY = panelRect.top - containerRect.top;
+
+    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    editPainelDragRef.current = {
+      startX: clientX,
+      startY: clientY,
+      startPosX: curPosX,
+      startPosY: curPosY,
+    };
+    setIsDraggingEditPainel(true);
+
+    let lastX = curPosX;
+    let lastY = curPosY;
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      if (!editPainelDragRef.current || !editPainelRef.current) return;
+      if (ev.cancelable) ev.preventDefault();
+      const currentContainer = editPainelRef.current.parentElement;
+      if (!currentContainer) return;
+      const cRect = currentContainer.getBoundingClientRect();
+      const pW = editPainelRef.current.offsetWidth || 300;
+
+      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+
+      const dx = cx - editPainelDragRef.current.startX;
+      const dy = cy - editPainelDragRef.current.startY;
+
+      const maxX = Math.max(8, cRect.width - pW - 8);
+      const maxY = Math.max(8, cRect.height - 70);
+      const clampedX = Math.max(8, Math.min(maxX, editPainelDragRef.current.startPosX + dx));
+      const clampedY = Math.max(8, Math.min(maxY, editPainelDragRef.current.startPosY + dy));
+
+      lastX = clampedX;
+      lastY = clampedY;
+
+      // Movimentação direta no DOM via style para fluidez máxima a 120 FPS sem re-renders pesados
+      editPainelRef.current.style.left = `${clampedX}px`;
+      editPainelRef.current.style.top = `${clampedY}px`;
+    };
+
+    const onUp = () => {
+      editPainelDragRef.current = null;
+      setIsDraggingEditPainel(false);
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove as any);
+      window.removeEventListener('touchend', onUp);
+
+      setEditPainelPos({ x: lastX, y: lastY });
+      try {
+        localStorage.setItem('mapaEditPainelPos_' + localDev.id, JSON.stringify({ x: lastX, y: lastY }));
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove as any, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
+  const resetEditPainelPos = (e?: React.MouseEvent) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setEditPainelPos(null);
+    try {
+      localStorage.removeItem('mapaEditPainelPos_' + localDev.id);
+    } catch {}
+    if (editPainelRef.current) {
+      editPainelRef.current.style.left = '12px';
+      editPainelRef.current.style.top = '12px';
+    }
+  };
   const [mapUploadProgress, setMapUploadProgress] = useState(0); // 0=idle, 1-99=loading, 100=done
 
   // Modal de upload de mapa — Preview + seleção de página + múltiplos PDFs
@@ -2764,6 +2873,24 @@ const LotDashboard = ({
   const [novaQuadraSel, setNovaQuadraSel] = useState("");
   const [editFileiraNovo, setEditFileiraNovo] = useState<string>(""); // novo lote extremo da fileira
   const [clipboard, setClipboard] = useState<any[]>([]); // bolinhas copiadas
+
+  // Estados para edição rápida no modal da bolinha selecionada
+  const [editPontoQuadra, setEditPontoQuadra] = useState("");
+  const [editPontoLote, setEditPontoLote] = useState("");
+  const [editPontoStatus, setEditPontoStatus] = useState<MapaLoteStatus>("disponivel");
+  const [editPontoObs, setEditPontoObs] = useState("");
+  const [editPontoRenumerarSeq, setEditPontoRenumerarSeq] = useState(false);
+  const [editPontoSuccessMsg, setEditPontoSuccessMsg] = useState("");
+
+  // Ferramenta Gerenciador de Quadras e Lotes (faixa primeira/última, status, duplicação e alinhamento)
+  const [gerenciadorQuadra, setGerenciadorQuadra] = useState("");
+  const [gerenciadorLoteIni, setGerenciadorLoteIni] = useState("");
+  const [gerenciadorLoteFin, setGerenciadorLoteFin] = useState("");
+  const [gerenciadorModoFaixa, setGerenciadorModoFaixa] = useState<"toda" | "faixa">("toda");
+  const [gerenciadorNovaQuadra, setGerenciadorNovaQuadra] = useState("");
+  const [gerenciadorOffsetDir, setGerenciadorOffsetDir] = useState<"direita" | "esquerda" | "baixo" | "cima">("direita");
+  const [gerenciadorOffsetDist, setGerenciadorOffsetDist] = useState<number>(4);
+  const [gerenciadorMsgFeedback, setGerenciadorMsgFeedback] = useState<string>("");
   // Estados aba Global
   const [camadasGlobal, setCamadasGlobal] = useState({ satelite: true, hibrido: false, ruas: true, terreno: false });
   // Estados aba Lotes premium
@@ -2775,6 +2902,15 @@ const LotDashboard = ({
   const [abLoteView, setAbLoteView] = useState<"grid"|"lista">("grid");
   const [showModalColar, setShowModalColar] = useState(false); // modal de quadra ao colar
   const [colarQuadra, setColarQuadra] = useState("");
+
+  // Estados do Modal de Clonagem (sempre pergunta a nova quadra para evitar duplicidade)
+  const [modalClonarAberto, setModalClonarAberto] = useState(false);
+  const [clonarOrigemIds, setClonarOrigemIds] = useState<string[]>([]);
+  const [clonarNovaQuadra, setClonarNovaQuadra] = useState("");
+  const [clonarQuadraOrigemInfo, setClonarQuadraOrigemInfo] = useState("");
+  const [clonarOffsetDir, setClonarOffsetDir] = useState<"direita" | "esquerda" | "baixo" | "cima">("direita");
+  const [clonarOffsetDist, setClonarOffsetDist] = useState<number>(3);
+  const [clonarMsgErro, setClonarMsgErro] = useState("");
   const [balaoPos, setBalaoPos] = useState<{x: number; y: number} | null>(null);
   const balaoDragRef = useRef<{startX:number;startY:number;startBX:number;startBY:number} | null>(null);
 
@@ -2840,32 +2976,31 @@ const LotDashboard = ({
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
     const viewport = getActiveViewport() || mapViewportRef.current;
     const img = mapImageRef.current;
-    if (!viewport || !img) return pan;
+    const container = mapContainerRef.current;
+    if (!viewport) return pan;
     const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
     const vpH = viewport.offsetHeight || viewport.clientHeight || 0;
-    // imgLayoutW = vpW (imagem é w-full no zoom=1)
-    const imgNatW = img.naturalWidth || 1;
-    const imgNatH = img.naturalHeight || 1;
-    const imgLayoutW = vpW;
-    const imgLayoutH = imgLayoutW * (imgNatH / imgNatW);
-    if (vpW === 0) return pan;
-    const scaledW = imgLayoutW * zoom;
-    const scaledH = imgLayoutH * zoom;
-    // Se imagem menor que viewport: centralizar (pan = (vp - scaled) / 2)
-    // Se imagem maior que viewport: permitir rolar mas não sair dos limites
-    const centerX = (vpW - scaledW) / 2;
-    const centerY = (vpH - scaledH) / 2;
-    if (scaledW <= vpW) {
-      // Imagem cabe na largura — centralizar X, permitir Y livre se maior
-      return {
-        x: centerX,
-        y: scaledH <= vpH ? centerY : Math.max(vpH - scaledH, Math.min(0, pan.y)),
-      };
-    }
-    // Imagem maior que viewport — limitar scrolling
+    if (vpW === 0 || vpH === 0) return pan;
+
+    // Calcular altura e largura reais do mapa renderizado (suporta imagem, canvas PDF e SVG)
+    const rawH = container?.offsetHeight || img?.offsetHeight || (img?.naturalHeight ? (vpW * (img.naturalHeight / (img.naturalWidth || 1))) : vpH * 2);
+    const rawW = container?.offsetWidth || img?.offsetWidth || vpW;
+    const scaledW = rawW * zoom;
+    const scaledH = rawH * zoom;
+
+    // Margem ultra livre para garantir que o usuário consiga navegar livremente para QUALQUER parte
+    // (inclusive a parte inferior do mapa, topo e laterais sem nunca travar)
+    const extraMarginY = Math.max(vpH * 2, scaledH * 0.8, 3000);
+    const extraMarginX = Math.max(vpW * 2, scaledW * 0.8, 3000);
+
+    const minX = -scaledW - extraMarginX;
+    const maxX = vpW + extraMarginX;
+    const minY = -scaledH - extraMarginY;
+    const maxY = vpH + extraMarginY;
+
     return {
-      x: Math.max(vpW - scaledW, Math.min(0, pan.x)),
-      y: scaledH <= vpH ? centerY : Math.max(vpH - scaledH, Math.min(0, pan.y)),
+      x: Math.max(minX, Math.min(maxX, pan.x)),
+      y: Math.max(minY, Math.min(maxY, pan.y)),
     };
   };
 
@@ -4552,22 +4687,44 @@ const LotDashboard = ({
     setMapUndoStack(prev => [...prev.slice(-29), { pontos: currentPontosForUndo, markerSize: Number(markerSizePercent) }]);
     setMapRedoStack([]);
     setDraggingId(ponto.id);
-    // Guardar posição inicial de TODOS os pontos do grupo OU fileira
-    const grupoId = gruposMap[ponto.id];
+
     const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    const initialPositions: Record<string, {x: number; y: number}> = {};
-    if (grupoId) {
+    const grupoId = gruposMap[ponto.id];
+
+    // DETERMINAR QUAIS MARCADORES SERÃO ARRASTADOS:
+    // Se a bolinha clicada faz parte da seleção da quadra ou em massa, move todas juntas!
+    let idsParaMover: Set<string>;
+    if (massaSelIds.has(ponto.id) && massaSelIds.size > 1) {
+      idsParaMover = new Set(massaSelIds);
+    } else if (ctrlSelectedIds.has(ponto.id) && ctrlSelectedIds.size > 1) {
+      idsParaMover = new Set(ctrlSelectedIds);
+    } else if (grupoId) {
       // Grupo explícito (Ctrl+G)
-      currentPontos.forEach((p: any) => {
-        if (gruposMap[p.id] === grupoId) initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
-      });
+      idsParaMover = new Set(Object.entries(gruposMap).filter(([, g]) => g === grupoId).map(([id]) => id));
     } else if (ponto.linhaSeqId) {
-      // Fileira — arrastar qualquer bolinha move todas
-      currentPontos.forEach((p: any) => {
-        if (p.linhaSeqId === ponto.linhaSeqId) initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
-      });
+      // Fileira — arrastar qualquer bolinha move todas da sequência
+      idsParaMover = new Set(currentPontos.filter((p: any) => p.linhaSeqId === ponto.linhaSeqId).map((p: any) => p.id));
+    } else {
+      idsParaMover = new Set([ponto.id]);
     }
-    setDragStart({ mouseX: e.clientX, mouseY: e.clientY, xPercent: ponto.xPercent, yPercent: ponto.yPercent, initialPositions } as any);
+
+    // Guardar posição inicial de cada bolinha a ser movida
+    const initialPositions: Record<string, { x: number; y: number }> = {};
+    currentPontos.forEach((p: any) => {
+      if (idsParaMover.has(p.id)) {
+        initialPositions[p.id] = { x: p.xPercent, y: p.yPercent };
+      }
+    });
+
+    setDragStart({
+      mouseX: e.clientX,
+      mouseY: e.clientY,
+      xPercent: ponto.xPercent,
+      yPercent: ponto.yPercent,
+      initialPositions,
+      idsParaMover: Array.from(idsParaMover),
+      isMultiMove: idsParaMover.size > 1,
+    } as any);
   };
 
   const handleMapMouseUp = () => {
@@ -4578,8 +4735,7 @@ const LotDashboard = ({
       mapMousePanRef.current.active = false;
     }
     if (draggingId) {
-      setDraggingId(null);
-      setDragStart(null);
+      commitDrag();
     }
   };
 
@@ -4609,53 +4765,58 @@ const LotDashboard = ({
     const dy = ((e.clientY - dragStart.mouseY) / (rect.height / scale)) * 100 / scale;
     const currentPontos = ((localDev as any).mapaPontos || []) as any[];
     
-    // Verificar se faz parte de um grupo
-    const grupoId = gruposMap[draggingId];
-    const draggingPonto = currentPontos.find((p: any) => p.id === draggingId);
-    const fileiraDragging = draggingPonto?.linhaSeqId;
-    const idsParaMover = grupoId
-      ? new Set(Object.entries(gruposMap).filter(([,g]) => g === grupoId).map(([id]) => id))
-      : fileiraDragging
-        ? new Set(currentPontos.filter((p: any) => p.linhaSeqId === fileiraDragging).map((p: any) => p.id))
-        : new Set([draggingId]);
-    
+    // Obter IDs salvos para movimentação síncrona
+    const idsList = (dragStart as any).idsParaMover as string[] | undefined;
+    const idsParaMover = idsList ? new Set(idsList) : new Set([draggingId]);
     const initialPositions = (dragStart as any).initialPositions || {};
+
     const nextPontos = currentPontos.map((p: any) => {
       if (!idsParaMover.has(p.id)) return p;
       // Usar posição INICIAL salva no mousedown + delta acumulado desde início
       const initX = initialPositions[p.id]?.x ?? (p.id === draggingId ? dragStart.xPercent : p.xPercent);
       const initY = initialPositions[p.id]?.y ?? (p.id === draggingId ? dragStart.yPercent : p.yPercent);
-      return { ...p, xPercent: Math.max(0, Math.min(100, initX + dx)), yPercent: Math.max(0, Math.min(100, initY + dy)), atualizadoEm: new Date().toISOString() };
+      return {
+        ...p,
+        xPercent: Math.max(0.2, Math.min(99.8, initX + dx)),
+        yPercent: Math.max(0.2, Math.min(99.8, initY + dy)),
+        atualizadoEm: new Date().toISOString()
+      };
     });
     setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
   };
 
   const commitDrag = () => {
     if (!draggingId) return;
-    // Verificar se a bolinha arrastada é extremidade de fileira — redistribuir automaticamente
-    const currentPontos = (localDev as any).mapaPontos ?? [];
-    const pontoDragado = currentPontos.find((p: any) => p.id === draggingId);
-    if (pontoDragado?.linhaSeqId) {
-      const fileira = currentPontos
-        .filter((p: any) => p.linhaSeqId === pontoDragado.linhaSeqId)
-        .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0);
-      const isFirst = fileira.length > 2 && fileira[0].id === draggingId;
-      const isLast = fileira.length > 2 && fileira[fileira.length - 1].id === draggingId;
-      if (isFirst || isLast) {
-        // Redistribuir: interpolar entre primeiro e último
-        const primeiro = fileira[0];
-        const ultimo = fileira[fileira.length - 1];
-        const novos = fileira.map((p: any, i: number) => {
-          const t = i / (fileira.length - 1);
-          return { ...p, xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
-            yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t };
-        });
-        const sem = currentPontos.filter((p: any) => p.linhaSeqId !== pontoDragado.linhaSeqId);
-        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...sem, ...novos] } as any, sales);
-        persistDev(nextDev);
-        setDraggingId(null);
-        setDragStart(null);
-        return;
+    const isMulti = (dragStart as any)?.isMultiMove;
+    // Se for movimentação em bloco (múltiplas bolinhas / quadra inteira), NÃO distorce as extremidades
+    if (!isMulti) {
+      const currentPontos = (localDev as any).mapaPontos ?? [];
+      const pontoDragado = currentPontos.find((p: any) => p.id === draggingId);
+      if (pontoDragado?.linhaSeqId) {
+        const fileira = currentPontos
+          .filter((p: any) => p.linhaSeqId === pontoDragado.linhaSeqId)
+          .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0);
+        const isFirst = fileira.length > 2 && fileira[0].id === draggingId;
+        const isLast = fileira.length > 2 && fileira[fileira.length - 1].id === draggingId;
+        if (isFirst || isLast) {
+          // Redistribuir: interpolar entre primeiro e último
+          const primeiro = fileira[0];
+          const ultimo = fileira[fileira.length - 1];
+          const novos = fileira.map((p: any, i: number) => {
+            const t = i / (fileira.length - 1);
+            return {
+              ...p,
+              xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
+              yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t
+            };
+          });
+          const sem = currentPontos.filter((p: any) => p.linhaSeqId !== pontoDragado.linhaSeqId);
+          const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...sem, ...novos] } as any, sales);
+          persistDev(nextDev);
+          setDraggingId(null);
+          setDragStart(null);
+          return;
+        }
       }
     }
     persistDev(localDev);
@@ -4718,6 +4879,341 @@ const LotDashboard = ({
     // Sync com Gerenciador de Lotes
     if (onMarkerSaved) onMarkerSaved(ponto.quadra, ponto.lote, status, ponto.observacao || "");
     setSelectedPoint(null);
+  };
+
+  // Sincronizar dados da bolinha selecionada para o editor inline
+  useEffect(() => {
+    if (selectedPoint) {
+      setEditPontoQuadra(selectedPoint.quadra || "");
+      setEditPontoLote(selectedPoint.lote || "");
+      setEditPontoStatus(selectedPoint.status || "disponivel");
+      setEditPontoObs(selectedPoint.observacao || "");
+      setEditPontoRenumerarSeq(false);
+      setEditPontoSuccessMsg("");
+    }
+  }, [selectedPoint?.id]);
+
+  const salvarEdicaoPontoModal = () => {
+    if (!selectedPoint) return;
+    const ponto = selectedPoint;
+    const quadraOriginal = normalizeLotText(ponto.quadra);
+    const loteOriginal = normalizeLotText(ponto.lote);
+    const quadra = normalizeLotText(editPontoQuadra || ponto.quadra);
+    const lote = normalizeLotText(editPontoLote || ponto.lote);
+    const status: MapaLoteStatus = editPontoStatus || ponto.status || "disponivel";
+    const observacao = editPontoObs || "";
+
+    const oldNum = Number(loteOriginal);
+    const newNum = Number(lote);
+    const renumerarSequencia = editPontoRenumerarSeq && Number.isFinite(oldNum) && Number.isFinite(newNum);
+
+    const pontosAfetados = renumerarSequencia
+      ? mapaPontos
+          .filter((p: any) => normalizeLotText(p.quadra) === quadraOriginal && Number.isFinite(Number(p.lote)) && Number(p.lote) >= oldNum)
+          .sort((a: any, b: any) => Number(a.lote) - Number(b.lote))
+      : [ponto];
+
+    const affectedIds = new Set(pontosAfetados.map((p: any) => p.id));
+    const targetKeys = renumerarSequencia
+      ? new Set(pontosAfetados.map((_, idx) => getLotInfoKey(quadra, String(newNum + idx))))
+      : new Set([getLotInfoKey(quadra, lote)]);
+
+    const duplicate = mapaPontos.find((p: any) => !affectedIds.has(p.id) && targetKeys.has(getLotInfoKey(p.quadra, p.lote)));
+    if (duplicate) {
+      alert(`Já existe uma bolinha com a Quadra ${quadra} e Lote ${duplicate.lote}.`);
+      return;
+    }
+
+    pushUndo(mapaPontos, `Editar bolinha Q${quadra} L${lote}`);
+
+    let nextDev: Empreendimento = localDev;
+    const atualizacaoPorId: Record<string, { quadra: string; lote: string }> = {};
+
+    if (renumerarSequencia) {
+      pontosAfetados.forEach((pAfetado: any, idx: number) => {
+        const targetLote = String(newNum + idx);
+        const ensured = ensureLotExistsInEmpreendimento(nextDev, quadra, targetLote);
+        const existingInfo = ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {};
+        nextDev = {
+          ...ensured.dev,
+          lotesInfo: {
+            ...(ensured.dev.lotesInfo || {}),
+            [ensured.lotInfoKey]: {
+              ...existingInfo,
+              status: pAfetado.id === ponto.id ? status : (existingInfo.status || pAfetado.status || "disponivel"),
+              observacao: pAfetado.id === ponto.id ? observacao : (existingInfo.observacao || pAfetado.observacao || ""),
+            },
+          },
+        } as Empreendimento;
+        atualizacaoPorId[pAfetado.id] = { quadra: ensured.quadraName, lote: targetLote };
+      });
+      const nextPontos = mapaPontos.map((p: any) =>
+        atualizacaoPorId[p.id]
+          ? {
+              ...p,
+              ...atualizacaoPorId[p.id],
+              status: p.id === ponto.id ? status : p.status,
+              observacao: p.id === ponto.id ? observacao : p.observacao,
+              atualizadoEm: new Date().toISOString(),
+            }
+          : p
+      );
+      persistDev({ ...nextDev, mapaPontos: nextPontos } as Empreendimento);
+    } else {
+      const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
+      const oldKey = getLotInfoKey(ponto.quadra, ponto.lote);
+      const nextPontos = mapaPontos.map((p: any) =>
+        p.id === ponto.id
+          ? { ...p, quadra: ensured.quadraName, lote, status, observacao, atualizadoEm: new Date().toISOString() }
+          : p
+      );
+      const nextInfo = { ...(ensured.dev.lotesInfo?.[ensured.lotInfoKey] || {}), status, observacao };
+      const lotesInfo = { ...(ensured.dev.lotesInfo || {}), [ensured.lotInfoKey]: nextInfo };
+      if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) {
+        delete (lotesInfo as any)[oldKey];
+      }
+      persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
+    }
+
+    if (onMarkerSaved) onMarkerSaved(quadra, lote, status, observacao);
+
+    setEditPontoSuccessMsg("✓ Alterações salvas com sucesso!");
+    setTimeout(() => {
+      setSelectedPoint(null);
+      setEditPontoSuccessMsg("");
+    }, 600);
+  };
+
+  // Quadras disponíveis no mapa para gerenciamento
+  const quadrasDisponiveisMapa = useMemo(() => {
+    const pontos = ((localDev as any).mapaPontos || []) as any[];
+    const set = new Set<string>();
+    pontos.forEach((p: any) => {
+      if (p.quadra) set.add(String(p.quadra).trim());
+    });
+    getQuadraList(localDev).forEach((q: string) => set.add(q));
+    return Array.from(set).filter(Boolean).sort((a, b) => {
+      const na = parseInt(a) || 0;
+      const nb = parseInt(b) || 0;
+      if (na !== nb && !isNaN(na) && !isNaN(nb)) return na - nb;
+      return a.localeCompare(b, undefined, { numeric: true });
+    });
+  }, [localDev.mapaPontos, localDev.quadras]);
+
+  // Se gerenciadorQuadra estiver vazio e houver quadras, inicializar com a primeira
+  useEffect(() => {
+    if (!gerenciadorQuadra && quadrasDisponiveisMapa.length > 0) {
+      setGerenciadorQuadra(quadrasDisponiveisMapa[0]);
+    }
+  }, [quadrasDisponiveisMapa, gerenciadorQuadra]);
+
+  // Atualizar sugestão da próxima quadra quando a quadra atual muda
+  useEffect(() => {
+    if (gerenciadorQuadra) {
+      const num = parseInt(gerenciadorQuadra);
+      if (!isNaN(num)) {
+        setGerenciadorNovaQuadra(String(num + 1).padStart(gerenciadorQuadra.length, "0"));
+      } else if (gerenciadorQuadra.length === 1 && /[A-Za-z]/.test(gerenciadorQuadra)) {
+        setGerenciadorNovaQuadra(String.fromCharCode(gerenciadorQuadra.charCodeAt(0) + 1).toUpperCase());
+      } else {
+        setGerenciadorNovaQuadra(`${gerenciadorQuadra}_copia`);
+      }
+    }
+  }, [gerenciadorQuadra]);
+
+  // Lotes encontrados para a quadra e faixa selecionada
+  const gerenciadorPontosEncontrados = useMemo(() => {
+    const pontos = ((localDev as any).mapaPontos || []) as any[];
+    if (!gerenciadorQuadra) return [];
+    const quadraNorm = normalizeLotKeyPart(gerenciadorQuadra);
+    let filtrados = pontos.filter(p => normalizeLotKeyPart(p.quadra) === quadraNorm);
+
+    if (gerenciadorModoFaixa === "faixa") {
+      const ini = parseInt(gerenciadorLoteIni);
+      const fin = parseInt(gerenciadorLoteFin);
+      if (!isNaN(ini) && !isNaN(fin)) {
+        const min = Math.min(ini, fin);
+        const max = Math.max(ini, fin);
+        filtrados = filtrados.filter(p => {
+          const num = parseInt(p.lote);
+          return !isNaN(num) && num >= min && num <= max;
+        });
+      }
+    }
+
+    return filtrados.sort((a, b) => {
+      const na = parseInt(a.lote);
+      const nb = parseInt(b.lote);
+      if (!isNaN(na) && !isNaN(nb)) return na - nb;
+      return String(a.lote).localeCompare(String(b.lote), undefined, { numeric: true });
+    });
+  }, [localDev.mapaPontos, gerenciadorQuadra, gerenciadorModoFaixa, gerenciadorLoteIni, gerenciadorLoteFin]);
+
+  // Estatísticas em tempo real da faixa/quadra selecionada
+  const gerenciadorStats = useMemo(() => {
+    const total = gerenciadorPontosEncontrados.length;
+    const disp = gerenciadorPontosEncontrados.filter(p => p.status === "disponivel").length;
+    const res = gerenciadorPontosEncontrados.filter(p => p.status === "reservado").length;
+    const ind = gerenciadorPontosEncontrados.filter(p => p.status === "indisponivel").length;
+    return { total, disp, res, ind };
+  }, [gerenciadorPontosEncontrados]);
+
+  // Ações do Gerenciador de Quadras e Lotes
+  const aplicarMudancaQuadraGerenciador = (novaQuadra: string) => {
+    const nq = novaQuadra.trim();
+    if (!nq) { alert("Informe o novo nome ou número da quadra."); return; }
+    if (gerenciadorPontosEncontrados.length === 0) { alert("Nenhuma bolinha selecionada."); return; }
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const idsAlvo = new Set(gerenciadorPontosEncontrados.map(p => p.id));
+    pushUndo(currentPontos, `Mudar quadra para ${nq}`);
+    const novosPontos = currentPontos.map(p => idsAlvo.has(p.id) ? { ...p, quadra: nq, atualizadoEm: new Date().toISOString() } : p);
+    persistDev({ ...localDev, mapaPontos: novosPontos } as any);
+    setGerenciadorQuadra(nq);
+    setGerenciadorMsgFeedback(`✓ ${idsAlvo.size} bolinhas movidas para a Quadra ${nq}!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3000);
+  };
+
+  const aplicarStatusGerenciador = (status: MapaLoteStatus) => {
+    if (gerenciadorPontosEncontrados.length === 0) { alert("Nenhuma bolinha selecionada."); return; }
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const idsAlvo = new Set(gerenciadorPontosEncontrados.map(p => p.id));
+    pushUndo(currentPontos, `Alterar status para ${status}`);
+    const novosPontos = currentPontos.map(p => idsAlvo.has(p.id) ? { ...p, status, atualizadoEm: new Date().toISOString() } : p);
+    const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
+    persistDev(nextDev);
+    setGerenciadorMsgFeedback(`✓ Status alterado para ${status} em ${idsAlvo.size} bolinhas!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3000);
+  };
+
+  const duplicarParaQuadraAoLado = () => {
+    if (gerenciadorPontosEncontrados.length === 0) {
+      alert("Nenhuma bolinha encontrada para duplicar.");
+      return;
+    }
+    const novaQ = gerenciadorNovaQuadra.trim();
+    if (!novaQ) {
+      alert("Informe o nome/número da nova quadra para onde os lotes serão duplicados.");
+      return;
+    }
+    const dist = Number(gerenciadorOffsetDist) || 4;
+    let dx = 0;
+    let dy = 0;
+    if (gerenciadorOffsetDir === "direita") dx = dist;
+    else if (gerenciadorOffsetDir === "esquerda") dx = -dist;
+    else if (gerenciadorOffsetDir === "baixo") dy = dist;
+    else if (gerenciadorOffsetDir === "cima") dy = -dist;
+
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+
+    // Gerar réplicas na mesma ordem dos lotes
+    const clones = gerenciadorPontosEncontrados.map((p, idx) => ({
+      ...p,
+      id: `p_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+      quadra: novaQ,
+      lote: p.lote, // Mantém exatamente a mesma numeração e ordem!
+      xPercent: Math.max(1, Math.min(99, p.xPercent + dx)),
+      yPercent: Math.max(1, Math.min(99, p.yPercent + dy)),
+      status: "disponivel" as MapaLoteStatus,
+      vendaId: undefined,
+      venda: undefined,
+      atualizadoEm: new Date().toISOString(),
+    }));
+
+    pushUndo(currentPontos, `Duplicar ${clones.length} lotes para Quadra ${novaQ}`);
+    const novosPontos = [...currentPontos, ...clones];
+    const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
+    persistDev(nextDev);
+
+    setCtrlSelectedIds(new Set(clones.map(c => c.id)));
+    setGerenciadorQuadra(novaQ);
+    setGerenciadorMsgFeedback(`✓ ${clones.length} lotes duplicados com sucesso para a Quadra ${novaQ}!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3500);
+  };
+
+  const alinharPontosGerenciador = (tipo: "linha" | "horizontal" | "vertical" | "distribuir") => {
+    if (gerenciadorPontosEncontrados.length < 2) {
+      alert("É necessário pelo menos 2 bolinhas para alinhar.");
+      return;
+    }
+    const selecionados = [...gerenciadorPontosEncontrados];
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    pushUndo(currentPontos, `Alinhar bolinhas (${tipo})`);
+
+    const first = selecionados[0];
+    const last = selecionados[selecionados.length - 1];
+    const avgY = selecionados.reduce((acc, p) => acc + p.yPercent, 0) / selecionados.length;
+    const avgX = selecionados.reduce((acc, p) => acc + p.xPercent, 0) / selecionados.length;
+    const minX = Math.min(...selecionados.map(p => p.xPercent));
+    const maxX = Math.max(...selecionados.map(p => p.xPercent));
+
+    const posMap = new Map<string, { xPercent: number; yPercent: number }>();
+
+    selecionados.forEach((p, idx) => {
+      if (tipo === "linha") {
+        const t = selecionados.length > 1 ? idx / (selecionados.length - 1) : 0;
+        posMap.set(p.id, {
+          xPercent: first.xPercent + (last.xPercent - first.xPercent) * t,
+          yPercent: first.yPercent + (last.yPercent - first.yPercent) * t,
+        });
+      } else if (tipo === "horizontal") {
+        posMap.set(p.id, { xPercent: p.xPercent, yPercent: avgY });
+      } else if (tipo === "vertical") {
+        posMap.set(p.id, { xPercent: avgX, yPercent: p.yPercent });
+      } else if (tipo === "distribuir") {
+        const t = selecionados.length > 1 ? idx / (selecionados.length - 1) : 0;
+        posMap.set(p.id, {
+          xPercent: minX + (maxX - minX) * t,
+          yPercent: p.yPercent,
+        });
+      }
+    });
+
+    const novosPontos = currentPontos.map(p =>
+      posMap.has(p.id) ? { ...p, ...posMap.get(p.id), atualizadoEm: new Date().toISOString() } : p
+    );
+    persistDev({ ...localDev, mapaPontos: novosPontos } as any);
+    setGerenciadorMsgFeedback(`✓ ${selecionados.length} bolinhas alinhadas com sucesso!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3000);
+  };
+
+  const excluirPontosGerenciador = () => {
+    if (gerenciadorPontosEncontrados.length === 0) {
+      alert("Nenhuma bolinha selecionada para excluir.");
+      return;
+    }
+    const count = gerenciadorPontosEncontrados.length;
+    const desc = gerenciadorModoFaixa === "toda"
+      ? `toda a Quadra ${gerenciadorQuadra} (${count} bolinhas)`
+      : `a faixa de lotes da Quadra ${gerenciadorQuadra} (${count} bolinhas)`;
+
+    const confirmar = window.confirm(`⚠️ Tem certeza que deseja excluir ${desc}?\n\nEsta ação pode ser desfeita pelo botão Desfazer.`);
+    if (!confirmar) return;
+
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const idsParaExcluir = new Set(gerenciadorPontosEncontrados.map(p => p.id));
+    pushUndo(currentPontos, `Excluir ${count} bolinhas`);
+
+    const novosPontos = currentPontos.filter(p => !idsParaExcluir.has(p.id));
+    const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
+    persistDev(nextDev);
+    setGerenciadorMsgFeedback(`✓ ${count} bolinhas excluídas com sucesso.`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3000);
+  };
+
+  const selecionarNoMapaGerenciador = () => {
+    if (gerenciadorPontosEncontrados.length === 0) return;
+    const ids = new Set(gerenciadorPontosEncontrados.map(p => p.id));
+    setCtrlSelectedIds(ids);
+    const p1 = gerenciadorPontosEncontrados[0];
+    if (p1 && mapViewportRef.current) {
+      const vpW = mapViewportRef.current.offsetWidth || 800;
+      const vpH = mapViewportRef.current.offsetHeight || 600;
+      const targetX = vpW / 2 - (p1.xPercent / 100) * vpW * mapZoom;
+      const targetY = vpH / 2 - (p1.yPercent / 100) * vpH * mapZoom;
+      setMapPan(clampMapPan({ x: targetX, y: targetY }));
+    }
+    setGerenciadorMsgFeedback(`✓ ${ids.size} bolinhas selecionadas e destacadas no mapa!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 3000);
   };
 
   const editarPonto = (ponto: any) => {
@@ -4807,9 +5303,134 @@ const LotDashboard = ({
     });
   };
 
+  const sugerirProximaQuadra = (quadraOrigem: string, todosPontos: any[]): string => {
+    const qClean = (quadraOrigem || "").trim();
+    if (!qClean) return "01";
+    const num = parseInt(qClean, 10);
+    if (!isNaN(num)) {
+      const isPadded = qClean.startsWith("0") && qClean.length > 1;
+      let nextNum = num + 1;
+      const quadrasExistentes = new Set(
+        todosPontos.map((p: any) => String(p.quadra || "").trim().toLowerCase())
+      );
+      while (
+        quadrasExistentes.has(
+          (isPadded ? String(nextNum).padStart(qClean.length, "0") : String(nextNum)).toLowerCase()
+        )
+      ) {
+        nextNum++;
+      }
+      return isPadded ? String(nextNum).padStart(qClean.length, "0") : String(nextNum);
+    }
+    if (qClean.length === 1 && /[A-Za-z]/.test(qClean)) {
+      const nextChar = String.fromCharCode(qClean.charCodeAt(0) + 1).toUpperCase();
+      return nextChar;
+    }
+    return `${qClean} 2`;
+  };
+
+  const abrirModalClonar = (ids: Set<string> | string[]) => {
+    const idsArr = Array.from(ids);
+    if (idsArr.length === 0) {
+      alert("Selecione ao menos um marcador para clonar.");
+      return;
+    }
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const selecionados = currentPontos.filter((p: any) => idsArr.includes(p.id));
+    if (selecionados.length === 0) {
+      alert("Nenhum marcador encontrado para clonagem.");
+      return;
+    }
+
+    // Identificar a quadra predominante de origem
+    const quadrasCount: Record<string, number> = {};
+    selecionados.forEach((p: any) => {
+      const q = String(p.quadra || "").trim();
+      quadrasCount[q] = (quadrasCount[q] || 0) + 1;
+    });
+    const sortedQuadras = Object.entries(quadrasCount).sort((a, b) => b[1] - a[1]);
+    const qOrigem = sortedQuadras[0] ? sortedQuadras[0][0] : "";
+    setClonarQuadraOrigemInfo(qOrigem || "Diversas");
+
+    const sugestao = sugerirProximaQuadra(qOrigem, currentPontos);
+    setClonarNovaQuadra(sugestao);
+    setClonarOrigemIds(idsArr);
+    setClonarOffsetDir("direita");
+    setClonarOffsetDist(3);
+    setClonarMsgErro("");
+    setModalClonarAberto(true);
+  };
+
+  const executarClonagemConfirmada = () => {
+    const novaQ = clonarNovaQuadra.trim();
+    if (!novaQ) {
+      setClonarMsgErro("Por favor, digite o nome ou número da nova quadra.");
+      return;
+    }
+
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const selecionados = currentPontos.filter((p: any) => clonarOrigemIds.includes(p.id));
+    if (selecionados.length === 0) {
+      setModalClonarAberto(false);
+      return;
+    }
+
+    // Calcular deslocamento em %
+    let dx = 0;
+    let dy = 0;
+    if (clonarOffsetDir === "direita") dx = clonarOffsetDist;
+    else if (clonarOffsetDir === "esquerda") dx = -clonarOffsetDist;
+    else if (clonarOffsetDir === "baixo") dy = clonarOffsetDist;
+    else if (clonarOffsetDir === "cima") dy = -clonarOffsetDist;
+
+    const novaSeqId = `seq-${Date.now()}`;
+    const clones = selecionados.map((p: any, idx: number) => ({
+      ...p,
+      id: `clone-${p.id}-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`,
+      quadra: novaQ,
+      lote: p.lote,
+      linhaSeqId: p.linhaSeqId ? novaSeqId : undefined,
+      status: "disponivel" as MapaLoteStatus,
+      vendaId: undefined,
+      clienteNome: undefined,
+      contratoId: undefined,
+      xPercent: Math.max(1, Math.min(99, Number(p.xPercent || 0) + dx)),
+      yPercent: Math.max(1, Math.min(99, Number(p.yPercent || 0) + dy)),
+      atualizadoEm: new Date().toISOString()
+    }));
+
+    pushUndo(currentPontos, `Clonar ${clones.length} marcadores para Quadra ${novaQ}`);
+    const novosPontos = [...currentPontos, ...clones];
+    const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
+    persistDev(nextDev);
+
+    // Selecionar os novos clones para arrastar de imediato
+    const novosIds = new Set(clones.map((c: any) => c.id));
+    setCtrlSelectedIds(novosIds);
+    setMassaSelIds(novosIds);
+    setModalClonarAberto(false);
+
+    setGerenciadorMsgFeedback(`✓ ${clones.length} marcadores clonados com sucesso para a Quadra ${novaQ}! Clique e arraste qualquer um para mover o bloco.`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 6000);
+  };
+
   const selecionarQuadraCompleta = (quadra: string) => {
-    const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === normalizeLotText(quadra)).map((p) => p.id);
-    setMassaSelIds(new Set(ids));
+    const qNorm = normalizeLotText(quadra);
+    const qKey = normalizeLotKeyPart(quadra);
+    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
+    const pontosDaQuadra = currentPontos.filter((p: any) =>
+      normalizeLotText(p.quadra) === qNorm || normalizeLotKeyPart(p.quadra) === qKey
+    );
+    if (pontosDaQuadra.length === 0) {
+      alert(`Nenhum marcador encontrado para a Quadra "${quadra}".`);
+      return;
+    }
+    const ids = new Set(pontosDaQuadra.map((p: any) => p.id));
+    setMassaSelIds(ids);
+    setCtrlSelectedIds(ids);
+
+    setGerenciadorMsgFeedback(`✓ Quadra ${quadra} selecionada (${pontosDaQuadra.length} bolinhas). Clique em qualquer bolinha no mapa para arrastar todas juntas tranquilamente!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 6000);
   };
 
   const selecionarIntervalo = () => {
@@ -4819,10 +5440,14 @@ const LotDashboard = ({
     if (!quadra || isNaN(ini) || isNaN(fin)) { alert("Informe quadra, lote inicial e lote final."); return; }
     const min = Math.min(ini, fin); const max = Math.max(ini, fin);
     const ids = mapaPontos.filter((p) => normalizeLotText(p.quadra) === quadra && Number(p.lote) >= min && Number(p.lote) <= max).map((p) => p.id);
-    setMassaSelIds(new Set(ids));
+    const idSet = new Set(ids);
+    setMassaSelIds(idSet);
+    setCtrlSelectedIds(idSet);
+    setGerenciadorMsgFeedback(`✓ Intervalo selecionado (${ids.length} bolinhas). Arraste qualquer bolinha no mapa para mover todas juntas!`);
+    setTimeout(() => setGerenciadorMsgFeedback(""), 5000);
   };
 
-  const alinharMarcadoresSelecionados = (ids: Set<string>, tipo: "horizontal" | "vertical" | "distribuirHorizontal") => {
+  const alinharMarcadoresSelecionados = (ids: Set<string>, tipo: "horizontal" | "vertical" | "distribuirHorizontal" | "linha") => {
     const selecionados = mapaPontos
       .filter((p) => ids.has(p.id))
       .slice()
@@ -4833,6 +5458,8 @@ const LotDashboard = ({
       });
     if (selecionados.length < 2) { alert("Selecione pelo menos duas bolinhas para alinhar."); return; }
 
+    pushUndo(mapaPontos, `Alinhar marcadores (${tipo})`);
+
     const first = selecionados[0];
     const last = selecionados[selecionados.length - 1];
     const minX = Math.min(...selecionados.map((p) => Number(p.xPercent) || 0));
@@ -4842,6 +5469,13 @@ const LotDashboard = ({
 
     const posicoes = new Map<string, { xPercent: number; yPercent: number }>();
     selecionados.forEach((p, idx) => {
+      if (tipo === "linha") {
+        const t = selecionados.length === 1 ? 0 : idx / (selecionados.length - 1);
+        posicoes.set(p.id, {
+          xPercent: first.xPercent + (last.xPercent - first.xPercent) * t,
+          yPercent: first.yPercent + (last.yPercent - first.yPercent) * t,
+        });
+      }
       if (tipo === "horizontal") posicoes.set(p.id, { xPercent: p.xPercent, yPercent: avgY });
       if (tipo === "vertical") posicoes.set(p.id, { xPercent: avgX, yPercent: p.yPercent });
       if (tipo === "distribuirHorizontal") {
@@ -4863,28 +5497,16 @@ const LotDashboard = ({
     if (massaSelIds.size === 0) { alert("Selecione ao menos uma bolinha."); return; }
     if (!massaAcao) { alert("Selecione uma ação."); return; }
     if (massaAcao === "selecionar") {
-      alert(`${massaSelIds.size} bolinha(s) selecionada(s). Escolha outra ação quando quiser alterar, excluir ou alinhar.`);
+      alert(`${massaSelIds.size} bolinha(s) selecionada(s). Você pode arrastar qualquer uma no mapa para mover todas juntas ou escolher outra ação.`);
       return;
     }
     if (massaAcao === "alinharHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "horizontal"); return; }
     if (massaAcao === "alinharVertical") { alinharMarcadoresSelecionados(massaSelIds, "vertical"); return; }
     if (massaAcao === "distribuirHorizontal") { alinharMarcadoresSelecionados(massaSelIds, "distribuirHorizontal"); return; }
+    if (massaAcao === "alinharLinha") { alinharMarcadoresSelecionados(massaSelIds, "linha"); return; }
     if (massaAcao === "clonar") {
-      const offset = 3;
-      const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-      const selecionados = currentPontos.filter((p: any) => massaSelIds.has(p.id));
-      if (selecionados.length === 0) { alert("Nenhuma bolinha selecionada."); return; }
-      const clones = selecionados.map((p: any) => ({
-        ...p,
-        id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-        linhaSeqId: p.linhaSeqId ? `seq-clone-${Date.now()}` : undefined,
-        xPercent: Math.min(99, p.xPercent + offset),
-        yPercent: Math.min(99, p.yPercent + offset),
-      }));
-      pushUndo(currentPontos, `Clonar ${selecionados.length} selecionados`);
-      const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...currentPontos, ...clones] } as any, sales);
-      persistDev(nextDev);
-      setMassaSelIds(new Set());
+      // Abre o modal que SEMPRE pergunta a nova quadra
+      abrirModalClonar(massaSelIds);
       return;
     }
     if (massaAcao === "excluir") {
@@ -5442,35 +6064,84 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* PAINEL LATERAL FLUTUANTE — só desktop */}
+          {/* PAINEL LATERAL FLUTUANTE ARRASTÁVEL — só desktop */}
           {painelRecolhido ? (
-            // Painel recolhido - apenas barra vertical
-            <div className="hidden lg:flex lg:absolute lg:top-3 lg:left-3 lg:z-20">
+            // Painel recolhido - apenas barra vertical posicionada onde o usuário deixou
+            <div
+              className="hidden lg:flex lg:absolute lg:z-30 select-none"
+              style={{
+                left: editPainelPos ? `${editPainelPos.x}px` : '12px',
+                top: editPainelPos ? `${editPainelPos.y}px` : '12px',
+              }}
+            >
               <button
                 type="button"
                 onClick={() => setPainelRecolhido(false)}
-                className="flex flex-col items-center justify-center gap-2 px-2 py-6 rounded-xl bg-white shadow-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all group"
-                title="Expandir painel de opções"
+                className="flex flex-col items-center justify-center gap-2 px-2.5 py-4 rounded-xl bg-slate-900/95 hover:bg-slate-900 text-white shadow-xl border border-slate-700/60 transition-all group hover:scale-105 active:scale-95"
+                title="Expandir painel Editar mapa"
               >
-                <ChevronRight size={16} className="group-hover:scale-110 transition-transform" />
+                <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform text-blue-400" />
                 <div className="flex flex-col gap-0.5" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                  <span className="text-[10px] font-black uppercase tracking-widest">OPÇÕES</span>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">EDITAR MAPA</span>
                 </div>
               </button>
             </div>
           ) : (
-            // Painel expandido
-            <div className={`${isMobile ? "hidden" : ""} lg:absolute lg:top-3 lg:left-3 lg:z-30 flex flex-col gap-2 transition-all duration-300 lg:mt-0 lg:shadow-2xl lg:rounded-2xl ${isEditingMap ? "flex w-full lg:w-[300px]" : "hidden"}`}>
-              {/* Botao recolher */}
-              <button
-                type="button"
-                onClick={() => setPainelRecolhido(true)}
-                className="self-start w-9 h-9 rounded-xl bg-white shadow-lg border border-slate-200 items-center justify-center text-slate-600 hover:bg-slate-50 hidden lg:flex transition-all hover:scale-105"
-                title="Recolher painel"
+            // Painel expandido - totalmente arrastável, leve e fluido no PC
+            <div
+              ref={editPainelRef}
+              className={`${isMobile ? "hidden" : ""} lg:absolute lg:z-30 flex flex-col lg:shadow-2xl lg:rounded-2xl ${isEditingMap ? "flex w-full lg:w-[310px]" : "hidden"}`}
+              style={{
+                left: editPainelPos ? `${editPainelPos.x}px` : '12px',
+                top: editPainelPos ? `${editPainelPos.y}px` : '12px',
+                pointerEvents: 'auto',
+                touchAction: 'none',
+              }}
+            >
+              {/* Header com Handle de arrastar (Draggable Header) */}
+              <div
+                onMouseDown={startDragEditPainel}
+                onTouchStart={startDragEditPainel}
+                onDoubleClick={resetEditPainelPos}
+                className={`flex items-center justify-between px-3.5 py-2.5 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-t-2xl select-none ${isDraggingEditPainel ? "cursor-grabbing" : "cursor-grab"} shadow-sm border border-slate-700/60 transition-colors hover:bg-slate-800`}
+                title="Clique e arraste para mover este painel para onde quiser (duplo clique para restaurar posição)"
               >
-                <ChevronLeft size={16} />
-              </button>
-              <div className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-180px)] pr-0.5" style={{display: "flex", flexDirection: "column"}}>
+                <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+                  <div className="text-slate-400 flex items-center">
+                    <GripHorizontal size={16} />
+                  </div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-black uppercase tracking-wider text-white truncate">Editar mapa</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-300 border border-blue-400/30 uppercase">PC</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  {editPainelPos && (
+                    <button
+                      type="button"
+                      onClick={resetEditPainelPos}
+                      className="p-1 rounded-lg hover:bg-white/15 text-slate-300 hover:text-white transition-all"
+                      title="Restaurar posição original no canto superior esquerdo"
+                    >
+                      <RotateCcw size={12} />
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setPainelRecolhido(true)}
+                    className="p-1 rounded-lg hover:bg-white/15 text-slate-300 hover:text-white transition-all"
+                    title="Recolher painel"
+                  >
+                    <ChevronLeft size={15} />
+                  </button>
+                </div>
+              </div>
+
+              <div
+                className="space-y-2 lg:overflow-y-auto lg:max-h-[calc(100vh-220px)] p-2.5 bg-slate-900/10 backdrop-blur-md rounded-b-2xl border-x border-b border-slate-200/80 shadow-inner"
+                style={{ display: "flex", flexDirection: "column" }}
+              >
             {/* MODO VISUALIZAÇÃO */}
             {!isEditingMap && !canEditMap && (
               <div className="card-premium p-4">
@@ -5480,8 +6151,13 @@ const LotDashboard = ({
 
             {/* MODO EDIÇÃO — TOOLBAR SIMPLIFICADA */}
             {isEditingMap && (
-              <div className="card-premium p-4 space-y-3">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Editar mapa</p>
+              <div className="card-premium p-3.5 space-y-3">
+                <div className="flex items-center justify-between text-slate-400 text-[10px] font-black uppercase tracking-widest">
+                  <span>Ferramentas</span>
+                  <span className="text-[9px] font-medium text-slate-400 flex items-center gap-1">
+                    <GripHorizontal size={11} className="inline opacity-60" /> Arraste pelo topo
+                  </span>
+                </div>
 
                 {/* Controles de zoom para PC: no mobile a pinça continua funcionando. */}
                 <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
@@ -5507,6 +6183,37 @@ const LotDashboard = ({
                   </div>
                 </div>
 
+                {/* Abas de Modo de Trabalho: Marcador | Quadras & Lotes | Em Massa */}
+                <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => { setMapAction("editar"); setMapEditTool("marcar"); setMarcadorFase("idle"); }}
+                    className={`py-2 px-1 rounded-xl text-[10px] font-black uppercase text-center transition-all ${
+                      mapAction === "editar" ? "bg-white text-blue-700 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    📍 Marcador
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMapAction("quadras"); setMapEditTool("marcar"); }}
+                    className={`py-2 px-1 rounded-xl text-[10px] font-black uppercase text-center transition-all ${
+                      mapAction === "quadras" ? "bg-white text-blue-700 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    🏘️ Quadras
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setMapAction("massa"); setMapEditTool("marcar"); setMassaSelIds(new Set()); }}
+                    className={`py-2 px-1 rounded-xl text-[10px] font-black uppercase text-center transition-all ${
+                      mapAction === "massa" ? "bg-white text-blue-700 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-800"
+                    }`}
+                  >
+                    ⚡ Em Massa
+                  </button>
+                </div>
+
                 {/* Instrução contextual */}
                 {mapAction === "editar" && marcadorFase === "idle" && (
                   <p className="text-xs text-slate-500 bg-blue-50 p-2 rounded-xl">
@@ -5522,19 +6229,6 @@ const LotDashboard = ({
                   <p className="text-xs text-emerald-700 bg-emerald-50 p-2 rounded-xl font-medium">
                     Clique no mapa para definir o ponto final da linha.
                   </p>
-                )}
-
-                {/* Botão modo edição em massa */}
-                <button
-                  onClick={() => { setMapAction("massa"); setMapEditTool("marcar"); setMassaSelIds(new Set()); setMarcadorFase("idle"); }}
-                  className={`w-full py-2 rounded-xl text-[10px] font-black uppercase ${mapAction === "massa" ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600"}`}
-                >
-                  Edição em massa
-                </button>
-                {mapAction === "massa" && (
-                  <button onClick={() => { setMapAction("editar"); setMapEditTool("marcar"); setMassaSelIds(new Set()); }} className="btn-secondary w-full text-[11px]">
-                    ← Voltar ao marcador
-                  </button>
                 )}
 
                 {/* Seleção CTRL */}
@@ -5579,31 +6273,465 @@ const LotDashboard = ({
                         ↔ Alinhar lotes
                       </button>
                     )}
+                    {ctrlSelectedIds.size > 1 && (
+                      <div className="p-2 rounded-xl bg-blue-50 border border-blue-200 text-[10px] font-bold text-blue-900 flex items-center gap-1.5">
+                        <span>✋</span>
+                        <span>{ctrlSelectedIds.size} selecionadas: arraste qualquer bolinha no mapa para mover todas juntas!</span>
+                      </div>
+                    )}
                     {ctrlSelectedIds.size > 0 && (
-                      <button onClick={() => {
-                        // Clonar bolinhas selecionadas com offset de +2%
-                        const currentPontos = (localDev as any).mapaPontos ?? [];
-                        const selecionados = currentPontos.filter((p: any) => ctrlSelectedIds.has(p.id));
-                        if (selecionados.length === 0) return;
-                        const clones = selecionados.map((p: any) => ({
-                          ...p,
-                          id: `clone-${p.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-                          xPercent: Math.min(99, p.xPercent + 2),
-                          yPercent: Math.min(99, p.yPercent + 2),
-                        }));
-                        const novosPontos = [...currentPontos, ...clones];
-                        pushUndo(currentPontos, `Clonar ${clones.length} bolinha(s)`);
-                        const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: novosPontos } as any, sales);
-                        persistDev(nextDev);
-                        // Selecionar os clones
-                        setCtrlSelectedIds(new Set(clones.map((c: any) => c.id)));
-                      }} className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-blue-100 text-blue-800 hover:bg-blue-200">
-                        ⧉ Clonar selecionadas
+                      <button
+                        onClick={() => abrirModalClonar(ctrlSelectedIds)}
+                        className="w-full py-2 rounded-xl text-[10px] font-black uppercase bg-blue-600 hover:bg-blue-700 text-white shadow-xs active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                      >
+                        <span>⧉</span>
+                        <span>Clonar selecionadas</span>
                       </button>
                     )}
                     {ctrlSelectedIds.size > 0 && (
                       <button onClick={() => setCtrlSelectedIds(new Set())} className="btn-secondary w-full text-[10px]">Limpar seleção</button>
                     )}
+                  </div>
+                )}
+
+                {/* GERENCIADOR DE QUADRAS E LOTES */}
+                {mapAction === "quadras" && (
+                  <div className="space-y-3 pt-1">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-base">🏘️</span>
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-800">
+                          Quadras e Lotes
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-bold text-slate-400">
+                        {quadrasDisponiveisMapa.length} quadra(s)
+                      </span>
+                    </div>
+
+                    {gerenciadorMsgFeedback && (
+                      <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl text-center">
+                        {gerenciadorMsgFeedback}
+                      </div>
+                    )}
+
+                    {/* 1. Escolher a Quadra */}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                        <span>1. Selecionar Quadra</span>
+                        <span className="text-[9px] text-blue-600 font-bold">
+                          {gerenciadorPontosEncontrados.length} lote(s)
+                        </span>
+                      </label>
+                      <div className="flex gap-1.5">
+                        <select
+                          value={gerenciadorQuadra}
+                          onChange={(e) => setGerenciadorQuadra(e.target.value)}
+                          className="flex-1 input-field text-xs font-bold bg-white"
+                        >
+                          {quadrasDisponiveisMapa.length === 0 && (
+                            <option value="">Nenhuma quadra no mapa</option>
+                          )}
+                          {quadrasDisponiveisMapa.map((q) => {
+                            const count = ((localDev as any).mapaPontos || []).filter(
+                              (p: any) => normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(q)
+                            ).length;
+                            return (
+                              <option key={q} value={q}>
+                                Quadra {q} ({count} {count === 1 ? "lote" : "lotes"})
+                              </option>
+                            );
+                          })}
+                        </select>
+                        <input
+                          type="text"
+                          placeholder="Outra..."
+                          value={gerenciadorQuadra}
+                          onChange={(e) => setGerenciadorQuadra(e.target.value)}
+                          className="w-20 input-field text-xs font-bold text-center bg-white"
+                          title="Ou digite o nome de outra quadra"
+                        />
+                      </div>
+
+                      {/* Ação rápida para selecionar e arrastar toda a quadra no mapa */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (gerenciadorQuadra) {
+                            selecionarQuadraCompleta(gerenciadorQuadra);
+                          } else {
+                            alert("Selecione uma quadra primeiro.");
+                          }
+                        }}
+                        disabled={gerenciadorPontosEncontrados.length === 0}
+                        className="w-full py-2.5 px-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase transition-all shadow-xs flex items-center justify-center gap-2 active:scale-95 disabled:opacity-40"
+                        title="Seleciona todos os lotes desta quadra para mover todos juntos no mapa"
+                      >
+                        <span>✋</span>
+                        <span>Selecionar quadra inteira para arrastar ({gerenciadorPontosEncontrados.length})</span>
+                      </button>
+
+                      {massaSelIds.size > 0 && gerenciadorPontosEncontrados.length > 0 && (
+                        <div className="p-2 bg-emerald-50 border border-emerald-200 rounded-xl text-emerald-800 text-[10px] font-bold flex items-center gap-1.5 animate-pulse">
+                          <span>✋</span>
+                          <span>Quadra selecionada! Clique em qualquer bolinha no mapa para arrastar todas juntas.</span>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 2. Faixa de Bolinhas (Primeira até Última) */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                          2. Lotes da Quadra
+                        </label>
+                        <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-[10px]">
+                          <button
+                            type="button"
+                            onClick={() => setGerenciadorModoFaixa("toda")}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              gerenciadorModoFaixa === "toda"
+                                ? "bg-blue-600 text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            Toda a quadra
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setGerenciadorModoFaixa("faixa");
+                              if (!gerenciadorLoteIni && gerenciadorPontosEncontrados.length > 0) {
+                                setGerenciadorLoteIni(gerenciadorPontosEncontrados[0].lote);
+                                setGerenciadorLoteFin(
+                                  gerenciadorPontosEncontrados[gerenciadorPontosEncontrados.length - 1].lote
+                                );
+                              }
+                            }}
+                            className={`px-2 py-0.5 rounded font-bold transition-all ${
+                              gerenciadorModoFaixa === "faixa"
+                                ? "bg-blue-600 text-white shadow-xs"
+                                : "text-slate-600 hover:text-slate-900"
+                            }`}
+                          >
+                            Definir Faixa
+                          </button>
+                        </div>
+                      </div>
+
+                      {gerenciadorModoFaixa === "faixa" && (
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase">1ª Bolinha (Lote)</span>
+                            <input
+                              type="text"
+                              value={gerenciadorLoteIni}
+                              onChange={(e) => setGerenciadorLoteIni(e.target.value)}
+                              placeholder="Ex: 1"
+                              className="input-field text-xs font-bold text-center bg-white"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <span className="text-[9px] text-slate-500 font-bold uppercase">Última Bolinha (Lote)</span>
+                            <input
+                              type="text"
+                              value={gerenciadorLoteFin}
+                              onChange={(e) => setGerenciadorLoteFin(e.target.value)}
+                              placeholder="Ex: 20"
+                              className="input-field text-xs font-bold text-center bg-white"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* 3. Como ela está: Resumo em tempo real dos status das bolinhas */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <div className="flex items-center justify-between text-[10px] font-black uppercase text-slate-500">
+                        <span>Estado Atual ({gerenciadorStats.total} bolinhas)</span>
+                        <button
+                          type="button"
+                          onClick={selecionarNoMapaGerenciador}
+                          className="text-blue-600 hover:underline flex items-center gap-1 font-bold"
+                        >
+                          <Crosshair size={11} /> Destacar no mapa
+                        </button>
+                      </div>
+
+                      {/* Badges de status */}
+                      <div className="grid grid-cols-3 gap-1.5 text-center">
+                        <div className="bg-blue-50 border border-blue-200 p-1.5 rounded-xl">
+                          <div className="text-xs font-black text-blue-700">{gerenciadorStats.disp}</div>
+                          <div className="text-[9px] text-blue-600 font-bold uppercase">Disponíveis</div>
+                        </div>
+                        <div className="bg-yellow-50 border border-yellow-200 p-1.5 rounded-xl">
+                          <div className="text-xs font-black text-yellow-800">{gerenciadorStats.res}</div>
+                          <div className="text-[9px] text-yellow-700 font-bold uppercase">Reservados</div>
+                        </div>
+                        <div className="bg-red-50 border border-red-200 p-1.5 rounded-xl">
+                          <div className="text-xs font-black text-red-700">{gerenciadorStats.ind}</div>
+                          <div className="text-[9px] text-red-600 font-bold uppercase">Indisponíveis</div>
+                        </div>
+                      </div>
+
+                      {/* Grade visual das bolinhas */}
+                      {gerenciadorPontosEncontrados.length > 0 ? (
+                        <div className="max-h-28 overflow-y-auto p-1.5 bg-white border border-slate-200 rounded-xl flex flex-wrap gap-1">
+                          {gerenciadorPontosEncontrados.map((p) => {
+                            const isDisp = p.status === "disponivel";
+                            const isRes = p.status === "reservado";
+                            const bgClass = isDisp
+                              ? "bg-blue-100 border-blue-300 text-blue-800 hover:bg-blue-200"
+                              : isRes
+                              ? "bg-yellow-100 border-yellow-300 text-yellow-800 hover:bg-yellow-200"
+                              : "bg-red-100 border-red-300 text-red-800 hover:bg-red-200";
+                            return (
+                              <button
+                                key={p.id}
+                                type="button"
+                                onClick={() => setSelectedPoint(p)}
+                                title={`Quadra ${p.quadra} - Lote ${p.lote} (${p.status}) - Clique para editar ou vender`}
+                                className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition-transform hover:scale-105 active:scale-95 ${bgClass}`}
+                              >
+                                L{p.lote}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-[11px] text-slate-400 italic text-center py-2">
+                          Nenhum lote cadastrado nesta faixa/quadra.
+                        </p>
+                      )}
+                    </div>
+
+                    {/* 4. Duplicar para a Quadra ao Lado */}
+                    <div className="p-3 bg-gradient-to-br from-indigo-50/80 to-blue-50/80 border border-indigo-200 rounded-2xl space-y-2.5 shadow-xs">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-900 flex items-center gap-1">
+                          <Copy size={12} /> Duplicar para Quadra ao Lado
+                        </span>
+                        <span className="text-[9px] font-bold text-indigo-600">
+                          Mesma sequência
+                        </span>
+                      </div>
+
+                      <p className="text-[10px] text-slate-600 leading-relaxed">
+                        Copia as {gerenciadorPontosEncontrados.length} bolinhas mantendo os mesmos números e ordem, criando a nova quadra ao lado!
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase">Nova Quadra</span>
+                          <input
+                            type="text"
+                            value={gerenciadorNovaQuadra}
+                            onChange={(e) => setGerenciadorNovaQuadra(e.target.value)}
+                            placeholder="Ex: 02"
+                            className="input-field text-xs font-black text-indigo-900 bg-white"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <span className="text-[9px] font-bold text-slate-600 uppercase">Deslocar para</span>
+                          <div className="grid grid-cols-4 gap-1">
+                            <button
+                              type="button"
+                              onClick={() => setGerenciadorOffsetDir("direita")}
+                              title="Direita"
+                              className={`py-1.5 rounded-lg text-xs font-bold border ${
+                                gerenciadorOffsetDir === "direita"
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              ➡️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGerenciadorOffsetDir("esquerda")}
+                              title="Esquerda"
+                              className={`py-1.5 rounded-lg text-xs font-bold border ${
+                                gerenciadorOffsetDir === "esquerda"
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              ⬅️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGerenciadorOffsetDir("baixo")}
+                              title="Baixo"
+                              className={`py-1.5 rounded-lg text-xs font-bold border ${
+                                gerenciadorOffsetDir === "baixo"
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              ⬇️
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setGerenciadorOffsetDir("cima")}
+                              title="Cima"
+                              className={`py-1.5 rounded-lg text-xs font-bold border ${
+                                gerenciadorOffsetDir === "cima"
+                                  ? "bg-indigo-600 text-white border-indigo-600"
+                                  : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                              }`}
+                            >
+                              ⬆️
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[9px] font-bold text-slate-500 uppercase">Distância (%):</span>
+                        <div className="flex items-center gap-1.5">
+                          {[2, 4, 6, 8, 12].map((val) => (
+                            <button
+                              key={val}
+                              type="button"
+                              onClick={() => setGerenciadorOffsetDist(val)}
+                              className={`px-2 py-0.5 rounded text-[9px] font-bold ${
+                                gerenciadorOffsetDist === val
+                                  ? "bg-indigo-600 text-white"
+                                  : "bg-white border border-slate-200 text-slate-600"
+                              }`}
+                            >
+                              {val}%
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={duplicarParaQuadraAoLado}
+                        disabled={gerenciadorPontosEncontrados.length === 0}
+                        className="w-full py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-black uppercase transition-all shadow-sm flex items-center justify-center gap-1.5 disabled:opacity-40"
+                      >
+                        <Copy size={13} /> Duplicar {gerenciadorPontosEncontrados.length} Bolinhas para Quadra {gerenciadorNovaQuadra || "..."}
+                      </button>
+                    </div>
+
+                    {/* 5. Alinhamento de Bolinhas */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+                        <Sliders size={11} /> Alinhar Bolinhas da Faixa
+                      </span>
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => alinharPontosGerenciador("linha")}
+                          disabled={gerenciadorPontosEncontrados.length < 2}
+                          className="py-1.5 px-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-bold text-slate-700 text-center active:scale-95 transition-all disabled:opacity-40"
+                        >
+                          📏 Em linha reta (1º ao último)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alinharPontosGerenciador("horizontal")}
+                          disabled={gerenciadorPontosEncontrados.length < 2}
+                          className="py-1.5 px-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-bold text-slate-700 text-center active:scale-95 transition-all disabled:opacity-40"
+                        >
+                          ↔️ Horizontalmente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alinharPontosGerenciador("vertical")}
+                          disabled={gerenciadorPontosEncontrados.length < 2}
+                          className="py-1.5 px-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-bold text-slate-700 text-center active:scale-95 transition-all disabled:opacity-40"
+                        >
+                          ↕️ Verticalmente
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => alinharPontosGerenciador("distribuir")}
+                          disabled={gerenciadorPontosEncontrados.length < 2}
+                          className="py-1.5 px-2 bg-white border border-slate-200 hover:bg-slate-100 rounded-xl text-[10px] font-bold text-slate-700 text-center active:scale-95 transition-all disabled:opacity-40"
+                        >
+                          📐 Distribuir espaços
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 6. Mudar Quadra ou Status de Todas */}
+                    <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                      <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
+                        Alterar em Lote nesta Faixa
+                      </span>
+
+                      {/* Alterar Status */}
+                      <div className="grid grid-cols-3 gap-1">
+                        <button
+                          type="button"
+                          onClick={() => aplicarStatusGerenciador("disponivel")}
+                          disabled={gerenciadorPontosEncontrados.length === 0}
+                          className="py-1 rounded-lg bg-blue-50 border border-blue-200 text-blue-700 text-[9px] font-bold hover:bg-blue-100 active:scale-95 disabled:opacity-40"
+                        >
+                          Todos Disponíveis
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => aplicarStatusGerenciador("reservado")}
+                          disabled={gerenciadorPontosEncontrados.length === 0}
+                          className="py-1 rounded-lg bg-yellow-50 border border-yellow-200 text-yellow-800 text-[9px] font-bold hover:bg-yellow-100 active:scale-95 disabled:opacity-40"
+                        >
+                          Todos Reservados
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => aplicarStatusGerenciador("indisponivel")}
+                          disabled={gerenciadorPontosEncontrados.length === 0}
+                          className="py-1 rounded-lg bg-red-50 border border-red-200 text-red-700 text-[9px] font-bold hover:bg-red-100 active:scale-95 disabled:opacity-40"
+                        >
+                          Todos Indisponíveis
+                        </button>
+                      </div>
+
+                      {/* Mudar de Quadra */}
+                      <div className="flex gap-1.5 pt-1">
+                        <input
+                          type="text"
+                          placeholder="Mover para nova quadra..."
+                          id="inputMoverQuadra"
+                          className="flex-1 input-field text-xs bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const input = document.getElementById("inputMoverQuadra") as HTMLInputElement;
+                            if (input && input.value) {
+                              aplicarMudancaQuadraGerenciador(input.value);
+                              input.value = "";
+                            } else {
+                              alert("Digite o nome da nova quadra.");
+                            }
+                          }}
+                          disabled={gerenciadorPontosEncontrados.length === 0}
+                          className="px-3 py-1.5 bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase hover:bg-slate-700 active:scale-95 disabled:opacity-40"
+                        >
+                          Mover
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 7. Excluir Toda a Quadra ou a Faixa */}
+                    <div className="pt-1">
+                      <button
+                        type="button"
+                        onClick={excluirPontosGerenciador}
+                        disabled={gerenciadorPontosEncontrados.length === 0}
+                        className="w-full py-2 rounded-xl bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 text-xs font-black uppercase active:scale-95 transition-all flex items-center justify-center gap-1.5 disabled:opacity-40"
+                      >
+                        <Trash2 size={13} />
+                        {gerenciadorModoFaixa === "toda"
+                          ? `Excluir toda a Quadra ${gerenciadorQuadra} (${gerenciadorPontosEncontrados.length} lotes)`
+                          : `Excluir faixa selecionada (${gerenciadorPontosEncontrados.length} lotes)`}
+                      </button>
+                    </div>
                   </div>
                 )}
 
@@ -5647,11 +6775,74 @@ const LotDashboard = ({
                 <p className="text-xs text-slate-500">Clique nas bolinhas para selecionar, ou use os filtros abaixo.</p>
                 <p className="text-xs font-bold text-slate-600">{massaSelIds.size} bolinha(s) selecionada(s)</p>
 
-                {/* Filtro por quadra */}
-                <div className="space-y-1">
-                  <input className="input-field" placeholder="Quadra para selecionar" value={massaFiltroQuadra} onChange={(e) => setMassaFiltroQuadra(e.target.value)} />
-                  <button onClick={() => { if (massaFiltroQuadra) selecionarQuadraCompleta(massaFiltroQuadra); }} className="btn-secondary w-full text-[11px]">Selecionar quadra inteira</button>
+                {/* Filtro por quadra com lista rápida e botão de arrastar */}
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-600">
+                      Selecionar por Quadra
+                    </span>
+                    {massaFiltroQuadra && (
+                      <span className="text-[9px] text-blue-600 font-bold">
+                        {((localDev as any).mapaPontos || []).filter((p: any) => normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(massaFiltroQuadra)).length} lote(s)
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex gap-1.5">
+                    <select
+                      value={massaFiltroQuadra}
+                      onChange={(e) => setMassaFiltroQuadra(e.target.value)}
+                      className="flex-1 input-field text-xs font-bold bg-white"
+                    >
+                      <option value="">Escolha a quadra...</option>
+                      {quadrasDisponiveisMapa.map((q) => {
+                        const count = ((localDev as any).mapaPontos || []).filter(
+                          (p: any) => normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(q)
+                        ).length;
+                        return (
+                          <option key={q} value={q}>
+                            Quadra {q} ({count} {count === 1 ? "lote" : "lotes"})
+                          </option>
+                        );
+                      })}
+                    </select>
+                    <input
+                      className="w-20 input-field text-xs font-bold text-center bg-white"
+                      placeholder="Outra..."
+                      value={massaFiltroQuadra}
+                      onChange={(e) => setMassaFiltroQuadra(e.target.value)}
+                      title="Ou digite o nome de outra quadra"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (massaFiltroQuadra) selecionarQuadraCompleta(massaFiltroQuadra);
+                      else alert("Selecione ou digite a quadra desejada.");
+                    }}
+                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-black uppercase shadow-xs flex items-center justify-center gap-1.5 active:scale-95 transition-all"
+                  >
+                    <span>✋</span>
+                    <span>Selecionar quadra inteira para arrastar</span>
+                  </button>
                 </div>
+
+                {massaSelIds.size > 0 && (
+                  <div className="p-2.5 bg-blue-50 border border-blue-200 rounded-xl space-y-1">
+                    <div className="flex items-center justify-between text-blue-900 font-bold text-[10px]">
+                      <span>✋ {massaSelIds.size} selecionadas no mapa</span>
+                      <button
+                        type="button"
+                        onClick={() => abrirModalClonar(massaSelIds)}
+                        className="px-2 py-0.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[9px] font-black uppercase transition-colors"
+                      >
+                        ⧉ Clonar
+                      </button>
+                    </div>
+                    <p className="text-[10px] text-blue-700 leading-tight">
+                      Clique e arraste qualquer bolinha no mapa para mover todas juntas tranquilamente!
+                    </p>
+                  </div>
+                )}
 
                 {/* Filtro por intervalo */}
                 <div className="space-y-1">
@@ -5662,23 +6853,39 @@ const LotDashboard = ({
                   <button onClick={selecionarIntervalo} className="btn-secondary w-full text-[11px]">Selecionar intervalo</button>
                 </div>
 
-                <button onClick={() => setMassaSelIds(new Set(mapaPontos.map((p: any) => p.id)))} className="btn-secondary w-full text-[11px]">Selecionar todas</button>
-                <button onClick={() => setMassaSelIds(new Set())} className="btn-secondary w-full text-[11px]">Limpar seleção</button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button onClick={() => {
+                    const todos = new Set((mapaPontos || []).map((p: any) => p.id));
+                    setMassaSelIds(todos);
+                    setCtrlSelectedIds(todos);
+                  }} className="btn-secondary w-full text-[11px]">
+                    Selecionar todas
+                  </button>
+                  <button onClick={() => {
+                    setMassaSelIds(new Set());
+                    setCtrlSelectedIds(new Set());
+                  }} className="btn-secondary w-full text-[11px]">
+                    Limpar seleção
+                  </button>
+                </div>
 
                 {/* Ação */}
-                <select className="input-field" value={massaAcao} onChange={(e) => setMassaAcao(e.target.value as any)}>
-                  <option value="">Escolha uma ação</option>
-                  <option value="selecionar">Somente selecionar</option>
-                  <option value="disponivel">Marcar como disponível</option>
-                  <option value="reservado">Marcar como reservado</option>
-                  <option value="indisponivel">Marcar como indisponível</option>
-                  <option value="excluir">Excluir selecionadas</option>
-                  <option value="alinharHorizontal">Alinhar horizontalmente</option>
-                  <option value="alinharVertical">Alinhar verticalmente</option>
-                  <option value="distribuirHorizontal">Distribuir/alinhar pela sequência</option>
-                  <option value="clonar">⧉ Clonar selecionados</option>
-                </select>
-                <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
+                <div className="space-y-1.5 pt-1">
+                  <label className="text-[10px] font-black uppercase text-slate-500">Ação para os selecionados</label>
+                  <select className="input-field" value={massaAcao} onChange={(e) => setMassaAcao(e.target.value as any)}>
+                    <option value="">Escolha uma ação...</option>
+                    <option value="clonar">⧉ Clonar selecionados (perguntar nova quadra)</option>
+                    <option value="disponivel">Marcar como disponível</option>
+                    <option value="reservado">Marcar como reservado</option>
+                    <option value="indisponivel">Marcar como indisponível</option>
+                    <option value="excluir">Excluir selecionadas</option>
+                    <option value="alinharLinha">Alinhar em linha reta (1º ao último)</option>
+                    <option value="alinharHorizontal">Alinhar horizontalmente</option>
+                    <option value="alinharVertical">Alinhar verticalmente</option>
+                    <option value="distribuirHorizontal">Distribuir/alinhar pela sequência</option>
+                  </select>
+                  <button onClick={aplicarAcaoMassa} className="btn-primary w-full">Aplicar ação</button>
+                </div>
               </div>
             )}
 
@@ -6132,116 +7339,238 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* Ações */}
+          {/* Ações e Edição */}
           <div className="space-y-2">
-            {/* Bolinha azul/disponível */}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
-            )}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
-            )}
-            {ponto.status === "disponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
-            )}
+            {/* Editor completo no modo de edição */}
+            {isEditingMap ? (
+              <div className="space-y-2.5">
+                {editPontoSuccessMsg && (
+                  <div className="p-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-bold rounded-xl text-center">
+                    {editPontoSuccessMsg}
+                  </div>
+                )}
 
-            {/* Bolinha amarela/reservado */}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-primary w-full" onClick={() => { setMapFullscreen(false); setSelectedPoint(null); setMapZoom(1); setMapPan({ x: 0, y: 0 }); try { (screen as any).orientation?.unlock?.(); } catch {}; onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote }); }}>Iniciar venda deste lote</button>
-            )}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
-            )}
-            {ponto.status === "reservado" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
-            )}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Editar Marcador</span>
+                    <span className="text-[10px] text-slate-400 font-mono">Q{ponto.quadra} · L{ponto.lote}</span>
+                  </div>
 
-            {/* Bolinha vermelha/indisponível — COM venda */}
-            {temVenda && (
-              <button className="btn-primary w-full" onClick={() => { onViewContract(venda); onClose(); }}>Abrir contrato/venda</button>
-            )}
-            {temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Liberar lote e manter histórico</button>
-            )}
-
-            {/* Bolinha vermelha/indisponível — SEM venda */}
-            {ponto.status === "indisponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
-            )}
-            {ponto.status === "indisponivel" && !temVenda && (
-              <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
-            )}
-
-            {/* Editar/excluir — apenas no modo edição */}
-            {isEditingMap && (() => {
-              const currentPontos = (localDev as any).mapaPontos ?? [];
-              const fileira = ponto.linhaSeqId ? currentPontos.filter((p: any) => p.linhaSeqId === ponto.linhaSeqId)
-                .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0) : [];
-              const isFirst = fileira.length > 0 && fileira[0].id === ponto.id;
-              const isLast = fileira.length > 0 && fileira[fileira.length - 1].id === ponto.id;
-              return (
-                <>
-                  <button className="btn-secondary w-full" onClick={() => editarPonto(ponto)}>Editar bolinha</button>
-                  {/* Clonagem movida para Edição em massa → Escolher ação → Clonar selecionados */}
-                  {/* Fileira: editar extremo redefine quantidade */}
-                  {fileira.length > 1 && (isFirst || isLast) && (
-                    <div className="bg-violet-50 border border-violet-200 rounded-2xl p-3 space-y-2">
-                      <p className="text-[10px] font-black text-violet-700 uppercase">
-                        {isFirst ? "Primeiro lote da fileira" : "Último lote da fileira"}
-                      </p>
-                      <p className="text-[10px] text-violet-500">
-                        Fileira vai do lote <strong>{fileira[0].lote}</strong> ao <strong>{fileira[fileira.length-1].lote}</strong> ({fileira.length} bolinhas)
-                      </p>
-                      <div className="flex gap-2 items-center">
-                        <input
-                          type="number"
-                          value={editFileiraNovo}
-                          onChange={e => setEditFileiraNovo(e.target.value)}
-                          placeholder={isLast ? "Novo último lote" : "Novo primeiro lote"}
-                          className="flex-1 px-3 py-2 border border-violet-300 rounded-xl text-sm font-bold text-slate-800 outline-none"
-                        />
-                        <button
-                          onClick={() => {
-                            const novoNum = parseInt(editFileiraNovo);
-                            if (!novoNum || novoNum < 1) return;
-                            const primeiroLote = parseInt(fileira[0].lote);
-                            const ultimoLote = parseInt(fileira[fileira.length-1].lote);
-                            let novoInicio = isFirst ? novoNum : primeiroLote;
-                            let novoFim = isLast ? novoNum : ultimoLote;
-                            if (novoInicio > novoFim) { alert("O primeiro lote não pode ser maior que o último."); return; }
-                            // Redistribuir bolinhas da fileira do novoInicio ao novoFim
-                            const totalNovo = novoFim - novoInicio + 1;
-                            const sem = currentPontos.filter((p: any) => p.linhaSeqId !== ponto.linhaSeqId);
-                            // Usar posição do primeiro e último para redistribuir
-                            const posInicio = { x: fileira[0].xPercent, y: fileira[0].yPercent };
-                            const posFim = { x: fileira[fileira.length-1].xPercent, y: fileira[fileira.length-1].yPercent };
-                            const novosLotes = Array.from({ length: totalNovo }, (_, i) => {
-                              const t = totalNovo > 1 ? i / (totalNovo - 1) : 0;
-                              return {
-                                ...fileira[0],
-                                id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
-                                lote: String(novoInicio + i),
-                                xPercent: posInicio.x + (posFim.x - posInicio.x) * t,
-                                yPercent: posInicio.y + (posFim.y - posInicio.y) * t,
-                                linhaSeqId: fileira[0].linhaSeqId,
-                              };
-                            });
-                            pushUndo(currentPontos, "Redimensionar fileira");
-                            persistDev({ ...localDev, mapaPontos: [...sem, ...novosLotes] } as any);
-                            setEditFileiraNovo("");
-                            setSelectedPoint(null);
-                          }}
-                          className="px-3 py-2 bg-violet-600 text-white rounded-xl text-xs font-black hover:bg-violet-700 active:scale-95 transition-all"
-                        >
-                          Aplicar
-                        </button>
-                      </div>
+                  {/* Status direto com pills */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Status</label>
+                    <div className="grid grid-cols-3 gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditPontoStatus("disponivel");
+                          marcarPonto(ponto, "disponivel");
+                        }}
+                        className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                          (editPontoStatus || ponto.status) === "disponivel"
+                            ? "bg-blue-600 text-white shadow-sm"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Disponível
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditPontoStatus("reservado");
+                          marcarPonto(ponto, "reservado");
+                        }}
+                        className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                          (editPontoStatus || ponto.status) === "reservado"
+                            ? "bg-yellow-500 text-white shadow-sm"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Reservado
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditPontoStatus("indisponivel");
+                          marcarPonto(ponto, "indisponivel");
+                        }}
+                        className={`py-1.5 rounded-xl text-[10px] font-black uppercase transition-all ${
+                          (editPontoStatus || ponto.status) === "indisponivel"
+                            ? "bg-red-600 text-white shadow-sm"
+                            : "bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                        }`}
+                      >
+                        Indisponível
+                      </button>
                     </div>
+                  </div>
+
+                  {/* Quadra e Lote */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Quadra</label>
+                      <input
+                        type="text"
+                        value={editPontoQuadra}
+                        onChange={(e) => setEditPontoQuadra(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                        placeholder="Quadra"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Lote</label>
+                      <input
+                        type="text"
+                        value={editPontoLote}
+                        onChange={(e) => setEditPontoLote(e.target.value)}
+                        className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs font-bold text-slate-800 outline-none focus:border-blue-500"
+                        placeholder="Lote"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Observação */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase">Observação</label>
+                    <input
+                      type="text"
+                      value={editPontoObs}
+                      onChange={(e) => setEditPontoObs(e.target.value)}
+                      className="w-full px-2.5 py-1.5 rounded-xl border border-slate-300 bg-white text-xs text-slate-700 outline-none focus:border-blue-500"
+                      placeholder="Ex: Esquina, frente para nascente..."
+                    />
+                  </div>
+
+                  {/* Checkbox renumerar sequência */}
+                  {ponto.lote !== editPontoLote && Number.isFinite(Number(ponto.lote)) && Number.isFinite(Number(editPontoLote)) && (
+                    <label className="flex items-center gap-2 cursor-pointer text-[11px] text-slate-600 select-none bg-blue-50/80 p-2 rounded-xl border border-blue-100">
+                      <input
+                        type="checkbox"
+                        checked={editPontoRenumerarSeq}
+                        onChange={(e) => setEditPontoRenumerarSeq(e.target.checked)}
+                        className="rounded text-blue-600 focus:ring-0"
+                      />
+                      <span>Renumerar sequência a partir deste lote ({editPontoLote}...)</span>
+                    </label>
                   )}
-                  <button className="btn-secondary w-full text-red-600" onClick={() => excluirPonto(ponto)}>Excluir bolinha</button>
-                </>
-              );
-            })()}
+
+                  {/* Botão Salvar Alterações */}
+                  <button
+                    type="button"
+                    onClick={salvarEdicaoPontoModal}
+                    className="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs font-black uppercase transition-all shadow-sm flex items-center justify-center gap-1.5"
+                  >
+                    <Check size={14} /> Salvar Alterações da Bolinha
+                  </button>
+
+                  {/* Ações da Quadra desta Bolinha */}
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        selecionarQuadraCompleta(ponto.quadra);
+                        setSelectedPoint(null);
+                      }}
+                      className="py-2 px-2 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 text-center"
+                      title="Seleciona todos os lotes desta quadra para mover todos juntos no mapa"
+                    >
+                      <span>✋</span>
+                      <span>Arrastar Quadra {ponto.quadra}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setGerenciadorQuadra(ponto.quadra);
+                        setMapAction("quadras");
+                        setSelectedPoint(null);
+                      }}
+                      className="py-2 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase transition-all flex items-center justify-center gap-1 text-center"
+                      title="Abrir painel completo para gerenciar, duplicar ou alinhar esta quadra"
+                    >
+                      <span>🏘️</span>
+                      <span>Gerenciar Quadra {ponto.quadra}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Vender Lote diretamente */}
+                <button
+                  type="button"
+                  className="btn-primary w-full flex items-center justify-center gap-1.5"
+                  onClick={() => {
+                    setMapFullscreen(false);
+                    setSelectedPoint(null);
+                    setMapZoom(1);
+                    setMapPan({ x: 0, y: 0 });
+                    try { (screen as any).orientation?.unlock?.(); } catch {};
+                    onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote });
+                  }}
+                >
+                  <ShoppingCart size={14} /> Iniciar venda deste lote
+                </button>
+
+                {/* Excluir bolinha */}
+                <button
+                  type="button"
+                  className="btn-secondary w-full text-red-600 hover:bg-red-50 flex items-center justify-center gap-1.5"
+                  onClick={() => excluirPonto(ponto)}
+                >
+                  <Trash2 size={13} /> Excluir esta bolinha do mapa
+                </button>
+              </div>
+            ) : (
+              /* MODO VISUALIZAÇÃO (NÃO EDIÇÃO) */
+              <>
+                {/* Vender lote */}
+                {!temVenda && (
+                  <button
+                    className="btn-primary w-full flex items-center justify-center gap-1.5"
+                    onClick={() => {
+                      setMapFullscreen(false);
+                      setSelectedPoint(null);
+                      setMapZoom(1);
+                      setMapPan({ x: 0, y: 0 });
+                      try { (screen as any).orientation?.unlock?.(); } catch {};
+                      onStartSale({ empreendimentoId: localDev.id, quadra: ponto.quadra, numeroLote: ponto.lote });
+                    }}
+                  >
+                    <ShoppingCart size={14} /> Iniciar venda deste lote
+                  </button>
+                )}
+
+                {/* Bolinha azul/disponível */}
+                {ponto.status === "disponivel" && !temVenda && (
+                  <>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
+                  </>
+                )}
+
+                {/* Bolinha amarela/reservado */}
+                {ponto.status === "reservado" && !temVenda && (
+                  <>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "indisponivel")}>Marcar como indisponível</button>
+                  </>
+                )}
+
+                {/* Bolinha vermelha/indisponível — COM venda */}
+                {temVenda && (
+                  <>
+                    <button className="btn-primary w-full" onClick={() => { onViewContract(venda); onClose(); }}>Abrir contrato/venda</button>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Liberar lote e manter histórico</button>
+                  </>
+                )}
+
+                {/* Bolinha vermelha/indisponível — SEM venda */}
+                {ponto.status === "indisponivel" && !temVenda && (
+                  <>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "disponivel")}>Marcar como disponível</button>
+                    <button className="btn-secondary w-full" onClick={() => marcarPonto(ponto, "reservado")}>Marcar como reservado</button>
+                  </>
+                )}
+              </>
+            )}
 
             <button className="btn-secondary w-full" onClick={() => setSelectedPoint(null)}>Fechar</button>
           </div>
@@ -8457,6 +9786,193 @@ const LotDashboard = ({
             </motion.div>
           )}
         </AnimatePresence>
+
+    {/* MODAL: CLONAR MARCADORES (SEMPRE PERGUNTA A NOVA QUADRA) */}
+    {modalClonarAberto && (
+      <div className="fixed inset-0 z-[600] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4" onClick={() => setModalClonarAberto(false)}>
+        <div
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-100"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Cabeçalho */}
+          <div className="bg-gradient-to-r from-blue-600 to-indigo-600 px-6 py-4 text-white flex items-center justify-between">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center text-base">
+                ⧉
+              </div>
+              <div>
+                <h3 className="font-black text-sm uppercase tracking-wide">Clonar Marcadores</h3>
+                <p className="text-[11px] text-blue-100 font-medium">
+                  Duplicar {clonarOrigemIds.length} bolinha(s) selecionada(s)
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setModalClonarAberto(false)}
+              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center font-bold text-sm transition-colors"
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Conteúdo */}
+          <div className="p-6 space-y-4">
+            {/* Aviso de segurança e integridade */}
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl flex items-start gap-2.5">
+              <span className="text-base leading-none">🛡️</span>
+              <p className="text-xs text-blue-900 leading-relaxed font-medium">
+                Para não duplicar a quadra e garantir que você consiga selecionar e arrastar cada quadra separadamente, informe o nome ou número da <strong>nova quadra</strong>:
+              </p>
+            </div>
+
+            {clonarMsgErro && (
+              <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl text-center">
+                {clonarMsgErro}
+              </div>
+            )}
+
+            {/* Input da nova quadra */}
+            <div className="space-y-1.5">
+              <label className="text-xs font-black uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>Qual será a Nova Quadra? *</span>
+                {clonarQuadraOrigemInfo && (
+                  <span className="text-[10px] text-slate-400 font-normal">
+                    Origem: Quadra {clonarQuadraOrigemInfo}
+                  </span>
+                )}
+              </label>
+              <div className="relative">
+                <input
+                  type="text"
+                  autoFocus
+                  placeholder="Ex: 02, B, Quadra 02..."
+                  value={clonarNovaQuadra}
+                  onChange={(e) => {
+                    setClonarNovaQuadra(e.target.value);
+                    if (clonarMsgErro) setClonarMsgErro("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      executarClonagemConfirmada();
+                    }
+                  }}
+                  className="w-full px-4 py-3 bg-slate-50 border-2 border-indigo-200 focus:border-indigo-600 focus:bg-white rounded-2xl text-base font-black text-indigo-950 transition-all outline-none"
+                />
+                {clonarNovaQuadra && (
+                  <button
+                    type="button"
+                    onClick={() => setClonarNovaQuadra("")}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Quadras existentes como referência */}
+            {quadrasDisponiveisMapa.length > 0 && (
+              <div className="space-y-1">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                  Quadras já cadastradas no mapa:
+                </span>
+                <div className="flex flex-wrap gap-1 max-h-20 overflow-y-auto">
+                  {quadrasDisponiveisMapa.map((q) => (
+                    <span
+                      key={q}
+                      onClick={() => setClonarNovaQuadra(sugerirProximaQuadra(q, (localDev as any).mapaPontos || []))}
+                      className="px-2 py-0.5 rounded-lg bg-slate-100 text-slate-600 text-[10px] font-bold cursor-pointer hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
+                      title="Clique para sugerir próxima após esta"
+                    >
+                      Q{q}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Direção inicial do deslocamento dos clones */}
+            <div className="p-3 bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center justify-between">
+                <span>Posição inicial dos novos marcadores</span>
+                <span className="text-indigo-600 font-bold">{clonarOffsetDist}% de distância</span>
+              </span>
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setClonarOffsetDir("direita")}
+                  className={`py-2 rounded-xl text-xs font-bold border flex flex-col items-center gap-0.5 transition-all ${
+                    clonarOffsetDir === "direita"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <span>➡️</span>
+                  <span className="text-[9px]">Direita</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClonarOffsetDir("esquerda")}
+                  className={`py-2 rounded-xl text-xs font-bold border flex flex-col items-center gap-0.5 transition-all ${
+                    clonarOffsetDir === "esquerda"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <span>⬅️</span>
+                  <span className="text-[9px]">Esquerda</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClonarOffsetDir("baixo")}
+                  className={`py-2 rounded-xl text-xs font-bold border flex flex-col items-center gap-0.5 transition-all ${
+                    clonarOffsetDir === "baixo"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <span>⬇️</span>
+                  <span className="text-[9px]">Abaixo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setClonarOffsetDir("cima")}
+                  className={`py-2 rounded-xl text-xs font-bold border flex flex-col items-center gap-0.5 transition-all ${
+                    clonarOffsetDir === "cima"
+                      ? "bg-indigo-600 text-white border-indigo-600 shadow-xs"
+                      : "bg-white text-slate-700 border-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <span>⬆️</span>
+                  <span className="text-[9px]">Acima</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Ações */}
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setModalClonarAberto(false)}
+                className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase rounded-2xl transition-all"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={executarClonagemConfirmada}
+                className="flex-2 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-black uppercase rounded-2xl shadow-md active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <span>⧉</span>
+                <span>Confirmar e Clonar</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
 
     {/* MODAL: Colar bolinhas — escolher quadra */}
     {showModalColar && (
