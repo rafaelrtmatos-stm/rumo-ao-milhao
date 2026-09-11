@@ -2617,11 +2617,15 @@ const LotDashboard = ({
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dragStart, setDragStart] = useState<{ mouseX: number; mouseY: number; xPercent: number; yPercent: number } | null>(null);
   const mapContainerRef = useRef<HTMLDivElement>(null);
+  const mapContainerFullscreenRef = useRef<HTMLDivElement>(null);
+  const getActiveContainer = () => mapFullscreen ? (mapContainerFullscreenRef.current || mapContainerRef.current) : mapContainerRef.current;
   const mapViewportRef = useRef<HTMLDivElement>(null);
   const mapViewportFullscreenRef = useRef<HTMLDivElement>(null);
   // Retorna o viewport ativo (fullscreen ou normal)
   const getActiveViewport = () => mapFullscreen ? mapViewportFullscreenRef.current : mapViewportRef.current;
   const mapImageRef = useRef<HTMLImageElement>(null);
+  const mapImageFullscreenRef = useRef<HTMLImageElement>(null);
+  const getActiveImage = () => mapFullscreen ? (mapImageFullscreenRef.current || mapImageRef.current) : mapImageRef.current;
   const [mapRenderWidth, setMapRenderWidth] = useState<number>(0); // largura real do mapa na tela
   const mapResizeObserverRef = useRef<ResizeObserver | null>(null);
   // Canvas de renderização direta do PDF (opção C — qualidade vetorial infinita)
@@ -3275,28 +3279,43 @@ const LotDashboard = ({
 
   const clampMapPan = (pan: { x: number; y: number }, zoom = mapZoom) => {
     const viewport = getActiveViewport() || mapViewportRef.current;
-    const img = mapImageRef.current;
-    const container = mapContainerRef.current;
+    const img = getActiveImage() || mapImageRef.current;
+    const container = getActiveContainer() || mapContainerRef.current;
+    const canvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
     if (!viewport) return pan;
-    const vpW = viewport.offsetWidth || viewport.clientWidth || 0;
-    const vpH = viewport.offsetHeight || viewport.clientHeight || 0;
+    const vpW = viewport.offsetWidth || viewport.clientWidth || window.innerWidth;
+    const vpH = viewport.offsetHeight || viewport.clientHeight || window.innerHeight;
     if (vpW === 0 || vpH === 0) return pan;
 
-    // Calcular altura e largura reais do mapa renderizado (suporta imagem, canvas PDF e SVG)
-    const rawH = container?.offsetHeight || img?.offsetHeight || (img?.naturalHeight ? (vpW * (img.naturalHeight / (img.naturalWidth || 1))) : vpH * 2);
-    const rawW = container?.offsetWidth || img?.offsetWidth || vpW;
+    // Calcular altura e largura brutas do mapa (sem transform)
+    const rawW = container?.offsetWidth || vpW;
+    const rawH = container?.offsetHeight || (img?.naturalHeight ? (rawW * (img.naturalHeight / (img.naturalWidth || 1))) : (canvas && canvas.width ? (rawW * (canvas.height / canvas.width)) : vpH * 1.5));
     const scaledW = rawW * zoom;
     const scaledH = rawH * zoom;
 
-    // Margem ultra livre para garantir que o usuário consiga navegar livremente para QUALQUER parte
-    // (inclusive a parte inferior do mapa, topo e laterais sem nunca travar)
-    const extraMarginY = Math.max(vpH * 2, scaledH * 0.8, 3000);
-    const extraMarginX = Math.max(vpW * 2, scaledW * 0.8, 3000);
+    // Margem de folga moderada para permitir arrastar e ver todos os cantos com facilidade
+    const marginX = Math.min(vpW * 0.4, 280);
+    const marginY = Math.min(vpH * 0.4, 280);
 
-    const minX = -scaledW - extraMarginX;
-    const maxX = vpW + extraMarginX;
-    const minY = -scaledH - extraMarginY;
-    const maxY = vpH + extraMarginY;
+    let minX: number, maxX: number;
+    if (scaledW <= vpW) {
+      const cx = (vpW - scaledW) / 2;
+      minX = cx - marginX;
+      maxX = cx + marginX;
+    } else {
+      minX = vpW - scaledW - marginX;
+      maxX = marginX;
+    }
+
+    let minY: number, maxY: number;
+    if (scaledH <= vpH) {
+      const cy = (vpH - scaledH) / 2;
+      minY = cy - marginY;
+      maxY = cy + marginY;
+    } else {
+      minY = vpH - scaledH - marginY;
+      maxY = marginY;
+    }
 
     return {
       x: Math.max(minX, Math.min(maxX, pan.x)),
@@ -3311,7 +3330,7 @@ const LotDashboard = ({
   // Zoom para um ponto específico da tela (cursor ou centro do pinch)
   // focalX/focalY = coordenadas do ponto focal em px relativas ao viewport
   const setMapZoomAtPoint = (nextZoom: number, focalX?: number, focalY?: number) => {
-    const clamped = Math.max(1, Math.min(10, nextZoom));
+    const clamped = Math.max(0.15, Math.min(10, nextZoom));
     if ((localDev as any).mapaPdfOriginalBase64) {
       schedulePdfRender(clamped);
     } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
@@ -3329,11 +3348,9 @@ const LotDashboard = ({
       // Fórmula de zoom ancorado:
       // newPan = focal - (focal - oldPan) × (newZoom / oldZoom)
       // O ponto focal permanece fixo na tela enquanto o conteúdo escala ao redor dele.
-      // Com oldZoom ≈ 0 (edge case), evitar divisão por zero.
       const ratio = oldZoom > 0.01 ? clamped / oldZoom : 1;
       const newPanX = focalX - (focalX - prevPan.x) * ratio;
       const newPanY = focalY - (focalY - prevPan.y) * ratio;
-      // Aplicar clamp apenas no sentido que limita (não forçar o mapa para longe do focal)
       newPan = clampMapPan({ x: newPanX, y: newPanY }, clamped);
     }
 
@@ -3356,19 +3373,61 @@ const LotDashboard = ({
     scheduleMapScaleUpdate(true);
   };
 
+  // Encaixar mapa exatamente na largura da tela (100% da largura, permitindo scroll/pan vertical livre)
+  const fitMapToWidth = (attempt = 0) => {
+    requestAnimationFrame(() => {
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const img = getActiveImage() || mapImageRef.current;
+      const canvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+      const hasImg = img && img.naturalWidth && img.naturalHeight;
+      const hasCanvas = canvas && canvas.width && canvas.height;
+
+      if (!viewport) {
+        if (attempt < 8) setTimeout(() => fitMapToWidth(attempt + 1), 80);
+        else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
+        return;
+      }
+
+      const vpW = viewport.offsetWidth || viewport.getBoundingClientRect().width || window.innerWidth;
+      const vpH = viewport.offsetHeight || viewport.getBoundingClientRect().height || window.innerHeight;
+      if (vpW <= 0 || vpH <= 0) {
+        if (attempt < 8) setTimeout(() => fitMapToWidth(attempt + 1), 80);
+        else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
+        return;
+      }
+
+      // No zoom = 1 com width: "100%", a largura escalada é exatamente vpW
+      const safeZoom = 1;
+      const imgW = hasImg ? img.naturalWidth : (hasCanvas ? canvas!.width : vpW);
+      const imgH = hasImg ? img.naturalHeight : (hasCanvas ? canvas!.height : vpH);
+      const imgAspect = imgH / (imgW || 1);
+      const imgLayoutH = vpW * imgAspect;
+      // Se for mais curto que a tela, centraliza verticalmente; se maior, começa do topo (0)
+      const panY = imgLayoutH < vpH ? Math.round((vpH - imgLayoutH) / 2) : 0;
+
+      mapZoomRef.current = safeZoom;
+      mapPanRef.current = { x: 0, y: panY };
+      setMapZoom(safeZoom);
+      setMapPan({ x: 0, y: panY });
+      scheduleMapScaleUpdate(false);
+    });
+  };
+
+  // Encaixar o mapa inteiro na tela (contido sem cortes na largura nem na altura)
   const fitMapToScreen = (attempt = 0) => {
     requestAnimationFrame(() => {
-      // Usar o viewport correto — fullscreen ou normal
       const viewport = getActiveViewport() || mapViewportRef.current;
-      const img = mapImageRef.current;
+      const img = getActiveImage() || mapImageRef.current;
+      const canvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+      const hasImg = img && img.naturalWidth && img.naturalHeight;
+      const hasCanvas = canvas && canvas.width && canvas.height;
 
-      if (!viewport || !img || !img.naturalWidth || !img.naturalHeight) {
+      if (!viewport || (!hasImg && !hasCanvas)) {
         if (attempt < 8) setTimeout(() => fitMapToScreen(attempt + 1), 80);
         else { setMapZoom(1); setMapPan({ x: 0, y: 0 }); }
         return;
       }
 
-      // Dimensões do viewport
       const vpW = viewport.offsetWidth || viewport.getBoundingClientRect().width || window.innerWidth;
       const vpH = viewport.offsetHeight || viewport.getBoundingClientRect().height || window.innerHeight;
 
@@ -3378,28 +3437,22 @@ const LotDashboard = ({
         return;
       }
 
-      const imgW = img.naturalWidth;
-      const imgH = img.naturalHeight;
-      const imgAspect = imgH / imgW;
+      const imgW = hasImg ? img.naturalWidth : canvas!.width;
+      const imgH = hasImg ? img.naturalHeight : canvas!.height;
+      const imgAspect = imgH / (imgW || 1);
 
-      // imgLayoutW = largura que a imagem ocupa no zoom=1
-      // com w-full, a imagem tenta ocupar a largura do viewport
       const imgLayoutW = vpW;
       const imgLayoutH = imgLayoutW * imgAspect;
 
-      // Retrato: encaixar pela altura (imgLayoutH > vpH)
-      // Paisagem: encaixar pela largura (imgLayoutH < vpH)
-      const zoomByWidth  = vpW / imgLayoutW;  // sempre 1
+      const zoomByWidth = 1;
       const zoomByHeight = vpH / imgLayoutH;
       const fitZoom = Math.min(zoomByWidth, zoomByHeight);
-      const safeZoom = Math.max(0.05, Math.min(10, fitZoom));
+      const safeZoom = Math.max(0.1, Math.min(10, fitZoom));
 
-      // Centralizar: pan = (vpSize - scaledSize) / 2
-      // Sempre positivo (imagem menor que viewport no eixo dominante)
       const scaledW = imgLayoutW * safeZoom;
       const scaledH = imgLayoutH * safeZoom;
-      const panX = Math.max(0, (vpW - scaledW) / 2);
-      const panY = Math.max(0, (vpH - scaledH) / 2);
+      const panX = Math.round((vpW - scaledW) / 2);
+      const panY = Math.round((vpH - scaledH) / 2);
 
       mapZoomRef.current = safeZoom;
       mapPanRef.current = { x: panX, y: panY };
@@ -3495,8 +3548,8 @@ const LotDashboard = ({
   };
 
   useEffect(() => {
-    const el = mapViewportRef.current;
-    if (!el) return;
+    const elements = [mapViewportRef.current, mapViewportFullscreenRef.current].filter(Boolean) as HTMLElement[];
+    if (elements.length === 0) return;
     const onNativeWheel = (ev: WheelEvent) => {
       if (!mapaImagem) return;
       ev.preventDefault();
@@ -3514,13 +3567,12 @@ const LotDashboard = ({
         void requestHighResolutionMap();
       }, 400);
       // Zoom para o ponto do cursor — usar container (sem transform) como referência
-      const container = mapContainerRef.current;
+      const container = getActiveContainer() || mapContainerRef.current;
       const rect = container?.getBoundingClientRect();
       const focalX = rect ? ev.clientX - rect.left : ev.clientX;
       const focalY = rect ? ev.clientY - rect.top : ev.clientY;
       setMapZoomAtPoint(mapZoomRef.current + clampedDelta, focalX, focalY);
     };
-    el.addEventListener("wheel", onNativeWheel, { passive: false });
 
     // Touch events também precisam de passive:false para poder chamar preventDefault()
     // O React registra onTouchMove como passivo por padrão — por isso cai o aviso no console.
@@ -3533,13 +3585,19 @@ const LotDashboard = ({
       const gesture = mapTouchRef.current;
       if (gesture.mode === "pinch" || gesture.mode === "pan") ev.preventDefault();
     };
-    el.addEventListener("touchstart", onNativeTouchStart, { passive: false });
-    el.addEventListener("touchmove", onNativeTouchMove, { passive: false });
+
+    elements.forEach(el => {
+      el.addEventListener("wheel", onNativeWheel, { passive: false });
+      el.addEventListener("touchstart", onNativeTouchStart, { passive: false });
+      el.addEventListener("touchmove", onNativeTouchMove, { passive: false });
+    });
 
     return () => {
-      el.removeEventListener("wheel", onNativeWheel as any);
-      el.removeEventListener("touchstart", onNativeTouchStart as any);
-      el.removeEventListener("touchmove", onNativeTouchMove as any);
+      elements.forEach(el => {
+        el.removeEventListener("wheel", onNativeWheel as any);
+        el.removeEventListener("touchstart", onNativeTouchStart as any);
+        el.removeEventListener("touchmove", onNativeTouchMove as any);
+      });
     };
   }, [isEditingMap, mapFullscreen, mapZoom, mapaImagem]);
 
@@ -3619,7 +3677,7 @@ const LotDashboard = ({
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
       // Zoom calculado a partir da distância inicial (gesture.startZoom é o zoom no momento do touchStart)
-      const nextZoom = Math.max(1, Math.min(10,
+      const nextZoom = Math.max(0.15, Math.min(10,
         gesture.startZoom * (distance / Math.max(1, gesture.startDistance))
       ));
 
@@ -3663,7 +3721,7 @@ const LotDashboard = ({
 
   const handleMapTouchEnd = () => {
     mapTouchRef.current = { mode: "none", startDistance: 0, startZoom: mapZoom, startPanX: mapPan.x, startPanY: mapPan.y, startX: 0, startY: 0 };
-    if (mapZoom <= 1) setMapPan({ x: 0, y: 0 });
+    setMapPan(prev => clampMapPan(prev, mapZoomRef.current));
   };
 
   // Resetar estado marcador ao trocar action
@@ -7510,39 +7568,76 @@ const LotDashboard = ({
         </AnimatePresence>
           </div>
         {mapFullscreen && (
-          <div className="fixed inset-0 z-[9999] bg-black overflow-hidden">
-            <div className="absolute top-3 left-3 right-3 z-[10000] flex items-center justify-between gap-2">
-              <div className="rounded-2xl bg-white/90 px-3 py-2 shadow-xl">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-500">Mapa em tela cheia</p>
-                <p className="text-[10px] text-slate-500">Dê zoom, arraste e clique na bolinha para iniciar venda.</p>
+          <div className="fixed inset-0 z-[99999] bg-slate-950 overflow-hidden select-none">
+            <div className="absolute top-3 left-3 right-3 z-[100000] flex items-center justify-between gap-2 pointer-events-auto">
+              <div className="rounded-2xl bg-slate-900/85 backdrop-blur-md px-3.5 py-2 shadow-xl border border-white/10 text-white flex items-center gap-3">
+                <div>
+                  <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400 leading-tight">{localDev.nome || "Mapa do Empreendimento"}</p>
+                  <p className="text-[10px] text-slate-300">Arraste para mover, use pinça ou botões para zoom</p>
+                </div>
+                <div className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-bold text-white">
+                  {Math.round(mapZoom * 100)}%
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setMapFullscreen(false);
-                  setMapZoom(1);
-                  setMapPan({ x: 0, y: 0 });
-                  try { (screen as any).orientation?.unlock?.(); } catch {}
-                  scheduleMapScaleUpdate(true);
-                }}
-                className="rounded-2xl bg-white text-slate-900 px-4 py-3 text-[11px] font-black uppercase shadow-xl"
-              >
-                Fechar
-              </button>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => fitMapToWidth()}
+                  title="Encaixar na largura da tela"
+                  className="rounded-xl bg-white/90 hover:bg-white text-slate-800 px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12H3m18 0l-4-4m4 4l-4 4M3 12l4-4m-4 4l4 4"/></svg>
+                  <span className="hidden sm:inline">Largura</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => fitMapToScreen()}
+                  title="Ajustar o mapa inteiro na tela"
+                  className="rounded-xl bg-white/90 hover:bg-white text-slate-800 px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                  <span className="hidden sm:inline">Ver Tudo</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMapFullscreen(false);
+                    try { (screen as any).orientation?.unlock?.(); } catch {}
+                    scheduleMapScaleUpdate(true);
+                  }}
+                  className="rounded-xl bg-red-600/90 hover:bg-red-600 text-white px-3.5 py-2 text-xs font-black uppercase shadow-md transition-all active:scale-95 flex items-center gap-1"
+                >
+                  ✕ Fechar
+                </button>
+              </div>
             </div>
 
             <div
               ref={mapViewportFullscreenRef}
-              onPointerDown={(e) => { e.stopPropagation(); setMapActive(true); }}
+              onPointerDown={(e) => { setMapActive(true); }}
+              onMouseDown={handleMapMousePanStart}
+              onMouseMove={(e) => {
+                handleMapMouseMoveForDrag(e);
+                handleMapMouseMove(e);
+              }}
+              onMouseUp={() => {
+                handleMapMouseUp();
+                commitDrag();
+              }}
+              onMouseLeave={() => {
+                handleMapMouseUp();
+              }}
+              onWheel={handleMapWheel}
               onTouchStart={handleMapTouchStart}
               onTouchMove={handleMapTouchMove}
               onTouchEnd={handleMapTouchEnd}
               onTouchCancel={handleMapTouchEnd}
-              className="relative w-screen h-[100dvh] overflow-hidden select-none bg-black"
+              className="relative w-screen h-[100dvh] overflow-hidden select-none bg-slate-950 cursor-grab active:cursor-grabbing"
               style={{ touchAction: "none", overscrollBehavior: "contain" }}
             >
               <div
-                ref={mapContainerRef}
+                ref={mapContainerFullscreenRef}
                 className="absolute left-0 top-0 bg-white select-none"
                 style={{
                   width: "100%",
@@ -7565,7 +7660,17 @@ const LotDashboard = ({
                   {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
                     <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
                   )}
-                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                  <img
+                    ref={mapImageFullscreenRef}
+                    src={mapaImagem}
+                    alt="Mapa do empreendimento"
+                    className="block w-full h-auto pointer-events-none relative"
+                    draggable={false}
+                    onLoad={() => {
+                      updateDisplayedMapScale();
+                      setTimeout(() => fitMapToWidth(), 60);
+                    }}
+                  />
                 </>
               ) : null}
 
@@ -7638,11 +7743,43 @@ const LotDashboard = ({
                   </div>
                 )}
               </div>
-              <div className="absolute bottom-4 right-4 z-[10001] flex flex-col gap-2">
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">+</button>
-                <button type="button" onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.25); }} className="w-12 h-12 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200 font-black text-2xl">−</button>
+              {/* Controles flutuantes de zoom e ajuste em tela cheia */}
+              <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.3); }}
+                  className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-slate-800 shadow-xl border border-slate-200/80 font-black text-2xl flex items-center justify-center active:scale-90 transition-all"
+                  title="Aproximar zoom"
+                >+</button>
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); zoomMapBy(-0.3); }}
+                  className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-slate-800 shadow-xl border border-slate-200/80 font-black text-2xl flex items-center justify-center active:scale-90 transition-all"
+                  title="Afastar zoom"
+                >−</button>
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); fitMapToWidth(); }}
+                  className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-slate-800 shadow-xl border border-slate-200/80 font-bold text-xs flex items-center justify-center active:scale-90 transition-all"
+                  title="Encaixar na largura"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12H3m18 0l-4-4m4 4l-4 4M3 12l4-4m-4 4l4 4"/></svg>
+                </button>
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); fitMapToScreen(); }}
+                  className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-slate-800 shadow-xl border border-slate-200/80 font-bold text-xs flex items-center justify-center active:scale-90 transition-all"
+                  title="Ver tudo na tela"
+                >
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
+                </button>
               </div>
             </div>
+
+            {/* Modal de lote selecionado para tela cheia */}
+            <AnimatePresence>
+              {selectedPoint && renderSelectedPointModal()}
+            </AnimatePresence>
           </div>
         )}
       </div>
@@ -8981,7 +9118,7 @@ const LotDashboard = ({
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
             {([
               { icon: '+', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.min(10,mapZoomRef.current+0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
-              { icon: '−', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(1,mapZoomRef.current-0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
+              { icon: '−', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(0.2,mapZoomRef.current-0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
             ]).map((b,i) => (
               <button key={i} onClick={b.action}
                 className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all text-slate-700 text-xl font-light border border-slate-100">
@@ -8989,10 +9126,12 @@ const LotDashboard = ({
               </button>
             ))}
             <button onClick={() => fitMapToScreen()}
+              title="Ajustar à tela"
               className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all border border-slate-100">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
             </button>
-            <button onClick={() => { setMapFullscreen(true); setMapActive(true); setTimeout(()=>fitMapToScreen(0),200); }}
+            <button onClick={() => { setMapFullscreen(true); setMapActive(true); setTimeout(()=>fitMapToWidth(0),150); }}
+              title="Tela cheia na largura"
               className="w-10 h-10 bg-white rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all border border-slate-100">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#475569" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
             </button>
@@ -9683,17 +9822,9 @@ const LotDashboard = ({
         )}
       </div>
 
-      {/* ── TELA CHEIA ── */}
-      {mapFullscreen && (
-        <div className="fixed inset-0 z-[200] bg-black flex flex-col">
-          <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 pt-11 pb-3">
-            <p className="text-white font-black text-sm drop-shadow">{localDev.nome}</p>
-            <button onClick={() => { setMapFullscreen(false); try{(screen as any).orientation?.unlock?.()}catch{}; scheduleMapScaleUpdate(true); }}
-              className="bg-white/20 backdrop-blur-md rounded-2xl px-4 py-2 text-white text-xs font-black active:scale-95 transition-all">Fechar</button>
-          </div>
-          <div className="flex-1 relative overflow-hidden">{renderMapa()}</div>
-          <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
-        </div>
+      {/* ── TELA CHEIA (quando disparado fora da aba mapa) ── */}
+      {mapFullscreen && mode !== "mapa" && !isEditingMap && (
+        <>{renderMapa()}</>
       )}
       </>
     );
@@ -10012,7 +10143,7 @@ const LotDashboard = ({
               <div className="absolute left-3 top-1/2 -translate-y-1/2 z-10 flex flex-col gap-2 items-center">
                 <button onClick={() => setMapZoomAtPoint(Math.min(10,mapZoom+0.5),(getActiveViewport()?.offsetWidth||800)/2,(getActiveViewport()?.offsetHeight||600)/2)}
                   className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-90 font-black text-lg transition-all">+</button>
-                <button onClick={() => setMapZoomAtPoint(Math.max(1,mapZoom-0.5),(getActiveViewport()?.offsetWidth||800)/2,(getActiveViewport()?.offsetHeight||600)/2)}
+                <button onClick={() => setMapZoomAtPoint(Math.max(0.2,mapZoom-0.5),(getActiveViewport()?.offsetWidth||800)/2,(getActiveViewport()?.offsetHeight||600)/2)}
                   className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-700 hover:bg-slate-50 active:scale-90 font-black text-xl leading-none transition-all">−</button>
                 <button onClick={() => fitMapToScreen()}
                   className="w-9 h-9 bg-white rounded-xl shadow-md border border-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-50 active:scale-90 transition-all">
@@ -10113,7 +10244,7 @@ const LotDashboard = ({
               <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
                 <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-3">Ações Rápidas</p>
                 <div className="grid grid-cols-2 gap-2 mb-2">
-                  <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToScreen(0),200);}}
+                  <button onClick={()=>{setMapFullscreen(true);setMapActive(true);try{(screen as any).orientation?.lock?.("landscape")?.catch?.(()=>{})}catch{};setTimeout(()=>fitMapToWidth(0),150);}}
                     className="flex flex-col items-center gap-1.5 py-3 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600">
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
                     <span className="text-[9px] font-bold">Fullscreen</span>
