@@ -1450,6 +1450,119 @@ function isMararuOuBelaVista(nome?: string): boolean {
   return n.includes("mararu") || n.includes("bela vista");
 }
 
+export interface PlanoEmpreendimento {
+  meses: number;
+  valorParcela: number;
+  total: number;
+  entrada: number;
+  descricao?: string;
+}
+
+export interface TabelaEmpreendimento {
+  tipo: 'bela_vista' | 'mararu_ville';
+  nomeExibicao: string;
+  lotePadrao: string;
+  valorBase: number;
+  entradaPadrao: number;
+  dimensoes: {
+    frente: string;
+    fundos: string;
+    lateralDir: string;
+    lateralEsq: string;
+    areaTotal: string;
+  };
+  planos: Record<number, PlanoEmpreendimento>;
+  planosLista: PlanoEmpreendimento[];
+}
+
+export const TABELAS_EMPREENDIMENTOS: Record<string, TabelaEmpreendimento> = {
+  bela_vista: {
+    tipo: 'bela_vista',
+    nomeExibicao: 'Bela Vista do Mararu',
+    lotePadrao: '10m × 30m',
+    valorBase: 35600,
+    entradaPadrao: 600,
+    dimensoes: {
+      frente: '10',
+      fundos: '10',
+      lateralDir: '30',
+      lateralEsq: '30',
+      areaTotal: '300',
+    },
+    planos: {
+      36: { meses: 36, valorParcela: 972.25, total: 35601.00, entrada: 600, descricao: '36 Meses' },
+      120: { meses: 120, valorParcela: 291.68, total: 46134.10, entrada: 600, descricao: '120 Meses' },
+      180: { meses: 180, valorParcela: 194.45, total: 58636.06, entrada: 600, descricao: '180 Meses' },
+    },
+    planosLista: [
+      { meses: 36, valorParcela: 972.25, total: 35601.00, entrada: 600, descricao: '36 Meses' },
+      { meses: 120, valorParcela: 291.68, total: 46134.10, entrada: 600, descricao: '120 Meses' },
+      { meses: 180, valorParcela: 194.45, total: 58636.06, entrada: 600, descricao: '180 Meses' },
+    ],
+  },
+  mararu_ville: {
+    tipo: 'mararu_ville',
+    nomeExibicao: 'Mararu Ville',
+    lotePadrao: '10m × 20m',
+    valorBase: 46600,
+    entradaPadrao: 600,
+    dimensoes: {
+      frente: '10',
+      fundos: '10',
+      lateralDir: '20',
+      lateralEsq: '20',
+      areaTotal: '200',
+    },
+    planos: {
+      36: { meses: 36, valorParcela: 1277.78, total: 46600.00, entrada: 600, descricao: '36 Meses' },
+      120: { meses: 120, valorParcela: 383.33, total: 65383.20, entrada: 600, descricao: '120 Meses' },
+      180: { meses: 180, valorParcela: 255.56, total: 83590.44, entrada: 600, descricao: '180 Meses' },
+    },
+    planosLista: [
+      { meses: 36, valorParcela: 1277.78, total: 46600.00, entrada: 600, descricao: '36 Meses' },
+      { meses: 120, valorParcela: 383.33, total: 65383.20, entrada: 600, descricao: '120 Meses' },
+      { meses: 180, valorParcela: 255.56, total: 83590.44, entrada: 600, descricao: '180 Meses' },
+    ],
+  },
+};
+
+export function getTabelaPlanosEmpreendimento(nome?: string): TabelaEmpreendimento | null {
+  if (!nome) return null;
+  const n = String(nome).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+  
+  if (n.includes("bela vista")) {
+    return TABELAS_EMPREENDIMENTOS.bela_vista;
+  }
+  
+  if (n.includes("mararu")) {
+    const isVille2 = n.includes("ville 2") || n.includes("ville ii") || n.includes("mararu 2") || n.includes("mararu ii") || n.includes("vile 2") || n.includes("vile ii");
+    const base = TABELAS_EMPREENDIMENTOS.mararu_ville;
+    return isVille2 ? { ...base, nomeExibicao: "Mararu Ville 2" } : base;
+  }
+  
+  return null;
+}
+
+export const CORES_PALETA_BOLINHAS = [
+  { cor: '#e11d48', nome: 'Rosa / Carmim' },
+  { cor: '#2563eb', nome: 'Azul' },
+  { cor: '#16a34a', nome: 'Verde' },
+  { cor: '#d97706', nome: 'Âmbar / Laranja' },
+  { cor: '#7c3aed', nome: 'Roxo / Violeta' },
+  { cor: '#0891b2', nome: 'Ciano / Turquesa' },
+  { cor: '#dc2626', nome: 'Vermelho' },
+  { cor: '#ea580c', nome: 'Laranja Vivo' },
+  { cor: '#059669', nome: 'Esmeralda' },
+  { cor: '#9333ea', nome: 'Púrpura' },
+  { cor: '#0284c7', nome: 'Azul Celeste' },
+  { cor: '#4f46e5', nome: 'Índigo' },
+  { cor: '#db2777', nome: 'Pink' },
+  { cor: '#ca8a04', nome: 'Amarelo Dourado' },
+  { cor: '#475569', nome: 'Chumbo' },
+  { cor: '#0f172a', nome: 'Grafite Escuro' },
+];
+export const CORES_FAIXAS_PRECO = CORES_PALETA_BOLINHAS.map(c => c.cor);
+
 type GeneroBinario = "M" | "F";
 
 function getGeneroPessoa(pessoa: any, papelBase: "VENDEDOR" | "COMPRADOR") {
@@ -2492,7 +2605,19 @@ const LotDashboard = ({
   const [localDev, setLocalDev] = useState<Empreendimento>(dev);
   const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos" | "precos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64 ? "mapa" : "quadradinhos");
   // colorMode: "status" = cores por disponível/reservado/indisponível; "preco" = cores por faixa de preço
-  const colorMode = mode === "precos" ? "preco" : "status";
+  // A tabela e cores de preços só aparecem na aba Preços (mode === "precos")
+  const colorMode: "status" | "preco" = mode === "precos" ? "preco" : "status";
+  const [cardPrecoVisivel, setCardPrecoVisivel] = useState<boolean>(true);
+  const [cardPrecoMinimizado, setCardPrecoMinimizado] = useState<boolean>(false);
+
+  // Helper universal para parsear preço como número de forma confiável
+  const parsePrecoNumero = (p: any): number => {
+    if (typeof p === "number") return isNaN(p) ? 0 : p;
+    if (!p) return 0;
+    const clean = String(p).trim().replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  };
 
   // Faixas de preço globais — usadas na aba Preços para colorir bolinhas e cards
   // Posição da legenda flutuante de preços (salva por empreendimento)
@@ -2502,54 +2627,502 @@ const LotDashboard = ({
   const [legendaSize, setLegendaSize] = React.useState<'P'|'M'|'G'>(() => {
     try { return (localStorage.getItem('legendaPrecoSize_' + (dev as any).id) as any) || 'M'; } catch { return 'M'; }
   });
+  const [cardExportPosicao, setCardExportPosicao] = React.useState<'topo-direito' | 'topo-esquerdo' | 'rodape-direito' | 'rodape-esquerdo' | 'personalizado'>(() => {
+    try {
+      const s = localStorage.getItem('cardExportPos_' + (dev as any).id);
+      return (s as any) || 'topo-direito';
+    } catch {
+      return 'topo-direito';
+    }
+  });
   const legendaDragRef = React.useRef<{startX:number;startY:number;startPosX:number;startPosY:number}|null>(null);
   const legendaRef = React.useRef<HTMLDivElement>(null);
 
-  const CORES_FAIXAS_PRECO = ['#e11d48','#2563eb','#16a34a','#d97706','#7c3aed','#0891b2','#dc2626','#059669','#9333ea','#ea580c'];
+  const coresPorPrecoSalvas = (localDev as any)?.coresPorPreco || {};
+  const regrasSalvas = (localDev as any)?.precosRegras || [];
+
+  // Lotes com preço cadastrado no lotesInfo
   const lotesComPrecoGlobal = Object.entries(localDev.lotesInfo || {})
-    .map(([key, info]: [string, any]) => ({ key, preco: info?.preco || 0 }))
+    .map(([key, info]: [string, any]) => ({
+      key,
+      preco: parsePrecoNumero(info?.preco),
+      corPreco: info?.corPreco || info?.cor || info?.corBolinha,
+    }))
     .filter(l => l.preco > 0);
-  const precosUnicosGlobal = Array.from(new Set(lotesComPrecoGlobal.map(l => l.preco))).sort((a,b) => a-b);
-  const faixasPrecoGlobal = precosUnicosGlobal.map((preco, i) => ({
-    preco, color: CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
-  }));
-  const getCorPorPreco = (quadra: string, lote: string): string | null => {
+
+  // Preços configurados em regras de preço em massa
+  const precosDasRegras = (Array.isArray(regrasSalvas) ? regrasSalvas : [])
+    .map((r: any) => parsePrecoNumero(r?.valor))
+    .filter((p: number) => p > 0);
+
+  const precosUnicosGlobal = Array.from(new Set([...lotesComPrecoGlobal.map(l => l.preco), ...precosDasRegras])).sort((a,b) => a-b);
+  const faixasPrecoGlobal = precosUnicosGlobal.map((preco, i) => {
+    let cor = coresPorPrecoSalvas[preco];
+    if (!cor) {
+      const regra = Array.isArray(regrasSalvas) ? regrasSalvas.find((r: any) => {
+        const v = parsePrecoNumero(r.valor);
+        return v === preco && r.cor;
+      }) : null;
+      if (regra?.cor) cor = regra.cor;
+    }
+    if (!cor) {
+      const ex = Object.values(localDev.lotesInfo || {}).find((li: any) => parsePrecoNumero(li?.preco) === preco && (li.corPreco || li.cor || li.corBolinha));
+      if ((ex as any)?.corPreco) cor = (ex as any).corPreco;
+      else if ((ex as any)?.cor) cor = (ex as any).cor;
+      else if ((ex as any)?.corBolinha) cor = (ex as any).corBolinha;
+    }
+    return {
+      preco,
+      color: cor || CORES_FAIXAS_PRECO[i % CORES_FAIXAS_PRECO.length],
+    };
+  });
+
+  const salvarCorFaixaPreco = (precoAlvo: number, novaCor: string) => {
+    const updatedCores = {
+      ...((localDev as any)?.coresPorPreco || {}),
+      [precoAlvo]: novaCor,
+    };
+    const newLotesInfo = { ...(localDev.lotesInfo || {}) } as any;
+    Object.keys(newLotesInfo).forEach((k) => {
+      const p = parsePrecoNumero(newLotesInfo[k]?.preco);
+      if (p === precoAlvo) {
+        newLotesInfo[k] = { ...newLotesInfo[k], corPreco: novaCor, cor: novaCor, corBolinha: novaCor };
+      }
+    });
+    const updatedRegras = ((localDev as any)?.precosRegras || []).map((r: any) => {
+      const v = parsePrecoNumero(r.valor);
+      return v === precoAlvo ? { ...r, cor: novaCor } : r;
+    });
+    const updatedDev = {
+      ...localDev,
+      lotesInfo: newLotesInfo,
+      coresPorPreco: updatedCores,
+      precosRegras: updatedRegras,
+    };
+    setLocalDev(updatedDev);
+    if (onSaveDevExternal) onSaveDevExternal(updatedDev);
+    if (onUpdateLotesInfo) onUpdateLotesInfo(localDev.id, newLotesInfo);
+  };
+
+  // Helper universal e flexível para buscar preço, parcelas e cor de um lote
+  // Resolve discrepâncias de zeros à esquerda (ex: 01 vs 1), prefixos (ex: Q1, QD 1, Quadra 1) e regras
+  const getPrecoInfoDoLote = (quadra: string, lote: string): {
+    preco: number;
+    entrada: number;
+    parcelas: number;
+    parcela: number;
+    avista: boolean;
+    cor: string | null;
+  } | null => {
     if (!quadra || !lote) return null;
     const lotesInfo = (localDev.lotesInfo as any) || {};
-    const loteNorm = String(lote).trim().toUpperCase();
-    // Tentativas diretas com variações de chave
+
+    const cleanQ = String(quadra).trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
+    const matchNumQ = cleanQ.match(/\d+/);
+    const numQ = matchNumQ ? parseInt(matchNumQ[0], 10) : null;
+
+    const cleanL = String(lote).trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
+    const matchNumL = cleanL.match(/\d+/);
+    const numL = matchNumL ? parseInt(matchNumL[0], 10) : null;
+
+    const matchQ = (targetQ: string): boolean => {
+      const cq = String(targetQ).trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
+      if (cq === cleanQ) return true;
+      const mnq = cq.match(/\d+/);
+      const nq = mnq ? parseInt(mnq[0], 10) : null;
+      if (numQ !== null && nq !== null && numQ === nq) return true;
+      return false;
+    };
+
+    const matchL = (targetL: string): boolean => {
+      const cl = String(targetL).trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
+      if (cl === cleanL) return true;
+      const mnl = cl.match(/\d+/);
+      const nl = mnl ? parseInt(mnl[0], 10) : null;
+      if (numL !== null && nl !== null && numL === nl) return true;
+      return false;
+    };
+
+    // 1. Busca direta pelas chaves comuns de lotesInfo
     const quadraReal = findQuadraName(localDev, quadra) || quadra;
-    const tentativas = [
+    const directKeys = [
       getLotInfoKey(quadra, lote),
       getLotInfoKey(quadraReal, lote),
-      String(quadra).trim().toUpperCase() + '-' + loteNorm,
-      String(quadraReal).trim().toUpperCase() + '-' + loteNorm,
+      `${quadra}-${lote}`,
+      `${quadraReal}-${lote}`,
+      `${cleanQ}-${cleanL}`,
+      `${cleanQ}:${cleanL}`,
+      `Q${cleanQ}-L${cleanL}`,
+      `${cleanQ}_${cleanL}`,
     ];
-    for (const k of tentativas) {
+    for (const k of directKeys) {
       const info = lotesInfo[k] || lotesInfo[k.toUpperCase()] || lotesInfo[k.toLowerCase()];
-      if (info?.preco) {
-        const faixa = faixasPrecoGlobal.find(f => f.preco === info.preco);
-        if (faixa) return faixa.color;
+      const prc = parsePrecoNumero(info?.preco);
+      if (prc > 0) {
+        const ent = parsePrecoNumero(info?.entrada);
+        const par = parseInt(String(info?.parcelas || 0), 10) || 0;
+        const valPar = parsePrecoNumero(info?.parcela || info?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+        let cor = info?.corPreco || info?.cor || info?.corBolinha || coresPorPrecoSalvas[prc];
+        if (!cor) {
+          const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
+          if (fx) cor = fx.color;
+        }
+        return {
+          preco: prc,
+          entrada: ent,
+          parcelas: par,
+          parcela: valPar,
+          avista: !!info?.avista || par === 0,
+          cor: cor || null,
+        };
       }
     }
-    // Busca por iteração sobre todas as chaves do lotesInfo
+
+    // 2. Busca iterativa em todas as chaves de lotesInfo com matching flexível
     for (const [k, v] of Object.entries(lotesInfo)) {
-      const parts = k.split('-');
+      const parts = k.split(/[-:_]/);
       if (parts.length < 2) continue;
       const kLote = parts[parts.length - 1];
       const kQuadra = parts.slice(0, -1).join('-');
-      const quadraMatch = kQuadra === String(quadra).trim().toUpperCase() ||
-                          kQuadra === String(quadraReal).trim().toUpperCase() ||
-                          kQuadra.replace(/[^0-9]/g,'') === String(quadra).replace(/[^0-9]/g,'');
-      if (kLote === loteNorm && quadraMatch) {
-        const preco = (v as any)?.preco || 0;
-        if (preco) {
-          const faixa = faixasPrecoGlobal.find(f => f.preco === preco);
-          if (faixa) return faixa.color;
+      if (matchQ(kQuadra) && matchL(kLote)) {
+        const prc = parsePrecoNumero((v as any)?.preco);
+        if (prc > 0) {
+          const ent = parsePrecoNumero((v as any)?.entrada);
+          const par = parseInt(String((v as any)?.parcelas || 0), 10) || 0;
+          const valPar = parsePrecoNumero((v as any)?.parcela || (v as any)?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+          let cor = (v as any)?.corPreco || (v as any)?.cor || (v as any)?.corBolinha || coresPorPrecoSalvas[prc];
+          if (!cor) {
+            const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
+            if (fx) cor = fx.color;
+          }
+          return {
+            preco: prc,
+            entrada: ent,
+            parcelas: par,
+            parcela: valPar,
+            avista: !!(v as any)?.avista || par === 0,
+            cor: cor || null,
+          };
         }
       }
     }
+
+    // 3. Fallback: buscar nas regras de precosRegras
+    const regras = Array.isArray(regrasSalvas) ? regrasSalvas : [];
+    for (const r of regras) {
+      if (!r?.script) continue;
+      const scriptNorm = String(r.script).replace(/Q(\w+)[:\s]+([\d.\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
+        (match: string) => match.trim().endsWith('.') ? match : match.trim() + '.'
+      );
+      const regex = /Q(\w+)[:\s]+([\d.\s]+?)\./gi;
+      let m;
+      while ((m = regex.exec(scriptNorm)) !== null) {
+        const qScript = m[1];
+        if (matchQ(qScript)) {
+          const lotesScript = m[2].split('.').map((x: string) => x.trim()).filter(Boolean);
+          const matchedLote = lotesScript.some((ls: string) => matchL(ls));
+          if (matchedLote) {
+            const prc = parsePrecoNumero(r.valor);
+            if (prc > 0) {
+              const ent = parsePrecoNumero(r.entrada);
+              const par = parseInt(String(r.parcelas || 0), 10) || 0;
+              const valPar = parsePrecoNumero(r.parcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+              let cor = r.cor || coresPorPrecoSalvas[prc];
+              if (!cor) {
+                const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
+                if (fx) cor = fx.color;
+              }
+              return {
+                preco: prc,
+                entrada: ent,
+                parcelas: par,
+                parcela: valPar,
+                avista: !!r.avista || par === 0,
+                cor: cor || null,
+              };
+            }
+          }
+        }
+      }
+    }
+
     return null;
+  };
+
+  const getCorPorPreco = (quadra: string, lote: string): string | null => {
+    const info = getPrecoInfoDoLote(quadra, lote);
+    if (!info || !info.preco) return null;
+    if (info.cor) return info.cor;
+    const fx = faixasPrecoGlobal.find(f => Number(f.preco) === Number(info.preco));
+    if (fx?.color) return fx.color;
+    return CORES_FAIXAS_PRECO[Math.abs(Math.round(info.preco)) % CORES_FAIXAS_PRECO.length];
+  };
+
+  // ─────────────────────────────────────────────────────────────
+  // CARD DE PREÇOS FLUTUANTE — FUNDO BRANCO, NÍTIDO E ARRASTÁVEL
+  // ─────────────────────────────────────────────────────────────
+  const renderCardPrecosFlutuante = (isFullscreen = false) => {
+    // A tabela de preços só aparece na aba Preços (mode === "precos")
+    if (mode !== "precos" || !cardPrecoVisivel || faixasPrecoGlobal.length === 0) return null;
+
+    const sz = legendaSize;
+    const cardWidth = sz === 'P' ? 240 : sz === 'G' ? 330 : 280;
+
+    const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
+      e.stopPropagation();
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
+      legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
+
+      const onMove = (ev: MouseEvent | TouchEvent) => {
+        if (!legendaDragRef.current) return;
+        ev.preventDefault();
+        const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+        const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+        const dx = cx - legendaDragRef.current.startX;
+        const dy = cy - legendaDragRef.current.startY;
+        const nx = Math.max(8, Math.min(window.innerWidth - 120, legendaDragRef.current.startPosX + dx));
+        const ny = Math.max(8, Math.min(window.innerHeight - 80, legendaDragRef.current.startPosY + dy));
+        const nextPos = { x: nx, y: ny };
+        setLegendaPos(nextPos);
+        try {
+          localStorage.setItem('legendaPrecoPos_' + (localDev as any)?.id, JSON.stringify(nextPos));
+        } catch {}
+      };
+
+      const onUp = () => {
+        legendaDragRef.current = null;
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+        window.removeEventListener('touchmove', onMove as any);
+        window.removeEventListener('touchend', onUp);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+      window.addEventListener('touchmove', onMove as any, { passive: false });
+      window.addEventListener('touchend', onUp);
+    };
+
+    let totalLotesComPreco = 0;
+    const faixasComLotes = faixasPrecoGlobal.map((faixa) => {
+      const lots = mapaPontos.filter(p => {
+        const info = getPrecoInfoDoLote(p.quadra, p.lote);
+        return info && Number(info.preco) === Number(faixa.preco);
+      });
+      const dispCount = lots.filter(p => p.status === 'disponivel').length;
+      totalLotesComPreco += lots.length;
+
+      let infoFaixa = lots[0] ? getPrecoInfoDoLote(lots[0].quadra, lots[0].lote) : null;
+      if (!infoFaixa) {
+        const anyKey = Object.keys(localDev.lotesInfo || {}).find(k => parsePrecoNumero((localDev.lotesInfo as any)[k]?.preco) === Number(faixa.preco));
+        if (anyKey) {
+          const parts = anyKey.split(/[-:_]/);
+          if (parts.length >= 2) {
+            infoFaixa = getPrecoInfoDoLote(parts[0], parts[parts.length - 1]);
+          }
+        }
+      }
+
+      const entrada = infoFaixa?.entrada || 0;
+      const parcelas = infoFaixa?.parcelas || 0;
+      const avista = infoFaixa?.avista || parcelas === 0;
+      const vlParcela = infoFaixa?.parcela || (parcelas > 0 ? Math.round((Number(faixa.preco) - entrada) / parcelas) : 0);
+
+      return {
+        ...faixa,
+        count: lots.length,
+        dispCount,
+        entrada,
+        parcelas,
+        avista,
+        vlParcela,
+      };
+    });
+
+    return (
+      <div
+        ref={legendaRef}
+        style={{
+          position: 'absolute',
+          left: `${Math.max(10, legendaPos.x)}px`,
+          top: `${Math.max(10, legendaPos.y)}px`,
+          zIndex: 150,
+          touchAction: 'none',
+          userSelect: 'none',
+          pointerEvents: 'auto',
+          width: `${cardWidth}px`,
+        }}
+        className="transition-shadow font-sans"
+      >
+        <div
+          style={{
+            backgroundColor: '#ffffff',
+            border: '1.5px solid #cbd5e1',
+            borderRadius: '16px',
+            boxShadow: '0 12px 36px -4px rgba(0, 0, 0, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.08)',
+          }}
+          className="overflow-hidden bg-white text-slate-900"
+        >
+          {/* Cabeçalho arrastável em fundo branco nítido */}
+          <div
+            onMouseDown={startDrag}
+            onTouchStart={startDrag}
+            className="flex items-center justify-between px-3.5 py-2.5 bg-white border-b border-slate-100 cursor-grab active:cursor-grabbing select-none"
+            title="Arraste para reposicionar o card de preços"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-slate-400 hover:text-slate-600 flex items-center justify-center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                  <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
+                  <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
+                  <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
+                </svg>
+              </span>
+              <div className="flex items-center gap-1.5 truncate">
+                <span className="text-xs">💰</span>
+                <span className="text-[11px] font-black uppercase tracking-wider text-slate-900 truncate">
+                  Tabela de Preços
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1 flex-shrink-0" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
+              {/* Seletor de tamanho P / M / G */}
+              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 mr-1">
+                {(['P', 'M', 'G'] as const).map(s => (
+                  <button
+                    key={s}
+                    type="button"
+                    onClick={() => {
+                      setLegendaSize(s);
+                      try { localStorage.setItem('legendaPrecoSize_' + localDev.id, s); } catch {}
+                    }}
+                    className={`w-5 h-5 rounded text-[9px] font-black flex items-center justify-center transition-all ${
+                      legendaSize === s
+                        ? 'bg-slate-900 text-white shadow-sm'
+                        : 'text-slate-500 hover:text-slate-800'
+                    }`}
+                    title={`Tamanho ${s === 'P' ? 'Pequeno' : s === 'M' ? 'Médio' : 'Grande'}`}
+                  >
+                    {s}
+                  </button>
+                ))}
+              </div>
+
+              {/* Minimizar / Expandir */}
+              <button
+                type="button"
+                onClick={() => setCardPrecoMinimizado(prev => !prev)}
+                className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-black transition-colors"
+                title={cardPrecoMinimizado ? "Expandir card" : "Minimizar card"}
+              >
+                {cardPrecoMinimizado ? "+" : "−"}
+              </button>
+
+              {/* Fechar */}
+              <button
+                type="button"
+                onClick={() => setCardPrecoVisivel(false)}
+                className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-400 flex items-center justify-center text-xs font-black transition-colors ml-0.5"
+                title="Ocultar card de preços (reabra pelo botão '💰 Card de Preços')"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+
+          {/* Conteúdo do Card quando expandido */}
+          {!cardPrecoMinimizado && (
+            <div className="p-3 bg-white space-y-2 max-h-[60vh] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
+              {/* Lista das Faixas de Preço */}
+              {faixasComLotes.map((faixa) => (
+                <div
+                  key={faixa.preco}
+                  className="p-2.5 rounded-xl border transition-all hover:shadow-sm"
+                  style={{
+                    backgroundColor: '#f8fafc',
+                    borderColor: '#e2e8f0',
+                  }}
+                >
+                  <div className="flex items-start gap-2.5">
+                    {/* Seletor de cor da faixa */}
+                    <label
+                      className="cursor-pointer mt-0.5 relative group flex-shrink-0"
+                      title="Clique para personalizar a cor desta faixa"
+                      onMouseDown={e => e.stopPropagation()}
+                      onTouchStart={e => e.stopPropagation()}
+                    >
+                      <div
+                        style={{
+                          width: sz === 'P' ? '15px' : sz === 'G' ? '19px' : '17px',
+                          height: sz === 'P' ? '15px' : sz === 'G' ? '19px' : '17px',
+                          borderRadius: '50%',
+                          background: faixa.color,
+                          border: '2px solid #ffffff',
+                          boxShadow: `0 0 0 1px #cbd5e1, 0 2px 4px ${faixa.color}40`,
+                        }}
+                      />
+                      <input
+                        type="color"
+                        value={faixa.color}
+                        onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
+                        className="sr-only"
+                      />
+                    </label>
+
+                    {/* Preço e Detalhes de Pagamento */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1 mb-0.5">
+                        <span
+                          className="font-black text-slate-900 tracking-tight leading-none"
+                          style={{ fontSize: sz === 'P' ? '13px' : sz === 'G' ? '16px' : '14px' }}
+                        >
+                          R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                        </span>
+                        {faixa.count > 0 && (
+                          <span className="text-[9px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded-full border border-slate-200">
+                            {faixa.count} {faixa.count === 1 ? 'lote' : 'lotes'}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Condições financeiras */}
+                      <div className="text-slate-600 leading-tight space-y-0.5">
+                        {faixa.avista ? (
+                          <span className="inline-block text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
+                            À Vista
+                          </span>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
+                            {faixa.entrada > 0 && (
+                              <span className="text-slate-500 font-medium">
+                                Entr: <strong className="text-slate-700">R$ {Number(faixa.entrada).toLocaleString('pt-BR')}</strong>
+                              </span>
+                            )}
+                            {faixa.parcelas > 0 && (
+                              <span className="font-bold text-slate-800">
+                                {faixa.parcelas}× <strong style={{ color: faixa.color }}>R$ {Number(faixa.vlParcela).toLocaleString('pt-BR')}</strong>
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+
+              {/* Rodapé informativo */}
+              <div className="pt-1.5 flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-100">
+                <span>{totalLotesComPreco} lotes cadastrados</span>
+                <span className="text-emerald-700 font-bold">Aba Preços</span>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
   const [isMobile] = useState(() => window.innerWidth < 768);
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
@@ -2757,169 +3330,6 @@ const LotDashboard = ({
       editPainelRef.current.style.left = '16px';
       editPainelRef.current.style.top = '16px';
     }
-  };
-
-  // ── Balões Flutuantes Arrastáveis: Botão Editar Mapa e Botão Novo Marcador ──
-  const [balaoEditBtnPos, setBalaoEditBtnPos] = useState<{ x: number; y: number } | null>(() => {
-    try {
-      const saved = localStorage.getItem('balaoEditBtnPos_' + (dev as any)?.id);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
-  });
-  const balaoEditBtnRef = useRef<HTMLDivElement>(null);
-  const balaoEditBtnMovedRef = useRef(false);
-
-  const [balaoNovoMarcadorBtnPos, setBalaoNovoMarcadorBtnPos] = useState<{ x: number; y: number } | null>(() => {
-    try {
-      const saved = localStorage.getItem('balaoNovoMarcadorBtnPos_' + (dev as any)?.id);
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return null;
-  });
-  const balaoNovoMarcadorBtnRef = useRef<HTMLDivElement>(null);
-  const balaoNovoMarcadorBtnMovedRef = useRef(false);
-
-  const startDragBalaoEditBtn = (e: React.MouseEvent | React.TouchEvent) => {
-    if ((e.target as HTMLElement).closest('input, select, textarea, label')) return;
-    e.stopPropagation();
-    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
-
-    const el = balaoEditBtnRef.current;
-    if (!el) return;
-    const container = el.parentElement;
-    if (!container) return;
-
-    const elRect = el.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const curPosX = elRect.left - containerRect.left;
-    const curPosY = elRect.top - containerRect.top;
-
-    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
-
-    balaoEditBtnMovedRef.current = false;
-    let lastX = curPosX;
-    let lastY = curPosY;
-
-    const onMove = (ev: MouseEvent | TouchEvent) => {
-      if (ev.cancelable) ev.preventDefault();
-      if (!balaoEditBtnRef.current) return;
-      const currentContainer = balaoEditBtnRef.current.parentElement;
-      if (!currentContainer) return;
-      const cRect = currentContainer.getBoundingClientRect();
-      const w = balaoEditBtnRef.current.offsetWidth || 140;
-      const h = balaoEditBtnRef.current.offsetHeight || 44;
-
-      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-
-      const dx = cx - clientX;
-      const dy = cy - clientY;
-
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-        balaoEditBtnMovedRef.current = true;
-      }
-
-      const maxX = Math.max(8, cRect.width - w - 8);
-      const maxY = Math.max(8, cRect.height - h - 8);
-      const clampedX = Math.max(8, Math.min(maxX, curPosX + dx));
-      const clampedY = Math.max(8, Math.min(maxY, curPosY + dy));
-
-      lastX = clampedX;
-      lastY = clampedY;
-
-      balaoEditBtnRef.current.style.left = `${clampedX}px`;
-      balaoEditBtnRef.current.style.top = `${clampedY}px`;
-    };
-
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove as any);
-      window.removeEventListener('touchend', onUp);
-
-      setBalaoEditBtnPos({ x: lastX, y: lastY });
-      try {
-        localStorage.setItem('balaoEditBtnPos_' + localDev.id, JSON.stringify({ x: lastX, y: lastY }));
-      } catch {}
-    };
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove as any, { passive: false });
-    window.addEventListener('touchend', onUp);
-  };
-
-  const startDragBalaoNovoMarcadorBtn = (e: React.MouseEvent | React.TouchEvent) => {
-    if ((e.target as HTMLElement).closest('input, select, textarea, label')) return;
-    e.stopPropagation();
-    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
-
-    const el = balaoNovoMarcadorBtnRef.current;
-    if (!el) return;
-    const container = el.parentElement;
-    if (!container) return;
-
-    const elRect = el.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const curPosX = elRect.left - containerRect.left;
-    const curPosY = elRect.top - containerRect.top;
-
-    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
-    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
-
-    balaoNovoMarcadorBtnMovedRef.current = false;
-    let lastX = curPosX;
-    let lastY = curPosY;
-
-    const onMove = (ev: MouseEvent | TouchEvent) => {
-      if (ev.cancelable) ev.preventDefault();
-      if (!balaoNovoMarcadorBtnRef.current) return;
-      const currentContainer = balaoNovoMarcadorBtnRef.current.parentElement;
-      if (!currentContainer) return;
-      const cRect = currentContainer.getBoundingClientRect();
-      const w = balaoNovoMarcadorBtnRef.current.offsetWidth || 150;
-      const h = balaoNovoMarcadorBtnRef.current.offsetHeight || 44;
-
-      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-
-      const dx = cx - clientX;
-      const dy = cy - clientY;
-
-      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
-        balaoNovoMarcadorBtnMovedRef.current = true;
-      }
-
-      const maxX = Math.max(8, cRect.width - w - 8);
-      const maxY = Math.max(8, cRect.height - h - 8);
-      const clampedX = Math.max(8, Math.min(maxX, curPosX + dx));
-      const clampedY = Math.max(8, Math.min(maxY, curPosY + dy));
-
-      lastX = clampedX;
-      lastY = clampedY;
-
-      balaoNovoMarcadorBtnRef.current.style.left = `${clampedX}px`;
-      balaoNovoMarcadorBtnRef.current.style.top = `${clampedY}px`;
-    };
-
-    const onUp = () => {
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      window.removeEventListener('touchmove', onMove as any);
-      window.removeEventListener('touchend', onUp);
-
-      setBalaoNovoMarcadorBtnPos({ x: lastX, y: lastY });
-      try {
-        localStorage.setItem('balaoNovoMarcadorBtnPos_' + localDev.id, JSON.stringify({ x: lastX, y: lastY }));
-      } catch {}
-    };
-
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-    window.addEventListener('touchmove', onMove as any, { passive: false });
-    window.addEventListener('touchend', onUp);
   };
 
   const startDragMarcadorBalao = (e: React.MouseEvent | React.TouchEvent) => {
@@ -4518,6 +4928,191 @@ const LotDashboard = ({
     return `${empreendimento}_${totalDisp}-disponiveis_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
+  // Desenha o card de preços de 30% x 30% da página/imagem com alta legibilidade e cores
+  const desenharCardPrecosNoCanvas = (ctx: CanvasRenderingContext2D, imgW: number, imgH: number) => {
+    if (faixasPrecoGlobal.length === 0) return;
+
+    // Card com 30% da largura e 30% da altura da página/imagem conforme solicitado pelo usuário
+    const cardW = Math.round(imgW * 0.30);
+    const cardH = Math.round(imgH * 0.30);
+
+    const marginX = Math.round(imgW * 0.02);
+    const marginY = Math.round(imgH * 0.02);
+
+    let lx = imgW - cardW - marginX;
+    let ly = marginY;
+
+    if (cardExportPosicao === 'topo-esquerdo') {
+      lx = marginX;
+      ly = marginY;
+    } else if (cardExportPosicao === 'topo-direito') {
+      lx = imgW - cardW - marginX;
+      ly = marginY;
+    } else if (cardExportPosicao === 'rodape-esquerdo') {
+      lx = marginX;
+      ly = imgH - cardH - marginY;
+    } else if (cardExportPosicao === 'rodape-direito') {
+      lx = imgW - cardW - marginX;
+      ly = imgH - cardH - marginY;
+    } else if (cardExportPosicao === 'personalizado') {
+      const containerW = mapImageRef.current?.offsetWidth || mapContainerRef.current?.offsetWidth || imgW;
+      const containerH = mapImageRef.current?.offsetHeight || mapContainerRef.current?.offsetHeight || imgH;
+      lx = Math.max(marginX, Math.min(imgW - cardW - marginX, Math.round((legendaPos.x / containerW) * imgW)));
+      ly = Math.max(marginY, Math.min(imgH - cardH - marginY, Math.round((legendaPos.y / containerH) * imgH)));
+    }
+
+    const cornerRadius = Math.max(8, Math.round(Math.min(cardW, cardH) * 0.04));
+
+    ctx.save();
+
+    // Sombra do card para destaque e legibilidade sobre o mapa
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
+    ctx.shadowBlur = Math.round(cardW * 0.025);
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = Math.round(cardH * 0.012);
+    ctx.fillStyle = '#ffffff';
+
+    ctx.beginPath();
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
+    } else {
+      ctx.rect(lx, ly, cardW, cardH);
+    }
+    ctx.fill();
+
+    // Reset shadow para elementos internos
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetX = 0;
+    ctx.shadowOffsetY = 0;
+
+    // Borda nítida do card
+    ctx.strokeStyle = '#cbd5e1';
+    ctx.lineWidth = Math.max(2, Math.round(cardW * 0.005));
+    ctx.beginPath();
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
+    } else {
+      ctx.rect(lx, ly, cardW, cardH);
+    }
+    ctx.stroke();
+
+    // Clip interno para manter cantos arredondados
+    ctx.beginPath();
+    if (typeof (ctx as any).roundRect === 'function') {
+      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
+    } else {
+      ctx.rect(lx, ly, cardW, cardH);
+    }
+    ctx.clip();
+
+    // Cabeçalho do Card
+    const padX = Math.round(cardW * 0.05);
+    const padY = Math.round(cardH * 0.04);
+    const headerH = Math.round(cardH * 0.23);
+
+    // Fundo do cabeçalho
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(lx, ly, cardW, headerH);
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(lx, ly + headerH);
+    ctx.lineTo(lx + cardW, ly + headerH);
+    ctx.stroke();
+
+    // Título do cabeçalho
+    const titleFontSize = Math.max(12, Math.round(cardH * 0.075));
+    ctx.fillStyle = '#0f172a';
+    ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.textBaseline = 'top';
+    ctx.fillText('TABELA DE PREÇOS', lx + padX, ly + padY);
+
+    // Subtítulo do cabeçalho: bolinhas borda preta = disponível, borda branca = vendido
+    const subFontSize = Math.max(9, Math.round(cardH * 0.048));
+    ctx.fillStyle = '#475569';
+    ctx.font = `700 ${subFontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText('● Borda Preta: Disponíveis  |  ○ Borda Branca: Vendidos', lx + padX, ly + padY + titleFontSize + Math.round(cardH * 0.015));
+
+    // Corpo do Card: lista com as cores e preços legíveis
+    const contentY = ly + headerH + padY * 0.7;
+    const availableH = cardH - headerH - padY * 1.5;
+    const numFaixas = faixasPrecoGlobal.length;
+
+    // Se houver mais de 4 faixas, divide em 2 colunas para manter tudo espaçoso e legível
+    const useTwoCols = numFaixas > 4;
+    const numRows = useTwoCols ? Math.ceil(numFaixas / 2) : numFaixas;
+    const rowH = Math.min(Math.round(availableH / Math.max(1, numRows)), Math.round(cardH * 0.16));
+    const colW = useTwoCols ? Math.round((cardW - padX * 2.4) / 2) : (cardW - padX * 2);
+
+    faixasPrecoGlobal.forEach((faixa: any, idx: number) => {
+      const colIdx = useTwoCols ? Math.floor(idx / numRows) : 0;
+      const rowIdx = useTwoCols ? (idx % numRows) : idx;
+
+      const itemX = lx + padX + (colIdx * (colW + Math.round(padX * 0.4)));
+      const itemY = contentY + (rowIdx * rowH);
+
+      // Círculo colorido do preço
+      const dotR = Math.max(5, Math.min(18, Math.round(rowH * 0.22)));
+      const dotCenterX = itemX + dotR + 2;
+      const dotCenterY = itemY + Math.round(rowH * 0.45);
+
+      ctx.beginPath();
+      ctx.arc(dotCenterX, dotCenterY, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = faixa.color;
+      ctx.fill();
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = Math.max(2, Math.round(dotR * 0.35));
+      ctx.stroke();
+
+      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(dotCenterX, dotCenterY, dotR + Math.max(1, Math.round(dotR * 0.15)), 0, Math.PI * 2);
+      ctx.stroke();
+
+      // Textos legíveis do preço
+      const textStartX = dotCenterX + dotR + Math.round(cardW * 0.025);
+      const maxTextW = colW - (textStartX - itemX);
+
+      // Linha 1: Valor monetário em destaque
+      const precoFont = Math.max(11, Math.min(26, Math.round(rowH * 0.35)));
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `900 ${precoFont}px system-ui, -apple-system, sans-serif`;
+      ctx.textBaseline = 'top';
+      const precoFormatado = 'R$ ' + Number(faixa.preco).toLocaleString('pt-BR');
+      ctx.fillText(precoFormatado, textStartX, itemY + Math.round(rowH * 0.08));
+
+      // Linha 2: Condições de pagamento e lotes
+      const lotsFaixa = mapaPontos.filter((p: any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
+      const infoFx = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+      const entrada = infoFx?.entrada || 0;
+      const parcelas = infoFx?.parcelas || 0;
+      const avista = infoFx?.avista || parcelas === 0;
+      const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+
+      const detailFont = Math.max(8, Math.min(16, Math.round(rowH * 0.24)));
+      ctx.font = `700 ${detailFont}px system-ui, -apple-system, sans-serif`;
+
+      let detalheTexto = '';
+      if (avista) {
+        detalheTexto = 'À Vista';
+      } else {
+        const entrTxt = entrada > 0 ? `Entr R$ ${Number(entrada).toLocaleString('pt-BR')} • ` : '';
+        detalheTexto = `${entrTxt}${parcelas}x R$ ${Number(vlP).toLocaleString('pt-BR')}`;
+      }
+      if (lotsFaixa.length > 0) {
+        detalheTexto += ` (${lotsFaixa.length} lote${lotsFaixa.length !== 1 ? 's' : ''})`;
+      }
+
+      ctx.fillStyle = avista ? '#16a34a' : '#475569';
+      ctx.fillText(detalheTexto, textStartX, itemY + Math.round(rowH * 0.08) + precoFont + Math.round(rowH * 0.05), maxTextW);
+    });
+
+    ctx.restore();
+  };
+
   const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
     return new Promise(async (resolve, reject) => {
       // PDF: re-renderizar o vetor original em escala máxima (melhor qualidade possível)
@@ -4558,8 +5153,19 @@ const LotDashboard = ({
             const corPreco = usePrecoColors ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
             ctx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
             ctx.fill();
-            ctx.lineWidth = borderWidth; ctx.strokeStyle = "#ffffff"; ctx.stroke();
+            ctx.lineWidth = borderWidth;
+            if (usePrecoColors) {
+              // Vendidos: contorno branco | Disponíveis: contorno preto
+              ctx.strokeStyle = indisponivel ? "#ffffff" : "#000000";
+            } else {
+              ctx.strokeStyle = "#ffffff";
+            }
+            ctx.stroke();
           });
+          // Desenhar card de preços com 30% x 30% da página no export PDF
+          if (usePrecoColors && faixasPrecoGlobal.length > 0) {
+            desenharCardPrecosNoCanvas(ctx, imgW, imgH);
+          }
           resolve(canvas);
           return;
         } catch (err) {
@@ -4610,79 +5216,17 @@ const LotDashboard = ({
           ctx.fillStyle = corPrecoImg || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
           ctx.fill();
           ctx.lineWidth = borderWidth;
-          ctx.strokeStyle = "#ffffff";
+          if (usePrecoColors) {
+            // Vendidos: contorno branco | Disponíveis: contorno preto
+            ctx.strokeStyle = indisponivel ? "#ffffff" : "#000000";
+          } else {
+            ctx.strokeStyle = "#ffffff";
+          }
           ctx.stroke();
         });
-        // Desenhar legenda de preços no export — fundo branco, letras pretas, tamanho em % da imagem
+        // Desenhar card de preços com 30% x 30% da página no export
         if (usePrecoColors && faixasPrecoGlobal.length > 0) {
-          // Tamanho em % da largura da imagem (P=8%, M=12%, G=18%)
-          const pctLargura = legendaSize === 'P' ? 0.08 : legendaSize === 'G' ? 0.18 : 0.12;
-          const LW = Math.round(imgW * pctLargura);
-          const fontTitle = Math.round(LW * 0.07);
-          const fontValor = Math.round(LW * 0.09);
-          const fontSub   = Math.round(LW * 0.07);
-          const dotR      = Math.round(LW * 0.04);
-          const PAD       = Math.round(LW * 0.08);
-          const lineH     = Math.round(LW * 0.28);
-          const LH        = PAD*2 + fontTitle + faixasPrecoGlobal.length * lineH + PAD;
-          const r         = Math.round(LW * 0.06);
-          // Posição salva pelo usuário (em px do container, escalar para canvas)
-          const containerW = mapImageRef.current?.offsetWidth || imgW;
-          const containerH = mapImageRef.current?.offsetHeight || imgH;
-          const lx = Math.round((legendaPos.x / containerW) * imgW);
-          const ly = Math.round((legendaPos.y / containerH) * imgH);
-          // Fundo branco com borda sutil
-          ctx.save();
-          ctx.globalAlpha = 0.95;
-          ctx.fillStyle = '#ffffff';
-          ctx.shadowColor = 'rgba(0,0,0,0.15)';
-          ctx.shadowBlur = Math.round(LW * 0.05);
-          ctx.beginPath();
-          ctx.roundRect(lx, ly, LW, LH, r);
-          ctx.fill();
-          ctx.restore();
-          // Borda fina
-          ctx.strokeStyle = '#e2e8f0';
-          ctx.lineWidth = Math.round(LW * 0.01);
-          ctx.beginPath(); ctx.roundRect(lx, ly, LW, LH, r); ctx.stroke();
-          // Título
-          ctx.fillStyle = '#64748b';
-          ctx.font = `bold ${fontTitle}px system-ui, sans-serif`;
-          ctx.fillText('TABELA DE PREÇOS', lx + PAD, ly + PAD + fontTitle);
-          // Faixas
-          faixasPrecoGlobal.forEach((faixa: any, fi: number) => {
-            const fy = ly + PAD*2 + fontTitle + fi * lineH;
-            const cx2 = lx + PAD + dotR;
-            const cy2 = fy + lineH * 0.28;
-            // Bolinha colorida
-            ctx.beginPath();
-            ctx.arc(cx2, cy2, dotR, 0, Math.PI*2);
-            ctx.fillStyle = faixa.color;
-            ctx.fill();
-            ctx.strokeStyle = '#ffffff';
-            ctx.lineWidth = Math.round(dotR * 0.3);
-            ctx.stroke();
-            // Valor total
-            const tx = lx + PAD + dotR*2 + Math.round(LW*0.04);
-            ctx.fillStyle = '#0f172a';
-            ctx.font = `bold ${fontValor}px system-ui, sans-serif`;
-            ctx.fillText('R$ ' + Number(faixa.preco).toLocaleString('pt-BR'), tx, fy + fontValor);
-            // Entrada e parcelas
-            const lotsFaixa = mapaPontos.filter((p: any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
-            const infoFx = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
-            const entrada = infoFx?.entrada || 0;
-            const parcelas = infoFx?.parcelas || 0;
-            const avista = infoFx?.avista || parcelas === 0;
-            const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
-            ctx.font = `${fontSub}px system-ui, sans-serif`;
-            if (avista) {
-              ctx.fillStyle = '#16a34a';
-              ctx.fillText('À Vista', tx, fy + fontValor + fontSub + Math.round(fontSub*0.3));
-            } else {
-              if (entrada>0) { ctx.fillStyle = '#64748b'; ctx.fillText('E: R$ '+Number(entrada).toLocaleString('pt-BR'), tx, fy + fontValor + fontSub + Math.round(fontSub*0.3)); }
-              if (parcelas>0) { ctx.fillStyle = faixa.color; ctx.fillText(parcelas+'× R$ '+Number(vlP).toLocaleString('pt-BR'), tx, fy + fontValor + fontSub*2 + Math.round(fontSub*0.6)); }
-            }
-          });
+          desenharCardPrecosNoCanvas(ctx, imgW, imgH);
         }
 
         resolve(canvas);
@@ -6214,6 +6758,8 @@ const LotDashboard = ({
                 const statusClassBase = getMapaStatusColorClass(ponto.status, !!venda);
                 // colorMode: status = cores padrão, preco = cor da faixa de preço
                 const precoColor = colorMode === "preco" ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
+                const isVendidoPreco = ponto.status === "indisponivel" || !!venda;
+                const precoBorderColor = isVendidoPreco ? "#ffffff" : "#000000";
                 const statusClass = precoColor ? "" : statusClassBase;
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
@@ -6305,8 +6851,8 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", ...(precoColor ? {background: precoColor, boxShadow: `0 0 8px ${precoColor}99`} : {}) }}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : precoColor ? "shadow-lg" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", ...(precoColor ? {background: precoColor, boxShadow: `0 0 8px ${precoColor}99`, borderColor: precoBorderColor} : {}) }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -6394,86 +6940,6 @@ const LotDashboard = ({
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
                 OK
               </button>
-            </div>
-          )}
-
-          {/* ── BALÃO FLUTUANTE ARRASTÁVEL: BOTÃO EDITAR MAPA (quando não está em edição) ── */}
-          {canEditMap && mapaImagem && !isEditingMap && (
-            <div
-              ref={balaoEditBtnRef}
-              className="absolute z-30 select-none"
-              style={{
-                left: balaoEditBtnPos ? `${balaoEditBtnPos.x}px` : '16px',
-                top: balaoEditBtnPos ? `${balaoEditBtnPos.y}px` : '16px',
-                touchAction: 'none',
-              }}
-            >
-              <div
-                onMouseDown={startDragBalaoEditBtn}
-                onTouchStart={startDragBalaoEditBtn}
-                className="flex items-center bg-slate-900/95 hover:bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/70 backdrop-blur-md transition-all group overflow-hidden cursor-grab active:cursor-grabbing hover:border-slate-500"
-                title="Clique e arraste para mover este balão para qualquer lugar do mapa"
-              >
-                <div className="px-2.5 py-2.5 text-slate-400 hover:text-white border-r border-slate-700/50 flex items-center justify-center transition-colors">
-                  <GripHorizontal size={15} />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (balaoEditBtnMovedRef.current) return;
-                    entrarEdicao();
-                    setMapAction("editar");
-                  }}
-                  className="flex items-center gap-2 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:text-white transition-colors active:scale-95"
-                  title="Entrar no modo de edição do mapa"
-                >
-                  <Pencil size={13} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
-                  <span>Editar mapa</span>
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── BALÃO FLUTUANTE ARRASTÁVEL: BOTÃO NOVO MARCADOR ── */}
-          {canEditMap && mapaImagem && (
-            <div
-              ref={balaoNovoMarcadorBtnRef}
-              className="absolute z-30 select-none"
-              style={{
-                left: balaoNovoMarcadorBtnPos ? `${balaoNovoMarcadorBtnPos.x}px` : '182px',
-                top: balaoNovoMarcadorBtnPos ? `${balaoNovoMarcadorBtnPos.y}px` : '16px',
-                touchAction: 'none',
-              }}
-            >
-              <div
-                onMouseDown={startDragBalaoNovoMarcadorBtn}
-                onTouchStart={startDragBalaoNovoMarcadorBtn}
-                className={`flex items-center rounded-2xl shadow-2xl backdrop-blur-md transition-all group overflow-hidden cursor-grab active:cursor-grabbing ${
-                  isEditingMap && mapAction === "editar" && mapEditTool === "marcar"
-                    ? "bg-blue-600/95 text-white border border-blue-400 ring-2 ring-blue-400/40 shadow-blue-500/30"
-                    : "bg-slate-900/95 hover:bg-slate-900 text-white border border-slate-700/70 hover:border-slate-500"
-                }`}
-                title="Clique e arraste para mover este balão para qualquer lugar do mapa"
-              >
-                <div className="px-2.5 py-2.5 text-slate-400 hover:text-white border-r border-slate-700/50 flex items-center justify-center transition-colors">
-                  <GripHorizontal size={15} />
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (balaoNovoMarcadorBtnMovedRef.current) return;
-                    abrirBalaoNovoMarcador();
-                  }}
-                  className="flex items-center gap-2 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:text-white transition-colors active:scale-95"
-                  title="Criar novo marcador de lote no mapa"
-                >
-                  <MapPin size={13} className={isEditingMap && mapAction === "editar" && mapEditTool === "marcar" ? "text-yellow-300 animate-bounce" : "text-blue-400 group-hover:scale-110 transition-transform"} />
-                  <span>Novo marcador</span>
-                  {isEditingMap && mapAction === "editar" && mapEditTool === "marcar" && (
-                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
-                  )}
-                </button>
-              </div>
             </div>
           )}
 
@@ -7566,6 +8032,8 @@ const LotDashboard = ({
             </div>
           )}
         </AnimatePresence>
+            {/* Card de Preços Flutuante — só na aba Preços */}
+            {mode === "precos" && renderCardPrecosFlutuante(false)}
           </div>
         {mapFullscreen && (
           <div className="fixed inset-0 z-[99999] bg-slate-950 overflow-hidden select-none">
@@ -7581,6 +8049,23 @@ const LotDashboard = ({
               </div>
 
               <div className="flex items-center gap-2">
+                {mode === "precos" && faixasPrecoGlobal.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardPrecoVisivel(prev => !prev);
+                      setCardPrecoMinimizado(false);
+                    }}
+                    className={`rounded-xl px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5 ${
+                      cardPrecoVisivel
+                        ? "bg-emerald-600 text-white"
+                        : "bg-white/90 hover:bg-white text-slate-800"
+                    }`}
+                    title="Exibir ou ocultar a tabela de preços"
+                  >
+                    💰 Tabela de Preços
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={() => fitMapToWidth()}
@@ -7676,6 +8161,8 @@ const LotDashboard = ({
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+                  const isVendidoFS = ponto.status === "indisponivel" || !!venda;
+                  const precoBorderColorFS = isVendidoFS ? "#ffffff" : "#000000";
                   const corPrecoFS = colorMode === 'preco' ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
                   const statusClass = corPrecoFS ? '' : getMapaStatusColorClass(ponto.status, !!venda);
                   return (
@@ -7688,7 +8175,7 @@ const LotDashboard = ({
                         setSelectedPoint({ ...ponto, venda });
                       }}
                       title={`Q${ponto.quadra} L${ponto.lote}`}
-                      className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} border-white shadow-lg cursor-pointer z-10`}
+                      className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${corPrecoFS ? "shadow-lg" : "border-white shadow-lg"} cursor-pointer z-10`}
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
@@ -7698,51 +8185,14 @@ const LotDashboard = ({
                         borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
                         transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
-                        ...(corPrecoFS ? { backgroundColor: corPrecoFS } : {}),
+                        ...(corPrecoFS ? { backgroundColor: corPrecoFS, borderColor: precoBorderColorFS } : {}),
                       }}
                     />
                   );
                 })}
-                {/* Legenda flutuante no fullscreen — só na aba Preços */}
-                {colorMode === 'preco' && faixasPrecoGlobal.length > 0 && (
-                  <div style={{
-                    position: 'absolute',
-                    left: legendaPos.x,
-                    top: legendaPos.y,
-                    zIndex: 100,
-                    background: 'rgba(10,15,26,0.88)',
-                    backdropFilter: 'blur(12px)',
-                    borderRadius: 12,
-                    border: '1px solid rgba(255,255,255,0.12)',
-                    boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-                    padding: '8px 10px',
-                    minWidth: 160,
-                    pointerEvents: 'none',
-                  }}>
-                    <p style={{fontSize:8,fontWeight:900,color:'rgba(255,255,255,0.35)',textTransform:'uppercase',letterSpacing:1,marginBottom:5,marginTop:0}}>💰 Preços</p>
-                    {faixasPrecoGlobal.map((faixa: any) => {
-                      const lotF = mapaPontos.find((p:any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra,p.lote)]?.preco === faixa.preco);
-                      const infoF = lotF ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotF.quadra,lotF.lote)] : null;
-                      const entrada = infoF?.entrada || 0;
-                      const parcelas = infoF?.parcelas || 0;
-                      const avista = infoF?.avista || parcelas === 0;
-                      const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada)/parcelas) : 0;
-                      return (
-                        <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:6,marginBottom:4}}>
-                          <div style={{width:10,height:10,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
-                          <div>
-                            <p style={{fontSize:10,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                            {avista ? <p style={{fontSize:8,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                              {entrada>0&&<p style={{fontSize:8,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                              {parcelas>0&&<p style={{fontSize:8,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlP).toLocaleString('pt-BR')}</p>}
-                            </>}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
+              {/* Card de Preços Flutuante no modo tela cheia — só na aba Preços */}
+              {mode === "precos" && renderCardPrecosFlutuante(true)}
               {/* Controles flutuantes de zoom e ajuste em tela cheia */}
               <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
                 <button
@@ -8195,7 +8645,10 @@ const LotDashboard = ({
               const key = ponto.quadra && ponto.lote ? `${ponto.quadra}:${ponto.lote}` : null;
               const info = key ? (localDev.lotesInfo as any)?.[key] : null;
               const preco = info?.preco || 0;
-              const cor = getCorLote(preco);
+              const cor = getCorLote(preco) || getCorPorPreco(ponto.quadra, ponto.lote) || '#3b82f6';
+              const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+              const isVendido = ponto.status === "indisponivel" || !!venda;
+              const borderCor = isVendido ? "#ffffff" : "#000000";
               return (
                 <div key={ponto.id || i} style={{
                   position: 'absolute',
@@ -8205,7 +8658,7 @@ const LotDashboard = ({
                   height: `${ballSize.size}px`,
                   borderRadius: '50%',
                   background: cor,
-                  border: `${ballSize.border ?? 2}px solid rgba(255,255,255,.9)`,
+                  border: `${ballSize.border ?? 2}px solid ${borderCor}`,
                   boxShadow: `0 0 6px ${cor}99, 0 1px 4px rgba(0,0,0,.3)`,
                   transform: 'translate(-50%,-50%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -8305,7 +8758,15 @@ const LotDashboard = ({
                   const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
                   return (
                     <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
-                      <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
+                      <label style={{cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',margin:0,padding:0}} title="Clique para mudar a cor desta faixa" onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
+                        <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',boxShadow:'0 1px 3px rgba(0,0,0,0.2)',flexShrink:0}}/>
+                        <input
+                          type="color"
+                          value={faixa.color}
+                          onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
+                          style={{display:'none'}}
+                        />
+                      </label>
                       <div>
                         <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
                         {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
@@ -9014,97 +9475,6 @@ const LotDashboard = ({
             </div>
           )}
           {renderMapa()}
-          {/* LEGENDA FLUTUANTE DE PREÇOS — mobile */}
-          {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
-            const sz = legendaSize;
-            const mapWm = mapContainerRef.current?.offsetWidth || 375;
-            const pctM = sz==='P' ? 0.08 : sz==='G' ? 0.18 : 0.12;
-            const LW_m = Math.round(mapWm * pctM);
-            const fs = {
-              title: Math.round(LW_m * 0.07),
-              valor: Math.round(LW_m * 0.09),
-              sub:   Math.round(LW_m * 0.07),
-              dot:   Math.round(LW_m * 0.09),
-              pad:   `${Math.round(LW_m*0.06)}px ${Math.round(LW_m*0.08)}px`,
-              gap:   Math.round(LW_m * 0.06),
-              mb:    Math.round(LW_m * 0.05),
-              lw:    LW_m,
-            };
-            const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
-              e.stopPropagation(); e.preventDefault();
-              const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-              const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-              legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
-              const container = mapContainerRef.current;
-              const onMove = (ev: MouseEvent | TouchEvent) => {
-                if (!legendaDragRef.current || !container) return;
-                ev.preventDefault();
-                const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-                const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-                const dx = cx - legendaDragRef.current.startX;
-                const dy = cy - legendaDragRef.current.startY;
-                const rect = container.getBoundingClientRect();
-                const legW = legendaRef.current?.offsetWidth || 160;
-                const legH = legendaRef.current?.offsetHeight || 120;
-                const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
-                const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
-                setLegendaPos(prev => {
-                  const next = {x: nx, y: ny};
-                  try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(next)); } catch {}
-                  return next;
-                });
-              };
-              const onUp = () => {
-                legendaDragRef.current = null;
-                window.removeEventListener('mousemove', onMove);
-                window.removeEventListener('mouseup', onUp);
-                window.removeEventListener('touchmove', onMove as any);
-                window.removeEventListener('touchend', onUp);
-              };
-              window.addEventListener('mousemove', onMove);
-              window.addEventListener('mouseup', onUp);
-              window.addEventListener('touchmove', onMove as any, {passive:false});
-              window.addEventListener('touchend', onUp);
-            };
-            return (
-              <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
-                style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
-                <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
-                  <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
-                    <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
-                    <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
-                      {(['P','M','G'] as const).map(s => (
-                        <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
-                          style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
-                          {s}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  {faixasPrecoGlobal.map((faixa: any) => {
-                    const lotsFaixa = mapaPontos.filter(p => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
-                    const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
-                    const entrada = infoFaixa?.entrada || 0;
-                    const parcelas = infoFaixa?.parcelas || 0;
-                    const avista = infoFaixa?.avista || parcelas === 0;
-                    const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
-                    return (
-                      <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
-                        <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',flexShrink:0}}/>
-                        <div>
-                          <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                          {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                            {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                            {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
-                          </>}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })()}
           {/* Dica arrastar bolinha selecionada */}
           {isEditingMap && mobileSelectedId && !mobileDragId && (
             <div className="absolute top-2 left-2 right-14 z-30 pointer-events-none">
@@ -9116,6 +9486,20 @@ const LotDashboard = ({
 
           {/* Botões flutuantes direita */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
+            {mode === "precos" && faixasPrecoGlobal.length > 0 && (
+              <button
+                onClick={() => {
+                  setCardPrecoVisivel(prev => !prev);
+                  setCardPrecoMinimizado(false);
+                }}
+                title="Tabela de Preços"
+                className={`w-10 h-10 rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all text-sm border ${
+                  cardPrecoVisivel ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-100"
+                }`}
+              >
+                🏷️
+              </button>
+            )}
             {([
               { icon: '+', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.min(10,mapZoomRef.current+0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
               { icon: '−', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(0.2,mapZoomRef.current-0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
@@ -9397,8 +9781,17 @@ const LotDashboard = ({
                               </div>
                             )}
                           </div>
-                          <div className="flex items-center gap-1.5 pt-1">
-                            <div className="w-2 h-2 rounded-full flex-shrink-0" style={{background: cor}}/>
+                          <div className="flex items-center justify-between gap-1.5 pt-1">
+                            <label className="flex items-center gap-1.5 cursor-pointer group" title="Clique para mudar a cor das bolinhas desta faixa">
+                              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-black/20 group-hover:scale-110 transition-transform shadow-sm" style={{background: cor}}/>
+                              <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Mudar cor</span>
+                              <input
+                                type="color"
+                                value={cor}
+                                onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
+                                className="sr-only"
+                              />
+                            </label>
                             <span className="text-[9px] font-bold text-slate-400">{lotsFaixa.length} lote{lotsFaixa.length !== 1 ? 's' : ''}</span>
                           </div>
                         </div>
@@ -9412,6 +9805,70 @@ const LotDashboard = ({
                     <p className="text-slate-300 text-xs mt-1">Use Gerenciador → Preços para configurar</p>
                   </div>
                 )}
+
+                {/* Seletor de Posição do Card de Preços no Mapa Baixado (30% x 30%) */}
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 space-y-2 mt-1">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                      <span>📐</span> Posição do Card no Download
+                    </span>
+                    <span className="text-[9px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-xs">
+                      30% da página
+                    </span>
+                  </div>
+                  <p className="text-[9.5px] text-slate-500 leading-tight">
+                    O mapa baixado inclui o card com os preços e cores (30% da largura e altura). Escolha onde posicioná-lo:
+                  </p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {[
+                      { id: 'topo-esquerdo', label: '↖ Topo Esquerdo' },
+                      { id: 'topo-direito', label: '↗ Topo Direito' },
+                      { id: 'rodape-esquerdo', label: '↙ Rodapé Esquerdo' },
+                      { id: 'rodape-direito', label: '↘ Rodapé Direito' },
+                    ].map(pos => (
+                      <button
+                        key={pos.id}
+                        type="button"
+                        onClick={() => {
+                          setCardExportPosicao(pos.id as any);
+                          try { localStorage.setItem('cardExportPos_' + (localDev as any).id, pos.id); } catch {}
+                        }}
+                        className={`py-1.5 px-2 rounded-xl text-[10px] font-bold transition-all border text-center ${
+                          cardExportPosicao === pos.id
+                            ? 'bg-[#1a4a1a] text-white border-[#1a4a1a] shadow-xs'
+                            : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        {pos.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCardExportPosicao('personalizado');
+                      try { localStorage.setItem('cardExportPos_' + (localDev as any).id, 'personalizado'); } catch {}
+                    }}
+                    className={`w-full py-1.5 px-2 rounded-xl text-[9px] font-bold transition-all border text-center ${
+                      cardExportPosicao === 'personalizado'
+                        ? 'bg-[#1a4a1a] text-white border-[#1a4a1a] shadow-xs'
+                        : 'bg-white text-slate-500 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    ✥ Usar Posição Arrastada no Mapa
+                  </button>
+
+                  <div className="pt-2 border-t border-slate-200/80 flex items-center justify-between text-[9px]">
+                    <span className="flex items-center gap-1 font-bold text-slate-700">
+                      <span className="w-2.5 h-2.5 rounded-full border border-black bg-blue-500 inline-block"/>
+                      Disponíveis: borda preta
+                    </span>
+                    <span className="flex items-center gap-1 font-bold text-slate-700">
+                      <span className="w-2.5 h-2.5 rounded-full border-2 border-white bg-rose-500 inline-block shadow-xs"/>
+                      Vendidos: borda branca
+                    </span>
+                  </div>
+                </div>
 
                 {/* Botões download — idênticos à aba Mapa */}
                 <div className="grid grid-cols-2 gap-2 mt-1">
@@ -10119,9 +10576,30 @@ const LotDashboard = ({
             {/* COLUNA ESQUERDA — MAPA 75% */}
             <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
 
-              {/* Título */}
-              <div className="flex-shrink-0 pt-3 pb-1 px-4 text-center">
-                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">Empreendimento {localDev.nome}</p>
+              {/* Barra Superior do Mapa */}
+              <div className="flex-shrink-0 pt-2.5 pb-2 px-4 flex items-center justify-between border-b border-slate-100 bg-white z-10">
+                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">
+                  Empreendimento {localDev.nome}
+                </p>
+                {mode === "precos" && faixasPrecoGlobal.length > 0 && (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCardPrecoVisivel(prev => !prev);
+                        setCardPrecoMinimizado(false);
+                      }}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
+                        cardPrecoVisivel
+                          ? "bg-emerald-600 text-white border-emerald-600"
+                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+                      }`}
+                      title={cardPrecoVisivel ? "Ocultar tabela flutuante de preços" : "Mostrar tabela flutuante de preços"}
+                    >
+                      🏷️ Tabela Flutuante
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Rosa dos ventos — canto sup direito */}
@@ -10173,12 +10651,82 @@ const LotDashboard = ({
             {/* COLUNA DIREITA — sidebar 25% */}
             <div className="w-56 xl:w-60 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
 
-              {/* Cards de preço — só na aba Preços */}
-              {mode === "precos" && (() => {
-                const lcp = Object.entries(localDev.lotesInfo || {}).map(([k,info]: [string,any]) => ({k,preco:info?.preco||0,entrada:info?.entrada||0,parcelas:info?.parcelas||0})).filter(l=>l.preco>0);
-                const fxs = faixasPrecoGlobal.map(f => ({...f,label:`R$ ${Number(f.preco).toLocaleString('pt-BR')}`}));
-                if (!lcp.length) return <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center"><p className="text-xs font-bold text-amber-700">Sem preços definidos</p></div>;
-                return (<div className="flex flex-col gap-2">{fxs.map((f,fi)=>{const lts=lcp.filter(l=>l.preco===f.preco);if(!lts.length)return null;const ent=lts[0]?.entrada||0,par=lts[0]?.parcelas||0,pval=par>0?Math.round((f.preco-ent)/par):0;return(<div key={fi} className="rounded-2xl overflow-hidden" style={{background:`linear-gradient(160deg,${f.color}22,${f.color}44)`,border:`1px solid ${f.color}55`}}><div className="p-3"><div className="flex items-center gap-2 mb-1"><div className="w-4 h-4 rounded-full" style={{background:f.color}}/><div className="text-xs font-black" style={{color:f.color}}>R$ {Number(f.preco).toLocaleString('pt-BR')}</div></div><div className="text-[9px] text-slate-500">{lts.length} lote(s)</div>{ent>0&&<div className="text-[9px] text-slate-500">Entrada <b>R$ {ent.toLocaleString('pt-BR')}</b></div>}{par>0&&<div className="text-[9px] text-slate-500">{par}× <b>R$ {pval.toLocaleString('pt-BR')}</b></div>}</div></div>);})}</div>);
+              {/* Tabela de Preços — visível apenas na aba Preços */}
+              {mode === "precos" && faixasPrecoGlobal.length > 0 && (() => {
+                return (
+                  <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3.5 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">💰 Tabela de Preços</p>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
+                        {faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {faixasPrecoGlobal.map((faixa: any) => {
+                        const lotsFaixa = mapaPontos.filter((p: any) => {
+                          const info = getPrecoInfoDoLote(p.quadra, p.lote);
+                          return info?.preco === faixa.preco;
+                        });
+                        const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote) : null;
+                        const entrada = infoSample?.entrada || 0;
+                        const parcelas = infoSample?.parcelas || 0;
+                        const avista = infoSample?.avista || parcelas === 0;
+                        const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+
+                        return (
+                          <div
+                            key={faixa.preco}
+                            className="p-2.5 rounded-xl border border-slate-100 bg-slate-50/60 hover:bg-slate-50 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2 mb-1">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <label
+                                  title="Clique para alterar a cor desta faixa"
+                                  className="cursor-pointer relative inline-flex items-center justify-center flex-shrink-0"
+                                >
+                                  <span
+                                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm block"
+                                    style={{ backgroundColor: faixa.color }}
+                                  />
+                                  <input
+                                    type="color"
+                                    value={faixa.color}
+                                    onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
+                                    className="sr-only"
+                                  />
+                                </label>
+                                <span className="text-xs font-black text-slate-900 tracking-tight">
+                                  R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                                </span>
+                              </div>
+                              <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-white text-slate-600 border border-slate-200/60 flex-shrink-0">
+                                {lotsFaixa.length} {lotsFaixa.length === 1 ? "lote" : "lotes"}
+                              </span>
+                            </div>
+
+                            <div className="text-[10px] text-slate-500 pl-6 leading-relaxed">
+                              {avista ? (
+                                <span className="font-bold text-emerald-700">À Vista</span>
+                              ) : (
+                                <div className="flex flex-col gap-0.5">
+                                  {entrada > 0 && (
+                                    <span>Entrada: <strong className="text-slate-700">R$ {Number(entrada).toLocaleString('pt-BR')}</strong></span>
+                                  )}
+                                  {parcelas > 0 && (
+                                    <span style={{ color: faixa.color }} className="font-extrabold">
+                                      {parcelas}× de R$ {Number(vlParcela).toLocaleString('pt-BR')}
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
               })()}
 
               {/* RESUMO */}
@@ -10972,11 +11520,24 @@ const EmpreendimentosSection = ({
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
   const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
-  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string}[]>(() => {
+  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string; cor?:string}[]>(() => {
     const saved = (lotRegDev as any)?.precosRegras;
-    if (saved?.length) return saved.map((r:any) => ({...r, parcela: r.parcela || ""}));
-    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:""}];
+    if (saved?.length) return saved.map((r:any, idx:number) => ({...r, parcela: r.parcela || "", cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor}));
+    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:"", cor: CORES_PALETA_BOLINHAS[0].cor}];
   });
+
+  useEffect(() => {
+    if (lotRegDev) {
+      const saved = (lotRegDev as any)?.precosRegras;
+      if (saved && Array.isArray(saved) && saved.length > 0) {
+        setPrecosRegras(saved.map((r: any, idx: number) => ({
+          ...r,
+          parcela: r.parcela || "",
+          cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor,
+        })));
+      }
+    }
+  }, [lotRegDev?.id]);
   const [precosPadrao, setPrecosPadrao] = useState<{valor:string; entrada:string; parcelas:string; parcela:string}>(() => {
     return (lotRegDev as any)?.precosPadrao || {valor:"", entrada:"", parcelas:"", parcela:""};
   });
@@ -12847,6 +13408,13 @@ const EmpreendimentosSection = ({
                                     </td>
                                     <td className="px-2 py-2">
                                       <div className="flex items-center gap-1.5">
+                                        {info?.preco ? (
+                                          <div
+                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/20 shadow-xs"
+                                            style={{ background: info.corPreco || info.cor || info.corBolinha || '#3b82f6' }}
+                                            title={`Preço: R$ ${Number(info.preco).toLocaleString('pt-BR')}`}
+                                          />
+                                        ) : null}
                                         <span className="font-bold text-slate-800 text-[11px]">{lote}</span>
                                         {temBolinha && (
                                           <span className="text-[8px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded leading-tight" title="Marcado no mapa">
@@ -13105,7 +13673,8 @@ const EmpreendimentosSection = ({
                       // Calcular parcela automaticamente se não informada
                       const parcelaCalcN = m[5] ? parseFloat(m[5]) :
                         (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
-                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', parcela: String(parcelaCalcN), avista});
+                      const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
+                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', parcela: String(parcelaCalcN), avista, cor: corAuto});
                     }
                     // PADRAO ignorado — usar REGRA para todos os lotes
                     if (regras.length) { setPrecosRegras(regras); setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!"); }
@@ -13116,15 +13685,20 @@ const EmpreendimentosSection = ({
                   // Aplicar preços no lotesInfo
                   const info = {...(lotRegDev.lotesInfo || {})} as any;
                   const aplicados: string[] = [];
-                  precosRegras.forEach(r => {
-                    // Calcular valorParcela automaticamente se não informado
-                  const valorNum = parseFloat(String(r.valor).replace(/\./g,'').replace(',','.')) || 0;
-                  const entradaNum = parseFloat(String(r.entrada).replace(/\./g,'').replace(',','.')) || 0;
-                  const parcelasNum = parseInt(r.parcelas) || 0;
-                  const parcelaCalc = r.parcela
-                    ? parseFloat(String(r.parcela).replace(/\./g,'').replace(',','.')) || 0
-                    : parcelasNum > 0 ? Math.round((valorNum - entradaNum) / parcelasNum) : 0;
-                  interpretarScript(r.script).forEach(tag => {
+                  const coresPorPreco: Record<number, string> = { ...((lotRegDev as any).coresPorPreco || {}) };
+
+                  precosRegras.forEach((r, idx) => {
+                    const corFinal = r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor;
+                    const valorNum = parseFloat(String(r.valor).replace(/\./g,'').replace(',','.')) || 0;
+                    if (valorNum > 0) {
+                      coresPorPreco[valorNum] = corFinal;
+                    }
+                    const entradaNum = parseFloat(String(r.entrada).replace(/\./g,'').replace(',','.')) || 0;
+                    const parcelasNum = parseInt(r.parcelas) || 0;
+                    const parcelaCalc = r.parcela
+                      ? parseFloat(String(r.parcela).replace(/\./g,'').replace(',','.')) || 0
+                      : parcelasNum > 0 ? Math.round((valorNum - entradaNum) / parcelasNum) : 0;
+                    interpretarScript(r.script).forEach(tag => {
                       // tag = "Q1·L5" → quadra=1, lote=5
                       const m = tag.match(/Q(\w+)·L(\w+)/);
                       if (!m) return;
@@ -13143,25 +13717,28 @@ const EmpreendimentosSection = ({
                       info[key].parcela = vlParc2;
                       info[key].valorParcela = vlParc2;
                       info[key].avista = (r as any).avista || false;
+                      info[key].cor = corFinal;
+                      info[key].corPreco = corFinal;
+                      info[key].corBolinha = corFinal;
                       aplicados.push('Q' + qRaw + '·L' + l);
                     });
                   });
-                  // Sem PADRAO — lotes sem regra não recebem preço
-                  // Salvar preços nos lotes
+                  // Salvar preços e cores nos lotes
                   onUpdateLotesInfo(lotRegDev!.id, info);
-                  // Persistir as regras no empreendimento para reedição
+                  // Persistir as regras e cores no empreendimento para reedição
                   const devComRegras = {
                     ...(lotRegDev as any),
                     lotesInfo: info,
                     precosRegras: precosRegras,
                     precosPadrao: precosPadrao,
+                    coresPorPreco: coresPorPreco,
                   };
                   setLotRegDev(devComRegras as any);
                   onSaveDevExternal && onSaveDevExternal(devComRegras);
                   if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
-                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao} as any : prev);
+                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao, coresPorPreco} as any : prev);
                   }
-                  setPrecosScriptMsg("✅ Preços aplicados e salvos!");
+                  setPrecosScriptMsg("✅ Preços e cores das bolinhas aplicados e salvos!");
                 };
 
                 return (
@@ -13208,7 +13785,8 @@ const EmpreendimentosSection = ({
                             const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/gi;
                             let m;
                             while ((m = regraRegex.exec(txt)) !== null) {
-                              regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4]});
+                              const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
+                              regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4], parcela: '', cor: corAuto});
                             }
                             // PADRAO não existe mais — ignorado
                             if (regras.length) {
@@ -13228,50 +13806,136 @@ const EmpreendimentosSection = ({
 
                     {/* Regras */}
                     <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Regras de Preço</p>
-                      {precosRegras.map((r, i) => (
-                        <div key={r.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-3">
-                          <div className="flex items-center justify-between mb-2">
-                            <span className="w-6 h-6 bg-[#1a4a1a] text-white text-[10px] font-black rounded-full flex items-center justify-center">{i+1}</span>
-                            {precosRegras.length > 1 && <button onClick={() => setPrecosRegras(p => p.filter(x => x.id !== r.id))} className="text-red-400 text-lg leading-none">×</button>}
-                          </div>
-                          <textarea
-                            value={r.script}
-                            onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? {...x, script:e.target.value} : x))}
-                            placeholder="Ex: Q1:1,2,3,4. Q2:5,6."
-                            className="w-full border border-slate-200 rounded-xl p-2 text-xs font-mono outline-none resize-none bg-white mb-2"
-                            rows={2}
-                          />
-                          {r.script && (
-                            <div className="flex flex-wrap gap-1 mb-2">
-                              {interpretarScript(r.script).slice(0,10).map(t => (
-                                <span key={t} className="bg-[#1a4a1a] text-white text-[8px] font-bold px-1.5 py-0.5 rounded">{t}</span>
-                              ))}
-                              {interpretarScript(r.script).length > 10 && <span className="text-[8px] text-slate-400">+{interpretarScript(r.script).length-10} lotes</span>}
-                            </div>
-                          )}
-                          <div className="grid grid-cols-2 gap-2">
-                            {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
-                              <div key={k}>
-                                <p className="text-[8px] font-bold text-slate-400 mb-1">{l}</p>
-                                <input
-                                  value={(r as any)[k] || ""}
-                                  onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? calcularPreco(k, e.target.value, x) : x))}
-                                  className="w-full border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-white"
-                                  placeholder="0"
-                                  inputMode="numeric"
-                                />
+                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Regras de Preço e Cores das Bolinhas</p>
+                      {precosRegras.map((r, i) => {
+                        const corRegra = r.cor || CORES_PALETA_BOLINHAS[i % CORES_PALETA_BOLINHAS.length].cor;
+                        return (
+                          <div key={r.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-3 shadow-xs space-y-2.5">
+                            {/* Cabeçalho da regra com badge colorido */}
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className="w-6 h-6 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs flex-shrink-0"
+                                  style={{ background: corRegra }}
+                                >
+                                  {i+1}
+                                </span>
+                                <span className="text-xs font-black text-slate-800">Regra #{i+1}</span>
+                                {r.valor && (
+                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
+                                    R$ {Number(r.valor).toLocaleString('pt-BR')}
+                                  </span>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                          {r.valor && r.parcelas && r.parcela && (
-                            <div className="mt-2 px-2 py-1.5 bg-[#1a4a1a]/5 rounded-xl text-[9px] text-[#1a4a1a] font-black text-center">
-                              R$ {Number(r.entrada||0).toLocaleString('pt-BR')} entrada + {r.parcelas}× R$ {Number(r.parcela||0).toLocaleString('pt-BR')} = R$ {Number(r.valor||0).toLocaleString('pt-BR')}
+                              {precosRegras.length > 1 && (
+                                <button
+                                  type="button"
+                                  onClick={() => setPrecosRegras(p => p.filter(x => x.id !== r.id))}
+                                  className="text-slate-400 hover:text-red-500 text-lg leading-none transition-colors p-1"
+                                  title="Excluir regra"
+                                >
+                                  ×
+                                </button>
+                              )}
                             </div>
-                          )}
-                        </div>
-                      ))}
-                      <button onClick={() => setPrecosRegras(p => [...p, {id:Date.now(), script:"", valor:"", entrada:"", parcelas:""}])}
+
+                            {/* Script de quadras e lotes */}
+                            <div>
+                              <p className="text-[8px] font-bold text-slate-400 mb-1">Quadras e Lotes (Script)</p>
+                              <textarea
+                                value={r.script}
+                                onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? {...x, script:e.target.value} : x))}
+                                placeholder="Ex: Q1:1,2,3,4. Q2:5,6."
+                                className="w-full border border-slate-200 rounded-xl p-2 text-xs font-mono outline-none resize-none bg-white mb-1.5"
+                                rows={2}
+                              />
+                            </div>
+
+                            {r.script && (
+                              <div className="flex flex-wrap gap-1">
+                                {interpretarScript(r.script).slice(0,10).map(t => (
+                                  <span key={t} className="text-white text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: corRegra }}>{t}</span>
+                                ))}
+                                {interpretarScript(r.script).length > 10 && <span className="text-[8px] text-slate-400">+{interpretarScript(r.script).length-10} lotes</span>}
+                              </div>
+                            )}
+
+                            {/* Valores Financeiros */}
+                            <div className="grid grid-cols-2 gap-2">
+                              {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
+                                <div key={k}>
+                                  <p className="text-[8px] font-bold text-slate-400 mb-1">{l}</p>
+                                  <input
+                                    value={(r as any)[k] || ""}
+                                    onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? calcularPreco(k, e.target.value, x) : x))}
+                                    className="w-full border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-white"
+                                    placeholder="0"
+                                    inputMode="numeric"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+
+                            {r.valor && r.parcelas && r.parcela && (
+                              <div className="px-2 py-1.5 bg-[#1a4a1a]/5 rounded-xl text-[9px] text-[#1a4a1a] font-black text-center">
+                                R$ {Number(r.entrada||0).toLocaleString('pt-BR')} entrada + {r.parcelas}× R$ {Number(r.parcela||0).toLocaleString('pt-BR')} = R$ {Number(r.valor||0).toLocaleString('pt-BR')}
+                              </div>
+                            )}
+
+                            {/* SELEÇÃO DE COR DA BOLINHA */}
+                            <div className="pt-2 border-t border-slate-200/80">
+                              <div className="flex items-center justify-between mb-1.5">
+                                <div className="flex items-center gap-1.5">
+                                  <div
+                                    className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-xs flex-shrink-0"
+                                    style={{ background: corRegra }}
+                                  />
+                                  <span className="text-[10px] font-black text-slate-700">Cor da Bolinha no Mapa</span>
+                                </div>
+                                <label className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-[9px] font-bold text-slate-600 hover:border-slate-400 cursor-pointer shadow-xs transition-all">
+                                  <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ background: corRegra }} />
+                                  <span>Personalizar</span>
+                                  <input
+                                    type="color"
+                                    value={corRegra}
+                                    onChange={e => {
+                                      const novaCor = e.target.value;
+                                      setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: novaCor } : x));
+                                    }}
+                                    className="sr-only"
+                                  />
+                                </label>
+                              </div>
+
+                              {/* Paleta rápida de cores com indicação da selecionada */}
+                              <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white rounded-xl border border-slate-200/70">
+                                {CORES_PALETA_BOLINHAS.map((c) => {
+                                  const isSelected = corRegra.toLowerCase() === c.cor.toLowerCase();
+                                  return (
+                                    <button
+                                      key={c.cor}
+                                      type="button"
+                                      onClick={() => setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: c.cor } : x))}
+                                      className={`w-5 h-5 rounded-full transition-transform active:scale-90 flex items-center justify-center relative ${
+                                        isSelected ? 'ring-2 ring-offset-1 ring-slate-800 scale-110 shadow-xs' : 'hover:scale-110 opacity-90 hover:opacity-100'
+                                      }`}
+                                      style={{ background: c.cor }}
+                                      title={c.nome}
+                                    >
+                                      {isSelected && (
+                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5">
+                                          <polyline points="20 6 9 17 4 12" />
+                                        </svg>
+                                      )}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                      <button onClick={() => setPrecosRegras(p => [...p, {id:Date.now(), script:"", valor:"", entrada:"", parcelas:"", parcela:"", cor: CORES_PALETA_BOLINHAS[p.length % CORES_PALETA_BOLINHAS.length].cor}])}
                         className="w-full py-2.5 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:border-[#1a4a1a] hover:text-[#1a4a1a] transition-all">
                         + Nova Regra
                       </button>
@@ -14269,7 +14933,7 @@ EMPREENDIMENTO: ${lastSavedVenda.empreendimentoNome.toUpperCase()}
 VALOR TOTAL: ${brl(lastSavedVenda.valorLote)}
 ENTRADA: ${brl(lastSavedVenda.valorEntrada)}
 ${isMararuOuBelaVista(lastSavedVenda.empreendimentoNome)
-  ? (lastSavedVenda.quantidadeParcelas > 0 ? `PLANO: ${lastSavedVenda.quantidadeParcelas}x` : 'PAGAMENTO: À VISTA')
+  ? (lastSavedVenda.quantidadeParcelas > 0 ? (lastSavedVenda.valorParcela > 0 ? `PLANO: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}` : `PLANO: ${lastSavedVenda.quantidadeParcelas}x`) : 'PAGAMENTO: À VISTA')
   : `QUANTIDADE DE PARCELAS: ${lastSavedVenda.quantidadeParcelas}x de ${brl(lastSavedVenda.valorParcela)}`}
 DATA DE VENCIMENTO: ${diaVenc}
 VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2 || "")].filter(Boolean).map(v => v.toUpperCase()).join("/ ")}`;
@@ -14418,8 +15082,19 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
     // Value = (Total - Entry) / Count
     // Total = (Value * Count) + Entry
 
-    // Cálculo bidirecional completo
-    if (field === "valorLote" || field === "valorEntrada" || field === "quantidadeParcelas") {
+    const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+    const tab = getTabelaPlanosEmpreendimento(dev?.nome);
+
+    // Se o empreendimento tiver tabela oficial (Bela Vista do Mararu ou Mararu Ville / 2) e o usuário selecionar 36, 120 ou 180
+    if (field === "quantidadeParcelas" && tab && tab.planos[value]) {
+      const p = tab.planos[value];
+      updatedData.quantidadeParcelas = p.meses;
+      updatedData.valorParcela = p.valorParcela;
+      updatedData.valorLote = p.total;
+      if (!updatedData.valorEntrada || updatedData.valorEntrada === 0) {
+        updatedData.valorEntrada = p.entrada;
+      }
+    } else if (field === "valorLote" || field === "valorEntrada" || field === "quantidadeParcelas") {
       // Total + Entrada + Parcelas → calcula valor da parcela
       const vLote = field === "valorLote" ? value : saleData.valorLote || 0;
       const vEntrada = field === "valorEntrada" ? value : saleData.valorEntrada || 0;
@@ -15848,7 +16523,18 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                 value={saleData.empreendimentoId}
                 onChange={(e) => {
                   clearInvalidSaleField("empreendimentoId");
-                  setSaleData({ ...saleData, empreendimentoId: e.target.value });
+                  const devId = e.target.value;
+                  const dev = developments.find((d) => d.id === devId);
+                  const tab = getTabelaPlanosEmpreendimento(dev?.nome);
+                  if (tab) {
+                    setSaleData((prev: any) => ({
+                      ...prev,
+                      empreendimentoId: devId,
+                      valorEntrada: (prev.valorEntrada && prev.valorEntrada > 0) ? prev.valorEntrada : tab.entradaPadrao,
+                    }));
+                  } else {
+                    setSaleData({ ...saleData, empreendimentoId: devId });
+                  }
                 }}
               >
                 <option value="">Escolha um loteamento...</option>
@@ -15858,6 +16544,25 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                   </option>
                 ))}
               </select>
+
+              {(() => {
+                const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                const tab = getTabelaPlanosEmpreendimento(dev?.nome);
+                if (!tab) return null;
+                return (
+                  <div className="mt-2 flex flex-wrap items-center justify-between gap-2 px-3.5 py-2.5 bg-emerald-50 text-emerald-900 text-xs font-semibold rounded-2xl border border-emerald-200">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm">🏷️</span>
+                      <span>
+                        <strong>{tab.nomeExibicao}</strong> · Lotes {tab.lotePadrao} · a partir de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tab.valorBase)} · Entrada padrão {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tab.entradaPadrao)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-black text-emerald-800 uppercase tracking-widest bg-emerald-100/90 px-2 py-0.5 rounded-lg">
+                      Tabela Oficial
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Mini modal: cadastrar empreendimento inline */}
               <AnimatePresence>
@@ -16390,6 +17095,87 @@ VENDEDOR: ${[(lastSavedVenda.vendedor || ""), ((lastSavedVenda as any).vendedor2
                     )}
                   </div>
                 )}
+
+                {tipoVenda === 'parcelado' && (() => {
+                  const dev = developments.find((d) => d.id === saleData.empreendimentoId);
+                  const tab = getTabelaPlanosEmpreendimento(dev?.nome);
+                  if (!tab) return null;
+                  return (
+                    <div className="sm:col-span-2 p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📋</span>
+                          <div>
+                            <p className="text-xs font-black text-emerald-950 uppercase tracking-wider">
+                              Planos Oficiais da Tabela · {tab.nomeExibicao}
+                            </p>
+                            <p className="text-[11px] text-emerald-700 font-medium">
+                              Lotes {tab.lotePadrao} · Entrada de {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tab.entradaPadrao)}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-1 bg-emerald-600 text-white rounded-lg shadow-sm">
+                          2ª Modalidade: Parcelado
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1">
+                        {tab.planosLista.map((p) => {
+                          const isSelected = saleData.quantidadeParcelas === p.meses &&
+                            Math.abs((saleData.valorParcela || 0) - p.valorParcela) < 1;
+                          return (
+                            <button
+                              key={p.meses}
+                              type="button"
+                              onClick={() => {
+                                clearInvalidSaleField("quantidadeParcelas");
+                                clearInvalidSaleField("valorParcela");
+                                clearInvalidSaleField("valorEntrada");
+                                clearInvalidSaleField("valorLote");
+                                setSaleData((prev: any) => ({
+                                  ...prev,
+                                  quantidadeParcelas: p.meses,
+                                  valorParcela: p.valorParcela,
+                                  valorEntrada: p.entrada,
+                                  valorLote: p.total,
+                                  medidaFrente: prev.medidaFrente || tab.dimensoes.frente,
+                                  medidaFundos: prev.medidaFundos || tab.dimensoes.fundos,
+                                  medidaLateralDir: prev.medidaLateralDir || tab.dimensoes.lateralDir,
+                                  medidaLateralEsq: prev.medidaLateralEsq || tab.dimensoes.lateralEsq,
+                                  areaTotal: prev.areaTotal || tab.dimensoes.areaTotal,
+                                }));
+                              }}
+                              className={`flex flex-col p-3 rounded-xl border text-left transition-all relative ${
+                                isSelected
+                                  ? 'bg-emerald-600 text-white border-emerald-700 shadow-md scale-[1.02]'
+                                  : 'bg-white text-slate-800 border-emerald-200 hover:border-emerald-400 hover:bg-emerald-50/50'
+                              }`}
+                            >
+                              {isSelected && (
+                                <span className="absolute top-2 right-2 text-xs">✓</span>
+                              )}
+                              <div className="flex items-center justify-between mb-1">
+                                <span className={`text-xs font-black uppercase tracking-wider ${isSelected ? 'text-emerald-100' : 'text-emerald-800'}`}>
+                                  {p.meses} Meses
+                                </span>
+                              </div>
+                              <div className="text-base font-black leading-tight">
+                                {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valorParcela)}
+                                <span className={`text-[10px] font-medium ml-1 ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>/mês</span>
+                              </div>
+                              <div className={`text-[10px] font-bold mt-1.5 pt-1.5 border-t flex items-center justify-between ${
+                                isSelected ? 'border-emerald-500/60 text-emerald-100' : 'border-slate-100 text-slate-500'
+                              }`}>
+                                <span>Total:</span>
+                                <span className="font-black">{new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.total)}</span>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {tipoVenda === 'parcelado' && (<>
                 <div>
@@ -17683,7 +18469,7 @@ EMPREENDIMENTO: ${venda.empreendimentoNome.toUpperCase()}
 VALOR TOTAL: ${brl(venda.valorLote)}
 ENTRADA: ${brl(venda.valorEntrada)}
 ${isMararuOuBelaVista(venda.empreendimentoNome)
-  ? (venda.quantidadeParcelas > 0 ? `PLANO: ${venda.quantidadeParcelas}x` : 'PAGAMENTO: À VISTA')
+  ? (venda.quantidadeParcelas > 0 ? (venda.valorParcela > 0 ? `PLANO: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}` : `PLANO: ${venda.quantidadeParcelas}x`) : 'PAGAMENTO: À VISTA')
   : `QUANTIDADE DE PARCELAS: ${venda.quantidadeParcelas}x de ${brl(venda.valorParcela)}`}
 DATA DE VENCIMENTO: ${diaVenc}
 VENDEDOR: ${vendedorLabel}`;
@@ -18553,6 +19339,57 @@ VENDEDOR: ${vendedorLabel}`;
                       </button>
                     </div>
                   </div>
+                  {editVendaForm.quantidadeParcelas !== 0 && (() => {
+                    const dev = developments.find(d => d.id === editVendaForm.empreendimentoId);
+                    const tab = getTabelaPlanosEmpreendimento(dev?.nome || editVendaForm.empreendimentoNome);
+                    if (!tab) return null;
+                    return (
+                      <div className="col-span-2 p-3.5 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>📋</span> Planos Oficiais da Tabela · {tab.nomeExibicao}
+                          </p>
+                          <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                            Entrada {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(tab.entradaPadrao)}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-3 gap-2">
+                          {tab.planosLista.map((p) => {
+                            const isSelected = editVendaForm.quantidadeParcelas === p.meses &&
+                              Math.abs((editVendaForm.valorParcela || 0) - p.valorParcela) < 1;
+                            return (
+                              <button
+                                key={p.meses}
+                                type="button"
+                                onClick={() => {
+                                  setEditVendaForm((prev) => ({
+                                    ...prev,
+                                    quantidadeParcelas: p.meses,
+                                    valorParcela: p.valorParcela,
+                                    valorEntrada: p.entrada,
+                                    valorLote: p.total,
+                                  }));
+                                }}
+                                className={`p-2.5 rounded-xl border text-left text-xs transition-all ${
+                                  isSelected
+                                    ? 'bg-emerald-600 text-white border-emerald-700 font-bold shadow-sm'
+                                    : 'bg-white text-slate-800 border-emerald-200 hover:border-emerald-400'
+                                }`}
+                              >
+                                <div className="font-bold">{p.meses} Meses</div>
+                                <div className="text-xs font-black mt-0.5">
+                                  {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valorParcela)}/mês
+                                </div>
+                                <div className={`text-[10px] mt-0.5 ${isSelected ? 'text-emerald-100' : 'text-slate-500'}`}>
+                                  Total: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.total)}
+                                </div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {editVendaForm.quantidadeParcelas !== 0 && (<>
                   <div>
                     <label className="label">Valor de Entrada (R$)</label>
@@ -19162,9 +19999,11 @@ VENDEDOR: ${vendedorLabel}`;
                             {isMararuOuBelaVista(selectedVenda.empreendimentoNome) ? 'Plano' : 'Parcelas'}
                           </p>
                           <p className="font-bold text-slate-800">
-                            {isMararuOuBelaVista(selectedVenda.empreendimentoNome)
-                              ? `${selectedVenda.quantidadeParcelas}x`
-                              : `${selectedVenda.quantidadeParcelas}x de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}`
+                            {selectedVenda.quantidadeParcelas > 0
+                              ? (selectedVenda.valorParcela > 0
+                                  ? `${selectedVenda.quantidadeParcelas}x de ${new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(selectedVenda.valorParcela)}`
+                                  : `${selectedVenda.quantidadeParcelas}x`)
+                              : 'À Vista'
                             }
                           </p>
                         </div>
@@ -21537,12 +22376,87 @@ const CalculatorSection = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-8 items-start">
         <div className="lg:col-span-7 space-y-6">
           <div className="card-premium bg-surface-card/50 backdrop-blur-sm">
-            <h3 className="text-xl font-display font-bold text-slate-800 mb-8 flex items-center gap-3">
+            <h3 className="text-xl font-display font-bold text-slate-800 mb-6 flex items-center gap-3">
               <div className="p-2 bg-primary-main/10 text-primary-main rounded-xl">
                 <Calculator size={20} className="stroke-[2.5]" />
               </div>
               Simulador Inteligente
             </h3>
+
+            {/* Atalhos Rápidos para Tabelas Oficiais */}
+            <div className="mb-6 p-4 bg-emerald-50/80 border border-emerald-200 rounded-2xl space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                  <span>📋</span> Simular Tabelas Oficiais
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/90 px-2 py-0.5 rounded-md">
+                  Entrada R$ 600
+                </span>
+              </div>
+              <div className="space-y-2">
+                <div>
+                  <p className="text-[11px] font-bold text-emerald-900 mb-1">Bela Vista do Mararu (10m × 30m):</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {TABELAS_EMPREENDIMENTOS.bela_vista.planosLista.map((p) => (
+                      <button
+                        key={`calc-bv-${p.meses}`}
+                        type="button"
+                        onClick={() => {
+                          setData({
+                            ...data,
+                            valor: p.total,
+                            entrada: p.entrada,
+                            parcelas: p.meses,
+                            parcelaValue: p.valorParcela,
+                          });
+                        }}
+                        className={`p-2 rounded-xl text-left border transition-all ${
+                          data.parcelas === p.meses && Math.abs((data.parcelaValue || 0) - p.valorParcela) < 1
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm font-bold'
+                            : 'bg-white text-slate-700 border-emerald-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold">{p.meses} Meses</div>
+                        <div className="text-xs font-black mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valorParcela)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-1">
+                  <p className="text-[11px] font-bold text-emerald-900 mb-1">Mararu Ville & Ville 2 (10m × 20m):</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {TABELAS_EMPREENDIMENTOS.mararu_ville.planosLista.map((p) => (
+                      <button
+                        key={`calc-mv-${p.meses}`}
+                        type="button"
+                        onClick={() => {
+                          setData({
+                            ...data,
+                            valor: p.total,
+                            entrada: p.entrada,
+                            parcelas: p.meses,
+                            parcelaValue: p.valorParcela,
+                          });
+                        }}
+                        className={`p-2 rounded-xl text-left border transition-all ${
+                          data.parcelas === p.meses && Math.abs((data.parcelaValue || 0) - p.valorParcela) < 1
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm font-bold'
+                            : 'bg-white text-slate-700 border-emerald-200 hover:border-emerald-400'
+                        }`}
+                      >
+                        <div className="text-[11px] font-bold">{p.meses} Meses</div>
+                        <div className="text-xs font-black mt-0.5">
+                          {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(p.valorParcela)}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </div>
 
             <div className="space-y-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
