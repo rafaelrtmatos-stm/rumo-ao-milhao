@@ -26,6 +26,7 @@ import {
   ChevronLeft,
   TrendingUp,
   DollarSign,
+  Crop,
   Package,
   Calendar,
   LogOut,
@@ -72,6 +73,20 @@ import {
   RotateCcw,
   Crosshair,
   Sliders,
+  Grid,
+  Tag,
+  MessageSquare,
+  Hand,
+  Minus,
+  MoveHorizontal,
+  MoveVertical,
+  SlidersHorizontal,
+  Compass,
+  Globe,
+  Paperclip,
+  ExternalLink,
+  GitMerge,
+  Image as ImageIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import {
@@ -110,6 +125,7 @@ import PickLocationMap from "./components/PickLocationMap";
 import { uploadMapaImagem, uploadMapaBlob, uploadMapaPDF, precacheMapaUrl } from "./lib/mapaStorage";
 import LoadingScreen from "./components/LoadingScreen";
 import ReservaPublica from "./components/ReservaPublica";
+import { CropMapModal } from "./components/CropMapModal";
 import * as pdfjsLibLocal from "pdfjs-dist";
 // Vite empacota o worker como asset local (sem depender de CDN externo como cdnjs.cloudflare.com,
 // que pode ser bloqueado por extensões de segurança/antivírus/políticas de rede corporativa)
@@ -2602,13 +2618,60 @@ const LotDashboard = ({
   canEditMap?: boolean;
   onMarkerSaved?: (quadra: string, lote: string, status: MapaLoteStatus, observacao: string) => void;
 }) => {
-  const [localDev, setLocalDev] = useState<Empreendimento>(dev);
+  const [localDev, setLocalDev] = useState<Empreendimento>(() => {
+    const pts = ((dev as any)?.mapaPontos || []) as any[];
+    const seenIds = new Set<string>();
+    let hasDupes = false;
+    const cleanPts = pts.map((p: any, idx: number) => {
+      if (!p.id || seenIds.has(p.id)) {
+        hasDupes = true;
+        const newId = `pt-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 6)}`;
+        seenIds.add(newId);
+        return { ...p, id: newId };
+      }
+      seenIds.add(p.id);
+      return p;
+    });
+    if (hasDupes) {
+      return { ...dev, mapaPontos: cleanPts };
+    }
+    return dev;
+  });
   const [mode, setMode] = useState<"mapa" | "global" | "quadradinhos" | "precos">((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64 ? "mapa" : "quadradinhos");
   // colorMode: "status" = cores por disponível/reservado/indisponível; "preco" = cores por faixa de preço
   // A tabela e cores de preços só aparecem na aba Preços (mode === "precos")
   const colorMode: "status" | "preco" = mode === "precos" ? "preco" : "status";
   const [cardPrecoVisivel, setCardPrecoVisivel] = useState<boolean>(true);
   const [cardPrecoMinimizado, setCardPrecoMinimizado] = useState<boolean>(false);
+  const [showCropModal, setShowCropModal] = useState<boolean>(false);
+
+  const handleConfirmCrop = (croppedBase64: string, updatedPoints: MapaPonto[]) => {
+    const applyCrop = (nw?: number, nh?: number) => {
+      const nextDev: Empreendimento = {
+        ...localDev,
+        mapaImagemBase64: croppedBase64,
+        mapaImagemUrl: croppedBase64,
+        mapaImagemLeveBase64: croppedBase64,
+        mapaImagemMedResBase64: croppedBase64,
+        mapaImagemHighResBase64: croppedBase64,
+        mapaPdfOriginalBase64: undefined,
+        mapaPdfUrl: undefined,
+        mapaImagemNaturalWidth: nw || (localDev as any).mapaImagemNaturalWidth,
+        mapaImagemNaturalHeight: nh || (localDev as any).mapaImagemNaturalHeight,
+        mapaPontos: updatedPoints,
+      };
+      setLocalDev(nextDev);
+      persistDev(nextDev);
+      setTimeout(() => {
+        fitMapToScreen(0);
+      }, 120);
+    };
+
+    const img = new Image();
+    img.onload = () => applyCrop(img.naturalWidth || img.width, img.naturalHeight || img.height);
+    img.onerror = () => applyCrop();
+    img.src = croppedBase64;
+  };
 
   // Helper universal para parsear preço como número de forma confiável
   const parsePrecoNumero = (p: any): number => {
@@ -2624,9 +2687,17 @@ const LotDashboard = ({
   const [legendaPos, setLegendaPos] = React.useState<{x:number;y:number}>(() => {
     try { const s = localStorage.getItem('legendaPrecoPos_' + (dev as any).id); return s ? JSON.parse(s) : {x:16,y:16}; } catch { return {x:16,y:16}; }
   });
-  const [legendaSize, setLegendaSize] = React.useState<'P'|'M'|'G'>(() => {
-    try { return (localStorage.getItem('legendaPrecoSize_' + (dev as any).id) as any) || 'M'; } catch { return 'M'; }
+  const [legendaSizePercent, setLegendaSizePercent] = React.useState<number>(() => {
+    try {
+      const s = localStorage.getItem('legendaPrecoSizePercent_' + (dev as any).id);
+      if (s && !isNaN(Number(s))) return Math.max(50, Math.min(200, Number(s)));
+      const old = localStorage.getItem('legendaPrecoSize_' + (dev as any).id);
+      if (old === 'P') return 80;
+      if (old === 'G') return 130;
+      return 100;
+    } catch { return 100; }
   });
+  const legendaSize: 'P' | 'M' | 'G' = legendaSizePercent <= 85 ? 'P' : legendaSizePercent >= 120 ? 'G' : 'M';
   const [cardExportPosicao, setCardExportPosicao] = React.useState<'topo-direito' | 'topo-esquerdo' | 'rodape-direito' | 'rodape-esquerdo' | 'personalizado'>(() => {
     try {
       const s = localStorage.getItem('cardExportPos_' + (dev as any).id);
@@ -2641,35 +2712,78 @@ const LotDashboard = ({
   const coresPorPrecoSalvas = (localDev as any)?.coresPorPreco || {};
   const regrasSalvas = (localDev as any)?.precosRegras || [];
 
-  // Lotes com preço cadastrado no lotesInfo
+  // Preços encontrados em lotesInfo
   const lotesComPrecoGlobal = Object.entries(localDev.lotesInfo || {})
     .map(([key, info]: [string, any]) => ({
       key,
-      preco: parsePrecoNumero(info?.preco),
+      preco: parsePrecoNumero(info?.preco ?? info?.valor ?? info?.valorLote ?? info?.precoLote),
       corPreco: info?.corPreco || info?.cor || info?.corBolinha,
     }))
     .filter(l => l.preco > 0);
 
   // Preços configurados em regras de preço em massa
   const precosDasRegras = (Array.isArray(regrasSalvas) ? regrasSalvas : [])
-    .map((r: any) => parsePrecoNumero(r?.valor))
+    .map((r: any) => {
+      let v = parsePrecoNumero(r?.valor ?? r?.preco ?? r?.valorLote);
+      if (!v && r?.script) {
+        const m = String(r.script).match(/VALOR:\s*([\d.,]+)/i);
+        if (m) v = parsePrecoNumero(m[1]);
+      }
+      return v;
+    })
     .filter((p: number) => p > 0);
 
-  const precosUnicosGlobal = Array.from(new Set([...lotesComPrecoGlobal.map(l => l.preco), ...precosDasRegras])).sort((a,b) => a-b);
+  // Preços presentes nos pontos do mapa
+  const precosDosPontos = (((localDev as any)?.mapaPontos || []) as any[])
+    .map((p: any) => parsePrecoNumero(p?.preco ?? p?.valor ?? p?.valorLote))
+    .filter((p: number) => p > 0);
+
+  // Preços presentes nas vendas do empreendimento
+  const precosDasVendas = (sales || [])
+    .filter(s => s.empreendimentoId === localDev.id || (localDev.nome && s.empreendimentoNome === localDev.nome))
+    .map(s => parsePrecoNumero(s.valorLote))
+    .filter((p: number) => p > 0);
+
+  // Preço padrão configurado no empreendimento
+  const precoPadraoDev = parsePrecoNumero((localDev as any)?.precosPadrao?.valor ?? (localDev as any)?.precosPadrao?.preco);
+  const precosExtrasPadrao = precoPadraoDev > 0 ? [precoPadraoDev] : [];
+
+  const precosUnicosGlobal = Array.from(new Set([
+    ...lotesComPrecoGlobal.map(l => l.preco),
+    ...precosDasRegras,
+    ...precosDosPontos,
+    ...precosDasVendas,
+    ...precosExtrasPadrao
+  ])).sort((a, b) => a - b);
+
   const faixasPrecoGlobal = precosUnicosGlobal.map((preco, i) => {
     let cor = coresPorPrecoSalvas[preco];
     if (!cor) {
       const regra = Array.isArray(regrasSalvas) ? regrasSalvas.find((r: any) => {
-        const v = parsePrecoNumero(r.valor);
+        let v = parsePrecoNumero(r?.valor ?? r?.preco ?? r?.valorLote);
+        if (!v && r?.script) {
+          const m = String(r.script).match(/VALOR:\s*([\d.,]+)/i);
+          if (m) v = parsePrecoNumero(m[1]);
+        }
         return v === preco && r.cor;
       }) : null;
       if (regra?.cor) cor = regra.cor;
     }
     if (!cor) {
-      const ex = Object.values(localDev.lotesInfo || {}).find((li: any) => parsePrecoNumero(li?.preco) === preco && (li.corPreco || li.cor || li.corBolinha));
+      const ex = Object.values(localDev.lotesInfo || {}).find((li: any) => {
+        const p = parsePrecoNumero(li?.preco ?? li?.valor ?? li?.valorLote ?? li?.precoLote);
+        return p === preco && (li.corPreco || li.cor || li.corBolinha);
+      });
       if ((ex as any)?.corPreco) cor = (ex as any).corPreco;
       else if ((ex as any)?.cor) cor = (ex as any).cor;
       else if ((ex as any)?.corBolinha) cor = (ex as any).corBolinha;
+    }
+    if (!cor) {
+      const pontoComCor = (((localDev as any)?.mapaPontos || []) as any[]).find((pt: any) => {
+        const p = parsePrecoNumero(pt?.preco ?? pt?.valor ?? pt?.valorLote);
+        return p === preco && (pt?.corPreco || pt?.cor || pt?.corBolinha);
+      });
+      if (pontoComCor) cor = pontoComCor.corPreco || pontoComCor.cor || pontoComCor.corBolinha;
     }
     return {
       preco,
@@ -2684,13 +2798,17 @@ const LotDashboard = ({
     };
     const newLotesInfo = { ...(localDev.lotesInfo || {}) } as any;
     Object.keys(newLotesInfo).forEach((k) => {
-      const p = parsePrecoNumero(newLotesInfo[k]?.preco);
+      const p = parsePrecoNumero(newLotesInfo[k]?.preco ?? newLotesInfo[k]?.valor ?? newLotesInfo[k]?.valorLote);
       if (p === precoAlvo) {
         newLotesInfo[k] = { ...newLotesInfo[k], corPreco: novaCor, cor: novaCor, corBolinha: novaCor };
       }
     });
     const updatedRegras = ((localDev as any)?.precosRegras || []).map((r: any) => {
-      const v = parsePrecoNumero(r.valor);
+      let v = parsePrecoNumero(r.valor ?? r.preco ?? r.valorLote);
+      if (!v && r?.script) {
+        const m = String(r.script).match(/VALOR:\s*([\d.,]+)/i);
+        if (m) v = parsePrecoNumero(m[1]);
+      }
       return v === precoAlvo ? { ...r, cor: novaCor } : r;
     });
     const updatedDev = {
@@ -2705,8 +2823,8 @@ const LotDashboard = ({
   };
 
   // Helper universal e flexível para buscar preço, parcelas e cor de um lote
-  // Resolve discrepâncias de zeros à esquerda (ex: 01 vs 1), prefixos (ex: Q1, QD 1, Quadra 1) e regras
-  const getPrecoInfoDoLote = (quadra: string, lote: string): {
+  // Resolve discrepâncias de zeros à esquerda (ex: 01 vs 1), prefixos (ex: Q1, QD 1, Quadra 1), sufixos e regras
+  const getPrecoInfoDoLote = (quadra: string, lote: string, pontoRef?: any): {
     preco: number;
     entrada: number;
     parcelas: number;
@@ -2714,37 +2832,72 @@ const LotDashboard = ({
     avista: boolean;
     cor: string | null;
   } | null => {
-    if (!quadra || !lote) return null;
-    const lotesInfo = (localDev.lotesInfo as any) || {};
+    if (!quadra && !lote && !pontoRef) return null;
 
-    const cleanQ = String(quadra).trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
+    // 0. Se o ponto de referência já tiver preço embutido
+    if (pontoRef) {
+      const prcP = parsePrecoNumero(pontoRef.preco ?? pontoRef.valor ?? pontoRef.valorLote);
+      if (prcP > 0) {
+        const entP = parsePrecoNumero(pontoRef.entrada ?? 0);
+        const parP = parseInt(String(pontoRef.parcelas || 0), 10) || 0;
+        const valParP = parsePrecoNumero(pontoRef.parcela ?? pontoRef.valorParcela) || (parP > 0 ? Math.round((prcP - entP) / parP) : 0);
+        let corP = pontoRef.corPreco || pontoRef.cor || pontoRef.corBolinha || coresPorPrecoSalvas[prcP];
+        if (!corP) {
+          const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prcP);
+          if (fx) corP = fx.color;
+        }
+        return {
+          preco: prcP,
+          entrada: entP,
+          parcelas: parP,
+          parcela: valParP,
+          avista: !!pontoRef.avista || parP === 0,
+          cor: corP || null,
+        };
+      }
+    }
+
+    const cleanQ = String(quadra ?? "").trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
     const matchNumQ = cleanQ.match(/\d+/);
     const numQ = matchNumQ ? parseInt(matchNumQ[0], 10) : null;
 
-    const cleanL = String(lote).trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
+    const cleanL = String(lote ?? "").trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
     const matchNumL = cleanL.match(/\d+/);
     const numL = matchNumL ? parseInt(matchNumL[0], 10) : null;
+    const suffixL = cleanL.replace(/^\d+/, '').trim(); // Letras como "D", "I", "R", "A"
 
     const matchQ = (targetQ: string): boolean => {
-      const cq = String(targetQ).trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
+      const cq = String(targetQ ?? "").trim().toUpperCase().replace(/^QUADRA\s*|^QD\s*|^Q\s*/i, '').trim();
       if (cq === cleanQ) return true;
       const mnq = cq.match(/\d+/);
       const nq = mnq ? parseInt(mnq[0], 10) : null;
       if (numQ !== null && nq !== null && numQ === nq) return true;
+      if (cq.includes(cleanQ) || cleanQ.includes(cq)) return true;
       return false;
     };
 
     const matchL = (targetL: string): boolean => {
-      const cl = String(targetL).trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
+      const cl = String(targetL ?? "").trim().toUpperCase().replace(/^LOTE\s*|^LT\s*|^L\s*/i, '').trim();
       if (cl === cleanL) return true;
       const mnl = cl.match(/\d+/);
       const nl = mnl ? parseInt(mnl[0], 10) : null;
-      if (numL !== null && nl !== null && numL === nl) return true;
+      if (numL !== null && nl !== null && numL === nl) {
+        const targetSuffix = cl.replace(/^\d+/, '').trim();
+        if (!suffixL || !targetSuffix || suffixL === targetSuffix) return true;
+      }
       return false;
     };
 
-    // 1. Busca direta pelas chaves comuns de lotesInfo
+    const lotesInfo = (localDev.lotesInfo as any) || {};
+
+    // 1. Busca direta pelas chaves comuns de lotesInfo (com e sem zeros, com e sem Q/L)
     const quadraReal = findQuadraName(localDev, quadra) || quadra;
+    const pad2 = (n: number | null) => (n !== null ? String(n).padStart(2, '0') : '');
+    const numQStr = numQ !== null ? String(numQ) : cleanQ;
+    const numLStr = numL !== null ? String(numL) : cleanL;
+    const numQPad = pad2(numQ);
+    const numLPad = pad2(numL);
+
     const directKeys = [
       getLotInfoKey(quadra, lote),
       getLotInfoKey(quadraReal, lote),
@@ -2752,16 +2905,28 @@ const LotDashboard = ({
       `${quadraReal}-${lote}`,
       `${cleanQ}-${cleanL}`,
       `${cleanQ}:${cleanL}`,
-      `Q${cleanQ}-L${cleanL}`,
       `${cleanQ}_${cleanL}`,
+      `Q${cleanQ}-L${cleanL}`,
+      `Q${cleanQ}:L${cleanL}`,
+      // Variações numéricas e zeros à esquerda
+      `${numQStr}-${numLStr}`,
+      `${numQPad}-${numLPad}`,
+      `${numQStr}-${numLPad}`,
+      `${numQPad}-${numLStr}`,
+      `Q${numQStr}-L${numLStr}`,
+      `Q${numQPad}-L${numLPad}`,
+      `Q${numQStr}:L${numLStr}`,
+      // Se lote tiver sufixo (ex: 1D), testar também sem sufixo e com sufixo
+      ...(suffixL ? [`${numQStr}-${numLStr}${suffixL}`, `Q${numQStr}-L${numLStr}${suffixL}`] : []),
     ];
+
     for (const k of directKeys) {
       const info = lotesInfo[k] || lotesInfo[k.toUpperCase()] || lotesInfo[k.toLowerCase()];
-      const prc = parsePrecoNumero(info?.preco);
+      const prc = parsePrecoNumero(info?.preco ?? info?.valor ?? info?.valorLote ?? info?.precoLote);
       if (prc > 0) {
         const ent = parsePrecoNumero(info?.entrada);
         const par = parseInt(String(info?.parcelas || 0), 10) || 0;
-        const valPar = parsePrecoNumero(info?.parcela || info?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+        const valPar = parsePrecoNumero(info?.parcela ?? info?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
         let cor = info?.corPreco || info?.cor || info?.corBolinha || coresPorPrecoSalvas[prc];
         if (!cor) {
           const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
@@ -2785,11 +2950,11 @@ const LotDashboard = ({
       const kLote = parts[parts.length - 1];
       const kQuadra = parts.slice(0, -1).join('-');
       if (matchQ(kQuadra) && matchL(kLote)) {
-        const prc = parsePrecoNumero((v as any)?.preco);
+        const prc = parsePrecoNumero((v as any)?.preco ?? (v as any)?.valor ?? (v as any)?.valorLote ?? (v as any)?.precoLote);
         if (prc > 0) {
           const ent = parsePrecoNumero((v as any)?.entrada);
           const par = parseInt(String((v as any)?.parcelas || 0), 10) || 0;
-          const valPar = parsePrecoNumero((v as any)?.parcela || (v as any)?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+          const valPar = parsePrecoNumero((v as any)?.parcela ?? (v as any)?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
           let cor = (v as any)?.corPreco || (v as any)?.cor || (v as any)?.corBolinha || coresPorPrecoSalvas[prc];
           if (!cor) {
             const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
@@ -2807,50 +2972,142 @@ const LotDashboard = ({
       }
     }
 
-    // 3. Fallback: buscar nas regras de precosRegras
+    // 3. Fallback: buscar nas regras de precosRegras com parser ultra-tolerante
     const regras = Array.isArray(regrasSalvas) ? regrasSalvas : [];
     for (const r of regras) {
-      if (!r?.script) continue;
-      const scriptNorm = String(r.script).replace(/Q(\w+)[:\s]+([\d.\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
-        (match: string) => match.trim().endsWith('.') ? match : match.trim() + '.'
-      );
-      const regex = /Q(\w+)[:\s]+([\d.\s]+?)\./gi;
-      let m;
-      while ((m = regex.exec(scriptNorm)) !== null) {
-        const qScript = m[1];
-        if (matchQ(qScript)) {
-          const lotesScript = m[2].split('.').map((x: string) => x.trim()).filter(Boolean);
-          const matchedLote = lotesScript.some((ls: string) => matchL(ls));
-          if (matchedLote) {
-            const prc = parsePrecoNumero(r.valor);
-            if (prc > 0) {
-              const ent = parsePrecoNumero(r.entrada);
-              const par = parseInt(String(r.parcelas || 0), 10) || 0;
-              const valPar = parsePrecoNumero(r.parcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
-              let cor = r.cor || coresPorPrecoSalvas[prc];
-              if (!cor) {
-                const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
-                if (fx) cor = fx.color;
-              }
-              return {
-                preco: prc,
-                entrada: ent,
-                parcelas: par,
-                parcela: valPar,
-                avista: !!r.avista || par === 0,
-                cor: cor || null,
-              };
-            }
-          }
+      let prc = parsePrecoNumero(r.valor ?? r.preco ?? r.valorLote);
+      if (!prc && r?.script) {
+        const mv = String(r.script).match(/VALOR:\s*([\d.,]+)/i);
+        if (mv) prc = parsePrecoNumero(mv[1]);
+      }
+      if (prc <= 0) continue;
+
+      const ent = parsePrecoNumero(r.entrada ?? (String(r.script || '').match(/ENTRADA:\s*([\d.,]+)/i)?.[1] || 0));
+      const par = parseInt(String(r.parcelas || (String(r.script || '').match(/PARCELAS:\s*(\d+)/i)?.[1] || 0)), 10) || 0;
+      const valPar = parsePrecoNumero(r.parcela ?? (String(r.script || '').match(/PARCELA:\s*([\d.,]+)/i)?.[1] || 0)) || (par > 0 ? Math.round((prc - ent) / par) : 0);
+      let cor = r.cor || coresPorPrecoSalvas[prc];
+      if (!cor) {
+        const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prc);
+        if (fx) cor = fx.color;
+      }
+
+      // Se a regra tiver campos diretos de quadra/lote
+      if (r.quadra && matchQ(r.quadra)) {
+        if (!r.lotes || matchL(r.lotes)) {
+          return { preco: prc, entrada: ent, parcelas: par, parcela: valPar, avista: !!r.avista || par === 0, cor: cor || null };
         }
       }
+
+      // Parse inteligente de script da regra (aceita: Q1: 1.2.3, Quadra 1: 1 a 20, vírgulas, sufixos D/I/R, etc.)
+      if (r.script) {
+        const scriptStr = String(r.script);
+        // Regex para capturar grupos de quadra no script: "Q1: ...", "Quadra 1: ...", "QD 01: ..."
+        const regexQuadras = /(?:QUADRA|QD|Q)\s*([A-Za-z0-9]+)\s*[:=\-]\s*([^;Q]+?)(?=(?:QUADRA|QD|Q)\s*[A-Za-z0-9]+\s*[:=\-]|VALOR|ENTRADA|PARCELAS|AVISTA|$)/gi;
+        let mQ;
+        let matchEncontrado = false;
+        while ((mQ = regexQuadras.exec(scriptStr)) !== null) {
+          const qTexto = mQ[1];
+          if (matchQ(qTexto)) {
+            const lotesTexto = mQ[2];
+            // Quebrar por ponto, vírgula, ponto-e-vírgula ou espaço
+            const tokens = lotesTexto.split(/[\s,;.]+/).map((t: string) => t.trim()).filter(Boolean);
+            for (const token of tokens) {
+              // Checar intervalo como "1a20", "1-20", "1ate20"
+              const rangeMatch = token.match(/^(\d+)(?:-|a|até|ate)(\d+)$/i);
+              if (rangeMatch) {
+                const rInicio = parseInt(rangeMatch[1], 10);
+                const rFim = parseInt(rangeMatch[2], 10);
+                if (numL !== null && numL >= Math.min(rInicio, rFim) && numL <= Math.max(rInicio, rFim)) {
+                  matchEncontrado = true;
+                  break;
+                }
+              } else if (matchL(token)) {
+                matchEncontrado = true;
+                break;
+              }
+            }
+          }
+          if (matchEncontrado) break;
+        }
+
+        if (matchEncontrado) {
+          return {
+            preco: prc,
+            entrada: ent,
+            parcelas: par,
+            parcela: valPar,
+            avista: !!r.avista || par === 0,
+            cor: cor || null,
+          };
+        }
+      }
+    }
+
+    // 4. Fallback: buscar em Vendas ativas do lote (sales)
+    const venda = vendaDoLote(quadra, lote, pontoRef?.vendaId);
+    if (venda && parsePrecoNumero(venda.valorLote) > 0) {
+      const prcV = parsePrecoNumero(venda.valorLote);
+      const entV = parsePrecoNumero(venda.valorEntrada || 0);
+      const parV = parseInt(String(venda.quantidadeParcelas || 0), 10) || 0;
+      const valParV = parsePrecoNumero(venda.valorParcela) || (parV > 0 ? Math.round((prcV - entV) / parV) : 0);
+      let corV = coresPorPrecoSalvas[prcV];
+      if (!corV) {
+        const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prcV);
+        if (fx) corV = fx.color;
+      }
+      return {
+        preco: prcV,
+        entrada: entV,
+        parcelas: parV,
+        parcela: valParV,
+        avista: parV === 0,
+        cor: corV || null,
+      };
+    }
+
+    // 5. Fallback: procurar no mapaPontos do localDev
+    const ptMapa = (((localDev as any)?.mapaPontos || []) as any[]).find((p: any) => matchQ(p.quadra) && matchL(p.lote));
+    if (ptMapa) {
+      const prcP = parsePrecoNumero(ptMapa.preco ?? ptMapa.valor ?? ptMapa.valorLote);
+      if (prcP > 0) {
+        let corP = ptMapa.corPreco || ptMapa.cor || ptMapa.corBolinha || coresPorPrecoSalvas[prcP];
+        if (!corP) {
+          const fx = faixasPrecoGlobal.find(f => Number(f.preco) === prcP);
+          if (fx) corP = fx.color;
+        }
+        return {
+          preco: prcP,
+          entrada: parsePrecoNumero(ptMapa.entrada ?? 0),
+          parcelas: parseInt(String(ptMapa.parcelas || 0), 10) || 0,
+          parcela: parsePrecoNumero(ptMapa.parcela ?? ptMapa.valorParcela) || 0,
+          avista: !!ptMapa.avista,
+          cor: corP || null,
+        };
+      }
+    }
+
+    // 6. Fallback: preço padrão geral do empreendimento se existir
+    if (precoPadraoDev > 0) {
+      let corPadrao = coresPorPrecoSalvas[precoPadraoDev];
+      if (!corPadrao) {
+        const fx = faixasPrecoGlobal.find(f => Number(f.preco) === precoPadraoDev);
+        if (fx) corPadrao = fx.color;
+      }
+      return {
+        preco: precoPadraoDev,
+        entrada: parsePrecoNumero((localDev as any)?.precosPadrao?.entrada ?? 0),
+        parcelas: parseInt(String((localDev as any)?.precosPadrao?.parcelas || 0), 10) || 0,
+        parcela: parsePrecoNumero((localDev as any)?.precosPadrao?.parcela ?? (localDev as any)?.precosPadrao?.valorParcela) || 0,
+        avista: false,
+        cor: corPadrao || null,
+      };
     }
 
     return null;
   };
 
-  const getCorPorPreco = (quadra: string, lote: string): string | null => {
-    const info = getPrecoInfoDoLote(quadra, lote);
+  const getCorPorPreco = (quadra: string, lote: string, pontoRef?: any): string | null => {
+    const info = getPrecoInfoDoLote(quadra, lote, pontoRef);
     if (!info || !info.preco) return null;
     if (info.cor) return info.cor;
     const fx = faixasPrecoGlobal.find(f => Number(f.preco) === Number(info.preco));
@@ -2865,8 +3122,8 @@ const LotDashboard = ({
     // A tabela de preços só aparece na aba Preços (mode === "precos")
     if (mode !== "precos" || !cardPrecoVisivel || faixasPrecoGlobal.length === 0) return null;
 
-    const sz = legendaSize;
-    const cardWidth = sz === 'P' ? 240 : sz === 'G' ? 330 : 280;
+    const pctScale = (legendaSizePercent || 100) / 100;
+    const cardWidth = Math.round(280 * pctScale);
 
     const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
       e.stopPropagation();
@@ -2988,26 +3245,35 @@ const LotDashboard = ({
             </div>
 
             <div className="flex items-center gap-1 flex-shrink-0" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-              {/* Seletor de tamanho P / M / G */}
-              <div className="flex bg-slate-100 p-0.5 rounded-lg border border-slate-200/80 mr-1">
-                {(['P', 'M', 'G'] as const).map(s => (
-                  <button
-                    key={s}
-                    type="button"
-                    onClick={() => {
-                      setLegendaSize(s);
-                      try { localStorage.setItem('legendaPrecoSize_' + localDev.id, s); } catch {}
-                    }}
-                    className={`w-5 h-5 rounded text-[9px] font-black flex items-center justify-center transition-all ${
-                      legendaSize === s
-                        ? 'bg-slate-900 text-white shadow-sm'
-                        : 'text-slate-500 hover:text-slate-800'
-                    }`}
-                    title={`Tamanho ${s === 'P' ? 'Pequeno' : s === 'M' ? 'Médio' : 'Grande'}`}
-                  >
-                    {s}
-                  </button>
-                ))}
+              {/* Seletor de tamanho por porcentagem (%) */}
+              <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200/80 mr-1" title="Ajustar tamanho da tabela de preços">
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.max(50, legendaSizePercent - 10);
+                    setLegendaSizePercent(next);
+                    try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
+                  }}
+                  className="w-4 h-4 rounded hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center text-[10px] active:scale-95 transition-all"
+                  title="Diminuir tabela (-10%)"
+                >
+                  −
+                </button>
+                <span className="font-black text-[9px] text-slate-700 min-w-[32px] text-center select-none">
+                  {legendaSizePercent}%
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = Math.min(200, legendaSizePercent + 10);
+                    setLegendaSizePercent(next);
+                    try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
+                  }}
+                  className="w-4 h-4 rounded hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center text-[10px] active:scale-95 transition-all"
+                  title="Aumentar tabela (+10%)"
+                >
+                  +
+                </button>
               </div>
 
               {/* Minimizar / Expandir */}
@@ -3055,8 +3321,8 @@ const LotDashboard = ({
                     >
                       <div
                         style={{
-                          width: sz === 'P' ? '15px' : sz === 'G' ? '19px' : '17px',
-                          height: sz === 'P' ? '15px' : sz === 'G' ? '19px' : '17px',
+                          width: `${Math.max(12, Math.round(16 * pctScale))}px`,
+                          height: `${Math.max(12, Math.round(16 * pctScale))}px`,
                           borderRadius: '50%',
                           background: faixa.color,
                           border: '2px solid #ffffff',
@@ -3076,7 +3342,7 @@ const LotDashboard = ({
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <span
                           className="font-black text-slate-900 tracking-tight leading-none"
-                          style={{ fontSize: sz === 'P' ? '13px' : sz === 'G' ? '16px' : '14px' }}
+                          style={{ fontSize: `${Math.max(11, Math.round(14 * pctScale))}px` }}
                         >
                           R$ {Number(faixa.preco).toLocaleString('pt-BR')}
                         </span>
@@ -3167,14 +3433,41 @@ const LotDashboard = ({
   // Não altera xPercent/yPercent, portanto não move nenhuma bolinha.
   const [markerSizePercent, setMarkerSizePercent] = useState<number>(() => {
     const saved = Number((dev as any).mapaMarkerSizePercent ?? 0);
-    // Migração: valores antigos (calibrados em 0.028) precisam ser convertidos
-    // Novo fator base é 0.0112 (40% do antigo), então dividir por 2.5
-    // Se não há valor salvo ou é 100 (padrão antigo), usar 100 como novo padrão
     if (!saved || saved === 0) return 100;
-    // Migração de escala antiga para nova (fator 0.0037 vs 0.028 original = 1/7.6)
     const converted = Math.round(saved / 7.6);
-    return Number.isFinite(converted) ? Math.max(50, Math.min(200, converted)) : 100;
+    return Number.isFinite(converted) ? Math.max(40, Math.min(220, converted)) : 100;
   });
+
+  // Espessura do contorno da bolinha (em px, padrão 3px)
+  const [markerBorderWidth, setMarkerBorderWidth] = useState<number>(() => {
+    const saved = Number((dev as any).mapaMarkerBorderWidth ?? 0);
+    return saved > 0 ? Math.max(1, Math.min(12, saved)) : 3;
+  });
+
+  // Manter proporção entre tamanho da bolinha e espessura do contorno
+  const [markerKeepRatio, setMarkerKeepRatio] = useState<boolean>(() => {
+    return (dev as any).mapaMarkerBorderKeepRatio !== false;
+  });
+
+  const [showTamanhoContornoModal, setShowTamanhoContornoModal] = useState<boolean>(false);
+
+  const atualizarConfigMarcadores = (size?: number, border?: number, keepRatio?: boolean) => {
+    const newSize = size !== undefined ? size : markerSizePercent;
+    const newBorder = border !== undefined ? border : markerBorderWidth;
+    const newKeepRatio = keepRatio !== undefined ? keepRatio : markerKeepRatio;
+    if (size !== undefined) setMarkerSizePercent(newSize);
+    if (border !== undefined) setMarkerBorderWidth(newBorder);
+    if (keepRatio !== undefined) setMarkerKeepRatio(newKeepRatio);
+    try {
+      const updated = {
+        ...localDev,
+        mapaMarkerSizePercent: newSize,
+        mapaMarkerBorderWidth: newBorder,
+        mapaMarkerBorderKeepRatio: newKeepRatio,
+      };
+      persistDev(updated as any);
+    } catch {}
+  };
 
   const [selectedPoint, setSelectedPoint] = useState<any | null>(null);
   const [selectedLotSale, setSelectedLotSale] = useState<Venda | null>(null);
@@ -4892,11 +5185,24 @@ const LotDashboard = ({
 
     const safeSz = Math.max(6, Math.min(80, Math.round(scaledSize * zoomCompensation)));
     const font = Math.max(5, Math.round(safeSz * 0.40));
-    const border = Math.max(1, Math.round(safeSz * 0.12));
+    
+    // Contorno: se manter proporção, escala proporcionalmente ao tamanho da bolinha
+    // se desmarcado, usa o tamanho do contorno escolhido pelo usuário
+    let border: number;
+    if (markerKeepRatio) {
+      border = Math.max(1, Math.round(safeSz * ((markerBorderWidth || 3) / 14)));
+    } else {
+      border = Math.max(1, Math.round((markerBorderWidth || 3) * (isMobile ? zoomCompensation : 1)));
+    }
     return { size: safeSz, font, border };
   };
 
-  const getBallBorderWidth = (size: number) => Math.max(1, Math.round(size * 0.12));
+  const getBallBorderWidth = (size: number) => {
+    if (markerKeepRatio) {
+      return Math.max(1, Math.round(size * ((markerBorderWidth || 3) / 14)));
+    }
+    return Math.max(1, markerBorderWidth || 3);
+  };
   const fullscreenMapWidth = `min(100vw, calc(100dvh * ${Math.max(0.5, Math.min(3, mapAspectRatio))}))`;
 
   // ──────────────────────────────────────────────
@@ -4928,194 +5234,216 @@ const LotDashboard = ({
     return `${empreendimento}_${totalDisp}-disponiveis_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
-  // Desenha o card de preços de 30% x 30% da página/imagem com alta legibilidade e cores
-  const desenharCardPrecosNoCanvas = (ctx: CanvasRenderingContext2D, imgW: number, imgH: number) => {
-    if (faixasPrecoGlobal.length === 0) return;
-
-    // Card com 30% da largura e 30% da altura da página/imagem conforme solicitado pelo usuário
-    const cardW = Math.round(imgW * 0.30);
-    const cardH = Math.round(imgH * 0.30);
-
-    const marginX = Math.round(imgW * 0.02);
-    const marginY = Math.round(imgH * 0.02);
-
-    let lx = imgW - cardW - marginX;
-    let ly = marginY;
-
-    if (cardExportPosicao === 'topo-esquerdo') {
-      lx = marginX;
-      ly = marginY;
-    } else if (cardExportPosicao === 'topo-direito') {
-      lx = imgW - cardW - marginX;
-      ly = marginY;
-    } else if (cardExportPosicao === 'rodape-esquerdo') {
-      lx = marginX;
-      ly = imgH - cardH - marginY;
-    } else if (cardExportPosicao === 'rodape-direito') {
-      lx = imgW - cardW - marginX;
-      ly = imgH - cardH - marginY;
-    } else if (cardExportPosicao === 'personalizado') {
-      const containerW = mapImageRef.current?.offsetWidth || mapContainerRef.current?.offsetWidth || imgW;
-      const containerH = mapImageRef.current?.offsetHeight || mapContainerRef.current?.offsetHeight || imgH;
-      lx = Math.max(marginX, Math.min(imgW - cardW - marginX, Math.round((legendaPos.x / containerW) * imgW)));
-      ly = Math.max(marginY, Math.min(imgH - cardH - marginY, Math.round((legendaPos.y / containerH) * imgH)));
-    }
-
-    const cornerRadius = Math.max(8, Math.round(Math.min(cardW, cardH) * 0.04));
-
-    ctx.save();
-
-    // Sombra do card para destaque e legibilidade sobre o mapa
-    ctx.shadowColor = 'rgba(0, 0, 0, 0.28)';
-    ctx.shadowBlur = Math.round(cardW * 0.025);
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = Math.round(cardH * 0.012);
+  // Cabeçalho institucional desenhado no topo do mapa exportado
+  const desenharCabecalhoNoCanvas = (
+    ctx: CanvasRenderingContext2D,
+    imgW: number,
+    headerH: number
+  ) => {
+    // Fundo branco do cabeçalho
     ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, imgW, headerH);
 
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
-    } else {
-      ctx.rect(lx, ly, cardW, cardH);
-    }
-    ctx.fill();
+    const now = new Date();
+    const dia = String(now.getDate()).padStart(2, '0');
+    const mes = String(now.getMonth() + 1).padStart(2, '0');
+    const ano = now.getFullYear();
+    const hora = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+    const dataHoraFormatada = `${dia}/${mes}/${ano}, ${hora}`;
 
-    // Reset shadow para elementos internos
-    ctx.shadowColor = 'transparent';
-    ctx.shadowBlur = 0;
-    ctx.shadowOffsetX = 0;
-    ctx.shadowOffsetY = 0;
-
-    // Borda nítida do card
-    ctx.strokeStyle = '#cbd5e1';
-    ctx.lineWidth = Math.max(2, Math.round(cardW * 0.005));
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
-    } else {
-      ctx.rect(lx, ly, cardW, cardH);
-    }
-    ctx.stroke();
-
-    // Clip interno para manter cantos arredondados
-    ctx.beginPath();
-    if (typeof (ctx as any).roundRect === 'function') {
-      (ctx as any).roundRect(lx, ly, cardW, cardH, cornerRadius);
-    } else {
-      ctx.rect(lx, ly, cardW, cardH);
-    }
-    ctx.clip();
-
-    // Cabeçalho do Card
-    const padX = Math.round(cardW * 0.05);
-    const padY = Math.round(cardH * 0.04);
-    const headerH = Math.round(cardH * 0.23);
-
-    // Fundo do cabeçalho
-    ctx.fillStyle = '#f8fafc';
-    ctx.fillRect(lx, ly, cardW, headerH);
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(lx, ly + headerH);
-    ctx.lineTo(lx + cardW, ly + headerH);
-    ctx.stroke();
-
-    // Título do cabeçalho
-    const titleFontSize = Math.max(12, Math.round(cardH * 0.075));
+    // Título (Nome do Empreendimento)
+    const titleFontSize = Math.max(16, Math.round(headerH * 0.30));
     ctx.fillStyle = '#0f172a';
     ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText('TABELA DE PREÇOS', lx + padX, ly + padY);
+    ctx.fillText(localDev.nome || 'Mapa do Empreendimento', imgW / 2, Math.round(headerH * 0.12));
 
-    // Subtítulo do cabeçalho: bolinhas borda preta = disponível, borda branca = vendido
-    const subFontSize = Math.max(9, Math.round(cardH * 0.048));
+    // Subtítulo
+    const subFontSize = Math.max(10, Math.round(headerH * 0.15));
     ctx.fillStyle = '#475569';
-    ctx.font = `700 ${subFontSize}px system-ui, -apple-system, sans-serif`;
-    ctx.fillText('● Borda Preta: Disponíveis  |  ○ Borda Branca: Vendidos', lx + padX, ly + padY + titleFontSize + Math.round(cardH * 0.015));
+    ctx.font = `600 ${subFontSize}px system-ui, -apple-system, sans-serif`;
+    ctx.fillText(`Mapa de Lotes - Gerado em ${dataHoraFormatada}`, imgW / 2, Math.round(headerH * 0.12) + titleFontSize + Math.round(headerH * 0.05));
 
-    // Corpo do Card: lista com as cores e preços legíveis
-    const contentY = ly + headerH + padY * 0.7;
-    const availableH = cardH - headerH - padY * 1.5;
-    const numFaixas = faixasPrecoGlobal.length;
+    // Legenda de status
+    const legendY = Math.round(headerH * 0.12) + titleFontSize + subFontSize + Math.round(headerH * 0.10);
+    const dotR = Math.max(4, Math.round(headerH * 0.06));
+    const legFontSize = Math.max(9, Math.round(headerH * 0.13));
+    ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
 
-    // Se houver mais de 4 faixas, divide em 2 colunas para manter tudo espaçoso e legível
-    const useTwoCols = numFaixas > 4;
-    const numRows = useTwoCols ? Math.ceil(numFaixas / 2) : numFaixas;
-    const rowH = Math.min(Math.round(availableH / Math.max(1, numRows)), Math.round(cardH * 0.16));
-    const colW = useTwoCols ? Math.round((cardW - padX * 2.4) / 2) : (cardW - padX * 2);
+    const items = [
+      { label: 'Disponível', color: '#2563eb' },
+      { label: 'Vendido', color: '#dc2626' },
+    ];
+    const hasReservados = mapaPontos.some(p => p.status === 'reservado');
+    if (hasReservados) {
+      items.splice(1, 0, { label: 'Reservado', color: '#d97706' });
+    }
 
-    faixasPrecoGlobal.forEach((faixa: any, idx: number) => {
-      const colIdx = useTwoCols ? Math.floor(idx / numRows) : 0;
-      const rowIdx = useTwoCols ? (idx % numRows) : idx;
+    let totalW = 0;
+    const itemWidths: number[] = [];
+    items.forEach(it => {
+      const w = dotR * 2 + Math.round(headerH * 0.05) + ctx.measureText(it.label).width;
+      itemWidths.push(w);
+      totalW += w;
+    });
+    const itemGap = Math.round(headerH * 0.22);
+    totalW += itemGap * (items.length - 1);
 
-      const itemX = lx + padX + (colIdx * (colW + Math.round(padX * 0.4)));
-      const itemY = contentY + (rowIdx * rowH);
-
-      // Círculo colorido do preço
-      const dotR = Math.max(5, Math.min(18, Math.round(rowH * 0.22)));
-      const dotCenterX = itemX + dotR + 2;
-      const dotCenterY = itemY + Math.round(rowH * 0.45);
-
+    let curX = (imgW - totalW) / 2;
+    items.forEach((it, i) => {
       ctx.beginPath();
-      ctx.arc(dotCenterX, dotCenterY, dotR, 0, Math.PI * 2);
-      ctx.fillStyle = faixa.color;
+      ctx.arc(curX + dotR, legendY + dotR, dotR, 0, Math.PI * 2);
+      ctx.fillStyle = it.color;
       ctx.fill();
 
-      ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = Math.max(2, Math.round(dotR * 0.35));
-      ctx.stroke();
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#334155';
+      ctx.fillText(it.label, curX + dotR * 2 + Math.round(headerH * 0.05), legendY);
 
-      ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.arc(dotCenterX, dotCenterY, dotR + Math.max(1, Math.round(dotR * 0.15)), 0, Math.PI * 2);
-      ctx.stroke();
+      curX += itemWidths[i] + itemGap;
+    });
 
-      // Textos legíveis do preço
-      const textStartX = dotCenterX + dotR + Math.round(cardW * 0.025);
-      const maxTextW = colW - (textStartX - itemX);
+    ctx.textAlign = 'left';
+  };
 
-      // Linha 1: Valor monetário em destaque
-      const precoFont = Math.max(11, Math.min(26, Math.round(rowH * 0.35)));
-      ctx.fillStyle = '#0f172a';
-      ctx.font = `900 ${precoFont}px system-ui, -apple-system, sans-serif`;
-      ctx.textBaseline = 'top';
-      const precoFormatado = 'R$ ' + Number(faixa.preco).toLocaleString('pt-BR');
-      ctx.fillText(precoFormatado, textStartX, itemY + Math.round(rowH * 0.08));
+  // Desenha os cards de preços no rodapé, um ao lado do outro, com layout idêntico à imagem de referência
+  const desenharRodapePrecosHorizontalNoCanvas = (
+    ctx: CanvasRenderingContext2D,
+    imgW: number,
+    footerY: number,
+    footerH: number
+  ) => {
+    if (faixasPrecoGlobal.length === 0) return;
 
-      // Linha 2: Condições de pagamento e lotes
-      const lotsFaixa = mapaPontos.filter((p: any) => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
-      const infoFx = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+    const numFaixas = faixasPrecoGlobal.length;
+    const padX = Math.round(imgW * 0.02);
+    const gap = Math.round(imgW * 0.015);
+
+    // Fundo branco do rodapé
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, footerY, imgW, footerH);
+
+    // Linha divisória sutil acima do rodapé
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = Math.max(1, Math.round(imgW * 0.001));
+    ctx.beginPath();
+    ctx.moveTo(0, footerY);
+    ctx.lineTo(imgW, footerY);
+    ctx.stroke();
+
+    const numCols = Math.min(numFaixas, numFaixas <= 5 ? numFaixas : Math.ceil(numFaixas / 2));
+    const numRows = Math.ceil(numFaixas / numCols);
+
+    const cardW = Math.round((imgW - (padX * 2) - ((numCols - 1) * gap)) / numCols);
+    const availableH = footerH - Math.round(footerH * 0.08 * 2);
+    const cardH = Math.min(Math.round(availableH / numRows), Math.round(cardW * 0.65));
+
+    faixasPrecoGlobal.forEach((faixa: any, idx: number) => {
+      const col = idx % numCols;
+      const row = Math.floor(idx / numCols);
+
+      const cardX = padX + col * (cardW + gap);
+      const cardY = footerY + Math.round(footerH * 0.08) + row * (cardH + Math.round(gap * 0.8));
+
+      // Obter detalhes de financiamento ou à vista da faixa
+      const lotsFaixa = mapaPontos.filter((p: any) => {
+        const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+        return info?.preco === faixa.preco;
+      });
+      const infoFx = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
       const entrada = infoFx?.entrada || 0;
       const parcelas = infoFx?.parcelas || 0;
       const avista = infoFx?.avista || parcelas === 0;
-      const vlP = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+      const vlParcela = infoFx?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
 
-      const detailFont = Math.max(8, Math.min(16, Math.round(rowH * 0.24)));
-      ctx.font = `700 ${detailFont}px system-ui, -apple-system, sans-serif`;
+      const totalParceladoCalc = parcelas > 0 ? (entrada + (parcelas * vlParcela)) : faixa.preco;
+      const valorParcelado = totalParceladoCalc > faixa.preco ? totalParceladoCalc : faixa.preco;
+      const valorAvista = infoFx?.precoAvista || (totalParceladoCalc > faixa.preco ? faixa.preco : (avista ? faixa.preco : Math.round(faixa.preco * 0.85)));
 
-      let detalheTexto = '';
-      if (avista) {
-        detalheTexto = 'À Vista';
+      ctx.save();
+
+      // Fundo do card
+      ctx.fillStyle = '#ffffff';
+      const cornerRadius = Math.max(4, Math.round(cardW * 0.015));
+      ctx.beginPath();
+      if (typeof (ctx as any).roundRect === 'function') {
+        (ctx as any).roundRect(cardX, cardY, cardW, cardH, cornerRadius);
       } else {
-        const entrTxt = entrada > 0 ? `Entr R$ ${Number(entrada).toLocaleString('pt-BR')} • ` : '';
-        detalheTexto = `${entrTxt}${parcelas}x R$ ${Number(vlP).toLocaleString('pt-BR')}`;
+        ctx.rect(cardX, cardY, cardW, cardH);
       }
-      if (lotsFaixa.length > 0) {
-        detalheTexto += ` (${lotsFaixa.length} lote${lotsFaixa.length !== 1 ? 's' : ''})`;
+      ctx.fill();
+
+      // Contorno do card na cor da faixa
+      ctx.strokeStyle = faixa.color;
+      ctx.lineWidth = Math.max(3, Math.round(cardW * 0.014));
+      ctx.stroke();
+
+      const cPadX = Math.round(cardW * 0.06);
+      const cPadY = Math.round(cardH * 0.09);
+
+      // Linha 1: Preço em destaque (Parcelado ou À Vista)
+      const precoFontSize = Math.max(13, Math.round(cardH * 0.15));
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `900 ${precoFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.textBaseline = 'top';
+
+      const textoPrecoPrincipal = 'R$ ' + Number(avista ? valorAvista : valorParcelado).toLocaleString('pt-BR');
+      ctx.fillText(textoPrecoPrincipal, cardX + cPadX, cardY + cPadY);
+
+      // Indicador "Parcelado" ou "À Vista" no topo direito
+      const tagFontSize = Math.max(9, Math.round(cardH * 0.075));
+      ctx.font = `700 ${tagFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = '#64748b';
+      ctx.textAlign = 'right';
+      ctx.fillText(avista ? 'À Vista' : 'Parcelado', cardX + cardW - cPadX, cardY + cPadY + Math.round(precoFontSize * 0.25));
+      ctx.textAlign = 'left';
+
+      // Linha 2: Linha divisória horizontal colorida
+      const divLineY = cardY + cPadY + precoFontSize + Math.round(cardH * 0.06);
+      ctx.strokeStyle = faixa.color;
+      ctx.lineWidth = Math.max(1.5, Math.round(cardW * 0.006));
+      ctx.beginPath();
+      ctx.moveTo(cardX + cPadX, divLineY);
+      ctx.lineTo(cardX + cardW - cPadX, divLineY);
+      ctx.stroke();
+
+      // Linhas 3 e 4: Entrada e Parcelas
+      const textStartY = divLineY + Math.round(cardH * 0.07);
+      const detailFontSize = Math.max(10, Math.round(cardH * 0.082));
+      ctx.font = `600 ${detailFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = '#1e293b';
+
+      if (avista || parcelas === 0) {
+        ctx.fillText('Pagamento único à vista', cardX + cPadX, textStartY);
+        ctx.fillStyle = '#64748b';
+        ctx.fillText('Sem parcelamento', cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
+      } else {
+        const txtEntrada = entrada > 0 ? `Entrada R$ ${Number(entrada).toLocaleString('pt-BR')}` : 'Sem entrada';
+        ctx.fillText(txtEntrada, cardX + cPadX, textStartY);
+
+        const txtParcela = `${parcelas} x R$ ${Number(vlParcela).toLocaleString('pt-BR')}`;
+        ctx.fillText(txtParcela, cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
       }
 
-      ctx.fillStyle = avista ? '#16a34a' : '#475569';
-      ctx.fillText(detalheTexto, textStartX, itemY + Math.round(rowH * 0.08) + precoFont + Math.round(rowH * 0.05), maxTextW);
+      // Linha 5: Valor à vista destacado em negrito na cor da faixa
+      const avistaFontSize = Math.max(12, Math.round(cardH * 0.115));
+      ctx.font = `900 ${avistaFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.fillStyle = faixa.color;
+      const txtAvistaFinal = `R$ ${Number(valorAvista).toLocaleString('pt-BR')} à vista`;
+      ctx.fillText(txtAvistaFinal, cardX + cPadX, cardY + cardH - cPadY - avistaFontSize);
+
+      ctx.restore();
     });
-
-    ctx.restore();
   };
 
   const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
     return new Promise(async (resolve, reject) => {
-      // PDF: re-renderizar o vetor original em escala máxima (melhor qualidade possível)
+      let mapCanvas: HTMLCanvasElement;
+      let imgW: number;
+      let imgH: number;
+
+      // 1. Renderizar base do mapa em alta resolução
       const originalPdf = (localDev as any).mapaPdfOriginalBase64;
       if (originalPdf) {
         try {
@@ -5123,132 +5451,148 @@ const LotDashboard = ({
           const buffer = dataUrlToArrayBuffer(originalPdf);
           const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
           const page = await pdfDoc.getPage(1);
-          // Escala 4x para exportação — qualidade máxima
           const exportScale = 4;
           const viewport = page.getViewport({ scale: exportScale });
-          const canvas = document.createElement("canvas");
-          canvas.width = Math.floor(viewport.width);
-          canvas.height = Math.floor(viewport.height);
-          const ctx = canvas.getContext("2d")!;
-          ctx.imageSmoothingEnabled = true;
-          ctx.imageSmoothingQuality = "high";
-          await page.render({ canvasContext: ctx, viewport }).promise;
-          // Desenhar bolinhas sobre o PDF em alta resolução
-          const imgW = canvas.width;
-          const imgH = canvas.height;
-          // Usar mesma lógica do getBallPixelSize — referência = largura base do PDF (antes do scale 4x)
-          const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
-          const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-          // Mesmo cálculo da tela: BASE_SIZE_A4=10 (diâmetro), radius = metade escalada
-          const BASE_SIZE_A4_PDF = 10;
-          const radius = Math.max(3, Math.round((BASE_SIZE_A4_PDF / 2) * (imgW / refWidth) * pct));
-          const borderWidth = Math.max(2, Math.round(radius * 0.22));
-          mapaPontos.forEach((ponto) => {
-            const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-            const indisponivel = ponto.status === "indisponivel" || !!venda;
-            const reservado = !indisponivel && ponto.status === "reservado";
-            const x = (Number(ponto.xPercent) / 100) * imgW;
-            const y = (Number(ponto.yPercent) / 100) * imgH;
-            ctx.beginPath(); ctx.arc(x, y, radius, 0, Math.PI * 2);
-            const corPreco = usePrecoColors ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
-            ctx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
-            ctx.fill();
-            ctx.lineWidth = borderWidth;
-            if (usePrecoColors) {
-              // Vendidos: contorno branco | Disponíveis: contorno preto
-              ctx.strokeStyle = indisponivel ? "#ffffff" : "#000000";
-            } else {
-              ctx.strokeStyle = "#ffffff";
-            }
-            ctx.stroke();
-          });
-          // Desenhar card de preços com 30% x 30% da página no export PDF
-          if (usePrecoColors && faixasPrecoGlobal.length > 0) {
-            desenharCardPrecosNoCanvas(ctx, imgW, imgH);
-          }
-          resolve(canvas);
-          return;
+          mapCanvas = document.createElement("canvas");
+          mapCanvas.width = Math.floor(viewport.width);
+          mapCanvas.height = Math.floor(viewport.height);
+          const pctx = mapCanvas.getContext("2d")!;
+          pctx.imageSmoothingEnabled = true;
+          pctx.imageSmoothingQuality = "high";
+          await page.render({ canvasContext: pctx, viewport }).promise;
+          imgW = mapCanvas.width;
+          imgH = mapCanvas.height;
         } catch (err) {
           reject(new Error("Erro ao renderizar PDF: " + String((err as any)?.message || err)));
           return;
         }
-      }
-
-      // Imagem (JPG/PNG): usar original em máxima qualidade
-      const imgSrc = mapaImagemOriginal || mapaImagem;
-      if (!imgSrc) {
-        reject(new Error("Nenhum mapa carregado para baixar."));
-        return;
-      }
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => {
-        const imgW = img.naturalWidth || img.width;
-        const imgH = img.naturalHeight || img.height;
-
-        const canvas = document.createElement("canvas");
-        canvas.width = imgW;
-        canvas.height = imgH;
-        const ctx = canvas.getContext("2d")!;
-        ctx.imageSmoothingEnabled = true;
-        ctx.imageSmoothingQuality = "high";
-        ctx.drawImage(img, 0, 0, imgW, imgH);
-
-        // Raio das bolinhas — mesma lógica do getBallPixelSize
-        // BASE_SIZE_A4 = 10 (diâmetro em px quando mapa está na largura de referência)
-        // radius = (BASE_SIZE_A4/2) * (imgW/refWidth) * pct
-        const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
-        const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-        const BASE_SIZE_A4_IMG = 10; // diâmetro padrão = mesmo da tela
-        const radius = Math.max(3, Math.round((BASE_SIZE_A4_IMG / 2) * (imgW / refWidth) * pct));
-        const borderWidth = Math.max(2, Math.round(radius * 0.22));
-
-        mapaPontos.forEach((ponto) => {
-          const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-          const indisponivel = ponto.status === "indisponivel" || !!venda;
-          const reservado = !indisponivel && ponto.status === "reservado";
-          // Posição: xPercent/yPercent são % da imagem original
-          const x = (Number(ponto.xPercent) / 100) * imgW;
-          const y = (Number(ponto.yPercent) / 100) * imgH;
-          ctx.beginPath();
-          ctx.arc(x, y, radius, 0, Math.PI * 2);
-          const corPrecoImg = usePrecoColors ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
-          ctx.fillStyle = corPrecoImg || (indisponivel ? "#ef4444" : reservado ? "#facc15" : "#3b82f6");
-          ctx.fill();
-          ctx.lineWidth = borderWidth;
-          if (usePrecoColors) {
-            // Vendidos: contorno branco | Disponíveis: contorno preto
-            ctx.strokeStyle = indisponivel ? "#ffffff" : "#000000";
-          } else {
-            ctx.strokeStyle = "#ffffff";
-          }
-          ctx.stroke();
-        });
-        // Desenhar card de preços com 30% x 30% da página no export
-        if (usePrecoColors && faixasPrecoGlobal.length > 0) {
-          desenharCardPrecosNoCanvas(ctx, imgW, imgH);
-        }
-
-        resolve(canvas);
-      };
-      img.onerror = () => reject(new Error("Não foi possível baixar o mapa. Recarregue a imagem e tente novamente."));
-      // crossOrigin deve ser definido ANTES de src para evitar canvas "tainted"
-      img.crossOrigin = 'anonymous';
-      const imgSrcFinal = mapaImagemOriginal || mapaImagem;
-      // Se for URL externa (Supabase), forçar carregamento via fetch para contornar CORS
-      if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
-        fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
-          img.src = URL.createObjectURL(blob);
-        }).catch(() => { img.src = imgSrcFinal; });
       } else {
-        img.src = imgSrcFinal;
+        const imgSrc = mapaImagemOriginal || mapaImagem;
+        if (!imgSrc) {
+          reject(new Error("Nenhum mapa carregado para baixar."));
+          return;
+        }
+        try {
+          mapCanvas = await new Promise<HTMLCanvasElement>((resImg, rejImg) => {
+            const img = new Image();
+            img.crossOrigin = 'anonymous';
+            img.onload = () => {
+              const c = document.createElement("canvas");
+              c.width = img.naturalWidth || img.width;
+              c.height = img.naturalHeight || img.height;
+              const ictx = c.getContext("2d")!;
+              ictx.imageSmoothingEnabled = true;
+              ictx.imageSmoothingQuality = "high";
+              ictx.drawImage(img, 0, 0, c.width, c.height);
+              resImg(c);
+            };
+            img.onerror = () => rejImg(new Error("Erro ao carregar imagem do mapa."));
+            const imgSrcFinal = mapaImagemOriginal || mapaImagem;
+            if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
+              fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
+                img.src = URL.createObjectURL(blob);
+              }).catch(() => { img.src = imgSrcFinal; });
+            } else {
+              img.src = imgSrcFinal;
+            }
+          });
+          imgW = mapCanvas.width;
+          imgH = mapCanvas.height;
+        } catch (err) {
+          reject(err);
+          return;
+        }
       }
+
+      // 2. Desenhar as bolinhas sobre o mapa
+      const mapCtx = mapCanvas.getContext("2d")!;
+      const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
+      const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+      const BASE_SIZE_A4 = 10;
+      const radius = Math.max(3, Math.round((BASE_SIZE_A4 / 2) * (imgW / refWidth) * pct));
+
+      let borderWidth: number;
+      if (markerKeepRatio) {
+        borderWidth = Math.max(1, Math.round((radius * 2) * ((markerBorderWidth || 3) / 14)));
+      } else {
+        const scaleFator = imgW / refWidth;
+        borderWidth = Math.max(1, Math.round((markerBorderWidth || 3) * scaleFator));
+      }
+
+      mapaPontos.forEach((ponto) => {
+        const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+        const indisponivel = ponto.status === "indisponivel" || !!venda;
+        const reservado = !indisponivel && ponto.status === "reservado";
+        const x = (Number(ponto.xPercent) / 100) * imgW;
+        const y = (Number(ponto.yPercent) / 100) * imgH;
+
+        mapCtx.save();
+        mapCtx.beginPath();
+        mapCtx.arc(x, y, radius, 0, Math.PI * 2);
+
+        if (usePrecoColors) {
+          // Aba Preços: preenchimento pela cor do preço, sem sombra/efeito.
+          // Contorno com cor do status: azul disponível, vermelho vendido, amarelo reservado.
+          const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
+          mapCtx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6");
+          mapCtx.shadowColor = 'transparent';
+          mapCtx.shadowBlur = 0;
+          mapCtx.fill();
+
+          mapCtx.lineWidth = borderWidth;
+          mapCtx.strokeStyle = indisponivel ? "#dc2626" : reservado ? "#d97706" : "#2563eb";
+          mapCtx.stroke();
+        } else {
+          // Aba Mapa: padrão clássico (azul disponível, vermelho vendido, amarelo reservado) com borda branca e sombra
+          mapCtx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6";
+          mapCtx.shadowColor = 'rgba(0,0,0,0.3)';
+          mapCtx.shadowBlur = Math.round(radius * 0.25);
+          mapCtx.fill();
+
+          mapCtx.shadowColor = 'transparent';
+          mapCtx.shadowBlur = 0;
+          mapCtx.lineWidth = Math.max(1.5, Math.round(borderWidth * 0.75));
+          mapCtx.strokeStyle = "#ffffff";
+          mapCtx.stroke();
+        }
+        mapCtx.restore();
+      });
+
+      // 3. Montar Canvas final com Cabeçalho e Rodapé de Preços
+      const headerH = Math.round(imgW * 0.085);
+      const hasFooter = usePrecoColors && faixasPrecoGlobal.length > 0;
+      const footerH = hasFooter ? Math.round(imgW * (faixasPrecoGlobal.length > 5 ? 0.30 : 0.18)) : 0;
+
+      const finalCanvas = document.createElement("canvas");
+      finalCanvas.width = imgW;
+      finalCanvas.height = headerH + imgH + footerH;
+      const finalCtx = finalCanvas.getContext("2d")!;
+      finalCtx.imageSmoothingEnabled = true;
+      finalCtx.imageSmoothingQuality = "high";
+
+      // Fundo branco geral
+      finalCtx.fillStyle = '#ffffff';
+      finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+      // Desenhar cabeçalho no topo
+      desenharCabecalhoNoCanvas(finalCtx, imgW, headerH);
+
+      // Desenhar mapa no centro
+      finalCtx.drawImage(mapCanvas, 0, headerH);
+
+      // Desenhar rodapé com os cards de preço lado a lado (igual à imagem anexada)
+      if (hasFooter) {
+        desenharRodapePrecosHorizontalNoCanvas(finalCtx, imgW, headerH + imgH, footerH);
+      }
+
+      resolve(finalCanvas);
     });
   };
 
   const baixarMapaInterativoImagem = async () => {
     try {
-      const canvas = await gerarCanvasMapaInterativo();
+      const isPrecoTab = mode === "precos";
+      const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
       const link = document.createElement("a");
       link.download = getNomeArquivoMapaExportado("png");
       link.href = canvas.toDataURL("image/png", 1.0);
@@ -5260,7 +5604,8 @@ const LotDashboard = ({
 
   const baixarMapaInterativoPdf = async () => {
     try {
-      const canvas = await gerarCanvasMapaInterativo();
+      const isPrecoTab = mode === "precos";
+      const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
       const { jsPDF } = await import("jspdf");
       const landscape = canvas.width >= canvas.height;
       // Formato baseado na proporção real do mapa — não forçar A4
@@ -5594,19 +5939,18 @@ const LotDashboard = ({
     const grupoId = gruposMap[ponto.id];
 
     // DETERMINAR QUAIS MARCADORES SERÃO ARRASTADOS:
-    // Se a bolinha clicada faz parte da seleção da quadra ou em massa, move todas juntas!
+    // Regra: por padrão, mover ESTRITAMENTE e APENAS a bolinha clicada!
+    // Isso evita o problema onde arrastar uma bolinha deslocava outra sem ela estar selecionada.
+    // Múltiplas bolinhas só se movem juntas se:
+    // 1. O usuário estiver no modo explícito de ação em massa (mapAction === "massa") com seleção ativa contendo esta bolinha; OU
+    // 2. O usuário estiver segurando Shift ao arrastar tendo uma seleção ativa contendo esta bolinha.
     let idsParaMover: Set<string>;
-    if (massaSelIds.has(ponto.id) && massaSelIds.size > 1) {
+    if (mapAction === "massa" && massaSelIds.has(ponto.id) && massaSelIds.size > 1) {
       idsParaMover = new Set(massaSelIds);
-    } else if (ctrlSelectedIds.has(ponto.id) && ctrlSelectedIds.size > 1) {
+    } else if (e.shiftKey && ctrlSelectedIds.has(ponto.id) && ctrlSelectedIds.size > 1) {
       idsParaMover = new Set(ctrlSelectedIds);
-    } else if (grupoId) {
-      // Grupo explícito (Ctrl+G)
-      idsParaMover = new Set(Object.entries(gruposMap).filter(([, g]) => g === grupoId).map(([id]) => id));
-    } else if (ponto.linhaSeqId) {
-      // Fileira — arrastar qualquer bolinha move todas da sequência
-      idsParaMover = new Set(currentPontos.filter((p: any) => p.linhaSeqId === ponto.linhaSeqId).map((p: any) => p.id));
     } else {
+      // Mover SOMENTE a bolinha clicada (garante que nenhuma outra seja deslocada)
       idsParaMover = new Set([ponto.id]);
     }
 
@@ -5689,38 +6033,6 @@ const LotDashboard = ({
 
   const commitDrag = () => {
     if (!draggingId) return;
-    const isMulti = (dragStart as any)?.isMultiMove;
-    // Se for movimentação em bloco (múltiplas bolinhas / quadra inteira), NÃO distorce as extremidades
-    if (!isMulti) {
-      const currentPontos = (localDev as any).mapaPontos ?? [];
-      const pontoDragado = currentPontos.find((p: any) => p.id === draggingId);
-      if (pontoDragado?.linhaSeqId) {
-        const fileira = currentPontos
-          .filter((p: any) => p.linhaSeqId === pontoDragado.linhaSeqId)
-          .sort((a: any, b: any) => a.lote?.localeCompare(b.lote, undefined, {numeric: true}) ?? 0);
-        const isFirst = fileira.length > 2 && fileira[0].id === draggingId;
-        const isLast = fileira.length > 2 && fileira[fileira.length - 1].id === draggingId;
-        if (isFirst || isLast) {
-          // Redistribuir: interpolar entre primeiro e último
-          const primeiro = fileira[0];
-          const ultimo = fileira[fileira.length - 1];
-          const novos = fileira.map((p: any, i: number) => {
-            const t = i / (fileira.length - 1);
-            return {
-              ...p,
-              xPercent: primeiro.xPercent + (ultimo.xPercent - primeiro.xPercent) * t,
-              yPercent: primeiro.yPercent + (ultimo.yPercent - primeiro.yPercent) * t
-            };
-          });
-          const sem = currentPontos.filter((p: any) => p.linhaSeqId !== pontoDragado.linhaSeqId);
-          const nextDev = recalcularEstatisticasEmpreendimento({ ...localDev, mapaPontos: [...sem, ...novos] } as any, sales);
-          persistDev(nextDev);
-          setDraggingId(null);
-          setDragStart(null);
-          return;
-        }
-      }
-    }
     persistDev(localDev);
     setDraggingId(null);
     setDragStart(null);
@@ -6755,12 +7067,32 @@ const LotDashboard = ({
               {/* BOLINHAS */}
               {mapaPontos.map((ponto) => {
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const statusClassBase = getMapaStatusColorClass(ponto.status, !!venda);
-                // colorMode: status = cores padrão, preco = cor da faixa de preço
-                const precoColor = colorMode === "preco" ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
-                const isVendidoPreco = ponto.status === "indisponivel" || !!venda;
-                const precoBorderColor = isVendidoPreco ? "#ffffff" : "#000000";
-                const statusClass = precoColor ? "" : statusClassBase;
+                const isVendido = ponto.status === "indisponivel" || !!venda;
+                const isReservado = !isVendido && ponto.status === "reservado";
+                const isAbaPrecos = mode === "precos";
+                // Cor do lote e estilo condicional:
+                let ballBgColor: string;
+                let ballBorderColor: string;
+                let ballBoxShadow: string;
+                let borderWidthCalc: number;
+
+                if (isAbaPrecos) {
+                  // Regra da Aba Preços:
+                  // Preenchimento plano na cor do preço, contorno com a cor do status (azul disponível, vermelho vendido, amarelo reservado)
+                  // SEM SOMBRA, preenchimento sem efeito
+                  const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
+                  ballBgColor = corPreco || (isVendido ? "#ef4444" : isReservado ? "#f59e0b" : "#3b82f6");
+                  ballBorderColor = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
+                  borderWidthCalc = ballSize.border;
+                  ballBoxShadow = "none";
+                } else {
+                  // Regra da Aba Mapa:
+                  // Bolinhas azul disponível, vermelho vendido, amarelo reservado com contorno clássico e sombra suave
+                  ballBgColor = isVendido ? "#ef4444" : isReservado ? "#f59e0b" : "#3b82f6";
+                  ballBorderColor = "#ffffff";
+                  borderWidthCalc = Math.max(1.5, Math.round(ballSize.border * 0.75));
+                  ballBoxShadow = "0 1.5px 4px rgba(0,0,0,0.25)";
+                }
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
                 const isMobileSel = mobileSelIds.has(ponto.id);
@@ -6851,8 +7183,26 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 border-white shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 border-white shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 border-white shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 border-white shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 border-white shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 border-white shadow-xl" : precoColor ? "shadow-lg" : "border-white shadow-lg"} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
-                    style={{ left: `${ponto.xPercent}%`, top: `${ponto.yPercent}%`, width: `${ballSize.size}px`, height: `${ballSize.size}px`, fontSize: `${ballSize.font}px`, lineHeight: 1, borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`, transform: "translate(-50%,-50%)", pointerEvents: "auto", display: "flex", alignItems: "center", justifyContent: "center", ...(precoColor ? {background: precoColor, boxShadow: `0 0 8px ${precoColor}99`, borderColor: precoBorderColor} : {}) }}
+                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 shadow-xl" : (isAbaPrecos ? "" : "shadow-md")} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    style={{
+                      left: `${ponto.xPercent}%`,
+                      top: `${ponto.yPercent}%`,
+                      width: `${ballSize.size}px`,
+                      height: `${ballSize.size}px`,
+                      fontSize: `${ballSize.font}px`,
+                      lineHeight: 1,
+                      backgroundColor: ballBgColor,
+                      borderColor: ballBorderColor,
+                      borderWidth: `${borderWidthCalc}px`,
+                      borderStyle: "solid",
+                      boxShadow: ballBoxShadow,
+                      transform: "translate(-50%,-50%)",
+                      pointerEvents: "auto",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#ffffff",
+                    }}
                   >
                     {isEditingMap ? ponto.lote : null}
                   </button>
@@ -7074,6 +7424,17 @@ const LotDashboard = ({
                     <button type="button" onClick={() => { setMapEditTool("mover"); setMapActive(true); void requestHighResolutionMap(); }} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "mover" ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Mover mapa</button>
                     <button type="button" onClick={() => setMapEditTool("marcar")} className={`py-2 rounded-xl text-[10px] font-black uppercase ${mapEditTool === "marcar" ? "bg-blue-600 text-white" : "bg-white border border-slate-200 text-slate-700"}`}>Marcar lote</button>
                   </div>
+                  {mapaImagem && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCropModal(true)}
+                      className="w-full py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-900 text-[10px] font-black uppercase flex items-center justify-center gap-1.5 transition-all shadow-xs"
+                      title="Recortar mapa para remover áreas ou bordas indesejadas"
+                    >
+                      <Crop size={13} className="text-amber-600" />
+                      Recortar / Enquadrar Mapa
+                    </button>
+                  )}
                   <div className="p-2 rounded-xl bg-blue-50 border border-blue-100 space-y-1">
                     <p className="text-[10px] text-blue-700 font-bold">💡 Dicas de navegação:</p>
                     <p className="text-[10px] text-slate-600">• <kbd className="bg-white px-1 rounded text-[9px] font-bold border border-slate-300">Roda do mouse</kbd> = Zoom in/out</p>
@@ -7634,23 +7995,58 @@ const LotDashboard = ({
                   </div>
                 )}
 
-                {/* Tamanho das bolinhas */}
-                <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-[10px] font-black uppercase tracking-widest text-slate-500">Tamanho das bolinhas</span>
-                    <span className="text-xs font-black text-slate-700">{markerSizePercent}%</span>
+                {/* Tamanho e Contorno das bolinhas */}
+                <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  {/* Tamanho da bolinha */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Tamanho da Bolinha</span>
+                      <span className="text-xs font-black text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200">{markerSizePercent}%</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={40}
+                      max={220}
+                      step={5}
+                      value={markerSizePercent}
+                      onChange={(e) => atualizarConfigMarcadores(Number(e.target.value), undefined, undefined)}
+                      className="w-full h-2 rounded-full accent-blue-600"
+                    />
                   </div>
-                  <input
-                    type="range"
-                    min={40}
-                    max={220}
-                    step={5}
-                    value={markerSizePercent}
-                    onChange={(e) => setMarkerSizePercent(Number(e.target.value))}
-                    className="w-full"
-                  />
-                  <p className="text-[10px] text-slate-400 font-medium">
-                    Ajusta apenas o tamanho visual. A posição atual das bolinhas não é alterada.
+
+                  {/* Espessura do contorno */}
+                  <div className="space-y-1.5 pt-1 border-t border-slate-200/80">
+                    <div className="flex items-center justify-between gap-3">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-slate-600">Espessura do Contorno</span>
+                      <span className="text-xs font-black text-slate-800 bg-white px-2 py-0.5 rounded-md border border-slate-200">{markerBorderWidth || 3}px</span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={12}
+                      step={1}
+                      value={markerBorderWidth || 3}
+                      onChange={(e) => atualizarConfigMarcadores(undefined, Number(e.target.value), undefined)}
+                      className="w-full h-2 rounded-full accent-blue-600"
+                    />
+                  </div>
+
+                  {/* Manter proporção */}
+                  <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={markerKeepRatio}
+                      onChange={(e) => atualizarConfigMarcadores(undefined, undefined, e.target.checked)}
+                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                    />
+                    <span className="text-[11px] font-bold text-slate-700">
+                      Manter proporção entre bolinha e contorno
+                    </span>
+                  </label>
+                  <p className="text-[10px] text-slate-400 font-medium leading-tight">
+                    {markerKeepRatio
+                      ? "O contorno escala automaticamente junto com o tamanho da bolinha."
+                      : "O contorno tem espessura fixa independente do tamanho da bolinha."}
                   </p>
                 </div>
 
@@ -7789,10 +8185,33 @@ const LotDashboard = ({
             )}
 
             {/* LEGENDA */}
-            <div className="card-premium p-4 text-xs text-slate-500 space-y-2">
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-blue-500" />Disponível</div>
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-yellow-400" />Reservado</div>
-              <div className="flex items-center gap-2"><span className="w-3 h-3 rounded-full bg-red-500" />Indisponível</div>
+            <div className="card-premium p-4 text-xs text-slate-600 space-y-2.5">
+              <p className="font-bold text-[11px] text-slate-500 uppercase tracking-wider">Status das Bordas</p>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-blue-600 bg-blue-100 flex-shrink-0" />
+                <span>Borda Azul: <strong className="text-blue-700">Disponível</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-amber-600 bg-amber-100 flex-shrink-0" />
+                <span>Borda Amarela: <strong className="text-amber-700">Reservado</strong></span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="w-3.5 h-3.5 rounded-full border-2 border-red-600 bg-red-100 flex-shrink-0" />
+                <span>Borda Vermelha: <strong className="text-red-700">Vendido / Indisponível</strong></span>
+              </div>
+              {faixasPrecoGlobal.length > 0 && (
+                <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                  <p className="font-bold text-[11px] text-slate-500 uppercase tracking-wider">Cores por Preço</p>
+                  <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
+                    {faixasPrecoGlobal.map((f: any) => (
+                      <div key={f.preco} className="flex items-center gap-2 text-[11px]">
+                        <span className="w-3 h-3 rounded-full flex-shrink-0 border border-white shadow-sm" style={{ backgroundColor: f.color }} />
+                        <span className="font-semibold text-slate-700">R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
             </div>
@@ -8162,9 +8581,11 @@ const LotDashboard = ({
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
                   const isVendidoFS = ponto.status === "indisponivel" || !!venda;
-                  const precoBorderColorFS = isVendidoFS ? "#ffffff" : "#000000";
-                  const corPrecoFS = colorMode === 'preco' ? getCorPorPreco(ponto.quadra, ponto.lote) : null;
-                  const statusClass = corPrecoFS ? '' : getMapaStatusColorClass(ponto.status, !!venda);
+                  const isReservadoFS = !isVendidoFS && ponto.status === "reservado";
+                  const corPrecoFS = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
+                  const ballBgFS = corPrecoFS || (isVendidoFS ? "#ef4444" : isReservadoFS ? "#f59e0b" : "#3b82f6");
+                  const ballBorderFS = isVendidoFS ? "#dc2626" : isReservadoFS ? "#d97706" : "#2563eb";
+                  const borderWidthFS = ballSize.border ?? Math.max(2.5, Math.round(ballSize.size * 0.22));
                   return (
                     <button
                       key={`fullscreen-${ponto.id}`}
@@ -8175,17 +8596,29 @@ const LotDashboard = ({
                         setSelectedPoint({ ...ponto, venda });
                       }}
                       title={`Q${ponto.quadra} L${ponto.lote}`}
-                      className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${statusClass} ${corPrecoFS ? "shadow-lg" : "border-white shadow-lg"} cursor-pointer z-10`}
+                      className="absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden shadow-lg cursor-pointer z-10"
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
                         width: `${ballSize.size}px`,
                         height: `${ballSize.size}px`,
                         fontSize: `${ballSize.font}px`,
-                        borderWidth: `${ballSize.border ?? getBallBorderWidth(ballSize.size)}px`,
+                        lineHeight: 1,
+                        backgroundColor: ballBgFS,
+                        borderColor: ballBorderFS,
+                        borderWidth: `${borderWidthFS}px`,
+                        borderStyle: "solid",
+                        boxShadow: isVendidoFS
+                          ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(220,38,38,0.4)"
+                          : isReservadoFS
+                          ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(217,119,6,0.4)"
+                          : "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(37,99,235,0.4)",
                         transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
-                        ...(corPrecoFS ? { backgroundColor: corPrecoFS, borderColor: precoBorderColorFS } : {}),
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        color: "#ffffff",
                       }}
                     />
                   );
@@ -8642,13 +9075,12 @@ const LotDashboard = ({
 
             {/* Bolinhas coloridas por faixa de preço — mesma posição e tamanho do mapa real */}
             {mapaPontos.map((ponto, i) => {
-              const key = ponto.quadra && ponto.lote ? `${ponto.quadra}:${ponto.lote}` : null;
-              const info = key ? (localDev.lotesInfo as any)?.[key] : null;
-              const preco = info?.preco || 0;
-              const cor = getCorLote(preco) || getCorPorPreco(ponto.quadra, ponto.lote) || '#3b82f6';
               const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
               const isVendido = ponto.status === "indisponivel" || !!venda;
-              const borderCor = isVendido ? "#ffffff" : "#000000";
+              const isReservado = !isVendido && ponto.status === "reservado";
+              const cor = getCorPorPreco(ponto.quadra, ponto.lote, ponto) || (isVendido ? "#ef4444" : isReservado ? "#f59e0b" : "#3b82f6");
+              const borderCor = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
+              const borderWidthPx = ballSize.border ?? Math.max(2.5, Math.round(ballSize.size * 0.22));
               return (
                 <div key={ponto.id || i} style={{
                   position: 'absolute',
@@ -8658,8 +9090,12 @@ const LotDashboard = ({
                   height: `${ballSize.size}px`,
                   borderRadius: '50%',
                   background: cor,
-                  border: `${ballSize.border ?? 2}px solid ${borderCor}`,
-                  boxShadow: `0 0 6px ${cor}99, 0 1px 4px rgba(0,0,0,.3)`,
+                  border: `${borderWidthPx}px solid ${borderCor}`,
+                  boxShadow: isVendido
+                    ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(220,38,38,0.4)"
+                    : isReservado
+                    ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(217,119,6,0.4)"
+                    : "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(37,99,235,0.4)",
                   transform: 'translate(-50%,-50%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: `${ballSize.font}px`, fontWeight: 900, color: 'white',
@@ -8719,11 +9155,11 @@ const LotDashboard = ({
             window.addEventListener('touchmove', onMove as any, {passive:false});
             window.addEventListener('touchend', onUp);
           };
-          const sz = legendaSize;
-          // Tamanho em % da largura do mapa — mesma lógica do PDF
+          const pctScale = (legendaSizePercent || 100) / 100;
+          // Tamanho em % da largura do mapa — configurável por porcentagem (%)
           const mapW = mapContainerRef.current?.offsetWidth || 794;
-          const pct = sz==='P' ? 0.08 : sz==='G' ? 0.18 : 0.12;
-          const LW_tela = Math.round(mapW * pct);
+          const pct = 0.12 * pctScale;
+          const LW_tela = Math.max(140, Math.round(mapW * pct));
           const fs = {
             title: Math.round(LW_tela * 0.07),
             valor: Math.round(LW_tela * 0.09),
@@ -8740,22 +9176,46 @@ const LotDashboard = ({
               <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
                 <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
                   <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
-                  <div style={{display:'flex', gap:2, marginLeft:8}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
-                    {(['P','M','G'] as const).map(s => (
-                      <button key={s} onClick={e=>{e.stopPropagation(); setLegendaSize(s); try{localStorage.setItem('legendaPrecoSize_'+localDev.id,s);}catch{}}}
-                        style={{width:fs.dot,height:fs.dot,borderRadius:3,background:sz===s?'#1a4a1a':'rgba(0,0,0,0.06)',color:sz===s?'#ffffff':'#94a3b8',fontSize:fs.title-1,fontWeight:900,border:'none',cursor:'pointer',padding:0,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1}}>
-                        {s}
-                      </button>
-                    ))}
+                  <div style={{display:'flex', alignItems:'center', gap:3, marginLeft:8, background:'rgba(0,0,0,0.05)', borderRadius:6, padding:'2px 4px'}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const next = Math.max(50, legendaSizePercent - 10);
+                        setLegendaSizePercent(next);
+                        try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
+                      }}
+                      style={{width:16,height:16,borderRadius:3,background:'none',border:'none',cursor:'pointer',fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1,color:'#475569'}}
+                      title="Diminuir (-10%)"
+                    >
+                      −
+                    </button>
+                    <span style={{fontSize:fs.title - 1, fontWeight:900, color:'#334155', minWidth:32, textAlign:'center'}}>
+                      {legendaSizePercent}%
+                    </span>
+                    <button
+                      onClick={e => {
+                        e.stopPropagation();
+                        const next = Math.min(200, legendaSizePercent + 10);
+                        setLegendaSizePercent(next);
+                        try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
+                      }}
+                      style={{width:16,height:16,borderRadius:3,background:'none',border:'none',cursor:'pointer',fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1,color:'#475569'}}
+                      title="Aumentar (+10%)"
+                    >
+                      +
+                    </button>
                   </div>
                 </div>
                 {faixasPrecoGlobal.map((faixa: any) => {
-                  const lotsFaixa = mapaPontos.filter(p => (localDev.lotesInfo as any)?.[getLotInfoKey(p.quadra, p.lote)]?.preco === faixa.preco);
-                  const infoFaixa = lotsFaixa[0] ? (localDev.lotesInfo as any)?.[getLotInfoKey(lotsFaixa[0].quadra, lotsFaixa[0].lote)] : null;
+                  const lotsFaixa = mapaPontos.filter(p => {
+                    const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                    return info?.preco === faixa.preco;
+                  });
+                  const infoFaixa = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
                   const entrada = infoFaixa?.entrada || 0;
                   const parcelas = infoFaixa?.parcelas || 0;
                   const avista = infoFaixa?.avista || parcelas === 0;
-                  const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+                  const vlParcela = infoFaixa?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
                   return (
                     <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
                       <label style={{cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',margin:0,padding:0}} title="Clique para mudar a cor desta faixa" onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
@@ -9383,6 +9843,13 @@ const LotDashboard = ({
                 className={`flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 ${isEditingMap ? "bg-slate-900 text-white shadow" : "text-slate-400"}`}>
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/></svg>
                 {isEditingMap ? (mapAction === "massa" ? "Fileiras" : "Editar") : "Editar"}
+              </button>
+              {/* Recortar / Enquadrar Mapa Mobile */}
+              <button onClick={() => setShowCropModal(true)}
+                className="flex-shrink-0 flex-1 py-1.5 px-1 rounded-xl text-[8px] font-black uppercase transition-all flex flex-col items-center gap-0.5 text-amber-700 hover:text-amber-900 active:scale-95"
+                title="Recortar mapa para remover áreas indesejadas">
+                <Crop size={12} className="text-amber-600" />
+                Recortar
               </button>
             </>)}
           </div>
@@ -10039,25 +10506,54 @@ const LotDashboard = ({
                 ) : (
                   // ── COM BOLINHAS: ações rápidas + lista por quadra ──
                   <>
-                    {/* Tamanho das bolinhas */}
-                    <div className="bg-slate-50 rounded-2xl p-4 space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-xs font-black text-slate-700">Tamanho das bolinhas</p>
-                        <span className="text-xs font-black text-slate-500">{markerSizePercent}%</span>
+                    {/* Tamanho e Contorno das bolinhas */}
+                    <div className="bg-slate-50 rounded-2xl p-4 space-y-3 border border-slate-200/80">
+                      {/* Tamanho da bolinha */}
+                      <div className="space-y-1">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-black text-slate-700">Tamanho da bolinha</p>
+                          <span className="text-xs font-black text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">{markerSizePercent}%</span>
+                        </div>
+                        <input type="range" min={40} max={220} step={5}
+                          value={markerSizePercent}
+                          onChange={e => atualizarConfigMarcadores(Number(e.target.value), undefined, undefined)}
+                          className="w-full h-2 rounded-full accent-emerald-600"
+                        />
+                        <div className="flex justify-between">
+                          <span className="text-[9px] text-slate-400 font-bold">Menor</span>
+                          <button onClick={() => atualizarConfigMarcadores(100, undefined, undefined)}
+                            className="px-2 py-0.5 bg-slate-200 rounded text-slate-600 text-[9px] font-black active:scale-95">
+                            100% (Padrão)
+                          </button>
+                          <span className="text-[9px] text-slate-400 font-bold">Maior</span>
+                        </div>
                       </div>
-                      <input type="range" min={50} max={200} step={5}
-                        value={markerSizePercent}
-                        onChange={e => setMarkerSizePercent(Number(e.target.value))}
-                        className="w-full h-2 rounded-full accent-emerald-600"
-                      />
-                      <div className="flex justify-between">
-                        <span className="text-[9px] text-slate-400 font-bold">Menor</span>
-                        <button onClick={() => setMarkerSizePercent(100)}
-                          className="px-2 py-0.5 bg-slate-200 rounded text-slate-500 text-[9px] font-black active:scale-95">
-                          Padrão
-                        </button>
-                        <span className="text-[9px] text-slate-400 font-bold">Maior</span>
+
+                      {/* Espessura do contorno */}
+                      <div className="space-y-1 pt-2 border-t border-slate-200/70">
+                        <div className="flex items-center justify-between">
+                          <p className="text-xs font-black text-slate-700">Espessura do contorno</p>
+                          <span className="text-xs font-black text-slate-700 bg-white px-2 py-0.5 rounded border border-slate-200">{markerBorderWidth || 3}px</span>
+                        </div>
+                        <input type="range" min={1} max={12} step={1}
+                          value={markerBorderWidth || 3}
+                          onChange={e => atualizarConfigMarcadores(undefined, Number(e.target.value), undefined)}
+                          className="w-full h-2 rounded-full accent-emerald-600"
+                        />
                       </div>
+
+                      {/* Manter proporção */}
+                      <label className="flex items-center gap-2 pt-1 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={markerKeepRatio}
+                          onChange={(e) => atualizarConfigMarcadores(undefined, undefined, e.target.checked)}
+                          className="w-4 h-4 rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                        />
+                        <span className="text-[11px] font-bold text-slate-700">
+                          Manter proporção entre bolinha e contorno
+                        </span>
+                      </label>
                     </div>
 
                     {/* Ações rápidas */}
@@ -10255,7 +10751,6 @@ const LotDashboard = ({
                   className="flex-1 py-2.5 rounded-2xl bg-slate-100 text-slate-600 text-sm font-black">Cancelar</button>
                 <button disabled={!mobileColarQuadra} onClick={() => {
                   const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-                  const grupoId = `grupo_${Date.now()}`;
                   const coladas = mobileClipboard.map((p: any, i: number) => ({
                     ...p,
                     id: `p_${Date.now()}_${i}_${Math.random().toString(36).slice(2,5)}`,
@@ -10264,9 +10759,6 @@ const LotDashboard = ({
                     yPercent: Math.min(98, p.yPercent + 4),
                     linhaSeqId: undefined,
                   }));
-                  const novosGrupos = { ...gruposMap };
-                  coladas.forEach((p: any) => { novosGrupos[p.id] = grupoId; });
-                  setGruposMap(novosGrupos);
                   pushUndo(currentPontos, "Duplicar mobile");
                   persistDev({ ...localDev, mapaPontos: [...currentPontos, ...coladas] } as Empreendimento);
                   setShowMobileColar(false); setMobileSelMode(false); setMobileSelIds(new Set());
@@ -10491,6 +10983,15 @@ const LotDashboard = ({
                   Editar
                 </button>
               )}
+              {/* Recortar Mapa */}
+              {mapaImagem && (
+                <button onClick={() => setShowCropModal(true)}
+                  className="flex-shrink-0 flex-1 min-w-0 py-2 px-2 rounded-xl text-[9px] font-black uppercase tracking-wide transition-all flex flex-col items-center gap-0.5 text-amber-700 hover:text-amber-900 hover:bg-amber-50"
+                  title="Recortar mapa para remover áreas indesejadas">
+                  <Crop size={13} className="text-amber-600" />
+                  Recortar
+                </button>
+              )}
               {/* Auto */}
               {mapaImagem && (
                 <button onClick={async () => {
@@ -10665,14 +11166,14 @@ const LotDashboard = ({
                     <div className="space-y-2">
                       {faixasPrecoGlobal.map((faixa: any) => {
                         const lotsFaixa = mapaPontos.filter((p: any) => {
-                          const info = getPrecoInfoDoLote(p.quadra, p.lote);
+                          const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
                           return info?.preco === faixa.preco;
                         });
-                        const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote) : null;
+                        const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
                         const entrada = infoSample?.entrada || 0;
                         const parcelas = infoSample?.parcelas || 0;
                         const avista = infoSample?.avista || parcelas === 0;
-                        const vlParcela = parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0;
+                        const vlParcela = infoSample?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
 
                         return (
                           <div
@@ -11078,7 +11579,6 @@ const LotDashboard = ({
               disabled={!colarQuadra}
               onClick={() => {
                 const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-                const grupoId = `grupo_${Date.now()}`;
                 const offset = 4;
                 const coladas = clipboard.map((p: any, i: number) => ({
                   ...p,
@@ -11088,10 +11588,6 @@ const LotDashboard = ({
                   yPercent: Math.min(98, p.yPercent + offset),
                   linhaSeqId: undefined, // desvincula da fileira original
                 }));
-                // Agrupar as coladas automaticamente
-                const novosGrupos = { ...gruposMap };
-                coladas.forEach((p: any) => { novosGrupos[p.id] = grupoId; });
-                setGruposMap(novosGrupos);
                 pushUndo(currentPontos, "Colar bolinhas");
                 persistDev({ ...localDev, mapaPontos: [...currentPontos, ...coladas] } as Empreendimento);
                 setShowModalColar(false);
@@ -11387,6 +11883,15 @@ const LotDashboard = ({
           </div>
         </div>
       )}
+      {showCropModal && Boolean(mapaImagem || localDev.mapaImagemBase64 || localDev.mapaImagemUrl || pdfRenderedUrl) && (
+        <CropMapModal
+          isOpen={showCropModal}
+          onClose={() => setShowCropModal(false)}
+          imageUrl={(pdfRenderedUrl || localDev.mapaImagemBase64 || localDev.mapaImagemUrl || (mapaImagem !== "pdf" ? mapaImagem : "")) as string}
+          existingPoints={localDev.mapaPontos || []}
+          onConfirmCrop={handleConfirmCrop}
+        />
+      )}
     </>
   );
 };
@@ -11419,6 +11924,70 @@ function gerarPixPayload(params: {
     for (let j = 0; j < 8; j++) { crc = (crc & 0x8000) ? ((crc << 1) ^ 0x1021) : (crc << 1); }
   }
   return semCRC + (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
+}
+
+function formatarRegrasAtuaisTexto(dev: Empreendimento | null, regras?: any[]): string {
+  if (!dev) return "";
+  if (regras && Array.isArray(regras) && regras.length > 0 && regras.some(r => r.script && r.valor)) {
+    return regras
+      .filter(r => r.script && r.valor)
+      .map((r, i) => {
+        if (r.avista) {
+          return `REGRA${i + 1}: ${r.script} VALOR:${r.valor} AVISTA`;
+        }
+        return `REGRA${i + 1}: ${r.script} VALOR:${r.valor} ENTRADA:${r.entrada || 0} PARCELAS:${r.parcelas || 0}${r.parcela ? ` PARCELA:${r.parcela}` : ""}`;
+      })
+      .join("\n");
+  }
+
+  const lotesInfo = dev.lotesInfo || {};
+  const grupos: Record<string, { lotes: { q: string; l: string }[]; valor: number; entrada: number; parcelas: number; parcela: number; avista: boolean }> = {};
+
+  Object.entries(lotesInfo).forEach(([key, info]: [string, any]) => {
+    if (!info?.preco) return;
+    const parts = key.split("-");
+    if (parts.length < 2) return;
+    const q = parts[0];
+    const l = parts.slice(1).join("-");
+    const sig = `${info.preco}_${info.entrada || 0}_${info.parcelas || 0}_${info.avista ? "av" : "parc"}`;
+    if (!grupos[sig]) {
+      grupos[sig] = {
+        lotes: [],
+        valor: info.preco,
+        entrada: info.entrada || 0,
+        parcelas: info.parcelas || 0,
+        parcela: info.parcela || 0,
+        avista: !!info.avista,
+      };
+    }
+    grupos[sig].lotes.push({ q, l });
+  });
+
+  const chaves = Object.keys(grupos);
+  if (chaves.length === 0) return "";
+
+  return chaves.map((sig, idx) => {
+    const g = grupos[sig];
+    const porQuadra: Record<string, string[]> = {};
+    g.lotes.forEach(({ q, l }) => {
+      if (!porQuadra[q]) porQuadra[q] = [];
+      porQuadra[q].push(l);
+    });
+
+    const scriptQuadras = Object.keys(porQuadra)
+      .sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0))
+      .map(q => {
+        const sortedLotes = porQuadra[q].sort((a, b) => (parseInt(a) || 0) - (parseInt(b) || 0));
+        return `Q${q}:${sortedLotes.join(".")}.`;
+      })
+      .join(" ");
+
+    if (g.avista) {
+      return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.valor} AVISTA`;
+    }
+    const vlParcela = g.parcela || (g.parcelas > 0 ? Math.round((g.valor - g.entrada) / g.parcelas) : 0);
+    return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.valor} ENTRADA:${g.entrada} PARCELAS:${g.parcelas}${vlParcela ? ` PARCELA:${vlParcela}` : ""}`;
+  }).join("\n");
 }
 
 const EmpreendimentosSection = ({
@@ -11518,12 +12087,35 @@ const EmpreendimentosSection = ({
     }
   }, [developments]);
   const [lotRegDev, setLotRegDev] = useState<Empreendimento | null>(null);
-  const [lotRegForm, setLotRegForm] = useState({ quadra: "", numeroLote: "", rua: "", status: "disponivel" as MapaLoteStatus });
+  const [lotRegForm, setLotRegForm] = useState({
+    quadra: "",
+    numeroLote: "",
+    rua: "",
+    status: "disponivel" as MapaLoteStatus,
+    preco: "",
+    entrada: "",
+    parcelas: "",
+    parcela: "",
+    avista: false,
+    corPreco: "",
+  });
+  const [quickPriceLot, setQuickPriceLot] = useState<{
+    key: string;
+    quadra: string;
+    lote: string;
+    info: any;
+    preco: string;
+    entrada: string;
+    parcelas: string;
+    parcela: string;
+    avista: boolean;
+    corPreco: string;
+  } | null>(null);
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
-  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string; cor?:string}[]>(() => {
+  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string; avista?:boolean; cor?:string}[]>(() => {
     const saved = (lotRegDev as any)?.precosRegras;
     if (saved?.length) return saved.map((r:any, idx:number) => ({...r, parcela: r.parcela || "", cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor}));
-    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:"", cor: CORES_PALETA_BOLINHAS[0].cor}];
+    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:"", avista:false, cor: CORES_PALETA_BOLINHAS[0].cor}];
   });
 
   useEffect(() => {
@@ -11535,6 +12127,36 @@ const EmpreendimentosSection = ({
           parcela: r.parcela || "",
           cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor,
         })));
+      } else {
+        // Se ainda não houver regras salvas, reconstrói automaticamente a partir dos preços dos lotes já cadastrados
+        const textoRegras = formatarRegrasAtuaisTexto(lotRegDev);
+        if (textoRegras) {
+          const regrasRec: typeof precosRegras = [];
+          let id = 1;
+          const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)?/gi;
+          let m;
+          while ((m = regraRegex.exec(textoRegras)) !== null) {
+            const isAvista = textoRegras.substring(m.index, m.index + m[0].length).toUpperCase().includes("AVISTA");
+            const valLimpo = (m[2] || "").replace(/\./g, "").replace(",", ".");
+            const entLimpo = (m[3] || "0").replace(/\./g, "").replace(",", ".");
+            const parN = parseInt(m[4] || "0");
+            const parcLimpo = m[5] ? m[5].replace(/\./g, "").replace(",", ".") : "";
+            const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
+            regrasRec.push({
+              id: id++,
+              script: m[1].trim(),
+              valor: valLimpo,
+              entrada: entLimpo,
+              parcelas: String(parN),
+              parcela: parcLimpo || (parN > 0 ? String(Math.round((parseFloat(valLimpo) - parseFloat(entLimpo)) / parN)) : ""),
+              avista: isAvista,
+              cor: corAuto,
+            });
+          }
+          if (regrasRec.length > 0) {
+            setPrecosRegras(regrasRec);
+          }
+        }
       }
     }
   }, [lotRegDev?.id]);
@@ -11855,21 +12477,56 @@ const EmpreendimentosSection = ({
       });
       return;
     }
-    onUpdateLotesInfo(lotRegDev.id, { [key]: { ...existing, rua: lotRegForm.rua, status: lotRegForm.status } });
+    const prc = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const ent = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const par = parseInt(String(lotRegForm.parcelas || "0")) || 0;
+    const parc = parseFloat(String(lotRegForm.parcela || "").replace(/\./g, "").replace(",", ".")) ||
+      (par > 0 ? Math.round((prc - ent) / par) : 0);
+    const corFinal = lotRegForm.corPreco || existing.corPreco || existing.cor || (prc > 0 ? (lotRegDev as any).coresPorPreco?.[prc] || "#3b82f6" : "");
+
+    const newInfo: any = {
+      ...existing,
+      rua: lotRegForm.rua,
+      status: lotRegForm.status,
+    };
+    if (prc > 0 || lotRegForm.preco !== "") {
+      newInfo.preco = prc;
+      newInfo.entrada = ent;
+      newInfo.parcelas = par;
+      newInfo.parcela = parc;
+      newInfo.valorParcela = parc;
+      newInfo.avista = !!lotRegForm.avista;
+      if (corFinal) {
+        newInfo.cor = corFinal;
+        newInfo.corPreco = corFinal;
+        newInfo.corBolinha = corFinal;
+      }
+    }
+
+    onUpdateLotesInfo(lotRegDev.id, { [key]: newInfo });
     setLotRegDev((prev) => {
       if (!prev) return null;
-      const existingInfo = prev.lotesInfo?.[key] || {};
-      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
+      return applyLotesInfoPatchToEmpreendimento(prev, { [key]: newInfo }, sales);
     });
     // Sincronizar mapa interativo se estiver aberto para o mesmo empreendimento
     if (selectedDevForMap && selectedDevForMap.id === lotRegDev.id) {
       setSelectedDevForMap((prev) => {
         if (!prev) return null;
-        const existingInfo = prev.lotesInfo?.[key] || {};
-        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...existingInfo, rua: lotRegForm.rua, status: lotRegForm.status } }, sales);
+        return applyLotesInfoPatchToEmpreendimento(prev, { [key]: newInfo }, sales);
       });
     }
-    setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" });
+    setLotRegForm({
+      quadra: "",
+      numeroLote: "",
+      rua: "",
+      status: "disponivel",
+      preco: "",
+      entrada: "",
+      parcelas: "",
+      parcela: "",
+      avista: false,
+      corPreco: "",
+    });
     setLotRegTab("lotes");
   };
 
@@ -13249,6 +13906,127 @@ const EmpreendimentosSection = ({
                         <p className="text-[10px] text-slate-400 mt-2">Este lote não aparecerá como disponível para venda no dashboard.</p>
                       )}
                     </div>
+
+                    {/* Preço e Condições Financeiras (Manual) */}
+                    <div className="p-4 bg-emerald-50/50 border border-emerald-100 rounded-2xl space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-black text-emerald-950 uppercase tracking-wider flex items-center gap-1.5">
+                          <DollarSign size={14} className="text-emerald-700" />
+                          Preço e Condições (Manual)
+                        </label>
+                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={lotRegForm.avista}
+                            onChange={(e) => setLotRegForm({ ...lotRegForm, avista: e.target.checked })}
+                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                          />
+                          Somente à vista
+                        </label>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-600 mb-1 block">Valor Total (R$)</label>
+                          <input
+                            type="text"
+                            className="input-field bg-white"
+                            placeholder="Ex: 25.000"
+                            value={lotRegForm.preco}
+                            onChange={(e) => {
+                              const novoVal = e.target.value;
+                              const numVal = parseFloat(novoVal.replace(/\./g, "").replace(",", ".")) || 0;
+                              const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                              const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
+                              const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
+                              setLotRegForm({ ...lotRegForm, preco: novoVal, parcela: parcCalc });
+                            }}
+                          />
+                        </div>
+
+                        {!lotRegForm.avista ? (
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Entrada (R$)</label>
+                            <input
+                              type="text"
+                              className="input-field bg-white"
+                              placeholder="Ex: 1.000"
+                              value={lotRegForm.entrada}
+                              onChange={(e) => {
+                                const novaEnt = e.target.value;
+                                const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                const numEnt = parseFloat(novaEnt.replace(/\./g, "").replace(",", ".")) || 0;
+                                const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
+                                const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
+                                setLotRegForm({ ...lotRegForm, entrada: novaEnt, parcela: parcCalc });
+                              }}
+                            />
+                          </div>
+                        ) : (
+                          <div className="flex items-center text-xs font-bold text-emerald-700 p-3 bg-white/70 rounded-xl">
+                            Pagamento somente à vista
+                          </div>
+                        )}
+                      </div>
+
+                      {!lotRegForm.avista && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Nº de Parcelas</label>
+                            <input
+                              type="number"
+                              className="input-field bg-white"
+                              placeholder="Ex: 60"
+                              value={lotRegForm.parcelas}
+                              onChange={(e) => {
+                                const nParc = e.target.value;
+                                const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                const pInt = parseInt(nParc || "0") || 0;
+                                const parcCalc = pInt > 0 ? String(Math.round((numVal - numEnt) / pInt)) : "";
+                                setLotRegForm({ ...lotRegForm, parcelas: nParc, parcela: parcCalc });
+                              }}
+                            />
+                          </div>
+                          <div>
+                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Valor da Parcela (R$)</label>
+                            <input
+                              type="text"
+                              className="input-field bg-white"
+                              placeholder="Ex: 400"
+                              value={lotRegForm.parcela}
+                              onChange={(e) => setLotRegForm({ ...lotRegForm, parcela: e.target.value })}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Cor da Bolinha no Mapa */}
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-600 mb-1.5 block">Cor da Bolinha no Mapa</label>
+                        <div className="flex flex-wrap gap-2 items-center">
+                          {CORES_PALETA_BOLINHAS.slice(0, 10).map((c) => (
+                            <button
+                              key={c.cor}
+                              type="button"
+                              onClick={() => setLotRegForm({ ...lotRegForm, corPreco: c.cor })}
+                              className={`w-6 h-6 rounded-full border-2 transition-transform ${lotRegForm.corPreco === c.cor ? "border-slate-800 scale-125 shadow-md" : "border-transparent hover:scale-110"}`}
+                              style={{ backgroundColor: c.cor }}
+                              title={c.nome}
+                            />
+                          ))}
+                          {lotRegForm.corPreco && (
+                            <button
+                              type="button"
+                              onClick={() => setLotRegForm({ ...lotRegForm, corPreco: "" })}
+                              className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1"
+                            >
+                              Padrão
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
                   </div>
                   <div className="p-6 border-t border-slate-100 flex justify-end gap-3">
                     <button onClick={() => setLotRegDev(null)} className="btn-secondary px-6">Cancelar</button>
@@ -13393,6 +14171,7 @@ const EmpreendimentosSection = ({
                               <tr>
                                 <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Q</th>
                                 <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Lote</th>
+                                <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Preço</th>
                                 <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
                                 <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Comprador</th>
                                 <th className="px-2 py-2" />
@@ -13422,6 +14201,57 @@ const EmpreendimentosSection = ({
                                           </span>
                                         )}
                                       </div>
+                                    </td>
+                                    <td className="px-2 py-2 whitespace-nowrap">
+                                      {info?.preco ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickPriceLot({
+                                              key,
+                                              quadra,
+                                              lote,
+                                              info,
+                                              preco: String(info.preco || ""),
+                                              entrada: String(info.entrada || ""),
+                                              parcelas: String(info.parcelas || ""),
+                                              parcela: String(info.parcela || info.valorParcela || ""),
+                                              avista: !!info.avista,
+                                              corPreco: info.corPreco || info.cor || info.corBolinha || "",
+                                            });
+                                          }}
+                                          className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-800 text-[10px] font-black transition-colors"
+                                          title="Clique para editar o preço e condições"
+                                        >
+                                          <span
+                                            className="w-2 h-2 rounded-full flex-shrink-0"
+                                            style={{ background: info.corPreco || info.cor || info.corBolinha || "#10b981" }}
+                                          />
+                                          R$ {Number(info.preco).toLocaleString('pt-BR')}
+                                        </button>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickPriceLot({
+                                              key,
+                                              quadra,
+                                              lote,
+                                              info,
+                                              preco: "",
+                                              entrada: "",
+                                              parcelas: "",
+                                              parcela: "",
+                                              avista: false,
+                                              corPreco: "",
+                                            });
+                                          }}
+                                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-lg border border-dashed border-slate-300 text-slate-400 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50 text-[10px] font-bold transition-colors"
+                                          title="Definir preço manual para este lote"
+                                        >
+                                          + Preço
+                                        </button>
+                                      )}
                                     </td>
                                     <td className="px-2 py-2">
                                       {status === "vendido" ? (
@@ -13454,13 +14284,47 @@ const EmpreendimentosSection = ({
                                     </td>
                                     <td className="px-1 py-1">
                                       <div className="flex items-center justify-end gap-0.5">
+                                        {/* Botão editar preço rápido */}
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setQuickPriceLot({
+                                              key,
+                                              quadra,
+                                              lote,
+                                              info,
+                                              preco: info.preco ? String(info.preco) : "",
+                                              entrada: info.entrada ? String(info.entrada) : "",
+                                              parcelas: info.parcelas ? String(info.parcelas) : "",
+                                              parcela: info.parcela || info.valorParcela ? String(info.parcela || info.valorParcela) : "",
+                                              avista: !!info.avista,
+                                              corPreco: info.corPreco || info.cor || info.corBolinha || "",
+                                            });
+                                          }}
+                                          className="p-1.5 hover:bg-emerald-50 text-emerald-600 rounded-lg transition-colors"
+                                          title="Editar preço e condições financeiras"
+                                        >
+                                          <DollarSign size={13} />
+                                        </button>
                                         {/* Botão editar */}
                                         <button
                                           onClick={() => {
-                                            setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (status as any) || "disponivel" });
+                                            setLotRegForm({
+                                              quadra,
+                                              numeroLote: lote,
+                                              rua: info.rua || "",
+                                              status: (status as any) || "disponivel",
+                                              preco: info.preco ? String(info.preco) : "",
+                                              entrada: info.entrada ? String(info.entrada) : "",
+                                              parcelas: info.parcelas ? String(info.parcelas) : "",
+                                              parcela: info.parcela || info.valorParcela ? String(info.parcela || info.valorParcela) : "",
+                                              avista: !!info.avista,
+                                              corPreco: info.corPreco || info.cor || info.corBolinha || "",
+                                            });
+                                            setLotRegTab("cadastrar");
                                           }}
                                           className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
-                                          title="Editar lote"
+                                          title="Editar lote e preço"
                                         >
                                           <Pencil size={13} />
                                         </button>
@@ -13645,16 +14509,38 @@ const EmpreendimentosSection = ({
                   }
 
                   linhas.push("");
-                  linhas.push("INSTRUÇÕES: Agrupe os lotes acima em REGRAs de preço.");
-                  linhas.push("Cada REGRA define quais quadras/lotes têm o mesmo preço, entrada e parcelas.");
-                  linhas.push("Todos os lotes devem estar em alguma REGRA. Crie quantas precisar.", "");
-                  linhas.push("FORMATO (cole o resultado abaixo desta linha):");
-                  linhas.push("REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400");
-                  linhas.push("REGRA2: Q2:1.2.3. VALOR:18000 ENTRADA:500 PARCELAS:48 PARCELA:364");
-                  linhas.push("REGRA3: Q3:1.2.3. VALOR:15000 ENTRADA:500 PARCELAS:50 PARCELA:290");
+                  // Preservar regras existentes do empreendimento para nunca perder o preço
+                  const regrasAtuais = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
+                  if (regrasAtuais) {
+                    linhas.push("REGRAS DE PREÇO ATUAIS (PRESERVADAS DESTE EMPREENDIMENTO):");
+                    linhas.push(regrasAtuais);
+                    linhas.push("");
+                    linhas.push("INSTRUÇÕES: Mantenha ou ajuste as REGRAS acima com base nos lotes por quadra.");
+                  } else {
+                    linhas.push("INSTRUÇÕES: Agrupe os lotes acima em REGRAs de preço.");
+                    linhas.push("Cada REGRA define quais quadras/lotes têm o mesmo preço, entrada e parcelas.");
+                    linhas.push("Todos os lotes devem estar em alguma REGRA. Crie quantas precisar.", "");
+                    linhas.push("FORMATO (cole o resultado abaixo desta linha):");
+                    linhas.push("REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400");
+                    linhas.push("REGRA2: Q2:1.2.3. VALOR:18000 ENTRADA:500 PARCELAS:48 PARCELA:364");
+                    linhas.push("REGRA3: Q3:1.2.3. VALOR:15000 ENTRADA:500 PARCELAS:50 PARCELA:290");
+                  }
                   const txt = linhas.join("\n");
-                  try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script copiado! Cole no ChatGPT."); }
+                  try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script com regras atuais copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
+                };
+                const copiarApenasRegrasAtuais = async () => {
+                  const regrasAtuais = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
+                  if (!regrasAtuais) {
+                    setPrecosScriptMsg("⚠️ Nenhuma regra de preço configurada ainda.");
+                    return;
+                  }
+                  try {
+                    await navigator.clipboard.writeText(regrasAtuais);
+                    setPrecosScriptMsg("✅ Regras atuais copiadas para a área de transferência!");
+                  } catch {
+                    setPrecosScriptMsg("❌ Erro ao copiar regras.");
+                  }
                 };
                 const colarRespostaChat = async () => {
                   try {
@@ -13663,23 +14549,38 @@ const EmpreendimentosSection = ({
                     const regras: typeof precosRegras = [];
                     let id = 1;
                     // Suporte a: VALOR:X ENTRADA:X PARCELAS:X  OU  VALOR:X AVISTA
-                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.]+)(?:\s+ENTRADA:([\d.]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.]*))?|\s+AVISTA)/gi;
+                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)/gi;
                     let m;
                     while ((m = regraRegex.exec(txt)) !== null) {
                       const avista = !m[3] && !m[4];
-                      const valorN = parseFloat(m[2]||'0');
-                      const entradaN = parseFloat(m[3]||'0');
-                      const parcelasN = parseInt(m[4]||'0');
+                      const valorN = parseFloat(String(m[2] || "0").replace(/\./g, "").replace(",", "."));
+                      const entradaN = parseFloat(String(m[3] || "0").replace(/\./g, "").replace(",", "."));
+                      const parcelasN = parseInt(m[4] || "0") || 0;
                       // Calcular parcela automaticamente se não informada
-                      const parcelaCalcN = m[5] ? parseFloat(m[5]) :
-                        (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
+                      const parcelaCalcN = m[5]
+                        ? parseFloat(String(m[5]).replace(/\./g, "").replace(",", "."))
+                        : (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
                       const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
-                      regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3]||'0', parcelas: m[4]||'0', parcela: String(parcelaCalcN), avista, cor: corAuto});
+                      regras.push({
+                        id: id++,
+                        script: m[1].trim(),
+                        valor: String(valorN),
+                        entrada: String(entradaN),
+                        parcelas: String(parcelasN),
+                        parcela: String(parcelaCalcN),
+                        avista,
+                        cor: corAuto,
+                      });
                     }
-                    // PADRAO ignorado — usar REGRA para todos os lotes
-                    if (regras.length) { setPrecosRegras(regras); setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!"); }
-                    else setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
-                  } catch { setPrecosScriptMsg("❌ Erro ao ler clipboard."); }
+                    if (regras.length) {
+                      setPrecosRegras(regras);
+                      setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!");
+                    } else {
+                      setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
+                    }
+                  } catch {
+                    setPrecosScriptMsg("❌ Erro ao ler clipboard.");
+                  }
                 };
                 const aplicarPrecos = async () => {
                   // Aplicar preços no lotesInfo
@@ -13752,55 +14653,101 @@ const EmpreendimentosSection = ({
                     )}
 
                     {/* Botões Copiar/Colar */}
-                    <div className="flex gap-2">
-                      <button onClick={copiarScriptPrecos} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-slate-900 text-white text-xs font-bold active:scale-95 transition-all">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      <button onClick={copiarScriptPrecos} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900 text-white text-xs font-bold active:scale-95 transition-all" title="Copia lista de lotes e regras atuais para o ChatGPT">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copiar para Chat
+                        Copiar p/ Chat
                       </button>
-                      <button onClick={() => setShowPrecosInput(v => !v)} className="flex-1 flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-all">
+                      <button onClick={copiarApenasRegrasAtuais} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-700 text-white text-xs font-bold active:scale-95 transition-all" title="Copia somente o texto das regras atuais">
+                        <Copy size={13} />
+                        Copiar Regras
+                      </button>
+                      <button onClick={() => setShowPrecosInput(v => !v)} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-all" title="Abrir campo para colar ou editar regras">
                         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-                        Colar Resposta
+                        Colar / Editar
                       </button>
                     </div>
                     {precosScriptMsg && <p className="text-xs text-center font-bold" style={{color: precosScriptMsg.startsWith("✅") ? "#16a34a" : precosScriptMsg.startsWith("⚠️") ? "#d97706" : "#ef4444"}}>{precosScriptMsg}</p>}
 
                     {/* Campo de texto para colar script do ChatGPT */}
                     {showPrecosInput && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
-                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Cole o script do ChatGPT aqui:</p>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Texto das Regras (Script ChatGPT):</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const texto = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
+                              if (texto) {
+                                setPrecosScriptInput(texto);
+                                setPrecosScriptMsg("✅ Regras atuais carregadas no campo de texto!");
+                              } else {
+                                setPrecosScriptMsg("⚠️ Nenhuma regra atual encontrada.");
+                              }
+                            }}
+                            className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline"
+                          >
+                            Carregar Regras Atuais
+                          </button>
+                        </div>
                         <textarea
                           value={precosScriptInput}
                           onChange={e => setPrecosScriptInput(e.target.value)}
-                          placeholder="REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60&#10;REGRA2: Q2:4.5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1.2.3. VALOR:15000 ENTRADA:500 PARCELAS:50"
+                          placeholder="REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400&#10;REGRA2: Q2:4.5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1.2.3. VALOR:15000 AVISTA"
                           className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
-                          rows={5}
+                          rows={6}
                           autoFocus
                         />
-                        <button
-                          onClick={() => {
-                            const txt = precosScriptInput;
-                            if (!txt.trim()) { setPrecosScriptMsg("⚠️ Campo vazio."); return; }
-                            const regras: typeof precosRegras = [];
-                            let id = 1;
-                            const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:(\d+)\s+ENTRADA:(\d+)\s+PARCELAS:(\d+)/gi;
-                            let m;
-                            while ((m = regraRegex.exec(txt)) !== null) {
-                              const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
-                              regras.push({id: id++, script: m[1].trim(), valor: m[2], entrada: m[3], parcelas: m[4], parcela: '', cor: corAuto});
-                            }
-                            // PADRAO não existe mais — ignorado
-                            if (regras.length) {
-                              setPrecosRegras(regras);
-                              setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!");
-                              setShowPrecosInput(false);
-                              setPrecosScriptInput("");
-                            } else {
-                              setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
-                            }
-                          }}
-                          className="w-full mt-2 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl active:scale-95 transition-all">
-                          ✓ Interpretar Script
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              const txt = precosScriptInput;
+                              if (!txt.trim()) { setPrecosScriptMsg("⚠️ Campo vazio."); return; }
+                              const regras: typeof precosRegras = [];
+                              let id = 1;
+                              const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)/gi;
+                              let m;
+                              while ((m = regraRegex.exec(txt)) !== null) {
+                                const avista = !m[3] && !m[4];
+                                const valorN = parseFloat(String(m[2] || "0").replace(/\./g, "").replace(",", "."));
+                                const entradaN = parseFloat(String(m[3] || "0").replace(/\./g, "").replace(",", "."));
+                                const parcelasN = parseInt(m[4] || "0") || 0;
+                                const parcelaCalcN = m[5]
+                                  ? parseFloat(String(m[5]).replace(/\./g, "").replace(",", "."))
+                                  : (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
+                                const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
+                                regras.push({
+                                  id: id++,
+                                  script: m[1].trim(),
+                                  valor: String(valorN),
+                                  entrada: String(entradaN),
+                                  parcelas: String(parcelasN),
+                                  parcela: String(parcelaCalcN),
+                                  avista,
+                                  cor: corAuto,
+                                });
+                              }
+                              if (regras.length) {
+                                setPrecosRegras(regras);
+                                setPrecosScriptMsg("✅ " + regras.length + " regra(s) interpretada(s) com sucesso!");
+                                setShowPrecosInput(false);
+                                setPrecosScriptInput("");
+                              } else {
+                                setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
+                              }
+                            }}
+                            className="flex-1 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl active:scale-95 transition-all"
+                          >
+                            ✓ Interpretar e Aplicar nas Regras
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setShowPrecosInput(false)}
+                            className="px-4 py-2.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200"
+                          >
+                            Fechar
+                          </button>
+                        </div>
                       </div>
                     )}
 
@@ -14108,6 +15055,266 @@ const EmpreendimentosSection = ({
                   </div>
                 </>
               )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Modal: Edição Rápida de Preço Manual do Lote */}
+      <AnimatePresence>
+        {quickPriceLot && lotRegDev && (
+          <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white w-full max-w-md rounded-[24px] shadow-2xl flex flex-col overflow-hidden"
+            >
+              {/* Header */}
+              <div className="p-5 border-b border-slate-100 flex justify-between items-center bg-emerald-50/60">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 bg-emerald-600 rounded-xl text-white">
+                    <DollarSign size={20} />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-display font-bold text-slate-800">
+                      Editar Preço: Quadra {quickPriceLot.quadra} — Lote {quickPriceLot.lote}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lotRegDev.nome}</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setQuickPriceLot(null)}
+                  className="p-2 hover:bg-slate-100 rounded-xl transition-colors"
+                >
+                  <X size={18} className="text-slate-500" />
+                </button>
+              </div>
+
+              {/* Form */}
+              <div className="p-5 space-y-4">
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl">
+                  <span className="text-xs font-bold text-slate-600">Modalidade de Pagamento</span>
+                  <label className="flex items-center gap-2 text-xs font-bold text-emerald-800 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={quickPriceLot.avista}
+                      onChange={(e) => setQuickPriceLot({ ...quickPriceLot, avista: e.target.checked })}
+                      className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                    />
+                    Somente à vista
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Valor Total (R$)</label>
+                    <input
+                      type="text"
+                      className="input-field bg-white text-sm font-bold text-slate-800"
+                      placeholder="Ex: 25.000"
+                      value={quickPriceLot.preco}
+                      onChange={(e) => {
+                        const novoVal = e.target.value;
+                        const numVal = parseFloat(novoVal.replace(/\./g, "").replace(",", ".")) || 0;
+                        const numEnt = parseFloat(String(quickPriceLot.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                        const numParc = parseInt(quickPriceLot.parcelas || "0") || 0;
+                        const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : quickPriceLot.parcela;
+                        setQuickPriceLot({ ...quickPriceLot, preco: novoVal, parcela: parcCalc });
+                      }}
+                      autoFocus
+                    />
+                  </div>
+
+                  {!quickPriceLot.avista ? (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Entrada (R$)</label>
+                      <input
+                        type="text"
+                        className="input-field bg-white text-sm font-bold text-slate-800"
+                        placeholder="Ex: 1.000"
+                        value={quickPriceLot.entrada}
+                        onChange={(e) => {
+                          const novaEnt = e.target.value;
+                          const numVal = parseFloat(String(quickPriceLot.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                          const numEnt = parseFloat(novaEnt.replace(/\./g, "").replace(",", ".")) || 0;
+                          const numParc = parseInt(quickPriceLot.parcelas || "0") || 0;
+                          const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : quickPriceLot.parcela;
+                          setQuickPriceLot({ ...quickPriceLot, entrada: novaEnt, parcela: parcCalc });
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl p-3">
+                      Sem parcelamento
+                    </div>
+                  )}
+                </div>
+
+                {!quickPriceLot.avista && (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Nº de Parcelas</label>
+                      <input
+                        type="number"
+                        className="input-field bg-white text-sm font-bold text-slate-800"
+                        placeholder="Ex: 60"
+                        value={quickPriceLot.parcelas}
+                        onChange={(e) => {
+                          const nParc = e.target.value;
+                          const numVal = parseFloat(String(quickPriceLot.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                          const numEnt = parseFloat(String(quickPriceLot.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                          const pInt = parseInt(nParc || "0") || 0;
+                          const parcCalc = pInt > 0 ? String(Math.round((numVal - numEnt) / pInt)) : "";
+                          setQuickPriceLot({ ...quickPriceLot, parcelas: nParc, parcela: parcCalc });
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Valor da Parcela (R$)</label>
+                      <input
+                        type="text"
+                        className="input-field bg-white text-sm font-bold text-slate-800"
+                        placeholder="Ex: 400"
+                        value={quickPriceLot.parcela}
+                        onChange={(e) => setQuickPriceLot({ ...quickPriceLot, parcela: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* Seletor de cor da bolinha */}
+                <div>
+                  <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-2 block">
+                    Cor da Bolinha no Mapa
+                  </label>
+                  <div className="flex flex-wrap gap-2 items-center">
+                    {CORES_PALETA_BOLINHAS.map((c) => (
+                      <button
+                        key={c.cor}
+                        type="button"
+                        onClick={() => setQuickPriceLot({ ...quickPriceLot, corPreco: c.cor })}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform ${quickPriceLot.corPreco === c.cor ? "border-slate-900 scale-125 shadow-md" : "border-transparent hover:scale-110"}`}
+                        style={{ backgroundColor: c.cor }}
+                        title={c.nome}
+                      />
+                    ))}
+                    {quickPriceLot.corPreco && (
+                      <button
+                        type="button"
+                        onClick={() => setQuickPriceLot({ ...quickPriceLot, corPreco: "" })}
+                        className="text-[10px] text-slate-400 hover:text-slate-600 underline ml-1"
+                      >
+                        Limpar cor
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Ações */}
+                <div className="pt-2 flex items-center justify-between gap-2">
+                  {quickPriceLot.info?.preco ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const key = quickPriceLot.key;
+                        const infoAtualizada = { ...(lotRegDev.lotesInfo?.[key] || {}) };
+                        delete infoAtualizada.preco;
+                        delete infoAtualizada.entrada;
+                        delete infoAtualizada.parcelas;
+                        delete infoAtualizada.parcela;
+                        delete infoAtualizada.valorParcela;
+                        delete infoAtualizada.avista;
+                        delete infoAtualizada.corPreco;
+
+                        const newLotesInfo = {
+                          ...(lotRegDev.lotesInfo || {}),
+                          [key]: infoAtualizada,
+                        };
+                        onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+                        const updatedDev = applyLotesInfoPatchToEmpreendimento(
+                          { ...lotRegDev, lotesInfo: newLotesInfo } as Empreendimento,
+                          { [key]: infoAtualizada },
+                          sales
+                        );
+                        setLotRegDev(updatedDev);
+                        onSave(updatedDev);
+                        setQuickPriceLot(null);
+                      }}
+                      className="px-3 py-2.5 text-xs font-bold text-red-600 hover:bg-red-50 rounded-xl transition-colors"
+                    >
+                      Remover Preço
+                    </button>
+                  ) : <div />}
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setQuickPriceLot(null)}
+                      className="btn-secondary px-4 py-2.5 text-xs"
+                    >
+                      Cancelar
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const key = quickPriceLot.key;
+                        const valNum = parseFloat(String(quickPriceLot.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                        const entNum = parseFloat(String(quickPriceLot.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                        const parNum = parseInt(quickPriceLot.parcelas || "0") || 0;
+                        const calcParc = quickPriceLot.parcela
+                          ? parseFloat(String(quickPriceLot.parcela).replace(/\./g, "").replace(",", ".")) || 0
+                          : (parNum > 0 ? Math.round((valNum - entNum) / parNum) : 0);
+
+                        const corFinal = quickPriceLot.corPreco || quickPriceLot.info?.corPreco || quickPriceLot.info?.cor || "";
+
+                        const infoAtualizada: any = {
+                          ...(lotRegDev.lotesInfo?.[key] || {}),
+                          preco: valNum,
+                          entrada: entNum,
+                          parcelas: parNum,
+                          parcela: calcParc,
+                          valorParcela: calcParc,
+                          avista: !!quickPriceLot.avista,
+                          corPreco: corFinal,
+                        };
+                        if (corFinal) {
+                          infoAtualizada.cor = corFinal;
+                          infoAtualizada.corBolinha = corFinal;
+                        }
+
+                        const nextPontos = ((lotRegDev as any).mapaPontos || []).map((p: any) => {
+                          if (
+                            normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(quickPriceLot.quadra) &&
+                            normalizeLotKeyPart(p.lote) === normalizeLotKeyPart(quickPriceLot.lote)
+                          ) {
+                            return { ...p, ...(corFinal ? { cor: corFinal } : {}) };
+                          }
+                          return p;
+                        });
+
+                        const newLotesInfo = {
+                          ...(lotRegDev.lotesInfo || {}),
+                          [key]: infoAtualizada,
+                        };
+
+                        onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
+                        const updatedDev = applyLotesInfoPatchToEmpreendimento(
+                          { ...lotRegDev, lotesInfo: newLotesInfo, mapaPontos: nextPontos } as Empreendimento,
+                          { [key]: infoAtualizada },
+                          sales
+                        );
+                        setLotRegDev(updatedDev);
+                        onSave(updatedDev);
+                        setQuickPriceLot(null);
+                      }}
+                      className="btn-primary px-5 py-2.5 text-xs font-bold"
+                    >
+                      Salvar Preço
+                    </button>
+                  </div>
+                </div>
+              </div>
             </motion.div>
           </div>
         )}
@@ -24092,14 +25299,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         }
 
         setLoadProgress(100);
-        // Aguarda a animação de contagem (5.5s) antes de mostrar o app
-        const elapsed = Date.now() - loadStartTime;
-        const minDuration = 5500;
-        const wait = Math.max(0, minDuration - elapsed);
+        // Carregamento ultrarrápido: libera a tela imediatamente assim que os dados chegarem
         setTimeout(() => {
           setLoadProgress(0);
           setIsLoaded(true);
-        }, wait + 300);
+        }, 150);
 
         subDevs = dbService.subscribeToEmpreendimentos((d) => setDevelopments(d));
         subClientes = dbService.subscribeToClientes((d) => setClients(d));

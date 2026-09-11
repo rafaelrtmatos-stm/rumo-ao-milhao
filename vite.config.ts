@@ -20,7 +20,10 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks: {
-          'jspdf': ['jspdf'],
+          'vendor-pdf': ['jspdf', 'pdfjs-dist'],
+          'vendor-charts': ['recharts'],
+          'vendor-leaflet': ['leaflet'],
+          'vendor-icons': ['lucide-react'],
         },
       },
     },

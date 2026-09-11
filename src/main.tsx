@@ -132,25 +132,52 @@ function Root() {
     const token = getAuthToken();
     const offlineUser = getOfflineUser();
 
-    // ── BYPASS OFFLINE ────────────────────────────────────────────────────────
-    // Se estiver offline E tiver sessão salva → acesso imediato sem pedir senha
+    // ── ACESSO IMEDIATO COM SESSÃO SALVA (Stale-While-Revalidate) ────────────
+    // Se o usuário já tiver token e perfil salvo, autentica no instante 0
+    if (token && offlineUser) {
+      setAuth({
+        status: "authenticated",
+        isAdmin: offlineUser.isAdmin,
+        userId: offlineUser.id,
+        email: offlineUser.email,
+        permissions: offlineUser.permissions,
+      });
+
+      // Se estiver offline, já está resolvido
+      if (isOffline()) return;
+
+      // Em segundo plano (sem bloquear a tela), revalida a sessão com o servidor
+      fetch("/api/auth/user", {
+        credentials: "include",
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          if (res.ok) {
+            const user = await res.json();
+            if (user?.id) {
+              saveOfflineUser({ id: user.id, email: user.email ?? "", isAdmin: user.isAdmin ?? false, permissions: user.permissions ?? {} });
+              setAuth({
+                status: "authenticated",
+                isAdmin: user.isAdmin ?? false,
+                userId: user.id,
+                email: user.email ?? "",
+                permissions: user.permissions ?? {},
+              });
+            }
+          } else if (res.status === 401) {
+            clearAuthToken();
+            setAuth({ status: "login" });
+          }
+        })
+        .catch(() => {});
+      return;
+    }
+
     if (isOffline()) {
-      if (token && offlineUser) {
-        console.log("[auth] Offline com sessão salva — acesso direto");
-        setAuth({
-          status: "authenticated",
-          isAdmin: offlineUser.isAdmin,
-          userId: offlineUser.id,
-          email: offlineUser.email,
-          permissions: offlineUser.permissions,
-        });
-        return;
-      }
-      // Offline sem sessão → mostra login (não pode autenticar sem internet)
       setAuth({ status: "login" });
       return;
     }
-    // ─────────────────────────────────────────────────────────────────────────
 
     try {
       // 1. Verificar se precisa de setup (com timeout curto)

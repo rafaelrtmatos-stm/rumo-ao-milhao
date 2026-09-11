@@ -107,19 +107,21 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
       }).finally(() => clearTimeout(timer));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const items: Empreendimento[] = await res.json();
-      try {
-        const now = Date.now();
-        for (const item of items) {
-          const local = await db.empreendimentos.get(item.id);
-          if (!local || local.syncStatus === 'synced') {
-            const base64 = (local?.data as any)?.mapaImagemBase64;
-            const merged = base64 ? { ...item, mapaImagemBase64: base64 } : item;
-            await db.empreendimentos.put({ id: item.id, data: merged, syncStatus: 'synced', updatedAt: now });
-          }
+      // Salva no IndexedDB em segundo plano com bulkPut sem travar a inicialização do app
+      (async () => {
+        try {
+          const now = Date.now();
+          const bulkItems = items.map(item => ({
+            id: item.id,
+            data: item,
+            syncStatus: 'synced' as const,
+            updatedAt: now,
+          }));
+          await db.empreendimentos.bulkPut(bulkItems);
+        } catch (cacheErr) {
+          console.warn('[db] Falha ao persistir cache local de empreendimentos:', cacheErr);
         }
-      } catch (cacheErr) {
-        console.warn('[db] Falha ao persistir cache local de empreendimentos:', cacheErr);
-      }
+      })();
       return items.map(r => injectCoordenadas(r));
     } catch (err) {
       console.warn('[db] getEmpreendimentos API falhou, usando cache:', err);
@@ -247,17 +249,21 @@ async function getClientes(): Promise<Cliente[]> {
       }).finally(() => clearTimeout(timer2));
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
       const items: Cliente[] = await res2.json();
-      try {
-        const now = Date.now();
-        for (const item of items) {
-          const local = await db.clientes.get(item.id);
-          if (!local || local.syncStatus === 'synced') {
-            await db.clientes.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
-          }
+      // Salva no IndexedDB em segundo plano com bulkPut
+      (async () => {
+        try {
+          const now = Date.now();
+          const bulkItems = items.map(item => ({
+            id: item.id,
+            data: item,
+            syncStatus: 'synced' as const,
+            updatedAt: now,
+          }));
+          await db.clientes.bulkPut(bulkItems);
+        } catch (cacheErr) {
+          console.warn('[db] Falha ao persistir cache local de clientes:', cacheErr);
         }
-      } catch (cacheErr) {
-        console.warn('[db] Falha ao persistir cache local de clientes:', cacheErr);
-      }
+      })();
       return items;
     } catch (err) {
       console.warn('[db] getClientes API falhou, usando cache:', err);
@@ -304,13 +310,21 @@ async function getVendas(): Promise<Venda[]> {
   if (navigator.onLine) {
     try {
       const items = await apiGet<Venda[]>('/api/vendas');
-      const now = Date.now();
-      for (const item of items) {
-        const local = await db.vendas.get(item.id);
-        if (!local || local.syncStatus === 'synced') {
-          await db.vendas.put({ id: item.id, data: item, syncStatus: 'synced', updatedAt: now });
+      // Salva no IndexedDB em segundo plano com bulkPut
+      (async () => {
+        try {
+          const now = Date.now();
+          const bulkItems = items.map(item => ({
+            id: item.id,
+            data: item,
+            syncStatus: 'synced' as const,
+            updatedAt: now,
+          }));
+          await db.vendas.bulkPut(bulkItems);
+        } catch (cacheErr) {
+          console.warn('[db] Falha ao persistir cache local de vendas:', cacheErr);
         }
-      }
+      })();
       return items;
     } catch (err) {
       console.warn('[db] getVendas API falhou, usando cache:', err);

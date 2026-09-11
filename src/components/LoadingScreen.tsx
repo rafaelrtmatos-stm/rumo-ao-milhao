@@ -21,20 +21,24 @@ export default function LoadingScreen({ progress }: Props) {
   const [animDone, setAnimDone] = useState(false);
   const rafRef = useRef<number | null>(null);
   const startRef = useRef<number | null>(null);
-  const DURATION = 5500; // 5.5s de animação
+  const DURATION = 800; // 0.8s de animação dinâmica e ágil
   const TARGET = 1_000_000;
 
   useEffect(() => {
-    // Animação easing: começa devagar, acelera no meio, desacelera no fim
+    if (progress >= 100) {
+      setDisplayValue(TARGET);
+      setAnimDone(true);
+      return;
+    }
+
+    // Animação easing: ágil e elegante
     const animate = (timestamp: number) => {
       if (!startRef.current) startRef.current = timestamp;
       const elapsed = timestamp - startRef.current;
       const t = Math.min(elapsed / DURATION, 1);
 
-      // Curva ease-in-out-cubic
-      const ease = t < 0.5
-        ? 4 * t * t * t
-        : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      // Curva ease-out rápida
+      const ease = 1 - Math.pow(1 - t, 3);
 
       const value = Math.round(1 + ease * (TARGET - 1));
       setDisplayValue(value);
@@ -48,7 +52,7 @@ export default function LoadingScreen({ progress }: Props) {
 
     rafRef.current = requestAnimationFrame(animate);
     return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
-  }, []);
+  }, [progress]);
 
   const pct = Math.max(progress, animDone ? 100 : Math.round((displayValue / TARGET) * 100));
 

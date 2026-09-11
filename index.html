@@ -48,21 +48,5 @@
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      if ('serviceWorker' in navigator) {
-        navigator.serviceWorker.getRegistrations().then(function(registrations) {
-          for (var i = 0; i < registrations.length; i++) {
-            registrations[i].unregister();
-          }
-        });
-        if ('caches' in window) {
-          caches.keys().then(function(names) {
-            for (var j = 0; j < names.length; j++) {
-              caches.delete(names[j]);
-            }
-          });
-        }
-      }
-    </script>
   </body>
 </html>
