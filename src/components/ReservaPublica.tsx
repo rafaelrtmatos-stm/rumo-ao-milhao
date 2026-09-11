@@ -197,7 +197,7 @@ export default function ReservaPublica({ empreendimentoId }: { empreendimentoId:
           <div className="flex justify-between"><span className="text-xs text-slate-400">Empreendimento</span><span className="text-xs font-black text-slate-700 max-w-[60%] text-right">{emp.nome}</span></div>
           <div className="flex justify-between"><span className="text-xs text-slate-400">Nome</span><span className="text-xs font-black text-slate-700">{form.nome}</span></div>
         </div>
-        <p className="text-xs text-slate-400">Nossa equipe entrará em contato em breve pelo WhatsApp para confirmar e finalizar sua compra.</p>
+        <p className="text-xs text-slate-400">Nossa equipe entrará em contato em breve para confirmar e finalizar sua compra.</p>
         <div className="text-[10px] text-green-700 font-bold">Rumo ao Milhão • Sistema Imobiliário</div>
       </div>
     </div>
@@ -363,7 +363,7 @@ export default function ReservaPublica({ empreendimentoId }: { empreendimentoId:
                 {erros.cpf && <p className="text-red-400 text-[10px] mt-1 font-bold">{erros.cpf}</p>}
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-white/50 mb-1">Celular / WhatsApp *</label>
+                <label className="block text-[11px] font-bold text-white/50 mb-1">Celular *</label>
                 <input className={inpClass("celular")} placeholder="(93) 99999-9999" type="tel"
                   value={form.celular} onChange={e => setForm(p=>({...p,celular:formatarCelular(e.target.value)}))}/>
                 {erros.celular && <p className="text-red-400 text-[10px] mt-1 font-bold">{erros.celular}</p>}

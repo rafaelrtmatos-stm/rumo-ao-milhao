@@ -47,6 +47,7 @@ import {
   Check,
   Monitor,
   Smartphone,
+  Zap,
   ClipboardPaste,
   Upload,
   AlertTriangle,
@@ -59,7 +60,7 @@ import {
   Copy,
   Save,
   FileCheck,
-  MessageCircle,
+  Phone,
   BarChart3,
   CheckCircle2,
   Clock,
@@ -75,7 +76,6 @@ import {
   Sliders,
   Grid,
   Tag,
-  MessageSquare,
   Hand,
   Minus,
   MoveHorizontal,
@@ -1752,6 +1752,8 @@ const Sidebar = ({
   isAdmin,
   forceDesktop,
   onToggleDesktop,
+  tipoVisualizacao = "pc",
+  onSelectVisualizacao,
   userPermissions,
   userEmail,
 }: {
@@ -1763,6 +1765,8 @@ const Sidebar = ({
   isAdmin?: boolean;
   forceDesktop: boolean;
   onToggleDesktop: () => void;
+  tipoVisualizacao?: "lite" | "pro" | "pc";
+  onSelectVisualizacao?: (modo: "lite" | "pro" | "pc") => void;
   userPermissions?: Record<string, boolean>;
   userEmail?: string;
 }) => {
@@ -1872,18 +1876,88 @@ const Sidebar = ({
             );
           })}
 
-          {/* Toggle Mobile / PC */}
-          <button
-            onClick={onToggleDesktop}
-            className="w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all duration-200 group text-slate-500 hover:bg-slate-50 hover:text-primary-main"
-          >
-            <div className="p-2 rounded-lg bg-slate-100 group-hover:bg-primary-light/10 text-slate-400 group-hover:text-primary-main transition-colors">
-              {forceDesktop ? <Smartphone size={18} /> : <Monitor size={18} />}
+          {/* SELETOR DE MODOS (LITE / PRO / PC) NA ABA LATERAL */}
+          <div className="mx-1 my-2 p-3 bg-slate-50/90 border border-slate-200/90 rounded-2xl shadow-xs">
+            <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2 px-1">
+              Modo de Visualização
+            </p>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("lite") : onToggleDesktop()}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  tipoVisualizacao === "lite"
+                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
+                    : "text-slate-600 hover:bg-white hover:text-slate-900"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "lite" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
+                    <Zap size={14} />
+                  </div>
+                  <div className="text-left">
+                    <span className="block leading-tight font-black">Celular Lite</span>
+                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "lite" ? "text-emerald-200" : "text-slate-400"}`}>
+                      Mapa limpo e vendas
+                    </span>
+                  </div>
+                </div>
+                {tipoVisualizacao === "lite" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("pro") : onToggleDesktop()}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  tipoVisualizacao === "pro"
+                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
+                    : "text-slate-600 hover:bg-white hover:text-slate-900"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "pro" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
+                    <Smartphone size={14} />
+                  </div>
+                  <div className="text-left">
+                    <span className="block leading-tight font-black">Celular Pro</span>
+                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "pro" ? "text-emerald-200" : "text-slate-400"}`}>
+                      Completo com edição
+                    </span>
+                  </div>
+                </div>
+                {tipoVisualizacao === "pro" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("pc") : onToggleDesktop()}
+                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
+                  tipoVisualizacao === "pc"
+                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
+                    : "text-slate-600 hover:bg-white hover:text-slate-900"
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "pc" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
+                    <Monitor size={14} />
+                  </div>
+                  <div className="text-left">
+                    <span className="block leading-tight font-black">Modo PC</span>
+                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "pc" ? "text-emerald-200" : "text-slate-400"}`}>
+                      Web e Desktop
+                    </span>
+                  </div>
+                </div>
+                {tipoVisualizacao === "pc" && (
+                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
+                )}
+              </button>
             </div>
-            <span className="text-sm font-medium">
-              {forceDesktop ? "Versão Mobile" : "Versão PC"}
-            </span>
-          </button>
+          </div>
 
           {/* Lixeira */}
           {showHistorico && (() => {
@@ -3116,281 +3190,51 @@ const LotDashboard = ({
   };
 
   // ─────────────────────────────────────────────────────────────
-  // CARD DE PREÇOS FLUTUANTE — FUNDO BRANCO, NÍTIDO E ARRASTÁVEL
+  // CARD DE PREÇOS FLUTUANTE — DESATIVADO (os preços já constam na aba lateral)
   // ─────────────────────────────────────────────────────────────
-  const renderCardPrecosFlutuante = (isFullscreen = false) => {
-    // A tabela de preços só aparece na aba Preços (mode === "precos")
-    if (mode !== "precos" || !cardPrecoVisivel || faixasPrecoGlobal.length === 0) return null;
+  const renderCardPrecosFlutuante = (_isFullscreen = false) => {
+    return null;
+  };
 
-    const pctScale = (legendaSizePercent || 100) / 100;
-    const cardWidth = Math.round(280 * pctScale);
+  const [isMobile] = useState(() => window.innerWidth < 768);
+  const [tipoVisualizacao, setTipoVisualizacao] = useState<"lite" | "pro" | "pc">(() => {
+    try {
+      const salvo = localStorage.getItem("tipo_visualizacao_modo") as "lite" | "pro" | "pc";
+      if (salvo && ["lite", "pro", "pc"].includes(salvo)) return salvo;
+    } catch {}
+    return window.innerWidth < 768 ? "lite" : "pc";
+  });
 
-    const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
-      e.stopPropagation();
-      const clientX = 'touches' in e ? e.touches[0].clientX : (e as React.MouseEvent).clientX;
-      const clientY = 'touches' in e ? e.touches[0].clientY : (e as React.MouseEvent).clientY;
-      legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
-
-      const onMove = (ev: MouseEvent | TouchEvent) => {
-        if (!legendaDragRef.current) return;
-        ev.preventDefault();
-        const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-        const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-        const dx = cx - legendaDragRef.current.startX;
-        const dy = cy - legendaDragRef.current.startY;
-        const nx = Math.max(8, Math.min(window.innerWidth - 120, legendaDragRef.current.startPosX + dx));
-        const ny = Math.max(8, Math.min(window.innerHeight - 80, legendaDragRef.current.startPosY + dy));
-        const nextPos = { x: nx, y: ny };
-        setLegendaPos(nextPos);
-        try {
-          localStorage.setItem('legendaPrecoPos_' + (localDev as any)?.id, JSON.stringify(nextPos));
-        } catch {}
-      };
-
-      const onUp = () => {
-        legendaDragRef.current = null;
-        window.removeEventListener('mousemove', onMove);
-        window.removeEventListener('mouseup', onUp);
-        window.removeEventListener('touchmove', onMove as any);
-        window.removeEventListener('touchend', onUp);
-      };
-
-      window.addEventListener('mousemove', onMove);
-      window.addEventListener('mouseup', onUp);
-      window.addEventListener('touchmove', onMove as any, { passive: false });
-      window.addEventListener('touchend', onUp);
-    };
-
-    let totalLotesComPreco = 0;
-    const faixasComLotes = faixasPrecoGlobal.map((faixa) => {
-      const lots = mapaPontos.filter(p => {
-        const info = getPrecoInfoDoLote(p.quadra, p.lote);
-        return info && Number(info.preco) === Number(faixa.preco);
-      });
-      const dispCount = lots.filter(p => p.status === 'disponivel').length;
-      totalLotesComPreco += lots.length;
-
-      let infoFaixa = lots[0] ? getPrecoInfoDoLote(lots[0].quadra, lots[0].lote) : null;
-      if (!infoFaixa) {
-        const anyKey = Object.keys(localDev.lotesInfo || {}).find(k => parsePrecoNumero((localDev.lotesInfo as any)[k]?.preco) === Number(faixa.preco));
-        if (anyKey) {
-          const parts = anyKey.split(/[-:_]/);
-          if (parts.length >= 2) {
-            infoFaixa = getPrecoInfoDoLote(parts[0], parts[parts.length - 1]);
-          }
+  useEffect(() => {
+    const onTipoChanged = (e: any) => {
+      if (e?.detail && ["lite", "pro", "pc"].includes(e.detail)) {
+        setTipoVisualizacao(e.detail);
+        if (e.detail === "lite") {
+          setIsEditingMap(false);
+          setMapAction("visualizar");
         }
       }
+    };
+    window.addEventListener("tipo-visualizacao-changed", onTipoChanged);
+    return () => window.removeEventListener("tipo-visualizacao-changed", onTipoChanged);
+  }, []);
 
-      const entrada = infoFaixa?.entrada || 0;
-      const parcelas = infoFaixa?.parcelas || 0;
-      const avista = infoFaixa?.avista || parcelas === 0;
-      const vlParcela = infoFaixa?.parcela || (parcelas > 0 ? Math.round((Number(faixa.preco) - entrada) / parcelas) : 0);
-
-      return {
-        ...faixa,
-        count: lots.length,
-        dispCount,
-        entrada,
-        parcelas,
-        avista,
-        vlParcela,
-      };
-    });
-
-    return (
-      <div
-        ref={legendaRef}
-        style={{
-          position: 'absolute',
-          left: `${Math.max(10, legendaPos.x)}px`,
-          top: `${Math.max(10, legendaPos.y)}px`,
-          zIndex: 150,
-          touchAction: 'none',
-          userSelect: 'none',
-          pointerEvents: 'auto',
-          width: `${cardWidth}px`,
-        }}
-        className="transition-shadow font-sans"
-      >
-        <div
-          style={{
-            backgroundColor: '#ffffff',
-            border: '1.5px solid #cbd5e1',
-            borderRadius: '16px',
-            boxShadow: '0 12px 36px -4px rgba(0, 0, 0, 0.18), 0 4px 12px -2px rgba(0, 0, 0, 0.08)',
-          }}
-          className="overflow-hidden bg-white text-slate-900"
-        >
-          {/* Cabeçalho arrastável em fundo branco nítido */}
-          <div
-            onMouseDown={startDrag}
-            onTouchStart={startDrag}
-            className="flex items-center justify-between px-3.5 py-2.5 bg-white border-b border-slate-100 cursor-grab active:cursor-grabbing select-none"
-            title="Arraste para reposicionar o card de preços"
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-slate-400 hover:text-slate-600 flex items-center justify-center">
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                  <circle cx="9" cy="6" r="1.5"/><circle cx="15" cy="6" r="1.5"/>
-                  <circle cx="9" cy="12" r="1.5"/><circle cx="15" cy="12" r="1.5"/>
-                  <circle cx="9" cy="18" r="1.5"/><circle cx="15" cy="18" r="1.5"/>
-                </svg>
-              </span>
-              <div className="flex items-center gap-1.5 truncate">
-                <span className="text-xs">💰</span>
-                <span className="text-[11px] font-black uppercase tracking-wider text-slate-900 truncate">
-                  Tabela de Preços
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-1 flex-shrink-0" onMouseDown={e => e.stopPropagation()} onTouchStart={e => e.stopPropagation()}>
-              {/* Seletor de tamanho por porcentagem (%) */}
-              <div className="flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-lg border border-slate-200/80 mr-1" title="Ajustar tamanho da tabela de preços">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = Math.max(50, legendaSizePercent - 10);
-                    setLegendaSizePercent(next);
-                    try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
-                  }}
-                  className="w-4 h-4 rounded hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center text-[10px] active:scale-95 transition-all"
-                  title="Diminuir tabela (-10%)"
-                >
-                  −
-                </button>
-                <span className="font-black text-[9px] text-slate-700 min-w-[32px] text-center select-none">
-                  {legendaSizePercent}%
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = Math.min(200, legendaSizePercent + 10);
-                    setLegendaSizePercent(next);
-                    try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
-                  }}
-                  className="w-4 h-4 rounded hover:bg-slate-200 text-slate-700 font-black flex items-center justify-center text-[10px] active:scale-95 transition-all"
-                  title="Aumentar tabela (+10%)"
-                >
-                  +
-                </button>
-              </div>
-
-              {/* Minimizar / Expandir */}
-              <button
-                type="button"
-                onClick={() => setCardPrecoMinimizado(prev => !prev)}
-                className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center text-xs font-black transition-colors"
-                title={cardPrecoMinimizado ? "Expandir card" : "Minimizar card"}
-              >
-                {cardPrecoMinimizado ? "+" : "−"}
-              </button>
-
-              {/* Fechar */}
-              <button
-                type="button"
-                onClick={() => setCardPrecoVisivel(false)}
-                className="w-5 h-5 rounded-lg bg-slate-100 hover:bg-red-50 hover:text-red-600 text-slate-400 flex items-center justify-center text-xs font-black transition-colors ml-0.5"
-                title="Ocultar card de preços (reabra pelo botão '💰 Card de Preços')"
-              >
-                ✕
-              </button>
-            </div>
-          </div>
-
-          {/* Conteúdo do Card quando expandido */}
-          {!cardPrecoMinimizado && (
-            <div className="p-3 bg-white space-y-2 max-h-[60vh] overflow-y-auto" style={{ scrollbarWidth: 'thin' }}>
-              {/* Lista das Faixas de Preço */}
-              {faixasComLotes.map((faixa) => (
-                <div
-                  key={faixa.preco}
-                  className="p-2.5 rounded-xl border transition-all hover:shadow-sm"
-                  style={{
-                    backgroundColor: '#f8fafc',
-                    borderColor: '#e2e8f0',
-                  }}
-                >
-                  <div className="flex items-start gap-2.5">
-                    {/* Seletor de cor da faixa */}
-                    <label
-                      className="cursor-pointer mt-0.5 relative group flex-shrink-0"
-                      title="Clique para personalizar a cor desta faixa"
-                      onMouseDown={e => e.stopPropagation()}
-                      onTouchStart={e => e.stopPropagation()}
-                    >
-                      <div
-                        style={{
-                          width: `${Math.max(12, Math.round(16 * pctScale))}px`,
-                          height: `${Math.max(12, Math.round(16 * pctScale))}px`,
-                          borderRadius: '50%',
-                          background: faixa.color,
-                          border: '2px solid #ffffff',
-                          boxShadow: `0 0 0 1px #cbd5e1, 0 2px 4px ${faixa.color}40`,
-                        }}
-                      />
-                      <input
-                        type="color"
-                        value={faixa.color}
-                        onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
-                        className="sr-only"
-                      />
-                    </label>
-
-                    {/* Preço e Detalhes de Pagamento */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between gap-1 mb-0.5">
-                        <span
-                          className="font-black text-slate-900 tracking-tight leading-none"
-                          style={{ fontSize: `${Math.max(11, Math.round(14 * pctScale))}px` }}
-                        >
-                          R$ {Number(faixa.preco).toLocaleString('pt-BR')}
-                        </span>
-                        {faixa.count > 0 && (
-                          <span className="text-[9px] font-bold text-slate-500 bg-white px-1.5 py-0.5 rounded-full border border-slate-200">
-                            {faixa.count} {faixa.count === 1 ? 'lote' : 'lotes'}
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Condições financeiras */}
-                      <div className="text-slate-600 leading-tight space-y-0.5">
-                        {faixa.avista ? (
-                          <span className="inline-block text-[10px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                            À Vista
-                          </span>
-                        ) : (
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[10px]">
-                            {faixa.entrada > 0 && (
-                              <span className="text-slate-500 font-medium">
-                                Entr: <strong className="text-slate-700">R$ {Number(faixa.entrada).toLocaleString('pt-BR')}</strong>
-                              </span>
-                            )}
-                            {faixa.parcelas > 0 && (
-                              <span className="font-bold text-slate-800">
-                                {faixa.parcelas}× <strong style={{ color: faixa.color }}>R$ {Number(faixa.vlParcela).toLocaleString('pt-BR')}</strong>
-                              </span>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))}
-
-              {/* Rodapé informativo */}
-              <div className="pt-1.5 flex items-center justify-between text-[9px] text-slate-400 border-t border-slate-100">
-                <span>{totalLotesComPreco} lotes cadastrados</span>
-                <span className="text-emerald-700 font-bold">Aba Preços</span>
-              </div>
-            </div>
-          )}
-        </div>
-      </div>
-    );
+  const mudarTipoVisualizacao = (tipo: "lite" | "pro" | "pc") => {
+    setTipoVisualizacao(tipo);
+    try {
+      localStorage.setItem("tipo_visualizacao_modo", tipo);
+    } catch {}
+    if (tipo === "lite") {
+      setIsEditingMap(false);
+      setMapAction("visualizar");
+    }
+    try {
+      window.dispatchEvent(new CustomEvent("tipo-visualizacao-changed", { detail: tipo }));
+    } catch {}
   };
-  const [isMobile] = useState(() => window.innerWidth < 768);
+
+  const [liteStatusFiltro, setLiteStatusFiltro] = useState<"todos" | "disponivel" | "reservado" | "indisponivel">("todos");
+  const [liteBuscaQuery, setLiteBuscaQuery] = useState("");
   const [drawerOpen, setDrawerOpen] = useState(true); // sempre aberto ao iniciar
   const [mobileSelIds, setMobileSelIds] = useState<Set<string>>(new Set()); // seleção múltipla mobile
   const [mobileSelMode, setMobileSelMode] = useState(false); // modo seleção ativo
@@ -7079,7 +6923,7 @@ const LotDashboard = ({
                 if (isAbaPrecos) {
                   // Regra da Aba Preços:
                   // Preenchimento plano na cor do preço, contorno com a cor do status (azul disponível, vermelho vendido, amarelo reservado)
-                  // SEM SOMBRA, preenchimento sem efeito
+                  // SEM SOMBRA, desenho plano
                   const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
                   ballBgColor = corPreco || (isVendido ? "#ef4444" : isReservado ? "#f59e0b" : "#3b82f6");
                   ballBorderColor = isVendido ? "#dc2626" : isReservado ? "#d97706" : "#2563eb";
@@ -7087,11 +6931,11 @@ const LotDashboard = ({
                   ballBoxShadow = "none";
                 } else {
                   // Regra da Aba Mapa:
-                  // Bolinhas azul disponível, vermelho vendido, amarelo reservado com contorno clássico e sombra suave
+                  // Bolinhas azul disponível, vermelho vendido, amarelo reservado com contorno clássico e SEM SOMBRA
                   ballBgColor = isVendido ? "#ef4444" : isReservado ? "#f59e0b" : "#3b82f6";
                   ballBorderColor = "#ffffff";
                   borderWidthCalc = Math.max(1.5, Math.round(ballSize.border * 0.75));
-                  ballBoxShadow = "0 1.5px 4px rgba(0,0,0,0.25)";
+                  ballBoxShadow = "none";
                 }
                 const isMassaSel = massaSelIds.has(ponto.id);
                 const isCtrlSel = ctrlSelectedIds.has(ponto.id);
@@ -7183,7 +7027,7 @@ const LotDashboard = ({
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
-                    className={`absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden ${isMassaSel ? "ring-4 ring-offset-1 ring-slate-900 shadow-xl" : isMobileDragging ? "ring-4 ring-offset-1 ring-yellow-400 shadow-xl scale-110 opacity-80" : isMobileSelected ? "ring-4 ring-offset-2 ring-yellow-400 shadow-xl scale-125" : isMobileSel ? "ring-4 ring-offset-1 ring-orange-400 shadow-xl scale-125" : isCtrlSel ? "ring-4 ring-offset-1 ring-emerald-400 shadow-xl scale-125" : gruposMap[ponto.id] ? "ring-2 ring-offset-1 ring-purple-500 shadow-xl" : (isAbaPrecos ? "" : "shadow-md")} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
+                    className={`absolute rounded-full font-black flex items-center justify-center map-marker-label whitespace-nowrap leading-none overflow-hidden ${isMassaSel ? "ring-2 ring-slate-900" : isMobileDragging ? "ring-2 ring-yellow-400 scale-110 opacity-80" : isMobileSelected ? "ring-2 ring-yellow-400 scale-125" : isMobileSel ? "ring-2 ring-orange-400 scale-125" : isCtrlSel ? "ring-2 ring-emerald-400 scale-125" : gruposMap[ponto.id] ? "ring-2 ring-purple-500" : ""} ${isEditingMap ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${isDragging ? "opacity-80 z-50" : "z-10"}`}
                     style={{
                       left: `${ponto.xPercent}%`,
                       top: `${ponto.yPercent}%`,
@@ -7195,9 +7039,10 @@ const LotDashboard = ({
                       borderColor: ballBorderColor,
                       borderWidth: `${borderWidthCalc}px`,
                       borderStyle: "solid",
-                      boxShadow: ballBoxShadow,
+                      boxShadow: "none",
                       transform: "translate(-50%,-50%)",
                       pointerEvents: "auto",
+                      opacity: tipoVisualizacao === "lite" && liteStatusFiltro !== "todos" && ponto.status !== liteStatusFiltro ? 0.25 : (isDragging ? 0.8 : 1),
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -8205,7 +8050,7 @@ const LotDashboard = ({
                   <div className="space-y-1 max-h-36 overflow-y-auto pr-1">
                     {faixasPrecoGlobal.map((f: any) => (
                       <div key={f.preco} className="flex items-center gap-2 text-[11px]">
-                        <span className="w-3 h-3 rounded-full flex-shrink-0 border border-white shadow-sm" style={{ backgroundColor: f.color }} />
+                        <span className="w-3 h-3 rounded-full flex-shrink-0 border border-white" style={{ backgroundColor: f.color, boxShadow: "none" }} />
                         <span className="font-semibold text-slate-700">R$ {Number(f.preco).toLocaleString('pt-BR')}</span>
                       </div>
                     ))}
@@ -8451,8 +8296,6 @@ const LotDashboard = ({
             </div>
           )}
         </AnimatePresence>
-            {/* Card de Preços Flutuante — só na aba Preços */}
-            {mode === "precos" && renderCardPrecosFlutuante(false)}
           </div>
         {mapFullscreen && (
           <div className="fixed inset-0 z-[99999] bg-slate-950 overflow-hidden select-none">
@@ -8468,23 +8311,6 @@ const LotDashboard = ({
               </div>
 
               <div className="flex items-center gap-2">
-                {mode === "precos" && faixasPrecoGlobal.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCardPrecoVisivel(prev => !prev);
-                      setCardPrecoMinimizado(false);
-                    }}
-                    className={`rounded-xl px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5 ${
-                      cardPrecoVisivel
-                        ? "bg-emerald-600 text-white"
-                        : "bg-white/90 hover:bg-white text-slate-800"
-                    }`}
-                    title="Exibir ou ocultar a tabela de preços"
-                  >
-                    💰 Tabela de Preços
-                  </button>
-                )}
                 <button
                   type="button"
                   onClick={() => fitMapToWidth()}
@@ -8586,7 +8412,7 @@ const LotDashboard = ({
                   const ballBgFS = corPrecoFS || (isVendidoFS ? "#ef4444" : isReservadoFS ? "#f59e0b" : "#3b82f6");
                   const ballBorderFS = isVendidoFS ? "#dc2626" : isReservadoFS ? "#d97706" : "#2563eb";
                   const borderWidthFS = ballSize.border ?? Math.max(2.5, Math.round(ballSize.size * 0.22));
-                  return (
+                    return (
                     <button
                       key={`fullscreen-${ponto.id}`}
                       onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
@@ -8596,7 +8422,7 @@ const LotDashboard = ({
                         setSelectedPoint({ ...ponto, venda });
                       }}
                       title={`Q${ponto.quadra} L${ponto.lote}`}
-                      className="absolute rounded-full font-black flex items-center justify-center transition-shadow map-marker-label whitespace-nowrap leading-none overflow-hidden shadow-lg cursor-pointer z-10"
+                      className="absolute rounded-full font-black flex items-center justify-center map-marker-label whitespace-nowrap leading-none overflow-hidden cursor-pointer z-10"
                       style={{
                         left: `${ponto.xPercent}%`,
                         top: `${ponto.yPercent}%`,
@@ -8608,11 +8434,7 @@ const LotDashboard = ({
                         borderColor: ballBorderFS,
                         borderWidth: `${borderWidthFS}px`,
                         borderStyle: "solid",
-                        boxShadow: isVendidoFS
-                          ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(220,38,38,0.4)"
-                          : isReservadoFS
-                          ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(217,119,6,0.4)"
-                          : "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(37,99,235,0.4)",
+                        boxShadow: "none",
                         transform: "translate(-50%,-50%)",
                         pointerEvents: "auto",
                         display: "flex",
@@ -8624,8 +8446,71 @@ const LotDashboard = ({
                   );
                 })}
               </div>
-              {/* Card de Preços Flutuante no modo tela cheia — só na aba Preços */}
-              {mode === "precos" && renderCardPrecosFlutuante(true)}
+
+              {/* RODAPÉ DE PREÇOS EM TELA CHEIA (visível na aba de preços) */}
+              {mode === "precos" && faixasPrecoGlobal.length > 0 && (
+                <div className="absolute bottom-5 left-4 right-20 sm:right-24 z-[100001] pointer-events-auto">
+                  <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-2 sm:p-2.5 flex items-center gap-2 overflow-x-auto shadow-none" style={{ scrollbarWidth: 'none' }}>
+                    <div className="flex-shrink-0 px-2.5 border-r border-white/15 hidden sm:flex flex-col">
+                      <span className="text-[10px] font-black uppercase text-emerald-400 block tracking-wider leading-tight">Preços</span>
+                      <span className="text-[9px] text-slate-400 font-bold">{faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 overflow-x-auto py-0.5" style={{ scrollbarWidth: 'none' }}>
+                      {faixasPrecoGlobal.map((faixa: any) => {
+                        const lotsFaixa = mapaPontos.filter((p: any) => {
+                          const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                          return info?.preco === faixa.preco;
+                        });
+                        const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
+                        const entrada = infoSample?.entrada || 0;
+                        const parcelas = infoSample?.parcelas || 0;
+                        const avista = infoSample?.avista || parcelas === 0;
+                        const vlParcela = infoSample?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
+
+                        return (
+                          <div
+                            key={faixa.preco}
+                            onClick={() => {
+                              if (lotsFaixa[0]) {
+                                const p = lotsFaixa[0];
+                                setSelectedPoint({ ...p, venda: vendaDoLote(p.quadra, p.lote) });
+                              }
+                            }}
+                            className="flex-shrink-0 bg-white/10 hover:bg-white/20 rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                            title={`Ver lote desta faixa (${lotsFaixa.length} lotes)`}
+                          >
+                            <span
+                              className="w-3.5 h-3.5 rounded-full border border-white flex-shrink-0"
+                              style={{ backgroundColor: faixa.color, boxShadow: "none" }}
+                            />
+                            <div className="leading-tight text-left">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-black text-white whitespace-nowrap">
+                                  R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                                </span>
+                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-slate-200">
+                                  {lotsFaixa.length}
+                                </span>
+                              </div>
+                              <div className="text-[9px] text-slate-300 whitespace-nowrap mt-0.5">
+                                {avista ? (
+                                  <span className="text-emerald-300 font-bold">À Vista</span>
+                                ) : (
+                                  <span>
+                                    {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
+                                    <strong className="text-emerald-300 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* Controles flutuantes de zoom e ajuste em tela cheia */}
               <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
                 <button
@@ -9091,11 +8976,7 @@ const LotDashboard = ({
                   borderRadius: '50%',
                   background: cor,
                   border: `${borderWidthPx}px solid ${borderCor}`,
-                  boxShadow: isVendido
-                    ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(220,38,38,0.4)"
-                    : isReservado
-                    ? "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(217,119,6,0.4)"
-                    : "0 0 0 1px rgba(0,0,0,0.35), 0 2px 6px rgba(37,99,235,0.4)",
+                  boxShadow: 'none',
                   transform: 'translate(-50%,-50%)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                   fontSize: `${ballSize.font}px`, fontWeight: 900, color: 'white',
@@ -9116,131 +8997,6 @@ const LotDashboard = ({
           <button onClick={() => { setMapZoom(1); setMapPan({x:0,y:0}); }}
             style={{width:32,height:32,background:'rgba(255,255,255,.95)',border:'1px solid #e2e8f0',borderRadius:8,fontSize:12,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',boxShadow:'0 2px 8px rgba(0,0,0,.12)'}}>⊕</button>
         </div>
-        {/* LEGENDA FLUTUANTE DE PREÇOS — desktop, fora do viewport transformado */}
-        {/* LEGENDA FLUTUANTE — fora do viewport transformado, fixa no container */}
-        {colorMode === "preco" && faixasPrecoGlobal.length > 0 && (() => {
-          const startDrag = (e: React.MouseEvent | React.TouchEvent) => {
-            e.stopPropagation(); e.preventDefault();
-            const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-            const clientY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-            legendaDragRef.current = { startX: clientX, startY: clientY, startPosX: legendaPos.x, startPosY: legendaPos.y };
-            const container = mapContainerRef.current;
-            const onMove = (ev: MouseEvent | TouchEvent) => {
-              if (!legendaDragRef.current || !container) return;
-              ev.preventDefault();
-              const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
-              const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
-              const dx = cx - legendaDragRef.current.startX;
-              const dy = cy - legendaDragRef.current.startY;
-              const rect = container.getBoundingClientRect();
-              const legW = legendaRef.current?.offsetWidth || 160;
-              const legH = legendaRef.current?.offsetHeight || 120;
-              const nx = Math.max(0, Math.min(rect.width - legW, legendaDragRef.current.startPosX + dx));
-              const ny = Math.max(0, Math.min(rect.height - legH, legendaDragRef.current.startPosY + dy));
-              setLegendaPos(prev => {
-                const next = {x: nx, y: ny};
-                try { localStorage.setItem('legendaPrecoPos_' + localDev.id, JSON.stringify(next)); } catch {}
-                return next;
-              });
-            };
-            const onUp = () => {
-              legendaDragRef.current = null;
-              window.removeEventListener('mousemove', onMove);
-              window.removeEventListener('mouseup', onUp);
-              window.removeEventListener('touchmove', onMove as any);
-              window.removeEventListener('touchend', onUp);
-            };
-            window.addEventListener('mousemove', onMove);
-            window.addEventListener('mouseup', onUp);
-            window.addEventListener('touchmove', onMove as any, {passive:false});
-            window.addEventListener('touchend', onUp);
-          };
-          const pctScale = (legendaSizePercent || 100) / 100;
-          // Tamanho em % da largura do mapa — configurável por porcentagem (%)
-          const mapW = mapContainerRef.current?.offsetWidth || 794;
-          const pct = 0.12 * pctScale;
-          const LW_tela = Math.max(140, Math.round(mapW * pct));
-          const fs = {
-            title: Math.round(LW_tela * 0.07),
-            valor: Math.round(LW_tela * 0.09),
-            sub:   Math.round(LW_tela * 0.07),
-            dot:   Math.round(LW_tela * 0.09),
-            pad:   `${Math.round(LW_tela*0.06)}px ${Math.round(LW_tela*0.08)}px`,
-            gap:   Math.round(LW_tela * 0.06),
-            mb:    Math.round(LW_tela * 0.05),
-            lw:    LW_tela,
-          };
-          return (
-            <div ref={legendaRef} onMouseDown={startDrag} onTouchStart={startDrag}
-              style={{ position:'absolute', left:legendaPos.x, top:legendaPos.y, zIndex:200, cursor:'grab', userSelect:'none', pointerEvents:'auto', touchAction:'none' }}>
-              <div style={{ background:'rgba(255,255,255,0.96)', backdropFilter:'blur(8px)', borderRadius:10, border:'1px solid rgba(0,0,0,0.08)', boxShadow:'0 2px 12px rgba(0,0,0,0.15)', padding:fs.pad }}>
-                <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:fs.mb}}>
-                  <p style={{fontSize:fs.title, fontWeight:900, color:'#64748b', textTransform:'uppercase', letterSpacing:1, margin:0}}>💰 Preços</p>
-                  <div style={{display:'flex', alignItems:'center', gap:3, marginLeft:8, background:'rgba(0,0,0,0.05)', borderRadius:6, padding:'2px 4px'}} onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        const next = Math.max(50, legendaSizePercent - 10);
-                        setLegendaSizePercent(next);
-                        try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
-                      }}
-                      style={{width:16,height:16,borderRadius:3,background:'none',border:'none',cursor:'pointer',fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1,color:'#475569'}}
-                      title="Diminuir (-10%)"
-                    >
-                      −
-                    </button>
-                    <span style={{fontSize:fs.title - 1, fontWeight:900, color:'#334155', minWidth:32, textAlign:'center'}}>
-                      {legendaSizePercent}%
-                    </span>
-                    <button
-                      onClick={e => {
-                        e.stopPropagation();
-                        const next = Math.min(200, legendaSizePercent + 10);
-                        setLegendaSizePercent(next);
-                        try { localStorage.setItem('legendaPrecoSizePercent_' + localDev.id, String(next)); } catch {}
-                      }}
-                      style={{width:16,height:16,borderRadius:3,background:'none',border:'none',cursor:'pointer',fontWeight:900,display:'flex',alignItems:'center',justifyContent:'center',lineHeight:1,color:'#475569'}}
-                      title="Aumentar (+10%)"
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-                {faixasPrecoGlobal.map((faixa: any) => {
-                  const lotsFaixa = mapaPontos.filter(p => {
-                    const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
-                    return info?.preco === faixa.preco;
-                  });
-                  const infoFaixa = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
-                  const entrada = infoFaixa?.entrada || 0;
-                  const parcelas = infoFaixa?.parcelas || 0;
-                  const avista = infoFaixa?.avista || parcelas === 0;
-                  const vlParcela = infoFaixa?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
-                  return (
-                    <div key={faixa.preco} style={{display:'flex',alignItems:'center',gap:fs.gap,marginBottom:fs.mb}}>
-                      <label style={{cursor:'pointer',display:'inline-flex',alignItems:'center',justifyContent:'center',margin:0,padding:0}} title="Clique para mudar a cor desta faixa" onMouseDown={e=>e.stopPropagation()} onTouchStart={e=>e.stopPropagation()}>
-                        <div style={{width:fs.dot,height:fs.dot,borderRadius:'50%',background:faixa.color,border:'1.5px solid white',boxShadow:'0 1px 3px rgba(0,0,0,0.2)',flexShrink:0}}/>
-                        <input
-                          type="color"
-                          value={faixa.color}
-                          onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
-                          style={{display:'none'}}
-                        />
-                      </label>
-                      <div>
-                        <p style={{fontSize:fs.valor,fontWeight:900,color:'#0f172a',margin:0,lineHeight:1.3}}>R$ {Number(faixa.preco).toLocaleString('pt-BR')}</p>
-                        {avista ? <p style={{fontSize:fs.sub,color:'#4ade80',margin:0}}>À Vista</p> : <>
-                          {entrada>0&&<p style={{fontSize:fs.sub,color:'#64748b',margin:0}}>E: R$ {Number(entrada).toLocaleString('pt-BR')}</p>}
-                          {parcelas>0&&<p style={{fontSize:fs.sub,color:faixa.color,margin:0}}>{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</p>}
-                        </>}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        })()}
       </div>
     );
   };
@@ -9705,7 +9461,9 @@ const LotDashboard = ({
         
   };
 
-  if (isMobile && (mode === "mapa" || mode === "precos" || isEditingMap) && mapaImagem) {
+  const deveRenderizarMobile = (tipoVisualizacao !== "pc") && (isMobile || tipoVisualizacao === "lite" || tipoVisualizacao === "pro") && (mode === "mapa" || mode === "precos" || isEditingMap) && mapaImagem;
+
+  if (deveRenderizarMobile) {
     const quadraList = getQuadraList(localDev);
     const getLotesQuadra = (q: string) => getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
     const getLoteStatus = (q: string, l: string) => {
@@ -9722,6 +9480,531 @@ const LotDashboard = ({
       persistDev({ ...localDev, lotesInfo: newInfo } as Empreendimento);
     };
 
+    const renderSeletorModos = () => (
+      <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/90 shadow-xs">
+        <button
+          type="button"
+          onClick={() => mudarTipoVisualizacao("lite")}
+          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+            tipoVisualizacao === "lite"
+              ? "bg-[#1a4a1a] text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          title="Modo Lite: Celular minimalista para visualizar mapa e vendas rápidas sem edição"
+        >
+          <Zap size={10} /> Lite
+        </button>
+        <button
+          type="button"
+          onClick={() => mudarTipoVisualizacao("pro")}
+          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+            tipoVisualizacao === "pro"
+              ? "bg-[#1a4a1a] text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          title="Modo Pro: Celular completo com todas as ferramentas de edição e abas"
+        >
+          <Smartphone size={10} /> Pro
+        </button>
+        <button
+          type="button"
+          onClick={() => mudarTipoVisualizacao("pc")}
+          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+            tipoVisualizacao === "pc"
+              ? "bg-[#1a4a1a] text-white shadow-xs"
+              : "text-slate-600 hover:text-slate-900"
+          }`}
+          title="Modo PC: Interface completa de desktop para web"
+        >
+          <Monitor size={10} /> PC
+        </button>
+      </div>
+    );
+
+    // ── MODO LITE (MINIMALISTA CELULAR: MAPA E VENDAS RÁPIDAS SEM EDIÇÃO) ──
+    if (tipoVisualizacao === "lite") {
+      const pontosList = ((localDev as any).mapaPontos || []) as any[];
+      const statsDisp = pontosList.filter(p => p.status === "disponivel").length;
+      const statsRes = pontosList.filter(p => p.status === "reservado").length;
+      const statsVend = pontosList.filter(p => p.status === "indisponivel" || vendaDoLote(p.quadra, p.lote)).length;
+      const statsTot = pontosList.length;
+
+      const pontosFiltradosBusca = liteBuscaQuery.trim()
+        ? pontosList.filter(p => {
+            const qLimpa = liteBuscaQuery.toLowerCase().replace(/[^a-z0-9]/g, '');
+            const chave1 = `q${p.quadra}l${p.lote}`.toLowerCase();
+            const chave2 = `${p.quadra}:${p.lote}`.toLowerCase();
+            const chave3 = `${p.quadra}-${p.lote}`.toLowerCase();
+            const chave4 = String(p.lote).toLowerCase();
+            return chave1.includes(qLimpa) || chave2.includes(qLimpa) || chave3.includes(qLimpa) || chave4 === qLimpa;
+          }).slice(0, 5)
+        : [];
+
+      const focarLoteLite = (p: any) => {
+        const venda = vendaDoLote(p.quadra, p.lote);
+        setSelectedPoint({ ...p, venda });
+        const vp = getActiveViewport();
+        if (vp) {
+          const w = vp.offsetWidth || window.innerWidth;
+          const h = vp.offsetHeight || window.innerHeight;
+          const targetZoom = 2.4;
+          mapZoomRef.current = targetZoom;
+          setMapZoom(targetZoom);
+          const px = (p.xPercent / 100) * w;
+          const py = (p.yPercent / 100) * h;
+          const nx = w / 2 - px * targetZoom;
+          const ny = h / 2 - py * targetZoom;
+          mapPanRef.current = { x: nx, y: ny };
+          setMapPan({ x: nx, y: ny });
+        }
+        setLiteBuscaQuery("");
+      };
+
+      const precoSel = selectedPoint ? getPrecoInfoDoLote(selectedPoint.quadra, selectedPoint.lote, selectedPoint) : null;
+      const vendaSel = selectedPoint ? (selectedPoint.venda || vendaDoLote(selectedPoint.quadra, selectedPoint.lote)) : null;
+      const statusSel = vendaSel ? "indisponivel" : (selectedPoint?.status || "disponivel");
+
+      return (
+        <div className="fixed inset-0 z-[500] flex flex-col overflow-hidden bg-slate-100 font-sans select-none">
+          {/* TOPO MODO LITE */}
+          <div className="flex-shrink-0 bg-white border-b border-slate-200/80 px-3.5 pt-10 pb-2.5 shadow-xs">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-xl bg-[#1a4a1a] flex items-center justify-center flex-shrink-0 text-white shadow-xs">
+                  <MapPin size={16} />
+                </div>
+                <div className="min-w-0">
+                  <h1 className="text-xs font-black text-slate-900 truncate leading-tight">{localDev.nome}</h1>
+                  <p className="text-[10px] font-bold text-slate-400 leading-none mt-0.5">
+                    <span className="text-emerald-700 font-black">{statsDisp} disp</span> · {statsTot} lotes
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 flex-shrink-0">
+                {renderSeletorModos()}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="w-8 h-8 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center transition-all active:scale-95"
+                  title="Fechar visualizador"
+                >
+                  <X size={15} />
+                </button>
+              </div>
+            </div>
+
+            {/* ABAS DO MODO LITE: MAPA DISPONÍVEIS E PREÇOS */}
+            <div className="mt-2 grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setMode("mapa")}
+                className={`py-1.5 px-2 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  mode === "mapa"
+                    ? "bg-white text-slate-900 border border-slate-200"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-600" />
+                <span>Mapa (Disponíveis)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMode("precos")}
+                className={`py-1.5 px-2 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  mode === "precos"
+                    ? "bg-white text-emerald-800 border border-slate-200"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-600" />
+                <span>Preços ({faixasPrecoGlobal.length})</span>
+              </button>
+            </div>
+
+            {/* BUSCA E FILTROS RÁPIDOS LITE */}
+            <div className="mt-2 space-y-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                <input
+                  type="text"
+                  value={liteBuscaQuery}
+                  onChange={(e) => setLiteBuscaQuery(e.target.value)}
+                  placeholder="Buscar lote (ex: Q2 L14 ou 14)..."
+                  className="w-full pl-8 pr-8 py-1.5 bg-slate-100 border border-slate-200/70 rounded-xl text-xs font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:bg-white focus:border-emerald-700 transition-all"
+                />
+                {liteBuscaQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setLiteBuscaQuery("")}
+                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs"
+                  >
+                    ✕
+                  </button>
+                )}
+
+                {/* Dropdown de sugestões da busca */}
+                {pontosFiltradosBusca.length > 0 && (
+                  <div className="absolute left-0 right-0 top-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 overflow-hidden divide-y divide-slate-100">
+                    {pontosFiltradosBusca.map((p) => {
+                      const v = vendaDoLote(p.quadra, p.lote);
+                      const s = v ? "indisponivel" : (p.status || "disponivel");
+                      const prc = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                      return (
+                        <button
+                          key={p.id}
+                          type="button"
+                          onClick={() => focarLoteLite(p)}
+                          className="w-full px-3.5 py-2.5 text-left flex items-center justify-between hover:bg-slate-50 active:bg-slate-100 transition-colors"
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${
+                              s === "disponivel" ? "bg-blue-600" : s === "reservado" ? "bg-amber-500" : "bg-red-500"
+                            }`} />
+                            <span className="text-xs font-black text-slate-900">Quadra {p.quadra} · Lote {p.lote}</span>
+                          </div>
+                          <div className="text-right">
+                            {prc?.preco ? (
+                              <span className="text-xs font-black text-emerald-800">R$ {Number(prc.preco).toLocaleString('pt-BR')}</span>
+                            ) : (
+                              <span className="text-[10px] font-bold text-slate-400 uppercase">{s}</span>
+                            )}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Pílulas de filtro de status (visível no modo Mapa) */}
+              {mode === "mapa" && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                  {[
+                    { id: "todos", label: "Todos", count: statsTot, color: "#475569" },
+                    { id: "disponivel", label: "Disponíveis", count: statsDisp, color: "#2563eb" },
+                    { id: "reservado", label: "Reservados", count: statsRes, color: "#d97706" },
+                    { id: "indisponivel", label: "Vendidos", count: statsVend, color: "#dc2626" },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => setLiteStatusFiltro(item.id as any)}
+                      className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase whitespace-nowrap transition-all flex items-center gap-1.5 border ${
+                        liteStatusFiltro === item.id
+                          ? "bg-[#1a4a1a] text-white border-[#1a4a1a]"
+                          : "bg-white text-slate-600 border-slate-200/90 hover:bg-slate-50"
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
+                      <span>{item.label}</span>
+                      <span className="opacity-70 text-[9px]">({item.count})</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {/* Faixas de Preço no topo (visível no modo Preços) */}
+              {mode === "precos" && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
+                  <span className="text-[10px] font-black uppercase text-slate-500 whitespace-nowrap">Faixas:</span>
+                  {faixasPrecoGlobal.map((faixa: any) => {
+                    const count = mapaPontos.filter((p: any) => {
+                      const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                      return info?.preco === faixa.preco;
+                    }).length;
+                    return (
+                      <div
+                        key={faixa.preco}
+                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
+                      >
+                        <span className="w-2 h-2 rounded-full border border-slate-300" style={{ backgroundColor: faixa.color }} />
+                        <span className="text-[10px] font-black text-slate-800">R$ {Number(faixa.preco).toLocaleString('pt-BR')}</span>
+                        <span className="text-[9px] text-slate-400 font-bold">({count})</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* ÁREA DO MAPA EM TELA CHEIA LITE */}
+          <div className="flex-1 relative overflow-hidden bg-slate-200">
+            {renderMapa()}
+
+            {/* Controles de Zoom Flutuantes */}
+            <div className="absolute right-3.5 top-3.5 z-30 flex flex-col gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  const vp = getActiveViewport();
+                  setMapZoomAtPoint(Math.min(10, (mapZoomRef.current || 1) + 0.5), (vp?.offsetWidth || window.innerWidth) / 2, (vp?.offsetHeight || window.innerHeight) / 2);
+                }}
+                className="w-9 h-9 bg-white text-slate-800 rounded-xl shadow-md border border-slate-200 flex items-center justify-center font-bold text-lg active:scale-95"
+                title="Aumentar zoom"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const vp = getActiveViewport();
+                  setMapZoomAtPoint(Math.max(0.2, (mapZoomRef.current || 1) - 0.5), (vp?.offsetWidth || window.innerWidth) / 2, (vp?.offsetHeight || window.innerHeight) / 2);
+                }}
+                className="w-9 h-9 bg-white text-slate-800 rounded-xl shadow-md border border-slate-200 flex items-center justify-center font-bold text-lg active:scale-95"
+                title="Diminuir zoom"
+              >
+                −
+              </button>
+              <button
+                type="button"
+                onClick={() => fitMapToScreen()}
+                className="w-9 h-9 bg-white text-slate-700 rounded-xl shadow-md border border-slate-200 flex items-center justify-center text-xs font-black active:scale-95"
+                title="Ajustar à tela"
+              >
+                <Crosshair size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(true);
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="w-9 h-9 bg-white text-slate-800 rounded-xl shadow-md border border-slate-200 flex items-center justify-center text-xs font-black active:scale-95"
+                title="Abrir mapa em tela cheia"
+              >
+                <Maximize2 size={15} />
+              </button>
+            </div>
+
+            {/* Rosa dos ventos */}
+            <div className="absolute left-3.5 bottom-3.5 z-20 pointer-events-none opacity-80">
+              <div className="bg-white/90 backdrop-blur-sm rounded-xl shadow p-1 flex items-center justify-center" style={{ width: 34, height: 34 }}>
+                <Compass size={20} className="text-emerald-900" />
+              </div>
+            </div>
+
+            {/* RODAPÉ DE PREÇOS NO MODO LITE (quando na aba Preços) */}
+            {mode === "precos" && faixasPrecoGlobal.length > 0 && !selectedPoint && (
+              <div className="absolute bottom-3 left-3 right-3 z-30 pointer-events-auto">
+                <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-2 flex items-center gap-2 overflow-x-auto shadow-none" style={{ scrollbarWidth: 'none' }}>
+                  <div className="flex-shrink-0 px-2 border-r border-white/15 hidden xs:flex flex-col">
+                    <span className="text-[9px] font-black uppercase text-emerald-400 block tracking-wider leading-tight">Preços</span>
+                    <span className="text-[8px] text-slate-400 font-bold">{faixasPrecoGlobal.length} faixas</span>
+                  </div>
+                  <div className="flex items-center gap-2 overflow-x-auto py-0.5" style={{ scrollbarWidth: 'none' }}>
+                    {faixasPrecoGlobal.map((faixa: any) => {
+                      const lotsFaixa = mapaPontos.filter((p: any) => {
+                        const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                        return info?.preco === faixa.preco;
+                      });
+                      const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
+                      const entrada = infoSample?.entrada || 0;
+                      const parcelas = infoSample?.parcelas || 0;
+                      const avista = infoSample?.avista || parcelas === 0;
+                      const vlParcela = infoSample?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
+
+                      return (
+                        <div
+                          key={faixa.preco}
+                          onClick={() => {
+                            if (lotsFaixa[0]) {
+                              focarLoteLite(lotsFaixa[0]);
+                            }
+                          }}
+                          className="flex-shrink-0 bg-white/10 hover:bg-white/20 rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                        >
+                          <span
+                            className="w-3.5 h-3.5 rounded-full border border-white flex-shrink-0"
+                            style={{ backgroundColor: faixa.color, boxShadow: "none" }}
+                          />
+                          <div className="leading-tight text-left">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-black text-white whitespace-nowrap">
+                                R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                              </span>
+                              <span className="text-[8px] font-bold px-1 rounded bg-white/20 text-slate-200">
+                                {lotsFaixa.length}
+                              </span>
+                            </div>
+                            <div className="text-[8.5px] text-slate-300 whitespace-nowrap mt-0.5">
+                              {avista ? (
+                                <span className="text-emerald-300 font-bold">À Vista</span>
+                              ) : (
+                                <span>
+                                  {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
+                                  <strong className="text-emerald-300 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* GAVETA INFERIOR MINIMALISTA DE VENDAS LITE */}
+          {selectedPoint ? (
+            <div className="flex-shrink-0 bg-white border-t border-slate-200 rounded-t-3xl shadow-2xl p-4 z-40 space-y-3">
+              {/* Handle */}
+              <div className="w-10 h-1 bg-slate-300 rounded-full mx-auto -mt-1 mb-1" />
+
+              {/* Cabeçalho do Lote Selecionado */}
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <h3 className="text-base font-black text-slate-900 tracking-tight leading-tight">
+                    Quadra {selectedPoint.quadra} · Lote {selectedPoint.lote}
+                  </h3>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className={`w-2 h-2 rounded-full ${
+                      statusSel === "disponivel" ? "bg-blue-600" : statusSel === "reservado" ? "bg-amber-500" : "bg-red-500"
+                    }`} />
+                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-600">
+                      {statusSel === "disponivel" ? "Disponível" : statusSel === "reservado" ? "Reservado" : "Vendido"}
+                    </span>
+                    {selectedPoint.observacao && (
+                      <span className="text-[11px] text-slate-400 italic">· {selectedPoint.observacao}</span>
+                    )}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setSelectedPoint(null)}
+                  className="w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-xs font-bold transition-all"
+                  title="Fechar detalhes do lote"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Informações Financeiras */}
+              {precoSel?.preco ? (
+                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 flex items-center justify-between">
+                  <div>
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Valor do Lote</span>
+                    <span className="text-lg font-black text-slate-900 leading-tight">
+                      R$ {Number(precoSel.preco).toLocaleString('pt-BR')}
+                    </span>
+                  </div>
+
+                  <div className="text-right">
+                    {precoSel.avista ? (
+                      <span className="text-[10px] font-black text-emerald-800 bg-emerald-100 border border-emerald-300 px-2 py-0.5 rounded-lg">
+                        À Vista
+                      </span>
+                    ) : (
+                      <div className="text-[10px] space-y-0.5">
+                        {precoSel.entrada > 0 && (
+                          <p className="text-slate-500 font-bold">
+                            Entr: <strong className="text-slate-800">R$ {Number(precoSel.entrada).toLocaleString('pt-BR')}</strong>
+                          </p>
+                        )}
+                        {precoSel.parcelas > 0 && (
+                          <p className="text-emerald-800 font-black">
+                            {precoSel.parcelas}× R$ {Number(precoSel.parcela).toLocaleString('pt-BR')}
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-2 text-center text-[11px] font-semibold text-slate-500">
+                  Preço do lote não cadastrado na tabela de preços
+                </div>
+              )}
+
+              {/* Venda vinculada se houver */}
+              {vendaSel && (
+                <div className="bg-red-50 border border-red-200 rounded-xl p-2.5 text-xs text-red-800 space-y-0.5">
+                  <p className="font-bold">Comprador: {vendaSel.clienteNome || "Cliente registrado"}</p>
+                  <p className="text-[10px] text-red-600">Vendido em {formatDateBR(vendaSel.dataVenda)}</p>
+                </div>
+              )}
+
+              {/* Botões de Ação de Venda */}
+              <div className="space-y-2 pt-1">
+                {statusSel !== "indisponivel" && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapFullscreen(false);
+                      const pt = selectedPoint;
+                      setSelectedPoint(null);
+                      onStartSale({
+                        empreendimentoId: localDev.id,
+                        quadra: pt.quadra,
+                        numeroLote: pt.lote,
+                      });
+                    }}
+                    className="w-full py-3 bg-[#1a4a1a] hover:bg-[#245424] text-white font-black text-xs uppercase tracking-wider rounded-2xl flex items-center justify-center gap-2 shadow-md active:scale-95 transition-all"
+                  >
+                    <ShoppingCart size={15} /> Iniciar Venda deste Lote
+                  </button>
+                )}
+
+                <div className="flex gap-2">
+                  {statusSel === "disponivel" && (
+                    <button
+                      type="button"
+                      onClick={() => marcarPonto(selectedPoint, "reservado")}
+                      className="flex-1 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition-all active:scale-95 text-center"
+                    >
+                      Reservar Lote
+                    </button>
+                  )}
+
+                  {statusSel === "reservado" && (
+                    <button
+                      type="button"
+                      onClick={() => marcarPonto(selectedPoint, "disponivel")}
+                      className="flex-1 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 border border-blue-200 text-xs font-bold transition-all active:scale-95 text-center"
+                    >
+                      Liberar Reserva
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPoint(null)}
+                    className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition-all active:scale-95 text-center"
+                  >
+                    Fechar
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* BARRA DE STATUS RESUMIDA QUANDO NENHUM LOTE SELECIONADO */
+            <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-xs">
+              <div className="flex items-center gap-3 text-[11px] font-bold">
+                <span className="flex items-center gap-1 text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-blue-600" /> {statsDisp} Disp.
+                </span>
+                <span className="flex items-center gap-1 text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-amber-500" /> {statsRes} Res.
+                </span>
+                <span className="flex items-center gap-1 text-slate-700">
+                  <span className="w-2 h-2 rounded-full bg-red-500" /> {statsVend} Vend.
+                </span>
+              </div>
+
+              <span className="text-[10px] font-bold text-slate-400">
+                Toque no lote para vender
+              </span>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ── MODO PRO (MOBILE COMPLETO COM TODAS AS FERRAMENTAS E ABAS ATUAIS) ──
     // Mapa: altura fixa ~40% da tela, painel ocupa o resto
     const MAP_H = Math.max(220, Math.round(window.innerHeight * 0.40));
 
@@ -9780,8 +10063,7 @@ const LotDashboard = ({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-
-
+              {renderSeletorModos()}
               <button onClick={onClose}
                 className="w-9 h-9 rounded-2xl border border-slate-200 bg-white flex items-center justify-center active:scale-90 transition-all">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -9953,20 +10235,6 @@ const LotDashboard = ({
 
           {/* Botões flutuantes direita */}
           <div className="absolute right-3 top-1/2 -translate-y-1/2 z-20 flex flex-col gap-2">
-            {mode === "precos" && faixasPrecoGlobal.length > 0 && (
-              <button
-                onClick={() => {
-                  setCardPrecoVisivel(prev => !prev);
-                  setCardPrecoMinimizado(false);
-                }}
-                title="Tabela de Preços"
-                className={`w-10 h-10 rounded-xl shadow-md flex items-center justify-center active:scale-90 transition-all text-sm border ${
-                  cardPrecoVisivel ? "bg-emerald-600 text-white border-emerald-600" : "bg-white text-slate-700 border-slate-100"
-                }`}
-              >
-                🏷️
-              </button>
-            )}
             {([
               { icon: '+', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.min(10,mapZoomRef.current+0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
               { icon: '−', action: () => { const vp=getActiveViewport(); setMapZoomAtPoint(Math.max(0.2,mapZoomRef.current-0.5),(vp?.offsetWidth||window.innerWidth)/2,(vp?.offsetHeight||window.innerHeight)/2); } },
@@ -10250,7 +10518,7 @@ const LotDashboard = ({
                           </div>
                           <div className="flex items-center justify-between gap-1.5 pt-1">
                             <label className="flex items-center gap-1.5 cursor-pointer group" title="Clique para mudar a cor das bolinhas desta faixa">
-                              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-black/20 group-hover:scale-110 transition-transform shadow-sm" style={{background: cor}}/>
+                              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-black/20 group-hover:scale-110 transition-transform" style={{background: cor, boxShadow: "none"}}/>
                               <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Mudar cor</span>
                               <input
                                 type="color"
@@ -10331,7 +10599,7 @@ const LotDashboard = ({
                       Disponíveis: borda preta
                     </span>
                     <span className="flex items-center gap-1 font-bold text-slate-700">
-                      <span className="w-2.5 h-2.5 rounded-full border-2 border-white bg-rose-500 inline-block shadow-xs"/>
+                      <span className="w-2.5 h-2.5 rounded-full border-2 border-white bg-rose-500 inline-block" style={{ boxShadow: "none" }}/>
                       Vendidos: borda branca
                     </span>
                   </div>
@@ -10907,6 +11175,46 @@ const LotDashboard = ({
               </div>
 
 
+              {/* SELETOR 3 MODOS (LITE | PRO | PC) */}
+              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/90 shadow-xs mr-1">
+                <button
+                  type="button"
+                  onClick={() => mudarTipoVisualizacao("lite")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+                    tipoVisualizacao === "lite"
+                      ? "bg-[#1a4a1a] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                  title="Modo Lite: Celular minimalista para visualizar mapa e vendas rápidas sem edição"
+                >
+                  <Zap size={11} /> Lite
+                </button>
+                <button
+                  type="button"
+                  onClick={() => mudarTipoVisualizacao("pro")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+                    tipoVisualizacao === "pro"
+                      ? "bg-[#1a4a1a] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                  title="Modo Pro: Celular completo com ferramentas de edição"
+                >
+                  <Smartphone size={11} /> Pro
+                </button>
+                <button
+                  type="button"
+                  onClick={() => mudarTipoVisualizacao("pc")}
+                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
+                    tipoVisualizacao === "pc"
+                      ? "bg-[#1a4a1a] text-white shadow-xs"
+                      : "text-slate-600 hover:text-slate-900"
+                  }`}
+                  title="Modo PC: Interface completa para web e desktop"
+                >
+                  <Monitor size={11} /> PC
+                </button>
+              </div>
+
               {canEditMap && !mapaImagem && (
                 <label className="flex items-center gap-2 px-4 py-2 bg-[#1a4a1a] text-white rounded-xl text-xs font-black uppercase cursor-pointer hover:bg-[#245424] active:scale-95 transition-all">
                   <Upload size={13} />Carregar mapa
@@ -11082,25 +11390,6 @@ const LotDashboard = ({
                 <p className="text-sm font-black text-slate-800 uppercase tracking-wide">
                   Empreendimento {localDev.nome}
                 </p>
-                {mode === "precos" && faixasPrecoGlobal.length > 0 && (
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCardPrecoVisivel(prev => !prev);
-                        setCardPrecoMinimizado(false);
-                      }}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-black border transition-all flex items-center gap-1.5 shadow-sm active:scale-95 ${
-                        cardPrecoVisivel
-                          ? "bg-emerald-600 text-white border-emerald-600"
-                          : "bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
-                      }`}
-                      title={cardPrecoVisivel ? "Ocultar tabela flutuante de preços" : "Mostrar tabela flutuante de preços"}
-                    >
-                      🏷️ Tabela Flutuante
-                    </button>
-                  </div>
-                )}
               </div>
 
               {/* Rosa dos ventos — canto sup direito */}
@@ -11157,7 +11446,9 @@ const LotDashboard = ({
                 return (
                   <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-3.5 space-y-2.5">
                     <div className="flex items-center justify-between">
-                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">💰 Tabela de Preços</p>
+                      <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
+                        <Tag size={12} className="text-slate-500" /> Tabela de Preços
+                      </p>
                       <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
                         {faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}
                       </span>
@@ -11187,8 +11478,8 @@ const LotDashboard = ({
                                   className="cursor-pointer relative inline-flex items-center justify-center flex-shrink-0"
                                 >
                                   <span
-                                    className="w-4 h-4 rounded-full border-2 border-white shadow-sm block"
-                                    style={{ backgroundColor: faixa.color }}
+                                    className="w-4 h-4 rounded-full border-2 border-white block"
+                                    style={{ backgroundColor: faixa.color, boxShadow: "none" }}
                                   />
                                   <input
                                     type="color"
@@ -14010,7 +14301,7 @@ const EmpreendimentosSection = ({
                               key={c.cor}
                               type="button"
                               onClick={() => setLotRegForm({ ...lotRegForm, corPreco: c.cor })}
-                              className={`w-6 h-6 rounded-full border-2 transition-transform ${lotRegForm.corPreco === c.cor ? "border-slate-800 scale-125 shadow-md" : "border-transparent hover:scale-110"}`}
+                              className={`w-6 h-6 rounded-full border-2 transition-transform ${lotRegForm.corPreco === c.cor ? "border-slate-800 scale-125" : "border-transparent hover:scale-110"}`}
                               style={{ backgroundColor: c.cor }}
                               title={c.nome}
                             />
@@ -14189,8 +14480,8 @@ const EmpreendimentosSection = ({
                                       <div className="flex items-center gap-1.5">
                                         {info?.preco ? (
                                           <div
-                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/20 shadow-xs"
-                                            style={{ background: info.corPreco || info.cor || info.corBolinha || '#3b82f6' }}
+                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0 border border-black/20"
+                                            style={{ background: info.corPreco || info.cor || info.corBolinha || '#3b82f6', boxShadow: "none" }}
                                             title={`Preço: R$ ${Number(info.preco).toLocaleString('pt-BR')}`}
                                           />
                                         ) : null}
@@ -14762,8 +15053,8 @@ const EmpreendimentosSection = ({
                             <div className="flex items-center justify-between">
                               <div className="flex items-center gap-2">
                                 <span
-                                  className="w-6 h-6 text-white text-[10px] font-black rounded-full flex items-center justify-center shadow-xs flex-shrink-0"
-                                  style={{ background: corRegra }}
+                                  className="w-6 h-6 text-white text-[10px] font-black rounded-full flex items-center justify-center flex-shrink-0"
+                                  style={{ background: corRegra, boxShadow: "none" }}
                                 >
                                   {i+1}
                                 </span>
@@ -14834,8 +15125,8 @@ const EmpreendimentosSection = ({
                               <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-1.5">
                                   <div
-                                    className="w-3.5 h-3.5 rounded-full border-2 border-white shadow-xs flex-shrink-0"
-                                    style={{ background: corRegra }}
+                                    className="w-3.5 h-3.5 rounded-full border-2 border-white flex-shrink-0"
+                                    style={{ background: corRegra, boxShadow: "none" }}
                                   />
                                   <span className="text-[10px] font-black text-slate-700">Cor da Bolinha no Mapa</span>
                                 </div>
@@ -15194,7 +15485,7 @@ const EmpreendimentosSection = ({
                         key={c.cor}
                         type="button"
                         onClick={() => setQuickPriceLot({ ...quickPriceLot, corPreco: c.cor })}
-                        className={`w-6 h-6 rounded-full border-2 transition-transform ${quickPriceLot.corPreco === c.cor ? "border-slate-900 scale-125 shadow-md" : "border-transparent hover:scale-110"}`}
+                        className={`w-6 h-6 rounded-full border-2 transition-transform ${quickPriceLot.corPreco === c.cor ? "border-slate-900 scale-125" : "border-transparent hover:scale-110"}`}
                         style={{ backgroundColor: c.cor }}
                         title={c.nome}
                       />
@@ -22654,25 +22945,25 @@ const AniversariosSection = ({
                   {selectedClient.telefone1 && (
                     <div className="flex items-center justify-between p-3 bg-slate-50 rounded-2xl gap-3">
                       <div>
-                        <p className="text-xs text-slate-400 font-medium">Telefone / WhatsApp</p>
+                        <p className="text-xs text-slate-400 font-medium">Telefone</p>
                         <p className="font-bold text-slate-800">{selectedClient.telefone1}</p>
                       </div>
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => copyPhone(selectedClient.telefone1)}
-                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors text-xs font-bold"
+                          className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors text-xs font-bold border border-slate-200"
                           title="Copiar número"
                         >
-                          {copied ? <Check size={16} className="text-green-600" /> : <Copy size={16} />}
+                          {copied ? <Check size={16} className="text-slate-700" /> : <Copy size={16} />}
                         </button>
                         <a
                           href={waMsg(selectedClient, isTodayBirthday(selectedClient))}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
-                          title="Abrir WhatsApp"
+                          className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors border border-slate-200"
+                          title="Enviar mensagem"
                         >
-                          <MessageCircle size={16} />
+                          <Phone size={16} />
                         </a>
                       </div>
                     </div>
@@ -22686,7 +22977,8 @@ const AniversariosSection = ({
                       <div className="flex gap-2 flex-shrink-0">
                         <button
                           onClick={() => copyPhone(selectedClient.telefone2 || "")}
-                          className="p-2.5 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-600 transition-colors"
+                          className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors border border-slate-200"
+                          title="Copiar número"
                         >
                           <Copy size={16} />
                         </button>
@@ -22694,9 +22986,10 @@ const AniversariosSection = ({
                           href={`https://wa.me/55${(selectedClient.telefone2 || "").replace(/\D/g, "")}`}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="p-2.5 rounded-xl bg-green-500 hover:bg-green-600 text-white transition-colors"
+                          className="p-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors border border-slate-200"
+                          title="Enviar mensagem"
                         >
-                          <MessageCircle size={16} />
+                          <Phone size={16} />
                         </a>
                       </div>
                     </div>
@@ -22926,12 +23219,12 @@ const AniversariosSection = ({
                             rel="noopener noreferrer"
                             className={`p-2 rounded-xl transition-all ${
                               isToday
-                                ? "bg-success-main text-white shadow-md shadow-success-main/30"
-                                : "text-slate-300 hover:bg-success-main hover:text-white opacity-0 group-hover:opacity-100"
+                                ? "bg-slate-800 text-white shadow-sm"
+                                : "text-slate-400 hover:bg-slate-100 hover:text-slate-800 opacity-0 group-hover:opacity-100"
                             }`}
-                            title="Enviar parabéns via WhatsApp"
+                            title="Enviar parabéns"
                           >
-                            <MessageCircle size={13} />
+                            <Phone size={13} />
                           </a>
                         </div>
                       </div>
@@ -24454,7 +24747,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
                 />
               </div>
               <div>
-                <label className="label">Telefone / WhatsApp</label>
+                <label className="label">Telefone</label>
                 <input
                   className="input-field"
                   placeholder="Ex: 93992332012"
@@ -24554,7 +24847,7 @@ const UsuariosSection = ({ isAdmin, userId, userEmail }: { isAdmin?: boolean; us
               />
             </div>
             <div>
-              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Telefone / WhatsApp <span className="normal-case text-slate-300">(opcional)</span></label>
+              <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1.5 block">Telefone <span className="normal-case text-slate-300">(opcional)</span></label>
               <input
                 type="text"
                 value={newTelefone}
@@ -25172,38 +25465,64 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       .catch(() => {});
   }, []);
 
-  const toggleDesktop = () => {
-    const next = !forceDesktop;
-    setForceDesktop(next);
-    localStorage.setItem('force-desktop', String(next));
+  const [tipoVisualizacaoGlobal, setTipoVisualizacaoGlobal] = useState<"lite" | "pro" | "pc">(() => {
+    try {
+      const salvo = localStorage.getItem("tipo_visualizacao_modo") as "lite" | "pro" | "pc";
+      if (salvo && ["lite", "pro", "pc"].includes(salvo)) return salvo;
+    } catch {}
+    return (localStorage.getItem('force-desktop') === 'true' || window.innerWidth >= 768) ? "pc" : "lite";
+  });
 
-    // Viewport meta tag — muda dinamicamente
+  const mudarModoVisualizacaoGlobal = (tipo: "lite" | "pro" | "pc") => {
+    setTipoVisualizacaoGlobal(tipo);
+    try {
+      localStorage.setItem("tipo_visualizacao_modo", tipo);
+    } catch {}
+
     const viewportMeta = document.querySelector('meta[name="viewport"]') as HTMLMetaElement;
 
-    if (next) {
-      // MODO PC: viewport 1280px escalado para caber na tela + rotacionar para landscape
+    if (tipo === "pc") {
+      setForceDesktop(true);
+      try { localStorage.setItem('force-desktop', 'true'); } catch {}
       const screenW = window.screen.width;
       const screenH = window.screen.height;
       const targetW = 1280;
-      // Calcular escala para caber na tela em landscape
       const scale = Math.min(screenW / targetW, screenH / targetW, 1).toFixed(3);
       if (viewportMeta) {
         viewportMeta.content = `width=${targetW}, initial-scale=${scale}, minimum-scale=${scale}, maximum-scale=3.0`;
       }
-      // Forçar landscape (funciona no Android; iOS ignora)
       try {
         (screen.orientation as any).lock?.("landscape").catch(() => {});
       } catch {}
     } else {
-      // MODO MOBILE: volta ao viewport normal
+      setForceDesktop(false);
+      try { localStorage.setItem('force-desktop', 'false'); } catch {}
       if (viewportMeta) {
         viewportMeta.content = "width=device-width, initial-scale=1.0, viewport-fit=cover";
       }
-      // Desbloquear orientação
       try {
         (screen.orientation as any).unlock?.();
       } catch {}
     }
+
+    try {
+      window.dispatchEvent(new CustomEvent("tipo-visualizacao-changed", { detail: tipo }));
+    } catch {}
+  };
+
+  useEffect(() => {
+    const onTipoChanged = (e: any) => {
+      if (e?.detail && ["lite", "pro", "pc"].includes(e.detail)) {
+        setTipoVisualizacaoGlobal(e.detail);
+      }
+    };
+    window.addEventListener("tipo-visualizacao-changed", onTipoChanged);
+    return () => window.removeEventListener("tipo-visualizacao-changed", onTipoChanged);
+  }, []);
+
+  const toggleDesktop = () => {
+    const next = !forceDesktop;
+    mudarModoVisualizacaoGlobal(next ? "pc" : "lite");
   };
   const [contractToOpen, setContractToOpen] = useState<Venda | null>(null);
   const [showPixModal, setShowPixModal] = useState(false);
@@ -26642,6 +26961,8 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         isAdmin={isAdmin}
         forceDesktop={forceDesktop}
         onToggleDesktop={toggleDesktop}
+        tipoVisualizacao={tipoVisualizacaoGlobal}
+        onSelectVisualizacao={mudarModoVisualizacaoGlobal}
         userPermissions={userPermissions}
         userEmail={userEmail}
       />
