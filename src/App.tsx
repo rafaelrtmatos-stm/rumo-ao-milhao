@@ -377,16 +377,41 @@ function parseQuadrasLotesInput(quadraInput: string, loteInput: string): { quadr
 }
 
 function getQuadraList(dev?: Empreendimento | null): string[] {
-  return (dev?.quadras || "")
+  const quadrasSet = new Set<string>();
+  (dev?.quadras || "")
     .split(",")
     .map((q) => q.trim())
     .filter(Boolean)
-    .sort((a, b) => {
-      const na = parseInt(a) || 0;
-      const nb = parseInt(b) || 0;
-      if (na !== nb) return na - nb;
-      return a.localeCompare(b);
+    .forEach((q) => quadrasSet.add(q));
+
+  if (dev?.lotesPorQuadra) {
+    Object.keys(dev.lotesPorQuadra).forEach((q) => {
+      if (q && q.trim()) quadrasSet.add(q.trim());
     });
+  }
+
+  if (dev?.lotesInfo) {
+    Object.keys(dev.lotesInfo).forEach((key) => {
+      const q = key.split("-")[0];
+      if (q && q.trim()) quadrasSet.add(q.trim());
+    });
+  }
+
+  const pontos = (dev as any)?.mapaPontos;
+  if (Array.isArray(pontos)) {
+    pontos.forEach((p: any) => {
+      if (p?.quadra && String(p.quadra).trim()) {
+        quadrasSet.add(String(p.quadra).trim());
+      }
+    });
+  }
+
+  return Array.from(quadrasSet).sort((a, b) => {
+    const na = parseInt(a) || 0;
+    const nb = parseInt(b) || 0;
+    if (na !== nb) return na - nb;
+    return a.localeCompare(b, "pt-BR", { numeric: true });
+  });
 }
 
 function findQuadraName(dev: Empreendimento, quadra: string): string | null {
@@ -627,12 +652,9 @@ function formatDateBR(date?: string): string {
 }
 
 function countConfiguredLots(dev: Empreendimento): number {
-  const lotesPorQuadraTotal = getQuadraList(dev).reduce(
-    (sum, q) => sum + getLotesDeQuadra(dev.lotesPorQuadra?.[q]).length,
-    0
-  );
-  if (lotesPorQuadraTotal > 0) return lotesPorQuadraTotal;
-  return Object.keys(dev.lotesInfo || {}).length || dev.totalLotes || 0;
+  const keys = getConfiguredLotKeys(dev);
+  const pontosTotal = Array.isArray((dev as any)?.mapaPontos) ? (dev as any).mapaPontos.length : 0;
+  return Math.max(keys.size, pontosTotal, Number(dev.totalLotes || 0));
 }
 
 function getConfiguredLotKeys(dev: Empreendimento): Set<string> {
@@ -645,6 +667,16 @@ function getConfiguredLotKeys(dev: Empreendimento): Set<string> {
   });
 
   Object.keys(dev.lotesInfo || {}).forEach((key) => keys.add(key.toUpperCase()));
+
+  const pontos = (dev as any)?.mapaPontos;
+  if (Array.isArray(pontos)) {
+    pontos.forEach((p: any) => {
+      if (p?.quadra && p?.lote) {
+        keys.add(getLotInfoKey(p.quadra, p.lote));
+      }
+    });
+  }
+
   return keys;
 }
 
@@ -680,6 +712,14 @@ function getActualLotKeys(dev: Empreendimento, vendas: Venda[] = []): Set<string
     if (key) keys.add(key.toUpperCase());
   });
   getActiveSaleLotKeys(dev, vendas).forEach((key) => keys.add(key));
+  const pontos = (dev as any)?.mapaPontos;
+  if (Array.isArray(pontos)) {
+    pontos.forEach((p: any) => {
+      if (p?.quadra && p?.lote) {
+        keys.add(getLotInfoKey(p.quadra, p.lote));
+      }
+    });
+  }
   return keys;
 }
 
@@ -801,26 +841,25 @@ function applyLotesInfoPatchToEmpreendimento(dev: Empreendimento, info: Record<s
 
 function syncEmpreendimentoConfigWithMapa(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
   const rangeKeys = getConfiguredLotKeysFromRanges(dev);
-  const quadras = getQuadraList(dev);
   const activeSaleKeys = getActiveSaleLotKeys(dev, vendas);
+  const pontos = ((dev as any).mapaPontos || []) as any[];
 
-  if (rangeKeys.size === 0) {
-    // Se não existe nenhum lote configurado nas quadras, o mapa também não pode manter bolinhas antigas.
-    // Mantém o nome das quadras quando houver, mas zera lotes, mapa e contadores.
-    return recalcularEstatisticasEmpreendimento({
-      ...dev,
-      totalLotes: 0,
-      lotesInfo: {},
-      mapaPontos: [],
-      lotesPorQuadra: dev.lotesPorQuadra || {},
-      quadras: quadras.join(", "),
-    } as Empreendimento, vendas);
-  }
+  // Mantém todas as chaves configuradas em ranges, ou que têm venda ativa, ou que possuem marcador no mapa
+  const keepKey = (key: string) =>
+    rangeKeys.has(key.toUpperCase()) ||
+    activeSaleKeys.has(key.toUpperCase()) ||
+    pontos.some((p) => getLotInfoKey(p.quadra, p.lote).toUpperCase() === key.toUpperCase());
 
-  const keepKey = (key: string) => rangeKeys.has(key.toUpperCase()) || activeSaleKeys.has(key.toUpperCase());
   const nextLotesInfo = Object.fromEntries(Object.entries(dev.lotesInfo || {}).filter(([key]) => keepKey(key)));
-  const nextMapaPontos = ((dev as any).mapaPontos || []).filter((ponto: any) => keepKey(getLotInfoKey(ponto.quadra, ponto.lote)));
-  return recalcularEstatisticasEmpreendimento({ ...dev, lotesInfo: nextLotesInfo, mapaPontos: nextMapaPontos } as Empreendimento, vendas);
+  const nextMapaPontos = pontos;
+  const allQuadras = getQuadraList({ ...dev, mapaPontos: nextMapaPontos });
+
+  return recalcularEstatisticasEmpreendimento({
+    ...dev,
+    quadras: allQuadras.join(", "),
+    lotesInfo: nextLotesInfo,
+    mapaPontos: nextMapaPontos,
+  } as Empreendimento, vendas);
 }
 
 function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
@@ -844,7 +883,8 @@ function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
 
 function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
   const configuredKeys = getConfiguredLotKeys(dev);
-  const totalLotes = configuredKeys.size > 0 ? configuredKeys.size : Number(dev.totalLotes || 0);
+  const pontosMapa = ((dev as any)?.mapaPontos || []) as any[];
+  const totalLotes = Math.max(configuredKeys.size, pontosMapa.length, Number(dev.totalLotes || 0));
   const soldKeys = new Set<string>();
   const indisponiveis = new Set<string>();
   const reservados = new Set<string>();
@@ -866,6 +906,15 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
     if ((info as any)?.status === "vendido") soldKeys.add(normalizedKey);
     if ((info as any)?.status === "reservado") reservados.add(normalizedKey);
     if ((info as any)?.status === "indisponivel") indisponiveis.add(normalizedKey);
+  });
+
+  // Também levar em conta o status e venda vinculada diretamente nos marcadores do mapa
+  pontosMapa.forEach((p) => {
+    if (!p?.quadra || !p?.lote) return;
+    const key = getLotInfoKey(p.quadra, p.lote);
+    if (p.vendaId) soldKeys.add(key);
+    else if (p.status === "indisponivel") indisponiveis.add(key);
+    else if (p.status === "reservado") reservados.add(key);
   });
 
   soldKeys.forEach((key) => { indisponiveis.delete(key); reservados.delete(key); });
@@ -2701,9 +2750,258 @@ const LotDashboard = ({
       localStorage.removeItem('mapaEditPainelPos_' + localDev.id);
     } catch {}
     if (editPainelRef.current) {
-      editPainelRef.current.style.left = '12px';
-      editPainelRef.current.style.top = '12px';
+      editPainelRef.current.style.left = '16px';
+      editPainelRef.current.style.top = '16px';
     }
+  };
+
+  // ── Balões Flutuantes Arrastáveis: Botão Editar Mapa e Botão Novo Marcador ──
+  const [balaoEditBtnPos, setBalaoEditBtnPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('balaoEditBtnPos_' + (dev as any)?.id);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const balaoEditBtnRef = useRef<HTMLDivElement>(null);
+  const balaoEditBtnMovedRef = useRef(false);
+
+  const [balaoNovoMarcadorBtnPos, setBalaoNovoMarcadorBtnPos] = useState<{ x: number; y: number } | null>(() => {
+    try {
+      const saved = localStorage.getItem('balaoNovoMarcadorBtnPos_' + (dev as any)?.id);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return null;
+  });
+  const balaoNovoMarcadorBtnRef = useRef<HTMLDivElement>(null);
+  const balaoNovoMarcadorBtnMovedRef = useRef(false);
+
+  const startDragBalaoEditBtn = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('input, select, textarea, label')) return;
+    e.stopPropagation();
+    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
+
+    const el = balaoEditBtnRef.current;
+    if (!el) return;
+    const container = el.parentElement;
+    if (!container) return;
+
+    const elRect = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const curPosX = elRect.left - containerRect.left;
+    const curPosY = elRect.top - containerRect.top;
+
+    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    balaoEditBtnMovedRef.current = false;
+    let lastX = curPosX;
+    let lastY = curPosY;
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      if (ev.cancelable) ev.preventDefault();
+      if (!balaoEditBtnRef.current) return;
+      const currentContainer = balaoEditBtnRef.current.parentElement;
+      if (!currentContainer) return;
+      const cRect = currentContainer.getBoundingClientRect();
+      const w = balaoEditBtnRef.current.offsetWidth || 140;
+      const h = balaoEditBtnRef.current.offsetHeight || 44;
+
+      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+
+      const dx = cx - clientX;
+      const dy = cy - clientY;
+
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        balaoEditBtnMovedRef.current = true;
+      }
+
+      const maxX = Math.max(8, cRect.width - w - 8);
+      const maxY = Math.max(8, cRect.height - h - 8);
+      const clampedX = Math.max(8, Math.min(maxX, curPosX + dx));
+      const clampedY = Math.max(8, Math.min(maxY, curPosY + dy));
+
+      lastX = clampedX;
+      lastY = clampedY;
+
+      balaoEditBtnRef.current.style.left = `${clampedX}px`;
+      balaoEditBtnRef.current.style.top = `${clampedY}px`;
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove as any);
+      window.removeEventListener('touchend', onUp);
+
+      setBalaoEditBtnPos({ x: lastX, y: lastY });
+      try {
+        localStorage.setItem('balaoEditBtnPos_' + localDev.id, JSON.stringify({ x: lastX, y: lastY }));
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove as any, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
+  const startDragBalaoNovoMarcadorBtn = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('input, select, textarea, label')) return;
+    e.stopPropagation();
+    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
+
+    const el = balaoNovoMarcadorBtnRef.current;
+    if (!el) return;
+    const container = el.parentElement;
+    if (!container) return;
+
+    const elRect = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const curPosX = elRect.left - containerRect.left;
+    const curPosY = elRect.top - containerRect.top;
+
+    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    balaoNovoMarcadorBtnMovedRef.current = false;
+    let lastX = curPosX;
+    let lastY = curPosY;
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      if (ev.cancelable) ev.preventDefault();
+      if (!balaoNovoMarcadorBtnRef.current) return;
+      const currentContainer = balaoNovoMarcadorBtnRef.current.parentElement;
+      if (!currentContainer) return;
+      const cRect = currentContainer.getBoundingClientRect();
+      const w = balaoNovoMarcadorBtnRef.current.offsetWidth || 150;
+      const h = balaoNovoMarcadorBtnRef.current.offsetHeight || 44;
+
+      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+
+      const dx = cx - clientX;
+      const dy = cy - clientY;
+
+      if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
+        balaoNovoMarcadorBtnMovedRef.current = true;
+      }
+
+      const maxX = Math.max(8, cRect.width - w - 8);
+      const maxY = Math.max(8, cRect.height - h - 8);
+      const clampedX = Math.max(8, Math.min(maxX, curPosX + dx));
+      const clampedY = Math.max(8, Math.min(maxY, curPosY + dy));
+
+      lastX = clampedX;
+      lastY = clampedY;
+
+      balaoNovoMarcadorBtnRef.current.style.left = `${clampedX}px`;
+      balaoNovoMarcadorBtnRef.current.style.top = `${clampedY}px`;
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove as any);
+      window.removeEventListener('touchend', onUp);
+
+      setBalaoNovoMarcadorBtnPos({ x: lastX, y: lastY });
+      try {
+        localStorage.setItem('balaoNovoMarcadorBtnPos_' + localDev.id, JSON.stringify({ x: lastX, y: lastY }));
+      } catch {}
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove as any, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
+  const startDragMarcadorBalao = (e: React.MouseEvent | React.TouchEvent) => {
+    if ((e.target as HTMLElement).closest('input, select, textarea, label, a, button')) return;
+    e.stopPropagation();
+    if ('touches' in e && (e as React.TouchEvent).touches.length > 1) return;
+
+    const el = marcadorPanelRef.current;
+    if (!el) return;
+
+    const elRect = el.getBoundingClientRect();
+    const clientX = 'touches' in e ? (e as React.TouchEvent).touches[0].clientX : (e as React.MouseEvent).clientX;
+    const clientY = 'touches' in e ? (e as React.TouchEvent).touches[0].clientY : (e as React.MouseEvent).clientY;
+
+    const startX = clientX;
+    const startY = clientY;
+    const startPosX = elRect.left;
+    const startPosY = elRect.top;
+
+    let lastX = startPosX;
+    let lastY = startPosY;
+
+    const onMove = (ev: MouseEvent | TouchEvent) => {
+      if (ev.cancelable) ev.preventDefault();
+      if (!marcadorPanelRef.current) return;
+
+      const cx = 'touches' in ev ? (ev as TouchEvent).touches[0].clientX : (ev as MouseEvent).clientX;
+      const cy = 'touches' in ev ? (ev as TouchEvent).touches[0].clientY : (ev as MouseEvent).clientY;
+
+      const dx = cx - startX;
+      const dy = cy - startY;
+
+      const w = marcadorPanelRef.current.offsetWidth || 340;
+      const h = marcadorPanelRef.current.offsetHeight || 400;
+
+      const maxX = Math.max(8, window.innerWidth - w - 8);
+      const maxY = Math.max(8, window.innerHeight - h - 8);
+
+      const clampedX = Math.max(8, Math.min(maxX, startPosX + dx));
+      const clampedY = Math.max(8, Math.min(maxY, startPosY + dy));
+
+      lastX = clampedX;
+      lastY = clampedY;
+
+      marcadorPanelRef.current.style.left = `${clampedX}px`;
+      marcadorPanelRef.current.style.top = `${clampedY}px`;
+    };
+
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      window.removeEventListener('touchmove', onMove as any);
+      window.removeEventListener('touchend', onUp);
+
+      setMarcadorPanelPos({ x: lastX, y: lastY });
+    };
+
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    window.addEventListener('touchmove', onMove as any, { passive: false });
+    window.addEventListener('touchend', onUp);
+  };
+
+  const abrirBalaoNovoMarcador = () => {
+    if (!isEditingMap) {
+      entrarEdicao();
+    }
+    setMapAction("editar");
+    setMapEditTool("marcar");
+    if (!marcadorPonto1) {
+      setMarcadorPonto1({ xPercent: 50, yPercent: 50 });
+    }
+    setMarcadorForm(prev => ({
+      quadra: prev.quadra || "",
+      lote: prev.lote || "",
+      status: prev.status || "sistema",
+      observacao: prev.observacao || "",
+    }));
+    if (!marcadorPanelPos) {
+      const cardW = 340;
+      const cardH = 430;
+      const initX = Math.max(12, Math.round((window.innerWidth - cardW) / 2));
+      const initY = Math.max(60, Math.round((window.innerHeight - cardH) / 2));
+      setMarcadorPanelPos({ x: initX, y: initY });
+    }
+    setMarcadorFase("formulario");
   };
   const [mapUploadProgress, setMapUploadProgress] = useState(0); // 0=idle, 1-99=loading, 100=done
 
@@ -5818,40 +6116,15 @@ const LotDashboard = ({
               onMouseMove={(e) => {
                 handleMapMouseMoveForDrag(e);
                 handleMapMouseMove(e);
-                // Arrastar painel "Novo marcador" — usando ref + RAF para evitar re-render e garantir fluidez
-                if (isDraggingPanelRef.current && dragPanelRef.current && marcadorPanelRef.current) {
-                  const mouseX = e.clientX;
-                  const mouseY = e.clientY;
-                  if (rafPanelRef.current) cancelAnimationFrame(rafPanelRef.current);
-                  rafPanelRef.current = requestAnimationFrame(() => {
-                    if (!dragPanelRef.current || !marcadorPanelRef.current) return;
-                    const newX = dragPanelRef.current.panelX + (mouseX - dragPanelRef.current.mouseX);
-                    const newY = dragPanelRef.current.panelY + (mouseY - dragPanelRef.current.mouseY);
-                    marcadorPanelRef.current.style.left = `${newX}px`;
-                    marcadorPanelRef.current.style.top = `${newY}px`;
-                  });
-                }
               }}
               onMouseUp={() => {
                 handleMapMouseUp();
                 commitDrag();
-                if (isDraggingPanelRef.current) {
-                  isDraggingPanelRef.current = false;
-                  dragPanelRef.current = null;
-                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
-                  setDraggingPanel(false);
-                }
               }}
               onMouseLeave={() => {
                 if (ctrlPanRef.current.active) ctrlPanRef.current.active = false;
                 if (mapMousePanRef.current.active) mapMousePanRef.current.active = false;
                 if (draggingId) commitDrag();
-                if (isDraggingPanelRef.current) {
-                  isDraggingPanelRef.current = false;
-                  dragPanelRef.current = null;
-                  if (rafPanelRef.current) { cancelAnimationFrame(rafPanelRef.current); rafPanelRef.current = null; }
-                  setDraggingPanel(false);
-                }
               }}
               className={`relative bg-white w-full select-none ${isCtrlPanning ? (ctrlPanRef.current.active ? "cursor-grabbing" : "cursor-grab") : isEditingMap && mapAction === "editar" && mapEditTool === "mover" ? "cursor-grab active:cursor-grabbing" : isEditingMap && mapAction === "editar" && !draggingId ? "cursor-crosshair" : isEditingMap && draggingId ? "cursor-grabbing" : "cursor-default"}`}
               style={{ transform: `translate(${mapPan.x}px, ${mapPan.y}px) scale(${mapZoom})`, transformOrigin: "0 0", willChange: "transform" }}
@@ -6066,36 +6339,136 @@ const LotDashboard = ({
             </div>
           )}
 
-          {/* PAINEL LATERAL FLUTUANTE ARRASTÁVEL — só desktop */}
-          {painelRecolhido ? (
-            // Painel recolhido - apenas barra vertical posicionada onde o usuário deixou
+          {/* ── BALÃO FLUTUANTE ARRASTÁVEL: BOTÃO EDITAR MAPA (quando não está em edição) ── */}
+          {canEditMap && mapaImagem && !isEditingMap && (
             <div
-              className="hidden lg:flex lg:absolute lg:z-30 select-none"
+              ref={balaoEditBtnRef}
+              className="absolute z-30 select-none"
               style={{
-                left: editPainelPos ? `${editPainelPos.x}px` : '12px',
-                top: editPainelPos ? `${editPainelPos.y}px` : '12px',
+                left: balaoEditBtnPos ? `${balaoEditBtnPos.x}px` : '16px',
+                top: balaoEditBtnPos ? `${balaoEditBtnPos.y}px` : '16px',
+                touchAction: 'none',
               }}
             >
-              <button
-                type="button"
-                onClick={() => setPainelRecolhido(false)}
-                className="flex flex-col items-center justify-center gap-2 px-2.5 py-4 rounded-xl bg-slate-900/95 hover:bg-slate-900 text-white shadow-xl border border-slate-700/60 transition-all group hover:scale-105 active:scale-95"
-                title="Expandir painel Editar mapa"
+              <div
+                onMouseDown={startDragBalaoEditBtn}
+                onTouchStart={startDragBalaoEditBtn}
+                className="flex items-center bg-slate-900/95 hover:bg-slate-900 text-white rounded-2xl shadow-2xl border border-slate-700/70 backdrop-blur-md transition-all group overflow-hidden cursor-grab active:cursor-grabbing hover:border-slate-500"
+                title="Clique e arraste para mover este balão para qualquer lugar do mapa"
               >
-                <ChevronRight size={16} className="group-hover:translate-x-0.5 transition-transform text-blue-400" />
-                <div className="flex flex-col gap-0.5" style={{ writingMode: 'vertical-rl', textOrientation: 'mixed' }}>
-                  <span className="text-[10px] font-black uppercase tracking-widest text-slate-200">EDITAR MAPA</span>
+                <div className="px-2.5 py-2.5 text-slate-400 hover:text-white border-r border-slate-700/50 flex items-center justify-center transition-colors">
+                  <GripHorizontal size={15} />
                 </div>
-              </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (balaoEditBtnMovedRef.current) return;
+                    entrarEdicao();
+                    setMapAction("editar");
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:text-white transition-colors active:scale-95"
+                  title="Entrar no modo de edição do mapa"
+                >
+                  <Pencil size={13} className="text-emerald-400 group-hover:rotate-12 transition-transform" />
+                  <span>Editar mapa</span>
+                </button>
+              </div>
             </div>
-          ) : (
-            // Painel expandido - totalmente arrastável, leve e fluido no PC
+          )}
+
+          {/* ── BALÃO FLUTUANTE ARRASTÁVEL: BOTÃO NOVO MARCADOR ── */}
+          {canEditMap && mapaImagem && (
+            <div
+              ref={balaoNovoMarcadorBtnRef}
+              className="absolute z-30 select-none"
+              style={{
+                left: balaoNovoMarcadorBtnPos ? `${balaoNovoMarcadorBtnPos.x}px` : '182px',
+                top: balaoNovoMarcadorBtnPos ? `${balaoNovoMarcadorBtnPos.y}px` : '16px',
+                touchAction: 'none',
+              }}
+            >
+              <div
+                onMouseDown={startDragBalaoNovoMarcadorBtn}
+                onTouchStart={startDragBalaoNovoMarcadorBtn}
+                className={`flex items-center rounded-2xl shadow-2xl backdrop-blur-md transition-all group overflow-hidden cursor-grab active:cursor-grabbing ${
+                  isEditingMap && mapAction === "editar" && mapEditTool === "marcar"
+                    ? "bg-blue-600/95 text-white border border-blue-400 ring-2 ring-blue-400/40 shadow-blue-500/30"
+                    : "bg-slate-900/95 hover:bg-slate-900 text-white border border-slate-700/70 hover:border-slate-500"
+                }`}
+                title="Clique e arraste para mover este balão para qualquer lugar do mapa"
+              >
+                <div className="px-2.5 py-2.5 text-slate-400 hover:text-white border-r border-slate-700/50 flex items-center justify-center transition-colors">
+                  <GripHorizontal size={15} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (balaoNovoMarcadorBtnMovedRef.current) return;
+                    abrirBalaoNovoMarcador();
+                  }}
+                  className="flex items-center gap-2 px-3.5 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:text-white transition-colors active:scale-95"
+                  title="Criar novo marcador de lote no mapa"
+                >
+                  <MapPin size={13} className={isEditingMap && mapAction === "editar" && mapEditTool === "marcar" ? "text-yellow-300 animate-bounce" : "text-blue-400 group-hover:scale-110 transition-transform"} />
+                  <span>Novo marcador</span>
+                  {isEditingMap && mapAction === "editar" && mapEditTool === "marcar" && (
+                    <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse ml-0.5" />
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── BALÃO FLUTUANTE ARRASTÁVEL: EDITAR MAPA (MODO EDIÇÃO) ── */}
+          {painelRecolhido ? (
+            // Painel recolhido - balão flutuante arrastável posicionado onde o usuário deixou
             <div
               ref={editPainelRef}
-              className={`${isMobile ? "hidden" : ""} lg:absolute lg:z-30 flex flex-col lg:shadow-2xl lg:rounded-2xl ${isEditingMap ? "flex w-full lg:w-[310px]" : "hidden"}`}
+              className="absolute z-30 select-none"
               style={{
-                left: editPainelPos ? `${editPainelPos.x}px` : '12px',
-                top: editPainelPos ? `${editPainelPos.y}px` : '12px',
+                left: editPainelPos ? `${editPainelPos.x}px` : '16px',
+                top: editPainelPos ? `${editPainelPos.y}px` : '16px',
+                touchAction: 'none',
+              }}
+            >
+              <div
+                onMouseDown={startDragEditPainel}
+                onTouchStart={startDragEditPainel}
+                className="flex items-center bg-slate-900/95 text-white rounded-2xl shadow-2xl border border-blue-500/50 backdrop-blur-md overflow-hidden cursor-grab active:cursor-grabbing hover:border-blue-400"
+                title="Arraste para mover o balão de edição para onde preferir"
+              >
+                <div className="px-2.5 py-2.5 text-slate-400 hover:text-white border-r border-slate-700/60 flex items-center justify-center">
+                  <GripHorizontal size={15} />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPainelRecolhido(false)}
+                  className="flex items-center gap-2 px-3 py-2 text-xs font-black uppercase tracking-wider text-slate-100 hover:text-white hover:bg-white/5 active:scale-95 transition-all"
+                  title="Expandir ferramentas de edição"
+                >
+                  <Pencil size={13} className="text-blue-400" />
+                  <span>Editar mapa</span>
+                  <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-300 border border-blue-400/30">ABRIR</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={salvarEdicaoMapa}
+                  className="px-3 py-2 text-xs font-black uppercase tracking-wider bg-emerald-600 hover:bg-emerald-500 text-white border-l border-emerald-500/40 active:scale-95 transition-all flex items-center gap-1"
+                  title="Salvar e sair da edição"
+                >
+                  <Check size={13} />
+                  <span>OK</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            // Painel expandido - totalmente arrastável, leve e fluido no PC e Mobile
+            <div
+              ref={editPainelRef}
+              className={`absolute z-30 flex flex-col shadow-2xl rounded-2xl w-[315px] max-w-[calc(100vw-24px)] ${isEditingMap ? "flex" : "hidden"}`}
+              style={{
+                left: editPainelPos ? `${editPainelPos.x}px` : '16px',
+                top: editPainelPos ? `${editPainelPos.y}px` : '16px',
                 pointerEvents: 'auto',
                 touchAction: 'none',
               }}
@@ -6903,41 +7276,53 @@ const LotDashboard = ({
 
 
 
-        {/* FORMULÁRIO NOVO MARCADOR — flutuante e arrastável sobre o mapa */}
+        {/* FORMULÁRIO NOVO MARCADOR — balão flutuante e arrastável sobre o mapa */}
         <AnimatePresence>
           {isEditingMap && mapAction === "editar" && marcadorFase === "formulario" && marcadorPonto1 && (
-            <motion.div
+            <div
               ref={marcadorPanelRef}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ duration: 0.12 }}
-              className="fixed inset-0 z-50 pointer-events-none flex items-center justify-end p-3 sm:p-4"
-              style={{}}
+              className="fixed z-50 select-none pointer-events-auto shadow-2xl rounded-2xl bg-white border border-slate-200 flex flex-col w-[350px] max-w-[calc(100vw-24px)] max-h-[calc(100dvh-32px)] overflow-hidden"
+              style={{
+                left: marcadorPanelPos ? `${marcadorPanelPos.x}px` : 'calc(100vw - 370px)',
+                top: marcadorPanelPos ? `${marcadorPanelPos.y}px` : '70px',
+                touchAction: 'none',
+              }}
             >
-              <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[360px] max-h-[calc(100dvh-24px)] overflow-y-auto border border-slate-200 pointer-events-auto">
-                {/* Handle de arrastar */}
-                <div
-                  className="flex items-center justify-between px-5 pt-4 pb-2 cursor-default bg-slate-50 border-b border-slate-100 select-none"
-                  onMouseDown={(e) => {
-                    e.stopPropagation();
-                    e.preventDefault();
-                    const panel = marcadorPanelRef.current;
-                    if (!panel) return;
-                    const rect = panel.getBoundingClientRect();
-                    dragPanelRef.current = { mouseX: e.clientX, mouseY: e.clientY, panelX: rect.left, panelY: rect.top };
-                    isDraggingPanelRef.current = true;
-                    setDraggingPanel(true);
-                    // Fixar posição atual via style para que o transform motion não interfira
-                    panel.style.left = `${rect.left}px`;
-                    panel.style.top = `${rect.top}px`;
-                    panel.style.transform = "none";
-                  }}
-                >
-                  <h4 className="font-display font-bold text-slate-800 text-base">Novo marcador</h4>
-                  <span className="text-slate-300 text-lg select-none" title="Arrastar">⠿</span>
+              {/* Header com Handle de arrastar (Draggable Header) */}
+              <div
+                onMouseDown={startDragMarcadorBalao}
+                onTouchStart={startDragMarcadorBalao}
+                className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-t-2xl select-none cursor-grab active:cursor-grabbing border-b border-slate-700/60 transition-colors"
+                title="Clique e arraste para mover este balão para qualquer lugar da tela"
+              >
+                <div className="flex items-center gap-2 min-w-0 pointer-events-none">
+                  <div className="text-slate-400 flex items-center">
+                    <GripHorizontal size={16} />
+                  </div>
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="text-xs font-black uppercase tracking-wider text-white truncate">Novo marcador</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-300 border border-blue-400/30 uppercase">Balão</span>
+                  </div>
                 </div>
-                <div className="p-5 space-y-3">
+
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMarcadorFase("idle");
+                      setMarcadorPonto1(null);
+                      setMarcadorPonto2Preview(null);
+                      setMarcadorPanelPos(null);
+                      setMarcadorForm({ quadra: "", lote: "", status: "sistema", observacao: "" });
+                    }}
+                    className="p-1 rounded-lg hover:bg-white/15 text-slate-300 hover:text-white transition-all"
+                    title="Fechar formulário"
+                  >
+                    <X size={15} />
+                  </button>
+                </div>
+              </div>
+              <div className="p-4 space-y-3 overflow-y-auto max-h-[calc(100dvh-120px)] select-auto">
                   {/* Identificação da quadra — exibida assim que o usuário preenche o campo */}
                   {marcadorForm.quadra ? (
                     <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
@@ -7120,8 +7505,7 @@ const LotDashboard = ({
                     }} className="btn-secondary">Cancelar</button>
                   </div>
                 </div>
-              </div>
-            </motion.div>
+            </div>
           )}
         </AnimatePresence>
           </div>
@@ -7982,7 +8366,14 @@ const LotDashboard = ({
             const configuredLots = getLotesDeQuadra(localDev.lotesPorQuadra?.[q]);
             const lotesInfoKeys = Object.keys(localDev.lotesInfo || {}).filter(k => k.startsWith(q.toUpperCase()+"-")).map(k=>k.split("-")[1]);
             const extraLots = extraLotsByQuadra(q);
-            const displayLots = Array.from(new Set([...configuredLots,...lotesInfoKeys,...extraLots])).sort((a,b)=>Number(a)-Number(b));
+            const pontosLots = ((localDev as any).mapaPontos || [])
+              .filter((p: any) => normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(q))
+              .map((p: any) => String(p.lote));
+            const displayLots = Array.from(new Set([...configuredLots,...lotesInfoKeys,...extraLots,...pontosLots])).sort((a,b)=>{
+              const na = Number(a); const nb = Number(b);
+              if (!isNaN(na) && !isNaN(nb)) return na - nb;
+              return a.localeCompare(b, "pt-BR", { numeric: true });
+            });
             displayLots.forEach(l => {
               const venda = vendaDoLote(q, l);
               // Buscar lotInfo tentando variações de chave
@@ -8010,7 +8401,17 @@ const LotDashboard = ({
                   }
                 }
               }
-              const status = venda ? "indisponivel" : lotInfo?.status === "reservado" ? "reservado" : lotInfo?.status === "indisponivel" ? "indisponivel" : "disponivel";
+              const pontoDoMapa = ((localDev as any).mapaPontos || []).find((p: any) =>
+                normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(q) &&
+                normalizeLotKeyPart(p.lote) === normalizeLotKeyPart(l)
+              );
+              const status = venda
+                ? "indisponivel"
+                : (lotInfo?.status === "reservado" || pontoDoMapa?.status === "reservado")
+                ? "reservado"
+                : (lotInfo?.status === "indisponivel" || pontoDoMapa?.status === "indisponivel")
+                ? "indisponivel"
+                : "disponivel";
               todosLotes.push({ quadra:q, lote:l, status, venda, lotInfo });
             });
           });
@@ -10480,6 +10881,7 @@ const EmpreendimentosSection = ({
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
   const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
+  const [lotRegSearch, setLotRegSearch] = useState("");
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
   const [releaseLotPending, setReleaseLotPending] = useState<{
     key: string;
@@ -10794,9 +11196,12 @@ const EmpreendimentosSection = ({
 
   const openEditForm = (dev: Empreendimento) => {
     setEditingDev(dev);
+    const calculatedTotal = countConfiguredLots(dev);
+    const currentTotal = Number(dev.totalLotes || 0);
+    const finalTotal = Math.max(currentTotal, calculatedTotal);
     setFormData({
       nome: dev.nome, endereco: dev.endereco, cidade: dev.cidade, estado: dev.estado,
-      totalLotes: dev.totalLotes, descricao: dev.descricao, comunidade: dev.comunidade,
+      totalLotes: finalTotal, descricao: dev.descricao, comunidade: dev.comunidade,
       mapaLocalizacaoUrl: getEmpreendimentoMapsUrl(dev),
       quadras: dev.quadras, ruas: dev.ruas,
       ruasPorQuadra: dev.ruasPorQuadra || {},
@@ -11748,8 +12153,10 @@ const EmpreendimentosSection = ({
       {devViewMode === 'lista' && (
         <div className="flex flex-col gap-1.5">
           {filteredDevelopments.map((dev) => {
-            const disponiveis = Math.max(0, (recalcularEstatisticasEmpreendimento(dev, sales).lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos)));
-            const pct = dev.totalLotes > 0 ? Math.round((dev.lotesVendidos / dev.totalLotes) * 100) : 0;
+            const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
+            const total = recalc.totalLotes ?? dev.totalLotes ?? 0;
+            const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0)));
+            const pct = total > 0 ? Math.round(((recalc.lotesVendidos || 0) / total) * 100) : 0;
             const temMaps = !!getEmpreendimentoMapsUrl(dev);
             return (
               <div key={dev.id} className="bg-white border border-slate-200 rounded-2xl px-3 py-2.5 flex items-center gap-2 hover:border-slate-300 hover:shadow-sm transition-all min-w-0">
@@ -11766,7 +12173,7 @@ const EmpreendimentosSection = ({
                 <div className="flex items-center gap-1.5 flex-shrink-0 text-[11px] font-black">
                   <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-lg">{disponiveis}</span>
                   <span className="text-slate-300">/</span>
-                  <span className="text-slate-500">{dev.totalLotes}</span>
+                  <span className="text-slate-500">{total}</span>
                   <span className="text-slate-300 ml-0.5">•</span>
                   <span className="text-slate-400">{pct}%</span>
                 </div>
@@ -11805,10 +12212,10 @@ const EmpreendimentosSection = ({
       <div className={devViewMode === 'grade' ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "hidden"}>
         {filteredDevelopments.map((dev) => {
           const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
-          const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, dev.totalLotes - dev.lotesVendidos));
+          const total = recalc.totalLotes ?? dev.totalLotes ?? 0;
+          const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0)));
           const reservados = recalc.lotesReservados ?? 0;
-          const vendidos = dev.lotesVendidos ?? 0;
-          const total = dev.totalLotes ?? 0;
+          const vendidos = recalc.lotesVendidos ?? dev.lotesVendidos ?? 0;
           const pct = total > 0 ? Math.round((vendidos / total) * 100) : 0;
           const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl || !!(dev as any).mapaPdfUrl;
           const temGps = !!getEmpreendimentoMapsUrl(dev);
@@ -12009,31 +12416,49 @@ const EmpreendimentosSection = ({
               </div>
 
               {/* Tabs redesenhadas */}
-              <div className="flex border-b border-slate-100 bg-slate-50/50 px-2 gap-0.5 pt-1">
-                {[
-                  { key: "cadastrar", icon: <Plus size={14}/>, label: "Novo" },
-                  { key: "lotes", icon: <List size={14}/>, label: "Lotes", badge: Object.keys(lotRegDev.lotesInfo || {}).length || null },
-                  { key: "script", icon: <ClipboardPaste size={14}/>, label: "Texto" },
-                  { key: "acoesMassa", icon: <Settings size={14}/>, label: "Massa" },
-                  { key: "precos", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, label: "Preços" },
-                ].map(({key, icon, label, badge}) => (
-                  <button key={key}
-                    onClick={() => {
-                      if (key === "script") { setScriptPasteText(""); setScriptMsg(""); setScriptGerado(""); setShowScriptModal(true); return; }
-                      if (key === "acoesMassa") { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }
-                      setLotRegTab(key as any);
-                    }}
-                    className={`relative flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-t-lg text-[9px] font-bold transition-all ${
-                      lotRegTab === key
-                        ? "text-[#1a4a1a] border-b-2 border-[#1a4a1a] bg-white"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}>
-                    {icon}
-                    <span>{label}</span>
-                    {badge ? <span className="absolute top-1 right-1 bg-[#1a4a1a] text-white text-[7px] font-black px-1 py-0.5 rounded-full leading-none">{badge}</span> : null}
-                  </button>
-                ))}
-              </div>
+              {(() => {
+                const totalLotesCount = (() => {
+                  const set = new Set<string>();
+                  getQuadraList(lotRegDev).forEach((q) => {
+                    getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]).forEach((l) => set.add(getLotInfoKey(q, l)));
+                  });
+                  Object.keys(lotRegDev.lotesInfo || {}).forEach((k) => { if (k) set.add(k.toUpperCase()); });
+                  const pt = (lotRegDev as any).mapaPontos;
+                  if (Array.isArray(pt)) {
+                    pt.forEach((p: any) => { if (p?.quadra && p?.lote) set.add(getLotInfoKey(p.quadra, p.lote)); });
+                  }
+                  getActiveSaleLotKeys(lotRegDev, sales).forEach((k) => set.add(k));
+                  return Math.max(set.size, Array.isArray(pt) ? pt.length : 0, Number(lotRegDev.totalLotes || 0));
+                })();
+
+                return (
+                  <div className="flex border-b border-slate-100 bg-slate-50/50 px-2 gap-0.5 pt-1">
+                    {[
+                      { key: "cadastrar", icon: <Plus size={14}/>, label: "Novo" },
+                      { key: "lotes", icon: <List size={14}/>, label: "Lotes", badge: totalLotesCount || null },
+                      { key: "script", icon: <ClipboardPaste size={14}/>, label: "Texto" },
+                      { key: "acoesMassa", icon: <Settings size={14}/>, label: "Massa" },
+                      { key: "precos", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, label: "Preços" },
+                    ].map(({key, icon, label, badge}) => (
+                      <button key={key}
+                        onClick={() => {
+                          if (key === "script") { setScriptPasteText(""); setScriptMsg(""); setScriptGerado(""); setShowScriptModal(true); return; }
+                          if (key === "acoesMassa") { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }
+                          setLotRegTab(key as any);
+                        }}
+                        className={`relative flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-t-lg text-[9px] font-bold transition-all ${
+                          lotRegTab === key
+                            ? "text-[#1a4a1a] border-b-2 border-[#1a4a1a] bg-white"
+                            : "text-slate-400 hover:text-slate-600"
+                        }`}>
+                        {icon}
+                        <span>{label}</span>
+                        {badge ? <span className="absolute top-1 right-1 bg-[#1a4a1a] text-white text-[7px] font-black px-1 py-0.5 rounded-full leading-none">{badge}</span> : null}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
 
               {/* Tab: Cadastrar */}
               {lotRegTab === "cadastrar" && (
@@ -12141,168 +12566,301 @@ const EmpreendimentosSection = ({
               )}
 
               {/* Tab: Lotes Registrados */}
-              {lotRegTab === "lotes" && (
-                <>
-                  <div className="flex-1 overflow-y-auto min-h-0">
-                    {Object.keys(lotRegDev.lotesInfo || {}).length === 0 ? (
-                      <div className="p-10 text-center text-slate-400 space-y-2">
-                        <MapPin size={32} className="mx-auto opacity-30" />
-                        <p className="font-medium text-sm">Nenhum lote cadastrado ainda.</p>
-                        <button onClick={() => setLotRegTab("cadastrar")} className="text-xs text-primary-main font-bold underline">
-                          Cadastrar primeiro lote
-                        </button>
+              {lotRegTab === "lotes" && (() => {
+                const keysMap = new Map<string, { quadra: string; lote: string }>();
+                getQuadraList(lotRegDev).forEach((q) => {
+                  getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]).forEach((l) => {
+                    const k = getLotInfoKey(q, l);
+                    keysMap.set(k, { quadra: q, lote: l });
+                  });
+                });
+                Object.keys(lotRegDev.lotesInfo || {}).forEach((k) => {
+                  if (k) {
+                    const u = k.toUpperCase();
+                    if (!keysMap.has(u)) {
+                      const [q, ...lParts] = u.split("-");
+                      keysMap.set(u, { quadra: q, lote: lParts.join("-") });
+                    }
+                  }
+                });
+                const pt = (lotRegDev as any).mapaPontos;
+                if (Array.isArray(pt)) {
+                  pt.forEach((p: any) => {
+                    if (p?.quadra && p?.lote) {
+                      const k = getLotInfoKey(p.quadra, p.lote);
+                      if (!keysMap.has(k)) {
+                        keysMap.set(k, { quadra: String(p.quadra).trim(), lote: String(p.lote).trim() });
+                      }
+                    }
+                  });
+                }
+                getActiveSaleLotKeys(lotRegDev, sales).forEach((k) => {
+                  if (!keysMap.has(k)) {
+                    const [q, ...lParts] = k.split("-");
+                    keysMap.set(k, { quadra: q, lote: lParts.join("-") });
+                  }
+                });
+
+                const allLotsInDev = Array.from(keysMap.entries()).map(([key, { quadra, lote }]) => {
+                  const info = lotRegDev.lotesInfo?.[key] || lotRegDev.lotesInfo?.[key.toLowerCase()] || {};
+                  const pontoNoMapa = (Array.isArray(pt) ? pt : []).find((p: any) =>
+                    normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(quadra) &&
+                    normalizeLotKeyPart(p.lote) === normalizeLotKeyPart(lote)
+                  );
+                  const venda = findVendaAtivaDoLote(sales, lotRegDev.id, quadra, lote);
+                  const isIndisponivel = venda ? false : (info.status === "indisponivel" || pontoNoMapa?.status === "indisponivel");
+                  const isReservado = venda ? false : (info.status === "reservado" || pontoNoMapa?.status === "reservado");
+                  const status = venda ? "vendido" : isReservado ? "reservado" : isIndisponivel ? "indisponivel" : "disponivel";
+                  return {
+                    key,
+                    quadra,
+                    lote,
+                    info,
+                    pontoNoMapa,
+                    venda,
+                    status,
+                    isIndisponivel,
+                    isReservado,
+                    temDesistente: !!(info as any).desistente,
+                    temBolinha: !!pontoNoMapa,
+                  };
+                }).sort((a, b) => {
+                  const naQ = parseInt(a.quadra) || 0;
+                  const nbQ = parseInt(b.quadra) || 0;
+                  if (naQ !== nbQ) return naQ - nbQ;
+                  const cmpQ = a.quadra.localeCompare(b.quadra, "pt-BR", { numeric: true });
+                  if (cmpQ !== 0) return cmpQ;
+                  const naL = parseInt(a.lote) || 0;
+                  const nbL = parseInt(b.lote) || 0;
+                  if (naL !== nbL) return naL - nbL;
+                  return a.lote.localeCompare(b.lote, "pt-BR", { numeric: true });
+                });
+
+                const qSearch = (lotRegSearch || "").trim().toLowerCase();
+                const filteredLots = allLotsInDev.filter((item) => {
+                  if (!qSearch) return true;
+                  return (
+                    item.quadra.toLowerCase().includes(qSearch) ||
+                    item.lote.toLowerCase().includes(qSearch) ||
+                    item.key.toLowerCase().includes(qSearch)
+                  );
+                });
+
+                const totalComBolinha = allLotsInDev.filter((x) => x.temBolinha).length;
+
+                return (
+                  <>
+                    {/* Barra de busca e contadores */}
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-col gap-2">
+                      <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
+                        <span>Total: <b className="text-slate-800">{allLotsInDev.length}</b> lotes</span>
+                        <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px]">
+                          📍 {totalComBolinha} no mapa
+                        </span>
                       </div>
-                    ) : (
-                      <div>
-                      <table className="w-full text-xs">
-                        <thead className="bg-slate-50 sticky top-0">
-                          <tr>
-                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Q</th>
-                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Lote</th>
-                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
-                            <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Comprador</th>
-                            <th className="px-2 py-2" />
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {Object.entries(lotRegDev.lotesInfo || {})
-                            .sort(([a], [b]) => a.localeCompare(b))
-                            .map(([key, info]) => {
-                              const [quadra, ...loteParts] = key.split("-");
-                              const lote = loteParts.join("-");
-                              const venda = findVendaAtivaDoLote(sales, lotRegDev.id, quadra, lote);
-                              const isIndisponivel = info.status === "indisponivel";
-                              const temDesistente = !!(info as any).desistente;
-                              return (
-                                <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
-                                  <td className="px-2 py-2">
-                                    <span className="font-black text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-md text-[10px]">{quadra}</span>
-                                  </td>
-                                  <td className="px-2 py-2 font-bold text-slate-800 text-[11px]">{lote}</td>
-                                  <td className="px-2 py-2">
-                                    {venda ? (
-                                      <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
-                                    ) : isIndisponivel ? (
-                                      <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Indisponível</span>
-                                    ) : (
-                                      <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
-                                    )}
-                                  </td>
-                                  <td className="px-2 py-2 text-[10px] max-w-[80px]">
-                                    {venda ? (
-                                      <span className="text-red-600 font-bold flex items-center gap-1 truncate">
-                                        <User size={11} />
-                                        {venda.clienteNome.split(" ")[0]}
-                                      </span>
-                                    ) : temDesistente ? (
-                                      <div>
-                                        <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
-                                          <AlertCircle size={11} />
-                                          {(info as any).desistente.clienteNome.split(" ")[0]}
-                                        </span>
-                                        <span className="text-[9px] text-slate-400">Desistente</span>
+                      <div className="relative">
+                        <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                        <input
+                          type="text"
+                          placeholder="Buscar por quadra ou lote..."
+                          value={lotRegSearch}
+                          onChange={(e) => setLotRegSearch(e.target.value)}
+                          className="w-full pl-8 pr-7 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-[#1a4a1a]"
+                        />
+                        {lotRegSearch && (
+                          <button
+                            onClick={() => setLotRegSearch("")}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                          >
+                            <X size={12} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto min-h-0">
+                      {allLotsInDev.length === 0 ? (
+                        <div className="p-10 text-center text-slate-400 space-y-2">
+                          <MapPin size={32} className="mx-auto opacity-30" />
+                          <p className="font-medium text-sm">Nenhum lote cadastrado ainda.</p>
+                          <button onClick={() => setLotRegTab("cadastrar")} className="text-xs text-primary-main font-bold underline">
+                            Cadastrar primeiro lote
+                          </button>
+                        </div>
+                      ) : filteredLots.length === 0 ? (
+                        <div className="p-8 text-center text-slate-400 space-y-1">
+                          <p className="font-medium text-xs">Nenhum lote encontrado para "{lotRegSearch}".</p>
+                          <button onClick={() => setLotRegSearch("")} className="text-[11px] text-primary-main font-bold underline">
+                            Limpar busca
+                          </button>
+                        </div>
+                      ) : (
+                        <div>
+                          <table className="w-full text-xs">
+                            <thead className="bg-slate-50 sticky top-0 z-10 border-b border-slate-100">
+                              <tr>
+                                <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Q</th>
+                                <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Lote</th>
+                                <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Status</th>
+                                <th className="text-left px-2 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 whitespace-nowrap">Comprador</th>
+                                <th className="px-2 py-2" />
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {filteredLots.map((item) => {
+                                const { key, quadra, lote, info, venda, status, isIndisponivel, temDesistente, temBolinha } = item;
+                                return (
+                                  <tr key={key} className={`border-t border-slate-50 transition-colors ${isIndisponivel ? "bg-slate-50/60" : "hover:bg-slate-50/50"}`}>
+                                    <td className="px-2 py-2">
+                                      <span className="font-black text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded-md text-[10px]">{quadra}</span>
+                                    </td>
+                                    <td className="px-2 py-2">
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="font-bold text-slate-800 text-[11px]">{lote}</span>
+                                        {temBolinha && (
+                                          <span className="text-[8px] font-black text-emerald-700 bg-emerald-50 px-1 py-0.5 rounded leading-tight" title="Marcado no mapa">
+                                            MAPA
+                                          </span>
+                                        )}
                                       </div>
-                                    ) : (
-                                      <span className="text-slate-300 italic text-[10px]">—</span>
-                                    )}
-                                  </td>
-                                  <td className="px-1 py-1">
-                                    <div className="flex items-center justify-end gap-0.5">
-                                      {/* Botão editar */}
-                                      <button
-                                        onClick={() => {
-                                          setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (info.status as any) || "disponivel" });
-                                        }}
-                                        className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
-                                        title="Editar lote"
-                                      >
-                                        <Pencil size={13} />
-                                      </button>
-                                      {/* Botão alternar disponibilidade (só sem venda ativa) */}
-                                      {!venda && (
+                                    </td>
+                                    <td className="px-2 py-2">
+                                      {status === "vendido" ? (
+                                        <span className="text-[10px] font-bold text-red-600 bg-red-50 px-2 py-0.5 rounded-full">Vendido</span>
+                                      ) : status === "reservado" ? (
+                                        <span className="text-[10px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full">Reservado</span>
+                                      ) : status === "indisponivel" ? (
+                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">Indisponível</span>
+                                      ) : (
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Disponível</span>
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-2 text-[10px] max-w-[80px]">
+                                      {venda ? (
+                                        <span className="text-red-600 font-bold flex items-center gap-1 truncate">
+                                          <User size={11} />
+                                          {venda.clienteNome.split(" ")[0]}
+                                        </span>
+                                      ) : temDesistente ? (
+                                        <div>
+                                          <span className="text-amber-600 font-bold flex items-center gap-1 truncate">
+                                            <AlertCircle size={11} />
+                                            {(info as any).desistente.clienteNome.split(" ")[0]}
+                                          </span>
+                                          <span className="text-[9px] text-slate-400">Desistente</span>
+                                        </div>
+                                      ) : (
+                                        <span className="text-slate-300 italic text-[10px]">—</span>
+                                      )}
+                                    </td>
+                                    <td className="px-1 py-1">
+                                      <div className="flex items-center justify-end gap-0.5">
+                                        {/* Botão editar */}
                                         <button
                                           onClick={() => {
-                                            const novoStatus = isIndisponivel ? "disponivel" : "indisponivel";
-                                            onUpdateLotesInfo(lotRegDev.id, { [key]: { ...(info as any), status: novoStatus } });
-                                            setLotRegDev((prev) => {
-                                              if (!prev) return null;
-                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: { ...(info as any), status: novoStatus } }, sales);
-                                            });
+                                            setLotRegForm({ quadra, numeroLote: lote, rua: info.rua || "", status: (status as any) || "disponivel" });
                                           }}
-                                          className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
-                                          title={isIndisponivel ? "Marcar como disponível" : "Marcar como indisponível"}
+                                          className="p-1.5 hover:bg-primary-main/10 text-primary-main rounded-lg transition-colors"
+                                          title="Editar lote"
                                         >
-                                          {isIndisponivel ? <Check size={13} /> : <X size={13} />}
+                                          <Pencil size={13} />
                                         </button>
-                                      )}
-                                      {/* Botão liberar lote vendido — mantém histórico simples */}
-                                      {venda && (
-                                        <button
-                                          onClick={() => setReleaseLotPending({ key, quadra, lote, info, venda })}
-                                          className="p-1.5 hover:bg-amber-50 text-amber-500 rounded-lg transition-colors"
-                                          title="Liberar lote e manter histórico"
-                                        >
-                                          <ArrowLeft size={13} />
-                                        </button>
-                                      )}
-                                      {/* Limpar histórico de desistente */}
-                                      {temDesistente && !venda && (
-                                        <button
-                                          onClick={() => {
-                                            const infoAtualizada = { ...(info as any) };
-                                            delete infoAtualizada.desistente;
-                                            onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
-                                            setLotRegDev((prev) => {
-                                              if (!prev) return null;
-                                              return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
-                                            });
-                                          }}
-                                          className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
-                                          title="Limpar histórico de desistência"
-                                        >
-                                          <RefreshCw size={13} />
-                                        </button>
-                                      )}
-                                      {/* Botão remover (só sem venda e sem desistente) */}
-                                      {!venda && !temDesistente && (
-                                        <button
-                                          onClick={() => {
-                                            requestDelete(`Remover lote ${key}?`, () => {
-                                              onDeleteLot(lotRegDev.id, key);
+                                        {/* Botão alternar disponibilidade (só sem venda ativa) */}
+                                        {!venda && (
+                                          <button
+                                            onClick={() => {
+                                              const novoStatus = isIndisponivel ? "disponivel" : "indisponivel";
+                                              const newInfo = { ...(info as any), status: novoStatus };
+                                              onUpdateLotesInfo(lotRegDev.id, { [key]: newInfo });
+                                              const nextPontos = ((lotRegDev as any).mapaPontos || []).map((p: any) => {
+                                                if (normalizeLotKeyPart(p.quadra) === normalizeLotKeyPart(quadra) && normalizeLotKeyPart(p.lote) === normalizeLotKeyPart(lote)) {
+                                                  return { ...p, status: novoStatus };
+                                                }
+                                                return p;
+                                              });
+                                              const updatedDev = applyLotesInfoPatchToEmpreendimento(
+                                                { ...lotRegDev, mapaPontos: nextPontos } as Empreendimento,
+                                                { [key]: newInfo },
+                                                sales
+                                              );
+                                              setLotRegDev(updatedDev);
+                                              onSave(updatedDev);
+                                            }}
+                                            className={`p-1.5 rounded-lg transition-colors ${isIndisponivel ? "hover:bg-emerald-50 text-emerald-500" : "hover:bg-slate-100 text-slate-400"}`}
+                                            title={isIndisponivel ? "Marcar como disponível" : "Marcar como indisponível"}
+                                          >
+                                            {isIndisponivel ? <Check size={13} /> : <X size={13} />}
+                                          </button>
+                                        )}
+                                        {/* Botão liberar lote vendido — mantém histórico simples */}
+                                        {venda && (
+                                          <button
+                                            onClick={() => setReleaseLotPending({ key, quadra, lote, info, venda })}
+                                            className="p-1.5 hover:bg-amber-50 text-amber-500 rounded-lg transition-colors"
+                                            title="Liberar lote e manter histórico"
+                                          >
+                                            <ArrowLeft size={13} />
+                                          </button>
+                                        )}
+                                        {/* Limpar histórico de desistente */}
+                                        {temDesistente && !venda && (
+                                          <button
+                                            onClick={() => {
+                                              const infoAtualizada = { ...(info as any) };
+                                              delete infoAtualizada.desistente;
+                                              onUpdateLotesInfo(lotRegDev.id, { [key]: infoAtualizada });
                                               setLotRegDev((prev) => {
                                                 if (!prev) return null;
-                                                return deleteLotFromEmpreendimento(prev, key, sales);
+                                                return applyLotesInfoPatchToEmpreendimento(prev, { [key]: infoAtualizada }, sales);
                                               });
-                                            });
-                                          }}
-                                          className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
-                                          title="Remover lote"
-                                        >
-                                          <Trash2 size={13} />
-                                        </button>
-                                      )}
-                                    </div>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                        </tbody>
-                      </table>
-                      </div>
-                    )}
-                  </div>
-                  <div className="p-4 border-t border-slate-100 flex justify-between items-center">
-                    <p className="text-[10px] text-slate-400">Lotes com comprador não podem ser removidos.</p>
-                    <button
-                      onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); }}
-                      className="btn-primary px-5 py-2 text-xs flex items-center gap-2"
-                    >
-                      <Plus size={13} />
-                      Novo Lote
-                    </button>
-                  </div>
-                </>
-              )}
+                                            }}
+                                            className="p-1.5 hover:bg-slate-100 text-slate-300 rounded-lg transition-colors"
+                                            title="Limpar histórico de desistência"
+                                          >
+                                            <RefreshCw size={13} />
+                                          </button>
+                                        )}
+                                        {/* Botão remover (só sem venda e sem desistente) */}
+                                        {!venda && !temDesistente && (
+                                          <button
+                                            onClick={() => {
+                                              requestDelete(`Remover lote ${key}?`, () => {
+                                                onDeleteLot(lotRegDev.id, key);
+                                                setLotRegDev((prev) => {
+                                                  if (!prev) return null;
+                                                  return deleteLotFromEmpreendimento(prev, key, sales);
+                                                });
+                                              });
+                                            }}
+                                            className="p-1.5 hover:bg-red-50 text-red-400 rounded-lg transition-colors"
+                                            title="Remover lote"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                    <div className="p-4 border-t border-slate-100 flex justify-between items-center">
+                      <p className="text-[10px] text-slate-400">Lotes com comprador não podem ser removidos.</p>
+                      <button
+                        onClick={() => { setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); }}
+                        className="btn-primary px-5 py-2 text-xs flex items-center gap-2"
+                      >
+                        <Plus size={13} />
+                        Novo Lote
+                      </button>
+                    </div>
+                  </>
+                );
+              })()}
 
               {/* Tab: Preços em Massa */}
               {lotRegTab === "precos" && (() => {
