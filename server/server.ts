@@ -439,6 +439,7 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
 
     const prev = inMemoryEmpreendimentos.get(req.params.id) || {};
+    const isRecortado = item.mapaRecortado === true || (item.mapaCrop && item.mapaCrop.width > 0);
     const dataToSave = {
       ...prev,
       ...item,
@@ -446,14 +447,21 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
       ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
       ...((!item.mapaImagemMedResBase64 && prev.mapaImagemMedResBase64) ? { mapaImagemMedResBase64: prev.mapaImagemMedResBase64 } : {}),
       ...((!item.mapaImagemHighResBase64 && prev.mapaImagemHighResBase64) ? { mapaImagemHighResBase64: prev.mapaImagemHighResBase64 } : {}),
-      ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
+      ...((!isRecortado && !item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
       ...((!item.mapaImagemUrl && prev.mapaImagemUrl) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
-      ...((!item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
-      ...((!item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
-      ...((!item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
+      ...((!isRecortado && !item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
+      ...((!isRecortado && !item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
+      ...((!isRecortado && !item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
       ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
       ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
     };
+    if (isRecortado) {
+      dataToSave.mapaPdfOriginalBase64 = null;
+      dataToSave.mapaPdfUrl = null;
+      dataToSave.mapaPdfOriginalName = null;
+      dataToSave.mapaPdfPagina = null;
+      dataToSave.mapaRecortado = true;
+    }
     inMemoryEmpreendimentos.set(req.params.id, dataToSave);
 
     if (supabase) {
@@ -530,16 +538,21 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
 app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    const { mapaImagemBase64, mapaImagemUrl, mapaPdfUrl, mapaPdfOriginalName, mapaPdfPagina } = req.body;
+    const { mapaImagemBase64, mapaImagemUrl, mapaPdfUrl, mapaPdfOriginalBase64, mapaPdfOriginalName, mapaPdfPagina, mapaRecortado, mapaCrop } = req.body;
     if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
     const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
+    const isRecortado = mapaRecortado === true || (mapaCrop && mapaCrop.width > 0);
     const updatedData = {
       ...existing,
-      ...(mapaImagemUrl ? { mapaImagemUrl } : {}),
-      ...(mapaPdfUrl ? { mapaPdfUrl } : {}),
-      ...(mapaPdfOriginalName ? { mapaPdfOriginalName } : {}),
-      ...(mapaPdfPagina ? { mapaPdfPagina } : {}),
+      ...(mapaImagemUrl !== undefined ? { mapaImagemUrl } : {}),
+      ...(mapaPdfUrl !== undefined ? { mapaPdfUrl } : {}),
+      ...(mapaPdfOriginalBase64 !== undefined ? { mapaPdfOriginalBase64 } : {}),
+      ...(mapaPdfOriginalName !== undefined ? { mapaPdfOriginalName } : {}),
+      ...(mapaPdfPagina !== undefined ? { mapaPdfPagina } : {}),
       ...(mapaImagemBase64 !== undefined ? { mapaImagemBase64: mapaImagemBase64 ?? null } : {}),
+      ...(mapaRecortado !== undefined ? { mapaRecortado } : {}),
+      ...(mapaCrop !== undefined ? { mapaCrop } : {}),
+      ...(isRecortado ? { mapaPdfOriginalBase64: null, mapaPdfUrl: null, mapaPdfOriginalName: null, mapaPdfPagina: null } : {}),
     };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
 

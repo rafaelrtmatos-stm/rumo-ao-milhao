@@ -24,6 +24,7 @@ import {
   Calculator,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   TrendingUp,
   DollarSign,
   Crop,
@@ -86,6 +87,7 @@ import {
   Paperclip,
   ExternalLink,
   GitMerge,
+  Maximize2,
   Image as ImageIcon,
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
@@ -1789,6 +1791,11 @@ const Sidebar = ({
     const hidden = (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('hiddenMenuItems') || '[]') : []) as string[];
     const order = (typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('menuOrder') || '[]') : []) as string[];
     let items = isAdmin ? allMenuItems : allMenuItems.filter(item => userPermissions?.[item.id] !== false);
+    // Modo Lite: oculta abas complexas e foca apenas no essencial (Empreendimentos/Mapa, Vendas, Clientes e Início)
+    if (tipoVisualizacao === "lite") {
+      const liteAllowed = ["empreendimentos", "vendas", "clientes", "inicio"];
+      items = items.filter(item => liteAllowed.includes(item.id));
+    }
     // Remover ocultos
     items = items.filter(item => !hidden.includes(item.id));
     // Aplicar ordem
@@ -1804,9 +1811,38 @@ const Sidebar = ({
   const configItem = { id: "config", label: "Configurações", icon: Settings };
   // temAcesso: leitor ou editor têm acesso; false = sem acesso
   const temAcessoPerm = (sec: string) => isAdmin || (userPermissions?.[sec] && userPermissions[sec] !== false);
-  const showConfig = temAcessoPerm('config');
+  const showConfig = tipoVisualizacao !== "lite" && temAcessoPerm('config');
   const historicoItem = { id: "historico", label: "Lixeira", icon: Trash2 };
-  const showHistorico = isAdmin || temAcessoPerm('historico');
+  const showHistorico = tipoVisualizacao !== "lite" && (isAdmin || temAcessoPerm('historico'));
+
+  const [modoDropdownOpen, setModoDropdownOpen] = useState(false);
+
+  const MODOS_VISUALIZACAO = [
+    {
+      id: "lite" as const,
+      label: "Celular Lite",
+      desc: "Mapa ágil e vendas (sem abas pesadas)",
+      icon: Zap,
+      tag: "Ágil",
+    },
+    {
+      id: "pro" as const,
+      label: "Celular Pro",
+      desc: "Celular completo com todas as abas e edição",
+      icon: Smartphone,
+      tag: "Completo",
+    },
+    {
+      id: "pc" as const,
+      label: "Modo PC",
+      desc: "Visualização desktop para computadores",
+      icon: Monitor,
+      tag: "Desktop",
+    },
+  ];
+
+  const currentModo = MODOS_VISUALIZACAO.find(m => m.id === tipoVisualizacao) || MODOS_VISUALIZACAO[2];
+  const CurrentIcon = currentModo.icon;
 
   return (
     <>
@@ -1876,87 +1912,114 @@ const Sidebar = ({
             );
           })}
 
-          {/* SELETOR DE MODOS (LITE / PRO / PC) NA ABA LATERAL */}
-          <div className="mx-1 my-2 p-3 bg-slate-50/90 border border-slate-200/90 rounded-2xl shadow-xs">
-            <p className="text-[10px] font-black uppercase text-slate-400 tracking-wider mb-2 px-1">
-              Modo de Visualização
-            </p>
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("lite") : onToggleDesktop()}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  tipoVisualizacao === "lite"
-                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
-                    : "text-slate-600 hover:bg-white hover:text-slate-900"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "lite" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
-                    <Zap size={14} />
-                  </div>
-                  <div className="text-left">
-                    <span className="block leading-tight font-black">Celular Lite</span>
-                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "lite" ? "text-emerald-200" : "text-slate-400"}`}>
-                      Mapa limpo e vendas
-                    </span>
-                  </div>
+          {/* SELETOR DE MODOS (LISTA SUSPENSA COMPACTA) */}
+          <div className="mx-1 my-2 p-1.5 bg-slate-50 border border-slate-200/90 rounded-2xl shadow-xs transition-all">
+            <button
+              type="button"
+              onClick={() => setModoDropdownOpen(!modoDropdownOpen)}
+              className="w-full flex items-center justify-between p-2 rounded-xl text-left hover:bg-white transition-all group"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
+                    tipoVisualizacao === "lite"
+                      ? "bg-emerald-100 text-emerald-800"
+                      : tipoVisualizacao === "pro"
+                      ? "bg-blue-100 text-blue-800"
+                      : "bg-slate-200 text-slate-700"
+                  }`}
+                >
+                  <CurrentIcon size={14} />
                 </div>
-                {tipoVisualizacao === "lite" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
-                )}
-              </button>
+                <div className="min-w-0 text-left">
+                  <p className="text-[9px] font-black uppercase text-slate-400 tracking-wider leading-none">
+                    Visualização
+                  </p>
+                  <p className="text-xs font-black text-slate-800 leading-tight truncate mt-0.5">
+                    {currentModo.label}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+                <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-200/70 text-slate-600 uppercase">
+                  {currentModo.tag}
+                </span>
+                <ChevronDown
+                  size={14}
+                  className={`text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
+                    modoDropdownOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </div>
+            </button>
 
-              <button
-                type="button"
-                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("pro") : onToggleDesktop()}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  tipoVisualizacao === "pro"
-                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
-                    : "text-slate-600 hover:bg-white hover:text-slate-900"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "pro" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
-                    <Smartphone size={14} />
-                  </div>
-                  <div className="text-left">
-                    <span className="block leading-tight font-black">Celular Pro</span>
-                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "pro" ? "text-emerald-200" : "text-slate-400"}`}>
-                      Completo com edição
-                    </span>
-                  </div>
-                </div>
-                {tipoVisualizacao === "pro" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => onSelectVisualizacao ? onSelectVisualizacao("pc") : onToggleDesktop()}
-                className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-bold transition-all ${
-                  tipoVisualizacao === "pc"
-                    ? "bg-[#1a4a1a] text-white shadow-xs font-black"
-                    : "text-slate-600 hover:bg-white hover:text-slate-900"
-                }`}
-              >
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-6 h-6 rounded-lg flex items-center justify-center ${tipoVisualizacao === "pc" ? "bg-white/20 text-white" : "bg-slate-200/70 text-slate-500"}`}>
-                    <Monitor size={14} />
-                  </div>
-                  <div className="text-left">
-                    <span className="block leading-tight font-black">Modo PC</span>
-                    <span className={`text-[9px] block leading-none mt-0.5 ${tipoVisualizacao === "pc" ? "text-emerald-200" : "text-slate-400"}`}>
-                      Web e Desktop
-                    </span>
-                  </div>
-                </div>
-                {tipoVisualizacao === "pc" && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-white ml-2 shrink-0" />
-                )}
-              </button>
-            </div>
+            {/* Itens da lista suspensa */}
+            <AnimatePresence>
+              {modoDropdownOpen && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: "auto" }}
+                  exit={{ opacity: 0, height: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="overflow-hidden pt-1.5 border-t border-slate-200/80 space-y-1"
+                >
+                  {MODOS_VISUALIZACAO.map((m) => {
+                    const MIcon = m.icon;
+                    const isSelected = tipoVisualizacao === m.id;
+                    return (
+                      <button
+                        key={m.id}
+                        type="button"
+                        onClick={() => {
+                          if (onSelectVisualizacao) {
+                            onSelectVisualizacao(m.id);
+                          } else {
+                            onToggleDesktop();
+                          }
+                          setModoDropdownOpen(false);
+                        }}
+                        className={`w-full flex items-center justify-between p-2 rounded-xl text-left transition-all ${
+                          isSelected
+                            ? "bg-[#1a4a1a] text-white shadow-xs font-black"
+                            : "text-slate-600 hover:bg-white hover:text-slate-900 font-bold"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div
+                            className={`w-6 h-6 rounded-lg flex items-center justify-center flex-shrink-0 ${
+                              isSelected
+                                ? "bg-white/20 text-white"
+                                : m.id === "lite"
+                                ? "bg-emerald-50 text-emerald-600"
+                                : m.id === "pro"
+                                ? "bg-blue-50 text-blue-600"
+                                : "bg-slate-200/70 text-slate-600"
+                            }`}
+                          >
+                            <MIcon size={13} />
+                          </div>
+                          <div className="min-w-0">
+                            <span className="text-xs block leading-tight font-black">
+                              {m.label}
+                            </span>
+                            <span
+                              className={`text-[9px] block leading-none mt-0.5 truncate ${
+                                isSelected ? "text-emerald-100" : "text-slate-400 font-medium"
+                              }`}
+                            >
+                              {m.desc}
+                            </span>
+                          </div>
+                        </div>
+                        {isSelected && (
+                          <Check size={14} className="text-white shrink-0 ml-1.5" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Lixeira */}
@@ -2075,11 +2138,17 @@ const Header = ({
 const BottomNav = ({
   currentSection,
   setSection,
+  tipoVisualizacao = "pc",
 }: {
   currentSection: Section;
   setSection: (s: Section) => void;
+  tipoVisualizacao?: "lite" | "pro" | "pc";
 }) => {
-  const items = [
+  const items = tipoVisualizacao === "lite" ? [
+    { id: "empreendimentos", label: "Mapa / Lotes", icon: Building2 },
+    { id: "vendas", label: "Venda", icon: ShoppingCart },
+    { id: "clientes", label: "Clientes", icon: Users },
+  ] : [
     { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
     { id: "vendas", label: "Venda", icon: ShoppingCart },
     { id: "contratos", label: "Contratos", icon: FileText },
@@ -2719,32 +2788,100 @@ const LotDashboard = ({
   const [cardPrecoMinimizado, setCardPrecoMinimizado] = useState<boolean>(false);
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
 
-  const handleConfirmCrop = (croppedBase64: string, updatedPoints: MapaPonto[]) => {
-    const applyCrop = (nw?: number, nh?: number) => {
-      const nextDev: Empreendimento = {
-        ...localDev,
-        mapaImagemBase64: croppedBase64,
-        mapaImagemUrl: croppedBase64,
-        mapaImagemLeveBase64: croppedBase64,
-        mapaImagemMedResBase64: croppedBase64,
-        mapaImagemHighResBase64: croppedBase64,
-        mapaPdfOriginalBase64: undefined,
-        mapaPdfUrl: undefined,
-        mapaImagemNaturalWidth: nw || (localDev as any).mapaImagemNaturalWidth,
-        mapaImagemNaturalHeight: nh || (localDev as any).mapaImagemNaturalHeight,
-        mapaPontos: updatedPoints,
-      };
-      setLocalDev(nextDev);
-      persistDev(nextDev);
-      setTimeout(() => {
-        fitMapToScreen(0);
-      }, 120);
+  const handleConfirmCrop = async (
+    croppedBase64: string,
+    updatedPoints: MapaPonto[],
+    cropArea?: { x: number; y: number; width: number; height: number },
+    croppedBlob?: Blob | null
+  ) => {
+    // 1. Obter dimensões do corte
+    const { nw, nh } = await new Promise<{ nw: number; nh: number }>((resolve) => {
+      const img = new Image();
+      img.onload = () => resolve({ nw: img.naturalWidth || img.width, nh: img.naturalHeight || img.height });
+      img.onerror = () => resolve({ nw: (localDev as any).mapaImagemNaturalWidth || 0, nh: (localDev as any).mapaImagemNaturalHeight || 0 });
+      img.src = croppedBase64;
+    });
+
+    // 2. Limpar preview temporário de PDF da memória
+    setPdfRenderedUrl("");
+
+    // 3. Fazer upload do mapa recortado para o Supabase Storage
+    let storageUrl = "";
+    try {
+      let uploadBlob = croppedBlob;
+      if (!uploadBlob) {
+        const res = await fetch(croppedBase64);
+        uploadBlob = await res.blob();
+      }
+      if (uploadBlob) {
+        storageUrl = await uploadMapaBlob(uploadBlob, localDev.id, undefined, 'webp', 'image/webp');
+      }
+      if (storageUrl && storageUrl.startsWith('http')) {
+        precacheMapaUrl(storageUrl);
+        console.log('[handleConfirmCrop] Imagem recortada salva no Supabase Storage:', storageUrl);
+      }
+    } catch (uploadErr) {
+      console.warn('[handleConfirmCrop] Falha no upload para Supabase Storage:', uploadErr);
+    }
+
+    const finalUrl = (storageUrl && storageUrl.startsWith('http')) ? storageUrl : croppedBase64;
+    const isLandscape = (nw && nh) ? (nw > nh) : true;
+    const a4RefWidth = isLandscape ? 1123 : 794;
+
+    const nextDev: Empreendimento = {
+      ...localDev,
+      mapaImagemBase64: croppedBase64,
+      mapaImagemUrl: finalUrl,
+      mapaImagemLeveBase64: croppedBase64,
+      mapaImagemMedResBase64: croppedBase64,
+      mapaImagemHighResBase64: croppedBase64,
+      mapaRecortado: true,
+      mapaCrop: cropArea || (localDev as any).mapaCrop,
+      mapaPdfOriginalBase64: "" as any,
+      mapaPdfUrl: "" as any,
+      mapaPdfOriginalName: "" as any,
+      mapaPdfPagina: 1,
+      mapaImagemNaturalWidth: nw || (localDev as any).mapaImagemNaturalWidth,
+      mapaImagemNaturalHeight: nh || (localDev as any).mapaImagemNaturalHeight,
+      mapaOrientacao: isLandscape ? "landscape" : "portrait",
+      mapaMarkerReferenceWidth: a4RefWidth,
+      mapaPontos: updatedPoints,
     };
 
-    const img = new Image();
-    img.onload = () => applyCrop(img.naturalWidth || img.width, img.naturalHeight || img.height);
-    img.onerror = () => applyCrop();
-    img.src = croppedBase64;
+    setLocalDev(nextDev);
+    persistDev(nextDev);
+
+    // Enviar imediatamente para sincronização direta na API / Supabase
+    try {
+      await fetch(`/api/empreendimentos/${localDev.id}/mapa`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mapaImagemUrl: finalUrl,
+          mapaImagemBase64: null,
+          mapaPdfUrl: null,
+          mapaPdfOriginalBase64: null,
+          mapaPdfOriginalName: null,
+          mapaPdfPagina: null,
+          mapaRecortado: true,
+          mapaCrop: cropArea || (localDev as any).mapaCrop,
+        }),
+      });
+
+      await fetch(`/api/empreendimentos/${localDev.id}/pontos`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mapaPontos: updatedPoints,
+        }),
+      });
+    } catch (apiErr) {
+      console.warn('[handleConfirmCrop] Sincronização direta na API:', apiErr);
+    }
+
+    setTimeout(() => {
+      fitMapToScreen(0);
+    }, 120);
   };
 
   // Helper universal para parsear preço como número de forma confiável
@@ -3218,20 +3355,6 @@ const LotDashboard = ({
     window.addEventListener("tipo-visualizacao-changed", onTipoChanged);
     return () => window.removeEventListener("tipo-visualizacao-changed", onTipoChanged);
   }, []);
-
-  const mudarTipoVisualizacao = (tipo: "lite" | "pro" | "pc") => {
-    setTipoVisualizacao(tipo);
-    try {
-      localStorage.setItem("tipo_visualizacao_modo", tipo);
-    } catch {}
-    if (tipo === "lite") {
-      setIsEditingMap(false);
-      setMapAction("visualizar");
-    }
-    try {
-      window.dispatchEvent(new CustomEvent("tipo-visualizacao-changed", { detail: tipo }));
-    } catch {}
-  };
 
   const [liteStatusFiltro, setLiteStatusFiltro] = useState<"todos" | "disponivel" | "reservado" | "indisponivel">("todos");
   const [liteBuscaQuery, setLiteBuscaQuery] = useState("");
@@ -3878,7 +4001,7 @@ const LotDashboard = ({
   // focalX/focalY = coordenadas do ponto focal em px relativas ao viewport
   const setMapZoomAtPoint = (nextZoom: number, focalX?: number, focalY?: number) => {
     const clamped = Math.max(0.15, Math.min(10, nextZoom));
-    if ((localDev as any).mapaPdfOriginalBase64) {
+    if ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) {
       schedulePdfRender(clamped);
     } else if (clamped > MED_RES_ZOOM_THRESHOLD) {
       void requestHighResolutionMap();
@@ -4011,13 +4134,15 @@ const LotDashboard = ({
 
   const isEditingMap = canEditMap && mapAction !== "visualizar";
   const mapaPontos = ((localDev as any).mapaPontos || []) as any[];
-  const mapaImagemOriginal = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || pdfRenderedUrl || "";
+  const isMapRecortado = Boolean((localDev as any).mapaRecortado || (localDev as any).mapaCrop);
+  const mapaImagemOriginal = (localDev as any).mapaImagemBase64 || (localDev as any).mapaImagemUrl || (!isMapRecortado ? pdfRenderedUrl : "") || "";
 
   // Auto-recuperação e fixação de mapa quando há mapaPdfUrl no banco mas mapaImagemUrl ainda não foi gerado
   useEffect(() => {
+    const isRecortado = Boolean((localDev as any).mapaRecortado || (localDev as any).mapaCrop);
     const pdfUrl = (localDev as any).mapaPdfUrl;
     const hasImage = !!((localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || pdfRenderedUrl);
-    if (!hasImage && pdfUrl) {
+    if (!hasImage && pdfUrl && !isRecortado) {
       let cancelled = false;
       setLoadingPdfMap(true);
       (async () => {
@@ -4074,8 +4199,8 @@ const LotDashboard = ({
   // Imagem atual para exibição — nunca vazia para evitar tela branca
   // Usa sempre a melhor qualidade disponível sem trocar durante zoom
   const mapaImagem = (() => {
-    if ((localDev as any).mapaPdfOriginalBase64) return mapaImagemOriginal || "pdf";
-    return mapaImagemOriginal; // sempre original — sem troca, sem complexidade
+    if (((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) return mapaImagemOriginal || "pdf";
+    return (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal; // sempre original — sem troca, sem complexidade
   })();
 
   // Imagem de fundo (fallback enquanto a principal carrega)
@@ -4113,9 +4238,9 @@ const LotDashboard = ({
         zoomingRef.current = false;
         void requestHighResolutionMap();
       }, 400);
-      // Zoom para o ponto do cursor — usar container (sem transform) como referência
-      const container = getActiveContainer() || mapContainerRef.current;
-      const rect = container?.getBoundingClientRect();
+      // Zoom para o ponto do cursor — usar o viewport fixo (sem transform) como referência
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
       const focalX = rect ? ev.clientX - rect.left : ev.clientX;
       const focalY = rect ? ev.clientY - rect.top : ev.clientY;
       setMapZoomAtPoint(mapZoomRef.current + clampedDelta, focalX, focalY);
@@ -4181,14 +4306,11 @@ const LotDashboard = ({
     setMapActive(true);
     if (e.touches.length >= 2) {
       e.preventDefault();
-      // Calcular ponto médio dos dois dedos RELATIVO ao container (sem transform)
-      // O container (mapContainerRef) não tem transform aplicado — é a referência correta
-      // O viewport (mapViewportRef) TEM transform e daria focal errado
-      const container = mapContainerRef.current;
-      const rect = container?.getBoundingClientRect();
+      // Ponto médio dos dois dedos relativo ao viewport fixo (sem transform)
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
       const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
       const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-      // Focal relativo ao container sem transform — âncora correta para zoom ancorado
       const focalX = rect ? midClientX - rect.left : midClientX;
       const focalY = rect ? midClientY - rect.top  : midClientY;
       mapTouchRef.current = {
@@ -4197,13 +4319,12 @@ const LotDashboard = ({
         startZoom: mapZoomRef.current,
         startPanX: mapPanRef.current.x,
         startPanY: mapPanRef.current.y,
-        startX: focalX,  // focal fixo no viewport
+        startX: focalX,  // focal inicial relativo ao viewport
         startY: focalY,
       };
       return;
     }
     if (e.touches.length === 1) {
-      e.preventDefault();
       mapTouchRef.current = {
         mode: "pan",
         startDistance: 0,
@@ -4218,34 +4339,66 @@ const LotDashboard = ({
 
   const handleMapTouchMove = (e: React.TouchEvent<HTMLDivElement>) => {
     if (!mapActive) return;
+
+    // Se o usuário colocou um 2º dedo durante um movimento de pan, faz a transição transparente para pinch
+    if (e.touches.length >= 2 && mapTouchRef.current.mode !== "pinch") {
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const midClientX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const midClientY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const focalX = rect ? midClientX - rect.left : midClientX;
+      const focalY = rect ? midClientY - rect.top  : midClientY;
+      mapTouchRef.current = {
+        mode: "pinch",
+        startDistance: getTouchDistance(e.touches),
+        startZoom: mapZoomRef.current,
+        startPanX: mapPanRef.current.x,
+        startPanY: mapPanRef.current.y,
+        startX: focalX,
+        startY: focalY,
+      };
+    }
+
     const gesture = mapTouchRef.current;
 
     if (gesture.mode === "pinch" && e.touches.length >= 2) {
       e.preventDefault();
       const distance = getTouchDistance(e.touches);
-      // Zoom calculado a partir da distância inicial (gesture.startZoom é o zoom no momento do touchStart)
-      const nextZoom = Math.max(0.15, Math.min(10,
-        gesture.startZoom * (distance / Math.max(1, gesture.startDistance))
-      ));
+      if (distance < 2) return;
 
-      // ÂNCORA FIXA: usar o ponto médio calculado no touchStart (gesture.startX/Y)
-      // Isso evita o bug de "fuga" onde o focal deriva a cada frame porque o rect muda
-      // O ponto focal é relativo ao viewport e fixo durante todo o gesto de pinch
-      const focalX = gesture.startX;
-      const focalY = gesture.startY;
+      const viewport = getActiveViewport() || mapViewportRef.current;
+      const rect = viewport?.getBoundingClientRect();
+      const currentMidX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+      const currentMidY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+      const currentFocalX = rect ? currentMidX - rect.left : currentMidX;
+      const currentFocalY = rect ? currentMidY - rect.top : currentMidY;
+
+      // Escala acumulada a partir do estado inicial do gesto
+      const scaleRatio = distance / Math.max(1, gesture.startDistance);
+      const nextZoom = Math.max(0.15, Math.min(10, gesture.startZoom * scaleRatio));
+
+      // Fórmula exata de zoom ancorado no ponto médio dos dedos:
+      // O ponto focal do mapa permanece sob os dedos e acompanha o deslocamento conjunto deles
+      const zoomRatio = nextZoom / Math.max(0.01, gesture.startZoom);
+      const newPanX = currentFocalX - (gesture.startX - gesture.startPanX) * zoomRatio;
+      const newPanY = currentFocalY - (gesture.startY - gesture.startPanY) * zoomRatio;
+      const clampedPan = clampMapPan({ x: newPanX, y: newPanY }, nextZoom);
 
       zoomingRef.current = true;
       clearTimeout((window as any).__zoomEndTimer);
       (window as any).__zoomEndTimer = setTimeout(() => {
         zoomingRef.current = false;
-        // Sem troca de resolução
-      }, 400);
+        if ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) {
+          schedulePdfRender(mapZoomRef.current);
+        }
+      }, 300);
 
-      // rAF — não bloquear thread principal durante pinch
       cancelAnimationFrame((window as any).__pinchRaf);
       (window as any).__pinchRaf = requestAnimationFrame(() => {
-        if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(nextZoom);
-        setMapZoomAtPoint(nextZoom, focalX, focalY);
+        mapZoomRef.current = nextZoom;
+        mapPanRef.current = clampedPan;
+        setMapZoom(nextZoom);
+        setMapPan(clampedPan);
       });
       return;
     }
@@ -4267,8 +4420,12 @@ const LotDashboard = ({
   };
 
   const handleMapTouchEnd = () => {
-    mapTouchRef.current = { mode: "none", startDistance: 0, startZoom: mapZoom, startPanX: mapPan.x, startPanY: mapPan.y, startX: 0, startY: 0 };
+    const wasPinch = mapTouchRef.current.mode === "pinch";
+    mapTouchRef.current = { mode: "none", startDistance: 0, startZoom: mapZoomRef.current, startPanX: mapPanRef.current.x, startPanY: mapPanRef.current.y, startX: 0, startY: 0 };
     setMapPan(prev => clampMapPan(prev, mapZoomRef.current));
+    if (wasPinch && ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl)) {
+      schedulePdfRender(mapZoomRef.current);
+    }
   };
 
   // Resetar estado marcador ao trocar action
@@ -4348,7 +4505,7 @@ const LotDashboard = ({
     const targetPage = Math.min(Math.max(1, pageNum), pdfDoc.numPages);
     const page = await pdfDoc.getPage(targetPage);
     const viewport = page.getViewport({ scale });
-    // Limitar resolução máxima para não travar celular
+    // Limitar resolução máxima para manter texto das medições nítido e baixo tráfego (4000px WebP)
     const maxPx = 4000;
     const finalScale = viewport.width > maxPx || viewport.height > maxPx
       ? scale * (maxPx / Math.max(viewport.width, viewport.height))
@@ -4365,7 +4522,7 @@ const LotDashboard = ({
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     // Yield após renderizar
     await new Promise(r => setTimeout(r, 0));
-    return canvas.toDataURL("image/png", 0.92);
+    return canvas.toDataURL("image/webp", 0.85);
   };
 
   const renderPdfPageToBlob = async (buffer: ArrayBuffer, scale: number, pageNum = 1) => {
@@ -4377,7 +4534,8 @@ const LotDashboard = ({
     const targetPage = Math.min(Math.max(1, pageNum), totalPages);
     const page = await pdfDoc.getPage(targetPage);
     const viewport = page.getViewport({ scale });
-    const maxPx = 4000;
+    // Permitir ultra-alta resolução (até 8192px) para preservar nitidez em detalhes minúsculos e zoom de 500%+
+    const maxPx = 8192;
     const finalScale = viewport.width > maxPx || viewport.height > maxPx
       ? scale * (maxPx / Math.max(viewport.width, viewport.height))
       : scale;
@@ -4391,9 +4549,9 @@ const LotDashboard = ({
     await new Promise(r => setTimeout(r, 0));
     await page.render({ canvasContext: ctx, viewport: vp }).promise;
     await new Promise(r => setTimeout(r, 0));
-    const dataUrl = canvas.toDataURL("image/png", 0.92);
+    const dataUrl = canvas.toDataURL("image/webp", 0.85);
     const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((b) => b ? resolve(b) : reject(new Error("toBlob failed")), "image/webp", 0.88);
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error("toBlob failed")), "image/webp", 0.85);
     });
     return { blob, dataUrl, width: canvas.width, height: canvas.height, totalPages };
   };
@@ -4404,15 +4562,22 @@ const LotDashboard = ({
   const renderPdfDirect = async (canvasEl: HTMLCanvasElement | null, zoom: number) => {
     if (!canvasEl) return;
     const originalPdf = (localDev as any).mapaPdfOriginalBase64;
-    if (!originalPdf) return;
+    const pdfUrl = (localDev as any).mapaPdfUrl;
+    if (!originalPdf && !pdfUrl) return;
     try {
       const pdfjsLib = await loadPdfJsIfNeeded();
       if (!pdfDocCacheRef.current) {
-        const buffer = dataUrlToArrayBuffer(originalPdf);
-        pdfDocCacheRef.current = await pdfjsLib.getDocument({ data: buffer }).promise;
+        if (originalPdf) {
+          const buffer = dataUrlToArrayBuffer(originalPdf);
+          pdfDocCacheRef.current = await pdfjsLib.getDocument({ data: buffer }).promise;
+        } else if (pdfUrl) {
+          pdfDocCacheRef.current = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+        }
       }
       const pdfDoc = pdfDocCacheRef.current;
-      const page = await pdfDoc.getPage(1);
+      if (!pdfDoc) return;
+      const pageNum = (localDev as any).mapaPdfPagina || 1;
+      const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
       const dpr = Math.max(1, window.devicePixelRatio || 1);
 
       // ── Escala correta para qualquer tela (mobile Retina, desktop, etc) ──
@@ -4423,7 +4588,12 @@ const LotDashboard = ({
       // 3. Viewport natural do PDF (scale=1) para calcular a proporção
       const baseViewport = page.getViewport({ scale: 1 });
       // 4. Scale para que o PDF ocupe exatamente a largura física, × zoom do usuário
-      const fitScale = (physicalWidth / baseViewport.width) * zoom;
+      // Para manter a renderização dentro dos limites de canvas do browser (evitar crash), limitamos em 8192px
+      let fitScale = (physicalWidth / baseViewport.width) * zoom;
+      const maxCanvasDim = 8192;
+      if (baseViewport.width * fitScale > maxCanvasDim || baseViewport.height * fitScale > maxCanvasDim) {
+        fitScale = Math.min(maxCanvasDim / baseViewport.width, maxCanvasDim / baseViewport.height);
+      }
       const viewport = page.getViewport({ scale: fitScale });
 
       if (pdfRenderTaskRef.current) {
@@ -4441,6 +4611,8 @@ const LotDashboard = ({
       canvasEl.style.display = "block";
 
       const ctx = canvasEl.getContext("2d")!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
       const task = page.render({ canvasContext: ctx, viewport });
       pdfRenderTaskRef.current = task;
       await task.promise;
@@ -4557,17 +4729,19 @@ const LotDashboard = ({
 
   // Renderização direta do PDF sempre que o zoom ou o empreendimento mudar
   useEffect(() => {
-    if ((localDev as any).mapaPdfOriginalBase64) {
+    const hasPdf = (localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl;
+    if (hasPdf) {
       // Invalida cache de documento ao trocar de empreendimento
       pdfDocCacheRef.current = null;
       schedulePdfRender(mapZoom);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [(localDev as any).mapaPdfOriginalBase64]);
+  }, [(localDev as any).mapaPdfOriginalBase64, (localDev as any).mapaPdfUrl, (localDev as any).id]);
 
   // Re-renderiza o canvas correto ao abrir/fechar fullscreen
   useEffect(() => {
-    if ((localDev as any).mapaPdfOriginalBase64) {
+    const hasPdf = (localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl;
+    if (hasPdf) {
       setTimeout(() => {
         // Renderiza nos dois — o visível atualiza imediatamente, o outro fica em standby.
         void renderPdfDirect(pdfCanvasRef.current, mapZoom);
@@ -4576,6 +4750,15 @@ const LotDashboard = ({
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapFullscreen]);
+
+  // Re-renderiza em alta resolução quando o usuário atinge ou altera o zoom (especialmente acima de 1x e até 500%+)
+  useEffect(() => {
+    const hasPdf = (localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl;
+    if (hasPdf && !zoomingRef.current) {
+      schedulePdfRender(mapZoom);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapZoom]);
 
   useEffect(() => {
     scheduleMapScaleUpdate(mapFullscreen);
@@ -4589,7 +4772,7 @@ const LotDashboard = ({
     const observer = new ResizeObserver(() => {
       scheduleMapScaleUpdate(false);
       // Re-renderiza o PDF com a nova largura do container (rotação, resize)
-      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+      if ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) schedulePdfRender(mapZoom);
       // Atualizar largura real do mapa para cálculo A4 das bolinhas
       const vp = getActiveViewport() || mapViewportRef.current || mapContainerRef.current;
       if (vp && vp.offsetWidth > 0) setMapRenderWidth(vp.offsetWidth);
@@ -4599,11 +4782,11 @@ const LotDashboard = ({
 
     const handleResize = () => {
       scheduleMapScaleUpdate(false);
-      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+      if ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) schedulePdfRender(mapZoom);
     };
     const handleOrientationChange = () => {
       scheduleMapScaleUpdate(true);
-      if ((localDev as any).mapaPdfOriginalBase64) schedulePdfRender(mapZoom);
+      if ((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) schedulePdfRender(mapZoom);
       // Forçar re-render das bolinhas após rotação (viewport muda de tamanho)
       setTimeout(() => {
         setDisplayedMapScale(s => s + 0.000001); // trigger mínimo
@@ -5061,7 +5244,7 @@ const LotDashboard = ({
       .replace(/^_|_$/g, "")
       .toUpperCase();
 
-  const getNomeArquivoMapaExportado = (ext: "png" | "pdf") => {
+  const getNomeArquivoMapaExportado = (ext: "png" | "pdf", isPrecos = (mode === "precos")) => {
     const now = new Date();
     const DIAS = ["Domingo","Segunda","Terca","Quarta","Quinta","Sexta","Sabado"];
     const diaSemana = DIAS[now.getDay()];
@@ -5075,14 +5258,16 @@ const LotDashboard = ({
       const vd = vendaDoLote(p.quadra, p.lote, p.vendaId);
       return !vd && p.status !== 'indisponivel' && p.status !== 'vendido';
     }).length;
-    return `${empreendimento}_${totalDisp}-disponiveis_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
+    const tipoAba = isPrecos ? "TABELA-PRECOS" : `${totalDisp}-disponiveis`;
+    return `${empreendimento}_${tipoAba}_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
   // Cabeçalho institucional desenhado no topo do mapa exportado
   const desenharCabecalhoNoCanvas = (
     ctx: CanvasRenderingContext2D,
     imgW: number,
-    headerH: number
+    headerH: number,
+    isPrecos = false
   ) => {
     // Fundo branco do cabeçalho
     ctx.fillStyle = '#ffffff';
@@ -5096,45 +5281,66 @@ const LotDashboard = ({
     const dataHoraFormatada = `${dia}/${mes}/${ano}, ${hora}`;
 
     // Título (Nome do Empreendimento)
-    const titleFontSize = Math.max(16, Math.round(headerH * 0.30));
+    const titleFontSize = Math.max(16, Math.min(36, Math.round(headerH * 0.28)));
     ctx.fillStyle = '#0f172a';
     ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
-    ctx.fillText(localDev.nome || 'Mapa do Empreendimento', imgW / 2, Math.round(headerH * 0.12));
+    ctx.fillText(localDev.nome || 'Mapa do Empreendimento', imgW / 2, Math.round(headerH * 0.10));
 
     // Subtítulo
-    const subFontSize = Math.max(10, Math.round(headerH * 0.15));
+    const subFontSize = Math.max(11, Math.min(18, Math.round(headerH * 0.15)));
     ctx.fillStyle = '#475569';
     ctx.font = `600 ${subFontSize}px system-ui, -apple-system, sans-serif`;
-    ctx.fillText(`Mapa de Lotes - Gerado em ${dataHoraFormatada}`, imgW / 2, Math.round(headerH * 0.12) + titleFontSize + Math.round(headerH * 0.05));
+    const subTitulo = isPrecos
+      ? `Mapa de Preços e Condições de Pagamento • Atualizado em ${dataHoraFormatada}`
+      : `Mapa de Disponibilidade dos Lotes • Atualizado em ${dataHoraFormatada}`;
+    ctx.fillText(subTitulo, imgW / 2, Math.round(headerH * 0.10) + titleFontSize + Math.round(headerH * 0.04));
 
-    // Legenda de status
-    const legendY = Math.round(headerH * 0.12) + titleFontSize + subFontSize + Math.round(headerH * 0.10);
-    const dotR = Math.max(4, Math.round(headerH * 0.06));
-    const legFontSize = Math.max(9, Math.round(headerH * 0.13));
+    // Contadores reais de lotes
+    const totLotes = mapaPontos.length;
+    const totVendidos = mapaPontos.filter(p => !!vendaDoLote(p.quadra, p.lote, p.vendaId) || p.status === 'indisponivel' || p.status === 'vendido').length;
+    const totReservados = mapaPontos.filter(p => p.status === 'reservado' && !vendaDoLote(p.quadra, p.lote, p.vendaId)).length;
+    const totDisponiveis = Math.max(0, totLotes - totVendidos - totReservados);
+
+    // Legenda completa de status: Disponíveis, Reservados, Vendidos e Total
+    const items = [
+      { label: `Disponíveis (${totDisponiveis})`, color: '#2563eb' },
+      { label: `Reservados (${totReservados})`, color: '#d97706' },
+      { label: `Vendidos (${totVendidos})`, color: '#dc2626' },
+      { label: `Total (${totLotes})`, color: '#64748b' },
+    ];
+
+    const legendY = Math.round(headerH * 0.10) + titleFontSize + subFontSize + Math.round(headerH * 0.08);
+    let dotR = Math.max(4, Math.round(headerH * 0.055));
+    let legFontSize = Math.max(10, Math.round(headerH * 0.13));
     ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
 
-    const items = [
-      { label: 'Disponível', color: '#2563eb' },
-      { label: 'Vendido', color: '#dc2626' },
-    ];
-    const hasReservados = mapaPontos.some(p => p.status === 'reservado');
-    if (hasReservados) {
-      items.splice(1, 0, { label: 'Reservado', color: '#d97706' });
+    let totalW = 0;
+    let itemWidths: number[] = [];
+    const calcularLarguras = () => {
+      totalW = 0;
+      itemWidths = [];
+      items.forEach(it => {
+        const w = dotR * 2 + Math.round(headerH * 0.04) + ctx.measureText(it.label).width;
+        itemWidths.push(w);
+        totalW += w;
+      });
+      const gap = Math.round(headerH * 0.16);
+      totalW += gap * (items.length - 1);
+      return gap;
+    };
+
+    let itemGap = calcularLarguras();
+    if (totalW > imgW * 0.94) {
+      const scaleFactor = (imgW * 0.92) / totalW;
+      legFontSize = Math.max(8, Math.floor(legFontSize * scaleFactor));
+      dotR = Math.max(3, Math.floor(dotR * scaleFactor));
+      ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
+      itemGap = calcularLarguras();
     }
 
-    let totalW = 0;
-    const itemWidths: number[] = [];
-    items.forEach(it => {
-      const w = dotR * 2 + Math.round(headerH * 0.05) + ctx.measureText(it.label).width;
-      itemWidths.push(w);
-      totalW += w;
-    });
-    const itemGap = Math.round(headerH * 0.22);
-    totalW += itemGap * (items.length - 1);
-
-    let curX = (imgW - totalW) / 2;
+    let curX = Math.max(10, (imgW - totalW) / 2);
     items.forEach((it, i) => {
       ctx.beginPath();
       ctx.arc(curX + dotR, legendY + dotR, dotR, 0, Math.PI * 2);
@@ -5142,8 +5348,8 @@ const LotDashboard = ({
       ctx.fill();
 
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#334155';
-      ctx.fillText(it.label, curX + dotR * 2 + Math.round(headerH * 0.05), legendY);
+      ctx.fillStyle = '#1e293b';
+      ctx.fillText(it.label, curX + dotR * 2 + Math.round(headerH * 0.04), legendY);
 
       curX += itemWidths[i] + itemGap;
     });
@@ -5289,13 +5495,30 @@ const LotDashboard = ({
 
       // 1. Renderizar base do mapa em alta resolução
       const originalPdf = (localDev as any).mapaPdfOriginalBase64;
-      if (originalPdf) {
+      const pdfUrl = (localDev as any).mapaPdfUrl;
+      const hasPdf = Boolean(originalPdf || pdfUrl);
+      const isRecortado = Boolean((localDev as any).mapaRecortado || (localDev as any).mapaCrop);
+
+      if (hasPdf && !isRecortado) {
         try {
           const pdfjsLib = await loadPdfJsIfNeeded();
-          const buffer = dataUrlToArrayBuffer(originalPdf);
-          const pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
-          const page = await pdfDoc.getPage(1);
-          const exportScale = 4;
+          let pdfDoc: any = null;
+          if (pdfDocCacheRef.current) {
+            pdfDoc = pdfDocCacheRef.current;
+          } else if (originalPdf) {
+            const buffer = dataUrlToArrayBuffer(originalPdf);
+            pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+          } else if (pdfUrl) {
+            pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+          }
+          if (!pdfDoc) throw new Error("Não foi possível carregar o documento PDF.");
+
+          const pageNum = (localDev as any).mapaPdfPagina || 1;
+          const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
+          const baseViewport = page.getViewport({ scale: 1 });
+          // Resolução ultra-alta: largura alvo entre 3000px e 4000px, sem estourar 8192px
+          const targetW = Math.min(4000, Math.max(2400, baseViewport.width * 3));
+          const exportScale = Math.min(8192 / Math.max(baseViewport.width, baseViewport.height), targetW / baseViewport.width);
           const viewport = page.getViewport({ scale: exportScale });
           mapCanvas = document.createElement("canvas");
           mapCanvas.width = Math.floor(viewport.width);
@@ -5307,44 +5530,93 @@ const LotDashboard = ({
           imgW = mapCanvas.width;
           imgH = mapCanvas.height;
         } catch (err) {
-          reject(new Error("Erro ao renderizar PDF: " + String((err as any)?.message || err)));
-          return;
+          // Fallback gracioso caso o PDF falhe: tentar usar o canvas já renderizado na tela ou a imagem estática
+          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
+            mapCanvas = document.createElement("canvas");
+            mapCanvas.width = activeCanvas.width;
+            mapCanvas.height = activeCanvas.height;
+            const actx = mapCanvas.getContext("2d")!;
+            actx.drawImage(activeCanvas, 0, 0);
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+          } else {
+            reject(new Error("Erro ao renderizar PDF para download: " + String((err as any)?.message || err)));
+            return;
+          }
         }
       } else {
-        const imgSrc = mapaImagemOriginal || mapaImagem;
+        const imgSrc = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal || (mapaImagem !== "pdf" ? mapaImagem : "");
         if (!imgSrc) {
-          reject(new Error("Nenhum mapa carregado para baixar."));
-          return;
-        }
-        try {
-          mapCanvas = await new Promise<HTMLCanvasElement>((resImg, rejImg) => {
-            const img = new Image();
-            img.crossOrigin = 'anonymous';
-            img.onload = () => {
-              const c = document.createElement("canvas");
-              c.width = img.naturalWidth || img.width;
-              c.height = img.naturalHeight || img.height;
-              const ictx = c.getContext("2d")!;
-              ictx.imageSmoothingEnabled = true;
-              ictx.imageSmoothingQuality = "high";
-              ictx.drawImage(img, 0, 0, c.width, c.height);
-              resImg(c);
-            };
-            img.onerror = () => rejImg(new Error("Erro ao carregar imagem do mapa."));
-            const imgSrcFinal = mapaImagemOriginal || mapaImagem;
-            if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
-              fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
-                img.src = URL.createObjectURL(blob);
-              }).catch(() => { img.src = imgSrcFinal; });
-            } else {
-              img.src = imgSrcFinal;
+          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
+            mapCanvas = document.createElement("canvas");
+            mapCanvas.width = activeCanvas.width;
+            mapCanvas.height = activeCanvas.height;
+            const actx = mapCanvas.getContext("2d")!;
+            actx.drawImage(activeCanvas, 0, 0);
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+          } else {
+            reject(new Error("Nenhum mapa carregado para baixar."));
+            return;
+          }
+        } else {
+          try {
+            mapCanvas = await new Promise<HTMLCanvasElement>((resImg, rejImg) => {
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              img.onload = () => {
+                const c = document.createElement("canvas");
+                c.width = img.naturalWidth || img.width;
+                c.height = img.naturalHeight || img.height;
+                const ictx = c.getContext("2d")!;
+                ictx.imageSmoothingEnabled = true;
+                ictx.imageSmoothingQuality = "high";
+                ictx.drawImage(img, 0, 0, c.width, c.height);
+                resImg(c);
+              };
+              img.onerror = () => rejImg(new Error("Erro ao carregar imagem do mapa."));
+              const imgSrcFinal = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal || (mapaImagem !== "pdf" ? mapaImagem : "");
+              if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
+                fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
+                  img.src = URL.createObjectURL(blob);
+                }).catch(() => { img.src = imgSrcFinal; });
+              } else {
+                img.src = imgSrcFinal;
+              }
+            });
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+
+            // Se houver configuração de corte salva que ainda não foi aplicada ao canvas base:
+            const crop = (localDev as any).mapaCrop;
+            if (crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
+              const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
+              const expectedCropW = naturalW ? Math.round((crop.width / 100) * naturalW) : 0;
+              if (expectedCropW > 0 && Math.abs(mapCanvas.width - naturalW) < Math.abs(mapCanvas.width - expectedCropW)) {
+                const sx = Math.max(0, Math.round((crop.x / 100) * mapCanvas.width));
+                const sy = Math.max(0, Math.round((crop.y / 100) * mapCanvas.height));
+                const sw = Math.min(mapCanvas.width - sx, Math.round((crop.width / 100) * mapCanvas.width));
+                const sh = Math.min(mapCanvas.height - sy, Math.round((crop.height / 100) * mapCanvas.height));
+                if (sw > 0 && sh > 0) {
+                  const croppedC = document.createElement("canvas");
+                  croppedC.width = sw;
+                  croppedC.height = sh;
+                  const cctx = croppedC.getContext("2d")!;
+                  cctx.imageSmoothingEnabled = true;
+                  cctx.imageSmoothingQuality = "high";
+                  cctx.drawImage(mapCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+                  mapCanvas = croppedC;
+                  imgW = sw;
+                  imgH = sh;
+                }
+              }
             }
-          });
-          imgW = mapCanvas.width;
-          imgH = mapCanvas.height;
-        } catch (err) {
-          reject(err);
-          return;
+          } catch (err) {
+            reject(err);
+            return;
+          }
         }
       }
 
@@ -5403,7 +5675,7 @@ const LotDashboard = ({
       });
 
       // 3. Montar Canvas final com Cabeçalho e Rodapé de Preços
-      const headerH = Math.round(imgW * 0.085);
+      const headerH = Math.max(80, Math.round(imgW * 0.095));
       const hasFooter = usePrecoColors && faixasPrecoGlobal.length > 0;
       const footerH = hasFooter ? Math.round(imgW * (faixasPrecoGlobal.length > 5 ? 0.30 : 0.18)) : 0;
 
@@ -5418,8 +5690,8 @@ const LotDashboard = ({
       finalCtx.fillStyle = '#ffffff';
       finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
 
-      // Desenhar cabeçalho no topo
-      desenharCabecalhoNoCanvas(finalCtx, imgW, headerH);
+      // Desenhar cabeçalho no topo com legenda e contadores
+      desenharCabecalhoNoCanvas(finalCtx, imgW, headerH, usePrecoColors);
 
       // Desenhar mapa no centro
       finalCtx.drawImage(mapCanvas, 0, headerH);
@@ -5433,44 +5705,103 @@ const LotDashboard = ({
     });
   };
 
-  const baixarMapaInterativoImagem = async () => {
+  const [downloadModalAberto, setDownloadModalAberto] = React.useState(false);
+  const [downloadTipoAba, setDownloadTipoAba] = React.useState<'mapa' | 'precos'>('mapa');
+  const [downloadProcessando, setDownloadProcessando] = React.useState<'img' | 'pdf' | null>(null);
+
+  const baixarMapaInterativoImagem = async (forcarModoPreco?: boolean) => {
     try {
-      const isPrecoTab = mode === "precos";
+      const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
       const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
-      const link = document.createElement("a");
-      link.download = getNomeArquivoMapaExportado("png");
-      link.href = canvas.toDataURL("image/png", 1.0);
-      document.body.appendChild(link); link.click(); document.body.removeChild(link);
+      const filename = getNomeArquivoMapaExportado("png", isPrecoTab);
+      
+      const blob = await new Promise<Blob | null>((res) => {
+        canvas.toBlob((b) => res(b), "image/png", 1.0);
+      });
+
+      if (blob) {
+        triggerDownload(blob, filename);
+      } else {
+        const link = document.createElement("a");
+        link.download = filename;
+        link.href = canvas.toDataURL("image/png", 1.0);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
     } catch (error: any) {
+      console.error("Erro no download de imagem:", error);
       alert(error?.message || "Não foi possível baixar o mapa com as bolinhas.");
     }
   };
 
-  const baixarMapaInterativoPdf = async () => {
+  const baixarMapaInterativoPdf = async (forcarModoPreco?: boolean) => {
     try {
-      const isPrecoTab = mode === "precos";
+      const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
       const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
       const { jsPDF } = await import("jspdf");
       const landscape = canvas.width >= canvas.height;
-      // Formato baseado na proporção real do mapa — não forçar A4
+      // Formato baseado na proporção real do mapa
       const pdf = new jsPDF({
         orientation: landscape ? "landscape" : "portrait",
         unit: "px",
         format: [canvas.width, canvas.height],
-        compress: false, // sem compressão — máxima qualidade
+        compress: false,
       });
-      // Imagem ocupa a página inteira (sem margens) — máxima resolução
+
+      // Se o canvas for muito grande para dataURL, usar JPEG ou canvas direto
+      let imgData: string;
+      try {
+        imgData = canvas.toDataURL("image/png", 1.0);
+      } catch {
+        imgData = canvas.toDataURL("image/jpeg", 0.95);
+      }
+
       pdf.addImage(
-        canvas.toDataURL("image/png", 1.0), // qualidade 100%
+        imgData,
         "PNG",
         0, 0,
         canvas.width, canvas.height,
         undefined,
-        "FAST" // sem recompressão interna
+        "FAST"
       );
-      pdf.save(getNomeArquivoMapaExportado("pdf"));
+
+      const filename = getNomeArquivoMapaExportado("pdf", isPrecoTab);
+      const pdfBlob = pdf.output("blob");
+      if (pdfBlob) {
+        triggerDownload(pdfBlob, filename);
+      } else {
+        pdf.save(filename);
+      }
     } catch (error: any) {
+      console.error("Erro no download de PDF:", error);
       alert(error?.message || "Não foi possível baixar o mapa em PDF.");
+    }
+  };
+
+  const executarDownloadImagem = async (forcarModoPreco?: boolean) => {
+    try {
+      setDownloadProcessando('img');
+      await baixarMapaInterativoImagem(forcarModoPreco);
+      setDownloadModalAberto(false);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Erro ao baixar imagem.");
+    } finally {
+      setDownloadProcessando(null);
+    }
+  };
+
+  const executarDownloadPdf = async (forcarModoPreco?: boolean) => {
+    try {
+      setDownloadProcessando('pdf');
+      await baixarMapaInterativoPdf(forcarModoPreco);
+      setDownloadModalAberto(false);
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Erro ao baixar PDF.");
+    } finally {
+      setDownloadProcessando(null);
     }
   };
 
@@ -6894,7 +7225,7 @@ const LotDashboard = ({
                   <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
                 </div>
               )}
-              {(localDev as any).mapaPdfOriginalBase64 ? (
+              {(((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
                 <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : mapaImagem ? (
                 <>
@@ -8303,7 +8634,7 @@ const LotDashboard = ({
               <div className="rounded-2xl bg-slate-900/85 backdrop-blur-md px-3.5 py-2 shadow-xl border border-white/10 text-white flex items-center gap-3">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-wider text-emerald-400 leading-tight">{localDev.nome || "Mapa do Empreendimento"}</p>
-                  <p className="text-[10px] text-slate-300">Arraste para mover, use pinça ou botões para zoom</p>
+                  <p className="text-[10px] text-slate-300">Arraste para mover ou use pinça para zoom</p>
                 </div>
                 <div className="px-2 py-0.5 rounded-lg bg-white/10 text-[10px] font-bold text-white">
                   {Math.round(mapZoom * 100)}%
@@ -8311,24 +8642,6 @@ const LotDashboard = ({
               </div>
 
               <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => fitMapToWidth()}
-                  title="Encaixar na largura da tela"
-                  className="rounded-xl bg-white/90 hover:bg-white text-slate-800 px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 12H3m18 0l-4-4m4 4l-4 4M3 12l4-4m-4 4l4 4"/></svg>
-                  <span className="hidden sm:inline">Largura</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => fitMapToScreen()}
-                  title="Ajustar o mapa inteiro na tela"
-                  className="rounded-xl bg-white/90 hover:bg-white text-slate-800 px-3 py-2 text-xs font-bold shadow-md transition-all active:scale-95 flex items-center gap-1.5"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M2 12h4M18 12h4"/></svg>
-                  <span className="hidden sm:inline">Ver Tudo</span>
-                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -8383,7 +8696,7 @@ const LotDashboard = ({
                   <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
                 </div>
               )}
-              {(localDev as any).mapaPdfOriginalBase64 ? (
+              {(((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
                 <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : mapaImagem ? (
                 <>
@@ -8447,15 +8760,20 @@ const LotDashboard = ({
                 })}
               </div>
 
-              {/* RODAPÉ DE PREÇOS EM TELA CHEIA (visível na aba de preços) */}
-              {mode === "precos" && faixasPrecoGlobal.length > 0 && (
-                <div className="absolute bottom-5 left-4 right-20 sm:right-24 z-[100001] pointer-events-auto">
-                  <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-2 sm:p-2.5 flex items-center gap-2 overflow-x-auto shadow-none" style={{ scrollbarWidth: 'none' }}>
-                    <div className="flex-shrink-0 px-2.5 border-r border-white/15 hidden sm:flex flex-col">
-                      <span className="text-[10px] font-black uppercase text-emerald-400 block tracking-wider leading-tight">Preços</span>
-                      <span className="text-[9px] text-slate-400 font-bold">{faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}</span>
+              {/* RODAPÉ DE PREÇOS EM TELA CHEIA (visível na aba de preços em tela cheia no desktop e celular) */}
+              {mode === "precos" && faixasPrecoGlobal.length > 0 && mapFullscreen && (
+                <div className="absolute bottom-3 sm:bottom-5 left-3 sm:left-4 right-16 sm:right-24 z-[100001] pointer-events-auto">
+                  <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 p-2 sm:p-3 shadow-xl shadow-slate-900/10 space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2.5">
+                    <div className="flex-shrink-0 px-2 sm:px-2.5 sm:border-r border-slate-200 flex items-center justify-between sm:flex-col">
+                      <span className="text-[10px] font-black uppercase text-slate-800 block tracking-wider leading-tight">Preços</span>
+                      <span className="text-[9px] text-slate-500 font-bold">{faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}</span>
                     </div>
-                    <div className="flex items-center gap-2 overflow-x-auto py-0.5" style={{ scrollbarWidth: 'none' }}>
+                    <div className={`grid gap-1.5 sm:flex sm:items-center sm:gap-2 sm:overflow-x-auto py-0.5 ${
+                      faixasPrecoGlobal.length <= 2 ? 'grid-cols-2' :
+                      faixasPrecoGlobal.length === 3 ? 'grid-cols-3' :
+                      faixasPrecoGlobal.length === 4 ? 'grid-cols-2' :
+                      'grid-cols-3'
+                    }`} style={{ scrollbarWidth: 'none' }}>
                       {faixasPrecoGlobal.map((faixa: any) => {
                         const lotsFaixa = mapaPontos.filter((p: any) => {
                           const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
@@ -8476,31 +8794,33 @@ const LotDashboard = ({
                                 setSelectedPoint({ ...p, venda: vendaDoLote(p.quadra, p.lote) });
                               }
                             }}
-                            className="flex-shrink-0 bg-white/10 hover:bg-white/20 rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                            className="bg-slate-50 hover:bg-slate-100/90 rounded-xl p-1.5 sm:px-2.5 sm:py-1.5 border border-slate-200/80 flex flex-col justify-between sm:flex-row sm:items-center gap-1 sm:gap-2.5 transition-all cursor-pointer shadow-xs overflow-hidden"
                             title={`Ver lote desta faixa (${lotsFaixa.length} lotes)`}
                           >
-                            <span
-                              className="w-3.5 h-3.5 rounded-full border border-white flex-shrink-0"
-                              style={{ backgroundColor: faixa.color, boxShadow: "none" }}
-                            />
-                            <div className="leading-tight text-left">
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-xs font-black text-white whitespace-nowrap">
-                                  R$ {Number(faixa.preco).toLocaleString('pt-BR')}
-                                </span>
-                                <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-slate-200">
-                                  {lotsFaixa.length}
-                                </span>
-                              </div>
-                              <div className="text-[9px] text-slate-300 whitespace-nowrap mt-0.5">
-                                {avista ? (
-                                  <span className="text-emerald-300 font-bold">À Vista</span>
-                                ) : (
-                                  <span>
-                                    {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
-                                    <strong className="text-emerald-300 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
+                            <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+                              <span
+                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border border-slate-300 flex-shrink-0"
+                                style={{ backgroundColor: faixa.color }}
+                              />
+                              <div className="leading-tight text-left min-w-0">
+                                <div className="flex items-center gap-1 sm:gap-1.5">
+                                  <span className="text-[11px] sm:text-xs md:text-sm font-black text-slate-900 whitespace-nowrap truncate">
+                                    R$ {Number(faixa.preco).toLocaleString('pt-BR')}
                                   </span>
-                                )}
+                                  <span className="text-[8.5px] sm:text-[9px] font-black px-1.5 py-0.2 rounded bg-white border border-slate-200 text-slate-700">
+                                    {lotsFaixa.length}
+                                  </span>
+                                </div>
+                                <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap truncate mt-0.5">
+                                  {avista ? (
+                                    <span className="text-emerald-700 font-bold">À Vista</span>
+                                  ) : (
+                                    <span>
+                                      {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
+                                      <strong className="text-slate-800 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           </div>
@@ -8513,6 +8833,14 @@ const LotDashboard = ({
 
               {/* Controles flutuantes de zoom e ajuste em tela cheia */}
               <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
+                <button
+                  type="button"
+                  onClick={(ev) => { ev.stopPropagation(); setDownloadModalAberto(true); }}
+                  className="w-11 h-11 rounded-2xl bg-white/95 hover:bg-white text-emerald-800 shadow-xl border border-slate-200/80 font-bold text-xs flex items-center justify-center active:scale-90 transition-all"
+                  title="Baixar Mapa (Imagem ou PDF)"
+                >
+                  <Download size={18} />
+                </button>
                 <button
                   type="button"
                   onClick={(ev) => { ev.stopPropagation(); zoomMapBy(0.3); }}
@@ -9480,54 +9808,13 @@ const LotDashboard = ({
       persistDev({ ...localDev, lotesInfo: newInfo } as Empreendimento);
     };
 
-    const renderSeletorModos = () => (
-      <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/90 shadow-xs">
-        <button
-          type="button"
-          onClick={() => mudarTipoVisualizacao("lite")}
-          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-            tipoVisualizacao === "lite"
-              ? "bg-[#1a4a1a] text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-          title="Modo Lite: Celular minimalista para visualizar mapa e vendas rápidas sem edição"
-        >
-          <Zap size={10} /> Lite
-        </button>
-        <button
-          type="button"
-          onClick={() => mudarTipoVisualizacao("pro")}
-          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-            tipoVisualizacao === "pro"
-              ? "bg-[#1a4a1a] text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-          title="Modo Pro: Celular completo com todas as ferramentas de edição e abas"
-        >
-          <Smartphone size={10} /> Pro
-        </button>
-        <button
-          type="button"
-          onClick={() => mudarTipoVisualizacao("pc")}
-          className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-            tipoVisualizacao === "pc"
-              ? "bg-[#1a4a1a] text-white shadow-xs"
-              : "text-slate-600 hover:text-slate-900"
-          }`}
-          title="Modo PC: Interface completa de desktop para web"
-        >
-          <Monitor size={10} /> PC
-        </button>
-      </div>
-    );
-
     // ── MODO LITE (MINIMALISTA CELULAR: MAPA E VENDAS RÁPIDAS SEM EDIÇÃO) ──
     if (tipoVisualizacao === "lite") {
       const pontosList = ((localDev as any).mapaPontos || []) as any[];
-      const statsDisp = pontosList.filter(p => p.status === "disponivel").length;
-      const statsRes = pontosList.filter(p => p.status === "reservado").length;
-      const statsVend = pontosList.filter(p => p.status === "indisponivel" || vendaDoLote(p.quadra, p.lote)).length;
       const statsTot = pontosList.length;
+      const statsVend = pontosList.filter(p => p.status === "indisponivel" || p.status === "vendido" || !!vendaDoLote(p.quadra, p.lote, p.vendaId)).length;
+      const statsRes = pontosList.filter(p => p.status === "reservado" && !vendaDoLote(p.quadra, p.lote, p.vendaId)).length;
+      const statsDisp = Math.max(0, statsTot - statsVend - statsRes);
 
       const pontosFiltradosBusca = liteBuscaQuery.trim()
         ? pontosList.filter(p => {
@@ -9575,14 +9862,29 @@ const LotDashboard = ({
                 </div>
                 <div className="min-w-0">
                   <h1 className="text-xs font-black text-slate-900 truncate leading-tight">{localDev.nome}</h1>
-                  <p className="text-[10px] font-bold text-slate-400 leading-none mt-0.5">
-                    <span className="text-emerald-700 font-black">{statsDisp} disp</span> · {statsTot} lotes
+                  <p className="text-[10px] font-bold text-slate-500 leading-none mt-0.5 flex items-center gap-1.5 flex-wrap">
+                    <span className="inline-flex items-center gap-1 text-blue-700 font-black"><span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block"/>{statsDisp} disponíveis</span>
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-1 text-amber-700 font-black"><span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block"/>{statsRes} reservados</span>
+                    <span>·</span>
+                    <span className="inline-flex items-center gap-1 text-red-700 font-black"><span className="w-1.5 h-1.5 rounded-full bg-red-600 inline-block"/>{statsVend} vendidos</span>
                   </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-1.5 flex-shrink-0">
-                {renderSeletorModos()}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloadTipoAba(mode === "precos" ? "precos" : "mapa");
+                    setDownloadModalAberto(true);
+                  }}
+                  className="h-8 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/80 flex items-center gap-1.5 text-xs font-black transition-all active:scale-95"
+                  title={mode === "precos" ? "Baixar Mapa de Preços" : "Baixar Mapa de Disponíveis"}
+                >
+                  <Download size={13} />
+                  <span>{mode === "precos" ? "Baixar Preços" : "Baixar Mapa"}</span>
+                </button>
                 <button
                   type="button"
                   onClick={onClose}
@@ -9601,7 +9903,7 @@ const LotDashboard = ({
                 onClick={() => setMode("mapa")}
                 className={`py-1.5 px-2 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
                   mode === "mapa"
-                    ? "bg-white text-slate-900 border border-slate-200"
+                    ? "bg-white text-slate-900 border border-slate-200 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -9613,7 +9915,7 @@ const LotDashboard = ({
                 onClick={() => setMode("precos")}
                 className={`py-1.5 px-2 rounded-lg text-[11px] font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
                   mode === "precos"
-                    ? "bg-white text-emerald-800 border border-slate-200"
+                    ? "bg-white text-emerald-800 border border-slate-200 shadow-xs"
                     : "text-slate-500 hover:text-slate-800"
                 }`}
               >
@@ -9676,56 +9978,6 @@ const LotDashboard = ({
                   </div>
                 )}
               </div>
-
-              {/* Pílulas de filtro de status (visível no modo Mapa) */}
-              {mode === "mapa" && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-                  {[
-                    { id: "todos", label: "Todos", count: statsTot, color: "#475569" },
-                    { id: "disponivel", label: "Disponíveis", count: statsDisp, color: "#2563eb" },
-                    { id: "reservado", label: "Reservados", count: statsRes, color: "#d97706" },
-                    { id: "indisponivel", label: "Vendidos", count: statsVend, color: "#dc2626" },
-                  ].map((item) => (
-                    <button
-                      key={item.id}
-                      type="button"
-                      onClick={() => setLiteStatusFiltro(item.id as any)}
-                      className={`px-2.5 py-1 rounded-xl text-[10px] font-black uppercase whitespace-nowrap transition-all flex items-center gap-1.5 border ${
-                        liteStatusFiltro === item.id
-                          ? "bg-[#1a4a1a] text-white border-[#1a4a1a]"
-                          : "bg-white text-slate-600 border-slate-200/90 hover:bg-slate-50"
-                      }`}
-                    >
-                      <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                      <span>{item.label}</span>
-                      <span className="opacity-70 text-[9px]">({item.count})</span>
-                    </button>
-                  ))}
-                </div>
-              )}
-
-              {/* Faixas de Preço no topo (visível no modo Preços) */}
-              {mode === "precos" && (
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5" style={{ scrollbarWidth: 'none' }}>
-                  <span className="text-[10px] font-black uppercase text-slate-500 whitespace-nowrap">Faixas:</span>
-                  {faixasPrecoGlobal.map((faixa: any) => {
-                    const count = mapaPontos.filter((p: any) => {
-                      const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
-                      return info?.preco === faixa.preco;
-                    }).length;
-                    return (
-                      <div
-                        key={faixa.preco}
-                        className="px-2 py-0.5 rounded-lg bg-white border border-slate-200 flex items-center gap-1.5 whitespace-nowrap flex-shrink-0"
-                      >
-                        <span className="w-2 h-2 rounded-full border border-slate-300" style={{ backgroundColor: faixa.color }} />
-                        <span className="text-[10px] font-black text-slate-800">R$ {Number(faixa.preco).toLocaleString('pt-BR')}</span>
-                        <span className="text-[9px] text-slate-400 font-bold">({count})</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
             </div>
           </div>
 
@@ -9733,7 +9985,7 @@ const LotDashboard = ({
           <div className="flex-1 relative overflow-hidden bg-slate-200">
             {renderMapa()}
 
-            {/* Controles de Zoom Flutuantes */}
+            {/* Controles de Zoom Flutuantes (Download consolidado na barra superior) */}
             <div className="absolute right-3.5 top-3.5 z-30 flex flex-col gap-1.5">
               <button
                 type="button"
@@ -9785,15 +10037,28 @@ const LotDashboard = ({
               </div>
             </div>
 
-            {/* RODAPÉ DE PREÇOS NO MODO LITE (quando na aba Preços) */}
+            {/* CARD DE PREÇOS PADRÃO NO MODO LITE (Fundo Branco, Sempre Visível, Sem Rolar, Não Duplicado) */}
             {mode === "precos" && faixasPrecoGlobal.length > 0 && !selectedPoint && (
               <div className="absolute bottom-3 left-3 right-3 z-30 pointer-events-auto">
-                <div className="bg-slate-900/95 backdrop-blur-md rounded-2xl border border-white/10 p-2 flex items-center gap-2 overflow-x-auto shadow-none" style={{ scrollbarWidth: 'none' }}>
-                  <div className="flex-shrink-0 px-2 border-r border-white/15 hidden xs:flex flex-col">
-                    <span className="text-[9px] font-black uppercase text-emerald-400 block tracking-wider leading-tight">Preços</span>
-                    <span className="text-[8px] text-slate-400 font-bold">{faixasPrecoGlobal.length} faixas</span>
+                <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 p-2.5 sm:p-3 shadow-xl shadow-slate-900/10 space-y-2">
+                  <div className="flex items-center justify-between px-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                      <span className="text-[11px] font-black uppercase text-slate-800 tracking-wider">Tabela de Preços</span>
+                      <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                        {faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}
+                      </span>
+                    </div>
+                    <span className="text-[10px] font-bold text-slate-400">
+                      Toque para ver lotes
+                    </span>
                   </div>
-                  <div className="flex items-center gap-2 overflow-x-auto py-0.5" style={{ scrollbarWidth: 'none' }}>
+                  <div className={`grid gap-1.5 ${
+                    faixasPrecoGlobal.length <= 2 ? 'grid-cols-2' :
+                    faixasPrecoGlobal.length === 3 ? 'grid-cols-3' :
+                    faixasPrecoGlobal.length === 4 ? 'grid-cols-2' :
+                    'grid-cols-3'
+                  }`}>
                     {faixasPrecoGlobal.map((faixa: any) => {
                       const lotsFaixa = mapaPontos.filter((p: any) => {
                         const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
@@ -9813,31 +10078,31 @@ const LotDashboard = ({
                               focarLoteLite(lotsFaixa[0]);
                             }
                           }}
-                          className="flex-shrink-0 bg-white/10 hover:bg-white/20 rounded-xl px-2.5 py-1.5 border border-white/10 flex items-center gap-2 transition-all cursor-pointer"
+                          className="bg-slate-50 hover:bg-slate-100/90 active:scale-95 rounded-xl p-1.5 sm:p-2 border border-slate-200/80 flex flex-col justify-between transition-all cursor-pointer shadow-xs overflow-hidden"
                         >
-                          <span
-                            className="w-3.5 h-3.5 rounded-full border border-white flex-shrink-0"
-                            style={{ backgroundColor: faixa.color, boxShadow: "none" }}
-                          />
-                          <div className="leading-tight text-left">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-black text-white whitespace-nowrap">
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-slate-300 flex-shrink-0 shadow-xs"
+                                style={{ backgroundColor: faixa.color }}
+                              />
+                              <span className="text-[11px] sm:text-xs font-black text-slate-900 whitespace-nowrap truncate">
                                 R$ {Number(faixa.preco).toLocaleString('pt-BR')}
                               </span>
-                              <span className="text-[8px] font-bold px-1 rounded bg-white/20 text-slate-200">
-                                {lotsFaixa.length}
+                            </div>
+                            <span className="text-[8.5px] font-black px-1.5 py-0.2 rounded bg-white border border-slate-200 text-slate-700 flex-shrink-0">
+                              {lotsFaixa.length}
+                            </span>
+                          </div>
+                          <div className="text-[8.5px] text-slate-500 whitespace-nowrap truncate mt-0.5">
+                            {avista ? (
+                              <span className="text-emerald-700 font-bold">À Vista</span>
+                            ) : (
+                              <span>
+                                {entrada > 0 ? `Ent. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
+                                <strong className="text-slate-800 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
                               </span>
-                            </div>
-                            <div className="text-[8.5px] text-slate-300 whitespace-nowrap mt-0.5">
-                              {avista ? (
-                                <span className="text-emerald-300 font-bold">À Vista</span>
-                              ) : (
-                                <span>
-                                  {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
-                                  <strong className="text-emerald-300 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
-                                </span>
-                              )}
-                            </div>
+                            )}
                           </div>
                         </div>
                       );
@@ -9980,26 +10245,7 @@ const LotDashboard = ({
                 </div>
               </div>
             </div>
-          ) : (
-            /* BARRA DE STATUS RESUMIDA QUANDO NENHUM LOTE SELECIONADO */
-            <div className="flex-shrink-0 bg-white border-t border-slate-200 px-4 py-2.5 flex items-center justify-between shadow-xs">
-              <div className="flex items-center gap-3 text-[11px] font-bold">
-                <span className="flex items-center gap-1 text-slate-700">
-                  <span className="w-2 h-2 rounded-full bg-blue-600" /> {statsDisp} Disp.
-                </span>
-                <span className="flex items-center gap-1 text-slate-700">
-                  <span className="w-2 h-2 rounded-full bg-amber-500" /> {statsRes} Res.
-                </span>
-                <span className="flex items-center gap-1 text-slate-700">
-                  <span className="w-2 h-2 rounded-full bg-red-500" /> {statsVend} Vend.
-                </span>
-              </div>
-
-              <span className="text-[10px] font-bold text-slate-400">
-                Toque no lote para vender
-              </span>
-            </div>
-          )}
+          ) : null}
         </div>
       );
     }
@@ -10063,7 +10309,6 @@ const LotDashboard = ({
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              {renderSeletorModos()}
               <button onClick={onClose}
                 className="w-9 h-9 rounded-2xl border border-slate-200 bg-white flex items-center justify-center active:scale-90 transition-all">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
@@ -10261,6 +10506,85 @@ const LotDashboard = ({
               <svg width="24" height="24" viewBox="0 0 24 24"><polygon points="12,2 9,9 12,7 15,9" fill="#1a4a1a"/><polygon points="12,22 15,15 12,17 9,15" fill="#94a3b8"/><polygon points="2,12 9,9 7,12 9,15" fill="#94a3b8"/><polygon points="22,12 15,9 17,12 15,15" fill="#94a3b8"/><text x="11.5" y="13.5" fontSize="3.5" fontWeight="bold" fill="#1a4a1a" textAnchor="middle">N</text></svg>
             </div>
           </div>
+
+          {/* CARD DE PREÇOS FLUTUANTE EM MODO PRO (Quando a gaveta estiver fechada: sempre visível, sem duplicar, fundo branco) */}
+          {!drawerOpen && mode === "precos" && faixasPrecoGlobal.length > 0 && (
+            <div className="absolute bottom-3 left-14 right-3 z-30 pointer-events-auto">
+              <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 p-2.5 shadow-xl shadow-slate-900/10 space-y-1.5">
+                <div className="flex items-center justify-between px-0.5">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    <span className="text-[10px] font-black uppercase text-slate-800 tracking-wider">Tabela de Preços</span>
+                    <span className="text-[9px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                      {faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => setDrawerOpen(true)}
+                    className="text-[9px] font-black text-emerald-800 hover:underline flex items-center gap-0.5"
+                  >
+                    Abrir painel ▲
+                  </button>
+                </div>
+                <div className={`grid gap-1.5 ${
+                  faixasPrecoGlobal.length <= 2 ? 'grid-cols-2' :
+                  faixasPrecoGlobal.length === 3 ? 'grid-cols-3' :
+                  faixasPrecoGlobal.length === 4 ? 'grid-cols-2' :
+                  'grid-cols-3'
+                }`}>
+                  {faixasPrecoGlobal.map((faixa: any) => {
+                    const lotsFaixa = mapaPontos.filter((p: any) => {
+                      const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+                      return info?.preco === faixa.preco;
+                    });
+                    const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
+                    const entrada = infoSample?.entrada || 0;
+                    const parcelas = infoSample?.parcelas || 0;
+                    const avista = infoSample?.avista || parcelas === 0;
+                    const vlParcela = infoSample?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
+
+                    return (
+                      <div
+                        key={faixa.preco}
+                        onClick={() => {
+                          if (lotsFaixa[0]) {
+                            const p = lotsFaixa[0];
+                            setSelectedPoint({ ...p, venda: vendaDoLote(p.quadra, p.lote) });
+                          }
+                        }}
+                        className="bg-slate-50 hover:bg-slate-100/90 active:scale-95 rounded-xl p-1.5 border border-slate-200/80 flex flex-col justify-between transition-all cursor-pointer shadow-xs overflow-hidden"
+                      >
+                        <div className="flex items-center justify-between gap-1">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span
+                              className="w-2.5 h-2.5 rounded-full border border-slate-300 flex-shrink-0 shadow-xs"
+                              style={{ backgroundColor: faixa.color }}
+                            />
+                            <span className="text-[11px] font-black text-slate-900 whitespace-nowrap truncate">
+                              R$ {Number(faixa.preco).toLocaleString('pt-BR')}
+                            </span>
+                          </div>
+                          <span className="text-[8.5px] font-black px-1.5 py-0.2 rounded bg-white border border-slate-200 text-slate-700 flex-shrink-0">
+                            {lotsFaixa.length}
+                          </span>
+                        </div>
+                        <div className="text-[8px] text-slate-500 whitespace-nowrap truncate mt-0.5">
+                          {avista ? (
+                            <span className="text-emerald-700 font-bold">À Vista</span>
+                          ) : (
+                            <span>
+                              {entrada > 0 ? `Ent. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
+                              <strong className="text-slate-800 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* ── PAINEL INFERIOR ── */}
@@ -10472,54 +10796,87 @@ const LotDashboard = ({
             const comPreco = todosLotesPreco.filter(x => x.preco > 0);
 
             return (
-              <div className="flex-1 overflow-y-auto flex flex-col gap-3 px-3 pt-2 pb-3" style={{WebkitOverflowScrolling:'touch'}}>
+              <div className="flex-1 flex flex-col gap-2.5 px-3 pt-2 pb-3 overflow-y-auto" style={{ WebkitOverflowScrolling: 'touch' }}>
+                {/* Cabeçalho do Card de Preços */}
+                <div className="flex items-center justify-between px-0.5">
+                  <div className="flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-600"></span>
+                    <span className="text-[11px] font-black uppercase text-slate-800 tracking-wider">Tabela de Preços</span>
+                    <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/80">
+                      {faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}
+                    </span>
+                  </div>
+                  <span className="text-[10px] font-bold text-slate-400">
+                    {comPreco.length} lotes com preço
+                  </span>
+                </div>
 
-
-                {/* Grid 2×2 de faixas de preço — sem listar lotes */}
-                {faixasPrecoGlobal.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3">
+                {/* Cards de Preço: Fundo Branco Padrão, Elegante e Sem Rolagem Excessiva */}
+                {faixasPrecoGlobal.length > 0 ? (
+                  <div className="flex items-stretch gap-2.5 overflow-x-auto pb-1 pt-0.5" style={{ scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
                     {faixasPrecoGlobal.map((faixa: any, fi: number) => {
                       const lotsFaixa = comPreco.filter((x: any) => x.preco === faixa.preco);
                       const entradaFaixa = lotsFaixa[0]?.entrada || 0;
                       const parcelasFaixa = lotsFaixa[0]?.parcelas || 0;
                       const valorParcela = parcelasFaixa > 0 ? Math.round((faixa.preco - entradaFaixa) / parcelasFaixa) : 0;
                       const cor = faixa.color || '#3b82f6';
+                      const avista = parcelasFaixa === 0 || entradaFaixa >= faixa.preco;
+
                       return (
-                        <div key={fi} className="bg-white rounded-2xl border-2 p-4 shadow-sm space-y-2.5 relative overflow-hidden"
-                          style={{borderColor: cor + '55'}}>
-                          {/* Barra de cor no topo */}
-                          <div className="absolute top-0 left-0 right-0 h-1 rounded-t-2xl" style={{background: cor}}/>
+                        <div
+                          key={fi}
+                          onClick={() => {
+                            if (lotsFaixa[0]) {
+                              const p = mapaPontos.find((pt: any) => String(pt.quadra) === String(lotsFaixa[0].q) && String(pt.lote) === String(lotsFaixa[0].l));
+                              if (p) setSelectedPoint({ ...p, venda: vendaDoLote(p.quadra, p.lote) });
+                            }
+                          }}
+                          className="min-w-[170px] max-w-[210px] flex-shrink-0 bg-white rounded-2xl border-2 p-3 shadow-sm hover:shadow-md transition-all flex flex-col justify-between cursor-pointer relative overflow-hidden"
+                          style={{ borderColor: cor + '55' }}
+                        >
+                          {/* Barra de cor superior */}
+                          <div className="absolute top-0 left-0 right-0 h-1.5" style={{ background: cor }} />
+
                           {/* Valor total */}
-                          <div>
-                            <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Valor total</p>
-                            <p className="text-xl font-black leading-none mt-0.5" style={{color: cor}}>
+                          <div className="mt-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest">Valor</span>
+                              <span className="text-[9px] font-black px-1.5 py-0.2 rounded-md bg-slate-100 text-slate-700">
+                                {lotsFaixa.length} {lotsFaixa.length === 1 ? 'lote' : 'lotes'}
+                              </span>
+                            </div>
+                            <p className="text-lg font-black leading-tight mt-0.5 text-slate-900">
                               R$ {Number(faixa.preco).toLocaleString('pt-BR')}
                             </p>
                           </div>
-                          <div className="border-t border-slate-100 pt-2 space-y-1.5">
-                            {entradaFaixa > 0 && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-slate-400 font-bold">Entrada</span>
-                                <span className="text-[11px] font-black text-slate-700">R$ {Number(entradaFaixa).toLocaleString('pt-BR')}</span>
-                              </div>
-                            )}
-                            {parcelasFaixa > 0 && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-slate-400 font-bold">Parcelas</span>
-                                <span className="text-[11px] font-black" style={{color: cor}}>{parcelasFaixa}×</span>
-                              </div>
-                            )}
-                            {valorParcela > 0 && (
-                              <div className="flex justify-between items-center">
-                                <span className="text-[10px] text-slate-400 font-bold">Vl. parcela</span>
-                                <span className="text-[11px] font-black text-slate-700">R$ {Number(valorParcela).toLocaleString('pt-BR')}</span>
-                              </div>
+
+                          {/* Condições de pagamento */}
+                          <div className="border-t border-slate-100 my-2 pt-1.5 space-y-1">
+                            {avista ? (
+                              <span className="text-[10px] font-bold text-emerald-700 block">À Vista</span>
+                            ) : (
+                              <>
+                                {entradaFaixa > 0 && (
+                                  <div className="flex justify-between items-center text-[10px]">
+                                    <span className="text-slate-400 font-medium">Entrada</span>
+                                    <span className="font-bold text-slate-700">R$ {Number(entradaFaixa).toLocaleString('pt-BR')}</span>
+                                  </div>
+                                )}
+                                {parcelasFaixa > 0 && (
+                                  <div className="flex justify-between items-center text-[10px]">
+                                    <span className="text-slate-400 font-medium">Parcelas</span>
+                                    <span className="font-black text-slate-800">{parcelasFaixa}× {valorParcela > 0 ? `R$ ${Number(valorParcela).toLocaleString('pt-BR')}` : ''}</span>
+                                  </div>
+                                )}
+                              </>
                             )}
                           </div>
-                          <div className="flex items-center justify-between gap-1.5 pt-1">
+
+                          {/* Seletor de cor e ação */}
+                          <div className="flex items-center justify-between pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
                             <label className="flex items-center gap-1.5 cursor-pointer group" title="Clique para mudar a cor das bolinhas desta faixa">
-                              <div className="w-3.5 h-3.5 rounded-full flex-shrink-0 border border-black/20 group-hover:scale-110 transition-transform" style={{background: cor, boxShadow: "none"}}/>
-                              <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Mudar cor</span>
+                              <div className="w-3.5 h-3.5 rounded-full border border-black/20 group-hover:scale-110 transition-transform" style={{ background: cor }} />
+                              <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Cor</span>
                               <input
                                 type="color"
                                 value={cor}
@@ -10527,34 +10884,33 @@ const LotDashboard = ({
                                 className="sr-only"
                               />
                             </label>
-                            <span className="text-[9px] font-bold text-slate-400">{lotsFaixa.length} lote{lotsFaixa.length !== 1 ? 's' : ''}</span>
+                            <span className="text-[9px] font-bold text-emerald-800">Ver no mapa →</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                )}
-                {faixasPrecoGlobal.length === 0 && comPreco.length === 0 && (
-                  <div className="text-center py-6">
+                ) : (
+                  <div className="text-center py-6 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                     <p className="text-slate-400 text-sm font-bold">Sem preços definidos</p>
                     <p className="text-slate-300 text-xs mt-1">Use Gerenciador → Preços para configurar</p>
                   </div>
                 )}
 
-                {/* Seletor de Posição do Card de Preços no Mapa Baixado (30% x 30%) */}
-                <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 space-y-2 mt-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-black text-slate-700 uppercase tracking-wider flex items-center gap-1">
-                      <span>📐</span> Posição do Card no Download
+                {/* Seletor de Posição do Card de Preços no Download (Retrátil e Compacto) */}
+                <details className="group bg-slate-50 border border-slate-200/90 rounded-2xl p-2.5 text-[10px] space-y-2">
+                  <summary className="font-black text-slate-700 uppercase tracking-wider flex items-center justify-between cursor-pointer select-none">
+                    <span className="flex items-center gap-1.5">
+                      <span>📐</span> Posição do Card no Download do Mapa
                     </span>
                     <span className="text-[9px] font-bold text-slate-500 bg-white px-2 py-0.5 rounded-md border border-slate-200 shadow-xs">
-                      30% da página
+                      Opções ▼
                     </span>
-                  </div>
-                  <p className="text-[9.5px] text-slate-500 leading-tight">
-                    O mapa baixado inclui o card com os preços e cores (30% da largura e altura). Escolha onde posicioná-lo:
+                  </summary>
+                  <p className="text-[9.5px] text-slate-500 leading-tight pt-1">
+                    O mapa baixado inclui o card com preços e cores (30% da página). Escolha onde posicioná-lo:
                   </p>
-                  <div className="grid grid-cols-2 gap-1.5">
+                  <div className="grid grid-cols-2 gap-1.5 pt-1">
                     {[
                       { id: 'topo-esquerdo', label: '↖ Topo Esquerdo' },
                       { id: 'topo-direito', label: '↗ Topo Direito' },
@@ -10603,30 +10959,27 @@ const LotDashboard = ({
                       Vendidos: borda branca
                     </span>
                   </div>
-                </div>
+                </details>
 
                 {/* Botões download — idênticos à aba Mapa */}
-                <div className="grid grid-cols-2 gap-2 mt-1">
-                  <button onClick={async () => {
-                    try { const c = await gerarCanvasMapaInterativo(true); const l = document.createElement("a"); l.download = getNomeArquivoMapaExportado("png"); l.href = c.toDataURL("image/png",1.0); document.body.appendChild(l); l.click(); document.body.removeChild(l); } catch(e:any){alert(e?.message||"Erro");}
-                  }}
-                    className="flex items-center justify-center gap-2 py-3.5 bg-[#1a4a1a] text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    Imagem
+                <div className="grid grid-cols-2 gap-2 mt-auto pt-1">
+                  <button
+                    type="button"
+                    disabled={downloadProcessando !== null}
+                    onClick={() => executarDownloadImagem(true)}
+                    className="flex items-center justify-center gap-2 py-3 bg-[#1a4a1a] hover:bg-[#245424] text-white rounded-2xl text-xs font-black active:scale-95 transition-all shadow-sm disabled:opacity-60"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    {downloadProcessando === 'img' ? 'Gerando...' : 'Baixar Imagem'}
                   </button>
-                  <button onClick={async () => {
-                    try {
-                      const c = await gerarCanvasMapaInterativo(true);
-                      const { jsPDF } = await import("jspdf");
-                      const land = c.width >= c.height;
-                      const pdf = new jsPDF({orientation: land?"landscape":"portrait", unit:"px", format:[c.width,c.height], compress:false});
-                      pdf.addImage(c.toDataURL("image/png",1.0),"PNG",0,0,c.width,c.height,undefined,"FAST");
-                      pdf.save(getNomeArquivoMapaExportado("pdf"));
-                    } catch(e:any){alert(e?.message||"Erro");}
-                  }}
-                    className="flex items-center justify-center gap-2 py-3.5 bg-blue-600 text-white rounded-2xl text-sm font-black active:scale-95 transition-all">
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    PDF
+                  <button
+                    type="button"
+                    disabled={downloadProcessando !== null}
+                    onClick={() => executarDownloadPdf(true)}
+                    className="flex items-center justify-center gap-2 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-2xl text-xs font-black active:scale-95 transition-all shadow-sm disabled:opacity-60"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    {downloadProcessando === 'pdf' ? 'Gerando...' : 'Baixar PDF'}
                   </button>
                 </div>
               </div>
@@ -11172,47 +11525,6 @@ const LotDashboard = ({
                 </div>
                 <div className="w-px h-4 bg-slate-200" />
                 <span className="text-xs font-black text-slate-600">{statsPct}%</span>
-              </div>
-
-
-              {/* SELETOR 3 MODOS (LITE | PRO | PC) */}
-              <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200/90 shadow-xs mr-1">
-                <button
-                  type="button"
-                  onClick={() => mudarTipoVisualizacao("lite")}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-                    tipoVisualizacao === "lite"
-                      ? "bg-[#1a4a1a] text-white shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="Modo Lite: Celular minimalista para visualizar mapa e vendas rápidas sem edição"
-                >
-                  <Zap size={11} /> Lite
-                </button>
-                <button
-                  type="button"
-                  onClick={() => mudarTipoVisualizacao("pro")}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-                    tipoVisualizacao === "pro"
-                      ? "bg-[#1a4a1a] text-white shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="Modo Pro: Celular completo com ferramentas de edição"
-                >
-                  <Smartphone size={11} /> Pro
-                </button>
-                <button
-                  type="button"
-                  onClick={() => mudarTipoVisualizacao("pc")}
-                  className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase transition-all flex items-center gap-1 ${
-                    tipoVisualizacao === "pc"
-                      ? "bg-[#1a4a1a] text-white shadow-xs"
-                      : "text-slate-600 hover:text-slate-900"
-                  }`}
-                  title="Modo PC: Interface completa para web e desktop"
-                >
-                  <Monitor size={11} /> PC
-                </button>
               </div>
 
               {canEditMap && !mapaImagem && (
@@ -12178,10 +12490,119 @@ const LotDashboard = ({
         <CropMapModal
           isOpen={showCropModal}
           onClose={() => setShowCropModal(false)}
-          imageUrl={(pdfRenderedUrl || localDev.mapaImagemBase64 || localDev.mapaImagemUrl || (mapaImagem !== "pdf" ? mapaImagem : "")) as string}
+          imageUrl={(localDev.mapaImagemUrl || localDev.mapaImagemBase64 || pdfRenderedUrl || (mapaImagem !== "pdf" ? mapaImagem : "")) as string}
           existingPoints={localDev.mapaPontos || []}
           onConfirmCrop={handleConfirmCrop}
         />
+      )}
+
+      {/* MODAL DE DOWNLOAD DO MAPA (Para ambos os modos: Mapa de Lotes ou Mapa de Preços) */}
+      {downloadModalAberto && (
+        <div
+          className="fixed inset-0 z-[100005] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setDownloadModalAberto(false)}
+        >
+          <div
+            className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-900 leading-tight">Baixar Mapa</h3>
+                <p className="text-xs text-slate-500 truncate max-w-[220px]">{localDev.nome}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDownloadModalAberto(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* SELETOR DA ABA DO MAPA PARA EXPORTAÇÃO */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setDownloadTipoAba("mapa")}
+                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  downloadTipoAba === "mapa"
+                    ? "bg-white text-slate-900 border border-slate-200/80 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
+                <span>Disponíveis</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDownloadTipoAba("precos")}
+                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  downloadTipoAba === "precos"
+                    ? "bg-white text-emerald-800 border border-slate-200/80 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2 h-2 rounded-full bg-emerald-600 flex-shrink-0" />
+                <span>Preços ({faixasPrecoGlobal.length})</span>
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 text-xs text-slate-600 leading-relaxed">
+              {downloadTipoAba === "precos" ? (
+                <p>
+                  Exporta o mapa com as <strong>bolas coloridas pelas faixas de preço</strong> e o resumo das condições de pagamento (à vista, entrada e parcelas).
+                </p>
+              ) : (
+                <p>
+                  Exporta o mapa com as <strong>bolas dos disponíveis</strong>, reservas e vendidos, com legenda completa e contadores de status.
+                </p>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={downloadProcessando !== null}
+                onClick={() => executarDownloadImagem(downloadTipoAba === "precos")}
+                className="w-full py-3 px-4 rounded-2xl bg-[#1a4a1a] hover:bg-[#245424] active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-[#1a4a1a]/20 transition-all disabled:opacity-60"
+              >
+                {downloadProcessando === 'img' ? (
+                  <span>Gerando Imagem...</span>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>Baixar Imagem (PNG)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={downloadProcessando !== null}
+                onClick={() => executarDownloadPdf(downloadTipoAba === "precos")}
+                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all disabled:opacity-60"
+              >
+                {downloadProcessando === 'pdf' ? (
+                  <span>Gerando PDF...</span>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>Baixar em PDF</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setDownloadModalAberto(false)}
+              className="w-full py-2 text-xs text-slate-400 font-bold hover:text-slate-700 transition-colors"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
       )}
     </>
   );
@@ -12297,6 +12718,7 @@ const EmpreendimentosSection = ({
   isAdmin = false,
   autoOpenAdd,
   onAutoOpenHandled,
+  tipoVisualizacao = "pc",
 }: {
   developments: Empreendimento[];
   sales: Venda[];
@@ -12316,6 +12738,7 @@ const EmpreendimentosSection = ({
   isAdmin?: boolean;
   autoOpenAdd?: boolean;
   onAutoOpenHandled?: () => void;
+  tipoVisualizacao?: "lite" | "pro" | "pc";
 }) => {
   const emptyForm: Partial<Empreendimento> = {
     nome: "", endereco: "", cidade: "", estado: "Pará", totalLotes: 0,
@@ -12981,33 +13404,40 @@ const EmpreendimentosSection = ({
     });
 
   return (
-    <div className="space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="p-3 bg-primary-main rounded-2xl text-primary-contrast shadow-lg shadow-primary-main/20">
-            <Building2 size={24} />
+    <div className="space-y-5 sm:space-y-8">
+      <div className="flex items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0">
+          <div className="p-2.5 sm:p-3 bg-primary-main rounded-xl sm:rounded-2xl text-primary-contrast shadow-md shadow-primary-main/20 shrink-0">
+            <Building2 size={20} className="sm:w-6 sm:h-6" />
           </div>
-          <div>
-            <h3 className="text-xl font-display font-bold text-slate-800">
+          <div className="min-w-0">
+            <h3 className="text-lg sm:text-xl font-display font-bold text-slate-800 truncate leading-tight">
               Empreendimentos
             </h3>
-            <p className="text-sm text-slate-400 font-medium">
+            <p className="text-xs sm:text-sm text-slate-400 font-medium truncate">
               Gestão de Loteamentos
             </p>
           </div>
         </div>
-        <button
-          onClick={() => {
-            if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
-            else openAddForm();
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black active:scale-95 transition-all shadow-md shadow-emerald-600/20 flex-shrink-0 cursor-pointer"
-          title="Adicionar novo empreendimento"
-        >
-          {isAdding ? <X size={16} /> : <Plus size={16} />}
-          <span className="hidden sm:inline">{isAdding ? "Cancelar Cadastro" : "Adicionar Empreendimento"}</span>
-          <span className="sm:hidden">{isAdding ? "Cancelar" : "+ Empreendimento"}</span>
-        </button>
+        {tipoVisualizacao !== "lite" && (
+          <button
+            type="button"
+            onClick={() => {
+              if (isAdding) { setIsAdding(false); setEditingDev(null); setFormData(emptyForm); }
+              else openAddForm();
+            }}
+            className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-black active:scale-95 transition-all shadow-sm shrink-0 cursor-pointer ${
+              isAdding
+                ? "bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200"
+                : "bg-[#1a4a1a] hover:bg-[#245424] text-white shadow-[#1a4a1a]/20"
+            }`}
+            title="Adicionar novo empreendimento"
+          >
+            {isAdding ? <X size={15} /> : <Plus size={15} />}
+            <span className="hidden sm:inline">{isAdding ? "Cancelar Cadastro" : "Adicionar Empreendimento"}</span>
+            <span className="sm:hidden">{isAdding ? "Cancelar" : "Novo"}</span>
+          </button>
+        )}
       </div>
 
       {/* MAPA GLOBAL */}
@@ -13026,7 +13456,7 @@ const EmpreendimentosSection = ({
             lat: d.lat, lng: d.lng
           })));
         }
-        if (!showMapaGlobal || isAdding || !!selectedDevForMap) return null;
+        if (tipoVisualizacao === "lite" || !showMapaGlobal || isAdding || !!selectedDevForMap) return null;
         return (
         <div>
 
@@ -13820,7 +14250,7 @@ const EmpreendimentosSection = ({
                 {/* Botões — uma linha, sem quebra */}
                 <div className="flex items-center gap-1 flex-shrink-0">
                   <button onClick={() => { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; }}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-primary-main transition-colors">
+                    className="flex items-center gap-1 px-2.5 py-1.5 bg-slate-900 text-white rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-primary-main transition-colors">
                     <MapPin size={11} /><span>Mapa</span>
                   </button>
                   {temMaps && (
@@ -13829,18 +14259,22 @@ const EmpreendimentosSection = ({
                       <MapPin size={11} /><span className="hidden sm:inline">Maps</span>
                     </button>
                   )}
-                  <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-slate-200 transition-colors">
-                    <Settings size={11} /><span className="hidden sm:inline">Lotes</span>
-                  </button>
-                  <button onClick={() => openEditForm(dev)}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-blue-500 hover:text-white transition-colors">
-                    <Pencil size={11} /><span className="hidden sm:inline">Editar</span>
-                  </button>
-                  <button onClick={() => requestDelete(`Excluir "${dev.nome}"?`, () => onDelete(dev.id))}
-                    className="flex items-center gap-1 px-2 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-red-500 hover:text-white transition-colors">
-                    <Trash2 size={11} />
-                  </button>
+                  {tipoVisualizacao !== "lite" && (
+                    <>
+                      <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-slate-100 text-slate-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-slate-200 transition-colors">
+                        <Settings size={11} /><span className="hidden sm:inline">Lotes</span>
+                      </button>
+                      <button onClick={() => openEditForm(dev)}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-blue-50 text-blue-600 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-blue-500 hover:text-white transition-colors">
+                        <Pencil size={11} /><span className="hidden sm:inline">Editar</span>
+                      </button>
+                      <button onClick={() => requestDelete(`Excluir "${dev.nome}"?`, () => onDelete(dev.id))}
+                        className="flex items-center gap-1 px-2 py-1.5 bg-red-50 text-red-500 rounded-xl text-[10px] font-black uppercase whitespace-nowrap hover:bg-red-500 hover:text-white transition-colors">
+                        <Trash2 size={11} />
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             );
@@ -13877,8 +14311,8 @@ const EmpreendimentosSection = ({
                     {[dev.comunidade, dev.cidade, dev.estado].filter(Boolean).join(" • ")}
                   </p>
                 </div>
-                {/* Menu ⋮ — apenas admin */}
-                {isAdmin && (
+                {/* Menu ⋮ — apenas admin e não lite */}
+                {isAdmin && tipoVisualizacao !== "lite" && (
                   <div className="relative flex-shrink-0">
                     <button onClick={() => setMenuAberto(m => !m)}
                       className="w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-700 transition-colors">
@@ -13953,31 +14387,60 @@ const EmpreendimentosSection = ({
             </div>
 
             {/* AÇÕES SECUNDÁRIAS */}
-            <div className="grid grid-cols-3 gap-2 px-5 pb-5">
-              <button onClick={() => onStartSale && onStartSale({ empreendimentoId: dev.id } as any)}
-                className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
-                <ShoppingCart size={15} />
-                <span>Nova Venda</span>
-              </button>
-              <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
-                className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
-                <Settings size={15} />
-                <span>Lotes</span>
-              </button>
-              {temGps ? (
-                <button onClick={() => abrirLocalizacaoGoogleMaps(dev)}
-                  className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
-                  <MapPin size={15} />
-                  <span>GPS</span>
+            {tipoVisualizacao === "lite" ? (
+              <div className="grid grid-cols-2 gap-2 px-5 pb-5">
+                <button
+                  onClick={() => onStartSale && onStartSale({ empreendimentoId: dev.id } as any)}
+                  className="py-2.5 rounded-xl bg-emerald-50 text-emerald-800 text-xs font-bold hover:bg-emerald-100 active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-emerald-200/60 shadow-xs"
+                >
+                  <ShoppingCart size={15} className="text-emerald-700" />
+                  <span>Nova Venda</span>
                 </button>
-              ) : (
-                <button onClick={() => openEditForm(dev)}
+                {temGps ? (
+                  <button
+                    onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                    className="py-2.5 rounded-xl bg-slate-50 text-slate-700 text-xs font-bold hover:bg-slate-100 active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-slate-200/60 shadow-xs"
+                  >
+                    <MapPin size={15} className="text-blue-600" />
+                    <span>Como Chegar</span>
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => { setSelectedDevForMap(dev); document.body.style.overflow = "hidden"; }}
+                    className="py-2.5 rounded-xl bg-slate-50 text-slate-700 text-xs font-bold hover:bg-slate-100 active:scale-95 transition-all flex items-center justify-center gap-1.5 border border-slate-200/60 shadow-xs"
+                  >
+                    <MapPin size={15} className="text-slate-600" />
+                    <span>Abrir Mapa</span>
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-3 gap-2 px-5 pb-5">
+                <button onClick={() => onStartSale && onStartSale({ empreendimentoId: dev.id } as any)}
                   className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
-                  <Pencil size={15} />
-                  <span>Editar</span>
+                  <ShoppingCart size={15} />
+                  <span>Nova Venda</span>
                 </button>
-              )}
-            </div>
+                <button onClick={() => { setLotRegDev(dev); setLotRegForm({ quadra: "", numeroLote: "", rua: "", status: "disponivel" }); setLotRegTab("cadastrar"); setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }}
+                  className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                  <Settings size={15} />
+                  <span>Lotes</span>
+                </button>
+                {temGps ? (
+                  <button onClick={() => abrirLocalizacaoGoogleMaps(dev)}
+                    className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                    <MapPin size={15} />
+                    <span>GPS</span>
+                  </button>
+                ) : (
+                  <button onClick={() => openEditForm(dev)}
+                    className="py-2.5 rounded-xl bg-slate-50 text-slate-600 text-[11px] font-bold hover:bg-slate-100 transition-colors flex flex-col items-center gap-1">
+                    <Pencil size={15} />
+                    <span>Editar</span>
+                  </button>
+                )}
+              </div>
+            )}
           </motion.div>
           );
         })}
@@ -13989,13 +14452,15 @@ const EmpreendimentosSection = ({
             <p className="text-slate-400 font-medium italic">
               Sua base de empreendimentos está vazia.
             </p>
-            <button
-              onClick={() => openAddForm()}
-              className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black mt-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-2"
-            >
-              <Plus size={16} />
-              Adicionar Primeiro Empreendimento
-            </button>
+            {tipoVisualizacao !== "lite" && (
+              <button
+                onClick={() => openAddForm()}
+                className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-sm font-black mt-2 shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center gap-2"
+              >
+                <Plus size={16} />
+                Adicionar Primeiro Empreendimento
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -25358,6 +25823,11 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [section, setSection] = useState<Section>(() => {
     try {
       const saved = localStorage.getItem('lastSection') as Section;
+      const modo = localStorage.getItem("tipo_visualizacao_modo");
+      if (modo === "lite") {
+        const liteValid: Section[] = ["empreendimentos", "vendas", "clientes", "inicio"];
+        return liteValid.includes(saved) ? saved : "empreendimentos";
+      }
       const valid: Section[] = ["dashboard","vendas","empreendimentos","contratos","clientes","aniversarios","proprietarios","usuarios","calculadora","config","historico"];
       // Dados bancários serão preenchidos via useEffect após montar
       return valid.includes(saved) ? saved : "dashboard";
@@ -25503,6 +25973,14 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
       try {
         (screen.orientation as any).unlock?.();
       } catch {}
+    }
+
+    if (tipo === "lite") {
+      const abasPermitidasLite: Section[] = ["empreendimentos", "vendas", "clientes", "inicio"];
+      if (!abasPermitidasLite.includes(section)) {
+        setSection("empreendimentos");
+        try { localStorage.setItem('lastSection', 'empreendimentos'); } catch {}
+      }
     }
 
     try {
@@ -26484,6 +26962,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
             isAdmin={!!isAdmin}
             autoOpenAdd={openAddEmpreendimentoTrigger}
             onAutoOpenHandled={() => setOpenAddEmpreendimentoTrigger(false)}
+            tipoVisualizacao={tipoVisualizacaoGlobal}
           />
         );
       case "proprietarios":
@@ -27018,7 +27497,7 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
 
 
 
-      {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} />}
+      {!forceDesktop && <BottomNav currentSection={section} setSection={setSection} tipoVisualizacao={tipoVisualizacaoGlobal} />}
       {section !== "vendas" && !forceDesktop && <FAB setSection={setSection} />}
 
       {/* Hidden print area for contracts */}

@@ -234,6 +234,15 @@ function stripHeavy(item: Empreendimento): Empreendimento {
     lotesInfo,
     ...rest
   } = item as any;
+  if ((item as any).mapaRecortado) {
+    return {
+      ...rest,
+      mapaRecortado: true,
+      mapaCrop: (item as any).mapaCrop,
+      mapaPdfUrl: null,
+      mapaPdfOriginalBase64: null,
+    } as any;
+  }
   return rest as Empreendimento;
 }
 

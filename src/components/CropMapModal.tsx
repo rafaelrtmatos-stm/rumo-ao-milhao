@@ -7,7 +7,12 @@ interface CropMapModalProps {
   onClose: () => void;
   imageUrl: string;
   existingPoints?: MapaPonto[];
-  onConfirmCrop: (croppedBase64: string, updatedPoints: MapaPonto[]) => void;
+  onConfirmCrop: (
+    croppedBase64: string,
+    updatedPoints: MapaPonto[],
+    cropArea: { x: number; y: number; width: number; height: number },
+    croppedBlob?: Blob | null
+  ) => Promise<void> | void;
 }
 
 export const CropMapModal: React.FC<CropMapModalProps> = ({
@@ -193,7 +198,10 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
       ctx.imageSmoothingQuality = "high";
       ctx.drawImage(img, sx, sy, sw, sh, 0, 0, sw, sh);
 
-      const croppedBase64 = canvas.toDataURL("image/jpeg", 0.92);
+      const croppedBase64 = canvas.toDataURL("image/png", 1.0);
+      const croppedBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), "image/webp", 0.95);
+      });
 
       // Se solicitado, ajustar posições das bolinhas para o novo enquadramento
       let updatedPoints = [...existingPoints];
@@ -210,7 +218,7 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
         });
       }
 
-      onConfirmCrop(croppedBase64, updatedPoints);
+      await onConfirmCrop(croppedBase64, updatedPoints, crop, croppedBlob);
       onClose();
     } catch (err) {
       console.error("Erro ao recortar imagem:", err);
@@ -514,7 +522,10 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
                 className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-black text-xs rounded-2xl transition-all shadow-md flex items-center justify-center gap-2"
               >
                 {isProcessing ? (
-                  <span>Recortando...</span>
+                  <div className="flex items-center justify-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Salvando corte no Supabase...</span>
+                  </div>
                 ) : (
                   <>
                     <Check size={16} />

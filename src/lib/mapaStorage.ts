@@ -33,8 +33,8 @@ export async function uploadMapaImagem(
 ): Promise<string> {
   onProgress?.(10);
 
-  // 1. Converter para WEBP comprimido
-  const webpBlob = await comprimirParaWebP(file, 0.82);
+  // 1. Converter para WEBP comprimido de alta resolução (máx 2800px, 85% qualidade)
+  const webpBlob = await comprimirParaWebP(file, 0.85);
   onProgress?.(40);
 
   return uploadMapaBlob(webpBlob, empreendimentoId, onProgress, 'webp', 'image/webp');
@@ -55,12 +55,13 @@ export async function uploadMapaBlob(
   const supabase = getSupabase();
   if (supabase) {
     try {
-      // 3. Tentar upload direto
+      // 3. Tentar upload direto com cache longo de 1 ano (31536000 segundos)
       const { error } = await supabase.storage
         .from(BUCKET)
         .upload(nome, file, {
           contentType,
           upsert: true,
+          cacheControl: '31536000',
           duplex: 'half',
         } as any);
 
@@ -83,6 +84,7 @@ export async function uploadMapaBlob(
         .upload(nomeAlt, file, {
           contentType,
           upsert: true,
+          cacheControl: '31536000',
         });
 
       if (!error2) {
@@ -110,8 +112,8 @@ export async function uploadMapaBlob(
   });
 }
 
-/** Comprime File para WEBP via Canvas. */
-async function comprimirParaWebP(file: File, quality: number): Promise<Blob> {
+/** Comprime File para WEBP via Canvas. Limita resolução a max 4000px para permitir leitura perfeita de medições de lotes mantendo baixo peso (~900KB a 1.2MB). */
+async function comprimirParaWebP(file: File, quality = 0.85): Promise<Blob> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -128,6 +130,8 @@ async function comprimirParaWebP(file: File, quality: number): Promise<Blob> {
       canvas.width = width;
       canvas.height = height;
       const ctx = canvas.getContext('2d')!;
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
       ctx.drawImage(img, 0, 0, width, height);
       canvas.toBlob(
         blob => blob ? resolve(blob) : reject(new Error('Canvas toBlob falhou')),
@@ -162,6 +166,7 @@ export async function uploadDataUrlOuBlobAsWebP(
       const { error } = await supabase.storage.from(BUCKET).upload(nome, webpFile, {
         contentType: 'image/webp',
         upsert: true,
+        cacheControl: '31536000',
       });
       if (!error) {
         const { data } = supabase.storage.from(BUCKET).getPublicUrl(nome);
@@ -188,7 +193,7 @@ export async function uploadMapaPDF(
     try {
       const { error } = await supabase.storage
         .from(BUCKET)
-        .upload(nome, file, { contentType: 'application/pdf', upsert: true });
+        .upload(nome, file, { contentType: 'application/pdf', upsert: true, cacheControl: '31536000' });
 
       if (!error) {
         onProgress?.(90);
@@ -203,7 +208,7 @@ export async function uploadMapaPDF(
       const nomeAlt = `${userId}/${nome}`;
       const { error: error2 } = await supabase.storage
         .from(BUCKET)
-        .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true });
+        .upload(nomeAlt, file, { contentType: 'application/pdf', upsert: true, cacheControl: '31536000' });
 
       if (!error2) {
         onProgress?.(90);
