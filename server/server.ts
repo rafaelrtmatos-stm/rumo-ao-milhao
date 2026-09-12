@@ -366,6 +366,30 @@ function safeParseJson(text: string | undefined | null): any {
   }
 }
 
+// --- Proxy de imagens e arquivos remotos (evita bloqueios de CORS e canvas tainted no download de mapas) ---
+app.get("/api/proxy-image", async (req: any, res) => {
+  const fileUrl = req.query.url as string;
+  if (!fileUrl || (!fileUrl.startsWith("http://") && !fileUrl.startsWith("https://"))) {
+    return res.status(400).json({ error: "URL inválida." });
+  }
+  try {
+    const upstream = await fetch(fileUrl);
+    if (!upstream.ok) {
+      return res.status(upstream.status).json({ error: `Falha ao obter imagem remota: ${upstream.statusText}` });
+    }
+    const contentType = upstream.headers.get("content-type") || "application/octet-stream";
+    const arrayBuffer = await upstream.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(buffer);
+  } catch (err: any) {
+    console.error("[proxy-image] Erro ao carregar arquivo remoto:", err?.message || err);
+    return res.status(500).json({ error: err?.message || "Erro no proxy de imagem." });
+  }
+});
+
 // --- Empreendimentos ---
 app.get("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");

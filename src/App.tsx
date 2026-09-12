@@ -5262,6 +5262,135 @@ const LotDashboard = ({
     return `${empreendimento}_${tipoAba}_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
+  // Utilitário para disparar download via Blob URL com fallbacks
+  const triggerDownload = (blob: Blob, filename: string) => {
+    try {
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        try {
+          if (document.body.contains(link)) document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+        } catch {}
+      }, 20000);
+    } catch (e) {
+      console.error('Falha no triggerDownload com Blob URL:', e);
+      try {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const link = document.createElement('a');
+          link.href = reader.result as string;
+          link.download = filename;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          document.body.appendChild(link);
+          link.click();
+          setTimeout(() => {
+            try { if (document.body.contains(link)) document.body.removeChild(link); } catch {}
+          }, 5000);
+        };
+        reader.readAsDataURL(blob);
+      } catch (e2) {
+        console.error('Falha total no triggerDownload:', e2);
+      }
+    }
+  };
+
+  // Carrega imagem em canvas seguro sem problemas de CORS ou poluição de contexto
+  const carregarImagemBaseMapa = async (srcUrl: string): Promise<HTMLCanvasElement> => {
+    if (!srcUrl) throw new Error("URL de imagem vazia.");
+
+    // 1. Se já for data: ou blob:
+    if (srcUrl.startsWith('data:') || srcUrl.startsWith('blob:')) {
+      return new Promise<HTMLCanvasElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth || img.width || 1200;
+          c.height = img.naturalHeight || img.height || 800;
+          const ctx = c.getContext("2d")!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c);
+        };
+        img.onerror = () => reject(new Error("Erro ao carregar imagem base do mapa."));
+        img.src = srcUrl;
+      });
+    }
+
+    // 2. Se for URL remota (http/https): tentar fetch direto ou via proxy de imagem
+    let blobFinal: Blob | null = null;
+    try {
+      const res = await fetch(srcUrl, { mode: 'cors' });
+      if (res.ok) {
+        blobFinal = await res.blob();
+      }
+    } catch {
+      // CORS ou rede
+    }
+
+    if (!blobFinal) {
+      try {
+        const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(srcUrl)}`;
+        const resProxy = await fetch(proxyUrl);
+        if (resProxy.ok) {
+          blobFinal = await resProxy.blob();
+        }
+      } catch (errProxy) {
+        console.warn("[download] Proxy de imagem falhou:", errProxy);
+      }
+    }
+
+    if (blobFinal) {
+      const objectUrl = URL.createObjectURL(blobFinal);
+      return new Promise<HTMLCanvasElement>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(objectUrl);
+          const c = document.createElement("canvas");
+          c.width = img.naturalWidth || img.width || 1200;
+          c.height = img.naturalHeight || img.height || 800;
+          const ctx = c.getContext("2d")!;
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = "high";
+          ctx.drawImage(img, 0, 0, c.width, c.height);
+          resolve(c);
+        };
+        img.onerror = () => {
+          URL.revokeObjectURL(objectUrl);
+          reject(new Error("Erro ao decodificar imagem do mapa."));
+        };
+        img.src = objectUrl;
+      });
+    }
+
+    // 3. Fallback com new Image()
+    return new Promise<HTMLCanvasElement>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = img.naturalWidth || img.width || 1200;
+        c.height = img.naturalHeight || img.height || 800;
+        const ctx = c.getContext("2d")!;
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = "high";
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        resolve(c);
+      };
+      img.onerror = () => reject(new Error("Não foi possível carregar a imagem do mapa."));
+      img.src = srcUrl;
+    });
+  };
+
   // Cabeçalho institucional desenhado no topo do mapa exportado
   const desenharCabecalhoNoCanvas = (
     ctx: CanvasRenderingContext2D,
@@ -5269,92 +5398,96 @@ const LotDashboard = ({
     headerH: number,
     isPrecos = false
   ) => {
-    // Fundo branco do cabeçalho
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, imgW, headerH);
+    try {
+      // Fundo branco do cabeçalho
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, imgW, headerH);
 
-    const now = new Date();
-    const dia = String(now.getDate()).padStart(2, '0');
-    const mes = String(now.getMonth() + 1).padStart(2, '0');
-    const ano = now.getFullYear();
-    const hora = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
-    const dataHoraFormatada = `${dia}/${mes}/${ano}, ${hora}`;
+      const now = new Date();
+      const dia = String(now.getDate()).padStart(2, '0');
+      const mes = String(now.getMonth() + 1).padStart(2, '0');
+      const ano = now.getFullYear();
+      const hora = String(now.getHours()).padStart(2, '0') + ':' + String(now.getMinutes()).padStart(2, '0');
+      const dataHoraFormatada = `${dia}/${mes}/${ano}, ${hora}`;
 
-    // Título (Nome do Empreendimento)
-    const titleFontSize = Math.max(16, Math.min(36, Math.round(headerH * 0.28)));
-    ctx.fillStyle = '#0f172a';
-    ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'top';
-    ctx.fillText(localDev.nome || 'Mapa do Empreendimento', imgW / 2, Math.round(headerH * 0.10));
+      // Título (Nome do Empreendimento)
+      const titleFontSize = Math.max(16, Math.min(36, Math.round(headerH * 0.28)));
+      ctx.fillStyle = '#0f172a';
+      ctx.font = `900 ${titleFontSize}px system-ui, -apple-system, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'top';
+      ctx.fillText(localDev.nome || 'Mapa do Empreendimento', imgW / 2, Math.round(headerH * 0.10));
 
-    // Subtítulo
-    const subFontSize = Math.max(11, Math.min(18, Math.round(headerH * 0.15)));
-    ctx.fillStyle = '#475569';
-    ctx.font = `600 ${subFontSize}px system-ui, -apple-system, sans-serif`;
-    const subTitulo = isPrecos
-      ? `Mapa de Preços e Condições de Pagamento • Atualizado em ${dataHoraFormatada}`
-      : `Mapa de Disponibilidade dos Lotes • Atualizado em ${dataHoraFormatada}`;
-    ctx.fillText(subTitulo, imgW / 2, Math.round(headerH * 0.10) + titleFontSize + Math.round(headerH * 0.04));
+      // Subtítulo
+      const subFontSize = Math.max(11, Math.min(18, Math.round(headerH * 0.15)));
+      ctx.fillStyle = '#475569';
+      ctx.font = `600 ${subFontSize}px system-ui, -apple-system, sans-serif`;
+      const subTitulo = isPrecos
+        ? `Mapa de Preços e Condições de Pagamento • Atualizado em ${dataHoraFormatada}`
+        : `Mapa de Disponibilidade dos Lotes • Atualizado em ${dataHoraFormatada}`;
+      ctx.fillText(subTitulo, imgW / 2, Math.round(headerH * 0.10) + titleFontSize + Math.round(headerH * 0.04));
 
-    // Contadores reais de lotes
-    const totLotes = mapaPontos.length;
-    const totVendidos = mapaPontos.filter(p => !!vendaDoLote(p.quadra, p.lote, p.vendaId) || p.status === 'indisponivel' || p.status === 'vendido').length;
-    const totReservados = mapaPontos.filter(p => p.status === 'reservado' && !vendaDoLote(p.quadra, p.lote, p.vendaId)).length;
-    const totDisponiveis = Math.max(0, totLotes - totVendidos - totReservados);
+      // Contadores reais de lotes
+      const totLotes = mapaPontos.length;
+      const totVendidos = mapaPontos.filter(p => !!vendaDoLote(p.quadra, p.lote, p.vendaId) || p.status === 'indisponivel' || p.status === 'vendido').length;
+      const totReservados = mapaPontos.filter(p => p.status === 'reservado' && !vendaDoLote(p.quadra, p.lote, p.vendaId)).length;
+      const totDisponiveis = Math.max(0, totLotes - totVendidos - totReservados);
 
-    // Legenda completa de status: Disponíveis, Reservados, Vendidos e Total
-    const items = [
-      { label: `Disponíveis (${totDisponiveis})`, color: '#2563eb' },
-      { label: `Reservados (${totReservados})`, color: '#d97706' },
-      { label: `Vendidos (${totVendidos})`, color: '#dc2626' },
-      { label: `Total (${totLotes})`, color: '#64748b' },
-    ];
+      // Legenda completa de status: Disponíveis, Reservados, Vendidos e Total
+      const items = [
+        { label: `Disponíveis (${totDisponiveis})`, color: '#2563eb' },
+        { label: `Reservados (${totReservados})`, color: '#d97706' },
+        { label: `Vendidos (${totVendidos})`, color: '#dc2626' },
+        { label: `Total (${totLotes})`, color: '#64748b' },
+      ];
 
-    const legendY = Math.round(headerH * 0.10) + titleFontSize + subFontSize + Math.round(headerH * 0.08);
-    let dotR = Math.max(4, Math.round(headerH * 0.055));
-    let legFontSize = Math.max(10, Math.round(headerH * 0.13));
-    ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
-
-    let totalW = 0;
-    let itemWidths: number[] = [];
-    const calcularLarguras = () => {
-      totalW = 0;
-      itemWidths = [];
-      items.forEach(it => {
-        const w = dotR * 2 + Math.round(headerH * 0.04) + ctx.measureText(it.label).width;
-        itemWidths.push(w);
-        totalW += w;
-      });
-      const gap = Math.round(headerH * 0.16);
-      totalW += gap * (items.length - 1);
-      return gap;
-    };
-
-    let itemGap = calcularLarguras();
-    if (totalW > imgW * 0.94) {
-      const scaleFactor = (imgW * 0.92) / totalW;
-      legFontSize = Math.max(8, Math.floor(legFontSize * scaleFactor));
-      dotR = Math.max(3, Math.floor(dotR * scaleFactor));
+      const legendY = Math.round(headerH * 0.10) + titleFontSize + subFontSize + Math.round(headerH * 0.08);
+      let dotR = Math.max(4, Math.round(headerH * 0.055));
+      let legFontSize = Math.max(10, Math.round(headerH * 0.13));
       ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
-      itemGap = calcularLarguras();
-    }
 
-    let curX = Math.max(10, (imgW - totalW) / 2);
-    items.forEach((it, i) => {
-      ctx.beginPath();
-      ctx.arc(curX + dotR, legendY + dotR, dotR, 0, Math.PI * 2);
-      ctx.fillStyle = it.color;
-      ctx.fill();
+      let totalW = 0;
+      let itemWidths: number[] = [];
+      const calcularLarguras = () => {
+        totalW = 0;
+        itemWidths = [];
+        items.forEach(it => {
+          const w = dotR * 2 + Math.round(headerH * 0.04) + ctx.measureText(it.label).width;
+          itemWidths.push(w);
+          totalW += w;
+        });
+        const gap = Math.round(headerH * 0.16);
+        totalW += gap * (items.length - 1);
+        return gap;
+      };
+
+      let itemGap = calcularLarguras();
+      if (totalW > imgW * 0.94) {
+        const scaleFactor = (imgW * 0.92) / totalW;
+        legFontSize = Math.max(8, Math.floor(legFontSize * scaleFactor));
+        dotR = Math.max(3, Math.floor(dotR * scaleFactor));
+        ctx.font = `700 ${legFontSize}px system-ui, -apple-system, sans-serif`;
+        itemGap = calcularLarguras();
+      }
+
+      let curX = Math.max(10, (imgW - totalW) / 2);
+      items.forEach((it, i) => {
+        ctx.beginPath();
+        ctx.arc(curX + dotR, legendY + dotR, dotR, 0, Math.PI * 2);
+        ctx.fillStyle = it.color;
+        ctx.fill();
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#1e293b';
+        ctx.fillText(it.label, curX + dotR * 2 + Math.round(headerH * 0.04), legendY);
+
+        curX += itemWidths[i] + itemGap;
+      });
 
       ctx.textAlign = 'left';
-      ctx.fillStyle = '#1e293b';
-      ctx.fillText(it.label, curX + dotR * 2 + Math.round(headerH * 0.04), legendY);
-
-      curX += itemWidths[i] + itemGap;
-    });
-
-    ctx.textAlign = 'left';
+    } catch (e) {
+      console.warn("Erro ao desenhar cabeçalho no canvas:", e);
+    }
   };
 
   // Desenha os cards de preços no rodapé, um ao lado do outro, com layout idêntico à imagem de referência
@@ -5364,136 +5497,140 @@ const LotDashboard = ({
     footerY: number,
     footerH: number
   ) => {
-    if (faixasPrecoGlobal.length === 0) return;
+    try {
+      if (faixasPrecoGlobal.length === 0) return;
 
-    const numFaixas = faixasPrecoGlobal.length;
-    const padX = Math.round(imgW * 0.02);
-    const gap = Math.round(imgW * 0.015);
+      const numFaixas = faixasPrecoGlobal.length;
+      const padX = Math.round(imgW * 0.02);
+      const gap = Math.round(imgW * 0.015);
 
-    // Fundo branco do rodapé
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, footerY, imgW, footerH);
-
-    // Linha divisória sutil acima do rodapé
-    ctx.strokeStyle = '#e2e8f0';
-    ctx.lineWidth = Math.max(1, Math.round(imgW * 0.001));
-    ctx.beginPath();
-    ctx.moveTo(0, footerY);
-    ctx.lineTo(imgW, footerY);
-    ctx.stroke();
-
-    const numCols = Math.min(numFaixas, numFaixas <= 5 ? numFaixas : Math.ceil(numFaixas / 2));
-    const numRows = Math.ceil(numFaixas / numCols);
-
-    const cardW = Math.round((imgW - (padX * 2) - ((numCols - 1) * gap)) / numCols);
-    const availableH = footerH - Math.round(footerH * 0.08 * 2);
-    const cardH = Math.min(Math.round(availableH / numRows), Math.round(cardW * 0.65));
-
-    faixasPrecoGlobal.forEach((faixa: any, idx: number) => {
-      const col = idx % numCols;
-      const row = Math.floor(idx / numCols);
-
-      const cardX = padX + col * (cardW + gap);
-      const cardY = footerY + Math.round(footerH * 0.08) + row * (cardH + Math.round(gap * 0.8));
-
-      // Obter detalhes de financiamento ou à vista da faixa
-      const lotsFaixa = mapaPontos.filter((p: any) => {
-        const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
-        return info?.preco === faixa.preco;
-      });
-      const infoFx = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
-      const entrada = infoFx?.entrada || 0;
-      const parcelas = infoFx?.parcelas || 0;
-      const avista = infoFx?.avista || parcelas === 0;
-      const vlParcela = infoFx?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
-
-      const totalParceladoCalc = parcelas > 0 ? (entrada + (parcelas * vlParcela)) : faixa.preco;
-      const valorParcelado = totalParceladoCalc > faixa.preco ? totalParceladoCalc : faixa.preco;
-      const valorAvista = infoFx?.precoAvista || (totalParceladoCalc > faixa.preco ? faixa.preco : (avista ? faixa.preco : Math.round(faixa.preco * 0.85)));
-
-      ctx.save();
-
-      // Fundo do card
+      // Fundo branco do rodapé
       ctx.fillStyle = '#ffffff';
-      const cornerRadius = Math.max(4, Math.round(cardW * 0.015));
-      ctx.beginPath();
-      if (typeof (ctx as any).roundRect === 'function') {
-        (ctx as any).roundRect(cardX, cardY, cardW, cardH, cornerRadius);
-      } else {
-        ctx.rect(cardX, cardY, cardW, cardH);
-      }
-      ctx.fill();
+      ctx.fillRect(0, footerY, imgW, footerH);
 
-      // Contorno do card na cor da faixa
-      ctx.strokeStyle = faixa.color;
-      ctx.lineWidth = Math.max(3, Math.round(cardW * 0.014));
+      // Linha divisória sutil acima do rodapé
+      ctx.strokeStyle = '#e2e8f0';
+      ctx.lineWidth = Math.max(1, Math.round(imgW * 0.001));
+      ctx.beginPath();
+      ctx.moveTo(0, footerY);
+      ctx.lineTo(imgW, footerY);
       ctx.stroke();
 
-      const cPadX = Math.round(cardW * 0.06);
-      const cPadY = Math.round(cardH * 0.09);
+      const numCols = Math.min(numFaixas, numFaixas <= 5 ? numFaixas : Math.ceil(numFaixas / 2));
+      const numRows = Math.ceil(numFaixas / numCols);
 
-      // Linha 1: Preço em destaque (Parcelado ou À Vista)
-      const precoFontSize = Math.max(13, Math.round(cardH * 0.15));
-      ctx.fillStyle = '#0f172a';
-      ctx.font = `900 ${precoFontSize}px system-ui, -apple-system, sans-serif`;
-      ctx.textBaseline = 'top';
+      const cardW = Math.round((imgW - (padX * 2) - ((numCols - 1) * gap)) / numCols);
+      const availableH = footerH - Math.round(footerH * 0.08 * 2);
+      const cardH = Math.min(Math.round(availableH / numRows), Math.round(cardW * 0.65));
 
-      const textoPrecoPrincipal = 'R$ ' + Number(avista ? valorAvista : valorParcelado).toLocaleString('pt-BR');
-      ctx.fillText(textoPrecoPrincipal, cardX + cPadX, cardY + cPadY);
+      faixasPrecoGlobal.forEach((faixa: any, idx: number) => {
+        const col = idx % numCols;
+        const row = Math.floor(idx / numCols);
 
-      // Indicador "Parcelado" ou "À Vista" no topo direito
-      const tagFontSize = Math.max(9, Math.round(cardH * 0.075));
-      ctx.font = `700 ${tagFontSize}px system-ui, -apple-system, sans-serif`;
-      ctx.fillStyle = '#64748b';
-      ctx.textAlign = 'right';
-      ctx.fillText(avista ? 'À Vista' : 'Parcelado', cardX + cardW - cPadX, cardY + cPadY + Math.round(precoFontSize * 0.25));
-      ctx.textAlign = 'left';
+        const cardX = padX + col * (cardW + gap);
+        const cardY = footerY + Math.round(footerH * 0.08) + row * (cardH + Math.round(gap * 0.8));
 
-      // Linha 2: Linha divisória horizontal colorida
-      const divLineY = cardY + cPadY + precoFontSize + Math.round(cardH * 0.06);
-      ctx.strokeStyle = faixa.color;
-      ctx.lineWidth = Math.max(1.5, Math.round(cardW * 0.006));
-      ctx.beginPath();
-      ctx.moveTo(cardX + cPadX, divLineY);
-      ctx.lineTo(cardX + cardW - cPadX, divLineY);
-      ctx.stroke();
+        // Obter detalhes de financiamento ou à vista da faixa
+        const lotsFaixa = mapaPontos.filter((p: any) => {
+          const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
+          return info?.preco === faixa.preco;
+        });
+        const infoFx = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
+        const entrada = infoFx?.entrada || 0;
+        const parcelas = infoFx?.parcelas || 0;
+        const avista = infoFx?.avista || parcelas === 0;
+        const vlParcela = infoFx?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
 
-      // Linhas 3 e 4: Entrada e Parcelas
-      const textStartY = divLineY + Math.round(cardH * 0.07);
-      const detailFontSize = Math.max(10, Math.round(cardH * 0.082));
-      ctx.font = `600 ${detailFontSize}px system-ui, -apple-system, sans-serif`;
-      ctx.fillStyle = '#1e293b';
+        const totalParceladoCalc = parcelas > 0 ? (entrada + (parcelas * vlParcela)) : faixa.preco;
+        const valorParcelado = totalParceladoCalc > faixa.preco ? totalParceladoCalc : faixa.preco;
+        const valorAvista = infoFx?.precoAvista || (totalParceladoCalc > faixa.preco ? faixa.preco : (avista ? faixa.preco : Math.round(faixa.preco * 0.85)));
 
-      if (avista || parcelas === 0) {
-        ctx.fillText('Pagamento único à vista', cardX + cPadX, textStartY);
+        ctx.save();
+
+        // Fundo do card
+        ctx.fillStyle = '#ffffff';
+        const cornerRadius = Math.max(4, Math.round(cardW * 0.015));
+        ctx.beginPath();
+        if (typeof (ctx as any).roundRect === 'function') {
+          (ctx as any).roundRect(cardX, cardY, cardW, cardH, cornerRadius);
+        } else {
+          ctx.rect(cardX, cardY, cardW, cardH);
+        }
+        ctx.fill();
+
+        // Contorno do card na cor da faixa
+        ctx.strokeStyle = faixa.color;
+        ctx.lineWidth = Math.max(3, Math.round(cardW * 0.014));
+        ctx.stroke();
+
+        const cPadX = Math.round(cardW * 0.06);
+        const cPadY = Math.round(cardH * 0.09);
+
+        // Linha 1: Preço em destaque (Parcelado ou À Vista)
+        const precoFontSize = Math.max(13, Math.round(cardH * 0.15));
+        ctx.fillStyle = '#0f172a';
+        ctx.font = `900 ${precoFontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.textBaseline = 'top';
+
+        const textoPrecoPrincipal = 'R$ ' + Number(avista ? valorAvista : valorParcelado).toLocaleString('pt-BR');
+        ctx.fillText(textoPrecoPrincipal, cardX + cPadX, cardY + cPadY);
+
+        // Indicador "Parcelado" ou "À Vista" no topo direito
+        const tagFontSize = Math.max(9, Math.round(cardH * 0.075));
+        ctx.font = `700 ${tagFontSize}px system-ui, -apple-system, sans-serif`;
         ctx.fillStyle = '#64748b';
-        ctx.fillText('Sem parcelamento', cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
-      } else {
-        const txtEntrada = entrada > 0 ? `Entrada R$ ${Number(entrada).toLocaleString('pt-BR')}` : 'Sem entrada';
-        ctx.fillText(txtEntrada, cardX + cPadX, textStartY);
+        ctx.textAlign = 'right';
+        ctx.fillText(avista ? 'À Vista' : 'Parcelado', cardX + cardW - cPadX, cardY + cPadY + Math.round(precoFontSize * 0.25));
+        ctx.textAlign = 'left';
 
-        const txtParcela = `${parcelas} x R$ ${Number(vlParcela).toLocaleString('pt-BR')}`;
-        ctx.fillText(txtParcela, cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
-      }
+        // Linha 2: Linha divisória horizontal colorida
+        const divLineY = cardY + cPadY + precoFontSize + Math.round(cardH * 0.06);
+        ctx.strokeStyle = faixa.color;
+        ctx.lineWidth = Math.max(1.5, Math.round(cardW * 0.006));
+        ctx.beginPath();
+        ctx.moveTo(cardX + cPadX, divLineY);
+        ctx.lineTo(cardX + cardW - cPadX, divLineY);
+        ctx.stroke();
 
-      // Linha 5: Valor à vista destacado em negrito na cor da faixa
-      const avistaFontSize = Math.max(12, Math.round(cardH * 0.115));
-      ctx.font = `900 ${avistaFontSize}px system-ui, -apple-system, sans-serif`;
-      ctx.fillStyle = faixa.color;
-      const txtAvistaFinal = `R$ ${Number(valorAvista).toLocaleString('pt-BR')} à vista`;
-      ctx.fillText(txtAvistaFinal, cardX + cPadX, cardY + cardH - cPadY - avistaFontSize);
+        // Linhas 3 e 4: Entrada e Parcelas
+        const textStartY = divLineY + Math.round(cardH * 0.07);
+        const detailFontSize = Math.max(10, Math.round(cardH * 0.082));
+        ctx.font = `600 ${detailFontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.fillStyle = '#1e293b';
 
-      ctx.restore();
-    });
+        if (avista || parcelas === 0) {
+          ctx.fillText('Pagamento único à vista', cardX + cPadX, textStartY);
+          ctx.fillStyle = '#64748b';
+          ctx.fillText('Sem parcelamento', cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
+        } else {
+          const txtEntrada = entrada > 0 ? `Entrada R$ ${Number(entrada).toLocaleString('pt-BR')}` : 'Sem entrada';
+          ctx.fillText(txtEntrada, cardX + cPadX, textStartY);
+
+          const txtParcela = `${parcelas} x R$ ${Number(vlParcela).toLocaleString('pt-BR')}`;
+          ctx.fillText(txtParcela, cardX + cPadX, textStartY + Math.round(detailFontSize * 1.5));
+        }
+
+        // Linha 5: Valor à vista destacado em negrito na cor da faixa
+        const avistaFontSize = Math.max(12, Math.round(cardH * 0.115));
+        ctx.font = `900 ${avistaFontSize}px system-ui, -apple-system, sans-serif`;
+        ctx.fillStyle = faixa.color;
+        const txtAvistaFinal = `R$ ${Number(valorAvista).toLocaleString('pt-BR')} à vista`;
+        ctx.fillText(txtAvistaFinal, cardX + cPadX, cardY + cardH - cPadY - avistaFontSize);
+
+        ctx.restore();
+      });
+    } catch (e) {
+      console.warn("Erro ao desenhar rodapé de preços no canvas:", e);
+    }
   };
 
   const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
     return new Promise(async (resolve, reject) => {
-      let mapCanvas: HTMLCanvasElement;
-      let imgW: number;
-      let imgH: number;
+      let mapCanvas: HTMLCanvasElement | null = null;
+      let imgW = 1200;
+      let imgH = 800;
 
-      // 1. Renderizar base do mapa em alta resolução
+      // 1. Tentar renderizar base do PDF se existir e não for recortado
       const originalPdf = (localDev as any).mapaPdfOriginalBase64;
       const pdfUrl = (localDev as any).mapaPdfUrl;
       const hasPdf = Boolean(originalPdf || pdfUrl);
@@ -5509,118 +5646,132 @@ const LotDashboard = ({
             const buffer = dataUrlToArrayBuffer(originalPdf);
             pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
           } else if (pdfUrl) {
-            pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
-          }
-          if (!pdfDoc) throw new Error("Não foi possível carregar o documento PDF.");
-
-          const pageNum = (localDev as any).mapaPdfPagina || 1;
-          const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
-          const baseViewport = page.getViewport({ scale: 1 });
-          // Resolução ultra-alta: largura alvo entre 3000px e 4000px, sem estourar 8192px
-          const targetW = Math.min(4000, Math.max(2400, baseViewport.width * 3));
-          const exportScale = Math.min(8192 / Math.max(baseViewport.width, baseViewport.height), targetW / baseViewport.width);
-          const viewport = page.getViewport({ scale: exportScale });
-          mapCanvas = document.createElement("canvas");
-          mapCanvas.width = Math.floor(viewport.width);
-          mapCanvas.height = Math.floor(viewport.height);
-          const pctx = mapCanvas.getContext("2d")!;
-          pctx.imageSmoothingEnabled = true;
-          pctx.imageSmoothingQuality = "high";
-          await page.render({ canvasContext: pctx, viewport }).promise;
-          imgW = mapCanvas.width;
-          imgH = mapCanvas.height;
-        } catch (err) {
-          // Fallback gracioso caso o PDF falhe: tentar usar o canvas já renderizado na tela ou a imagem estática
-          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
-          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
-            mapCanvas = document.createElement("canvas");
-            mapCanvas.width = activeCanvas.width;
-            mapCanvas.height = activeCanvas.height;
-            const actx = mapCanvas.getContext("2d")!;
-            actx.drawImage(activeCanvas, 0, 0);
-            imgW = mapCanvas.width;
-            imgH = mapCanvas.height;
-          } else {
-            reject(new Error("Erro ao renderizar PDF para download: " + String((err as any)?.message || err)));
-            return;
-          }
-        }
-      } else {
-        const imgSrc = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal || (mapaImagem !== "pdf" ? mapaImagem : "");
-        if (!imgSrc) {
-          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
-          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
-            mapCanvas = document.createElement("canvas");
-            mapCanvas.width = activeCanvas.width;
-            mapCanvas.height = activeCanvas.height;
-            const actx = mapCanvas.getContext("2d")!;
-            actx.drawImage(activeCanvas, 0, 0);
-            imgW = mapCanvas.width;
-            imgH = mapCanvas.height;
-          } else {
-            reject(new Error("Nenhum mapa carregado para baixar."));
-            return;
-          }
-        } else {
-          try {
-            mapCanvas = await new Promise<HTMLCanvasElement>((resImg, rejImg) => {
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              img.onload = () => {
-                const c = document.createElement("canvas");
-                c.width = img.naturalWidth || img.width;
-                c.height = img.naturalHeight || img.height;
-                const ictx = c.getContext("2d")!;
-                ictx.imageSmoothingEnabled = true;
-                ictx.imageSmoothingQuality = "high";
-                ictx.drawImage(img, 0, 0, c.width, c.height);
-                resImg(c);
-              };
-              img.onerror = () => rejImg(new Error("Erro ao carregar imagem do mapa."));
-              const imgSrcFinal = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal || (mapaImagem !== "pdf" ? mapaImagem : "");
-              if (imgSrcFinal && imgSrcFinal.startsWith('http')) {
-                fetch(imgSrcFinal).then(r => r.blob()).then(blob => {
-                  img.src = URL.createObjectURL(blob);
-                }).catch(() => { img.src = imgSrcFinal; });
-              } else {
-                img.src = imgSrcFinal;
-              }
-            });
-            imgW = mapCanvas.width;
-            imgH = mapCanvas.height;
-
-            // Se houver configuração de corte salva que ainda não foi aplicada ao canvas base:
-            const crop = (localDev as any).mapaCrop;
-            if (crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
-              const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
-              const expectedCropW = naturalW ? Math.round((crop.width / 100) * naturalW) : 0;
-              if (expectedCropW > 0 && Math.abs(mapCanvas.width - naturalW) < Math.abs(mapCanvas.width - expectedCropW)) {
-                const sx = Math.max(0, Math.round((crop.x / 100) * mapCanvas.width));
-                const sy = Math.max(0, Math.round((crop.y / 100) * mapCanvas.height));
-                const sw = Math.min(mapCanvas.width - sx, Math.round((crop.width / 100) * mapCanvas.width));
-                const sh = Math.min(mapCanvas.height - sy, Math.round((crop.height / 100) * mapCanvas.height));
-                if (sw > 0 && sh > 0) {
-                  const croppedC = document.createElement("canvas");
-                  croppedC.width = sw;
-                  croppedC.height = sh;
-                  const cctx = croppedC.getContext("2d")!;
-                  cctx.imageSmoothingEnabled = true;
-                  cctx.imageSmoothingQuality = "high";
-                  cctx.drawImage(mapCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
-                  mapCanvas = croppedC;
-                  imgW = sw;
-                  imgH = sh;
-                }
+            try {
+              pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+            } catch {
+              // Se falhar direto (ex: CORS), buscar via proxy de imagem
+              const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(pdfUrl)}`;
+              const pRes = await fetch(proxyUrl);
+              if (pRes.ok) {
+                const pBuf = await pRes.arrayBuffer();
+                pdfDoc = await pdfjsLib.getDocument({ data: pBuf }).promise;
               }
             }
-          } catch (err) {
-            reject(err);
-            return;
+          }
+
+          if (pdfDoc) {
+            const pageNum = (localDev as any).mapaPdfPagina || 1;
+            const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
+            const baseViewport = page.getViewport({ scale: 1 });
+            const targetW = Math.min(4000, Math.max(2400, baseViewport.width * 3));
+            const exportScale = Math.min(8192 / Math.max(baseViewport.width, baseViewport.height), targetW / baseViewport.width);
+            const viewport = page.getViewport({ scale: exportScale });
+            const pCanvas = document.createElement("canvas");
+            pCanvas.width = Math.floor(viewport.width);
+            pCanvas.height = Math.floor(viewport.height);
+            const pctx = pCanvas.getContext("2d")!;
+            pctx.imageSmoothingEnabled = true;
+            pctx.imageSmoothingQuality = "high";
+            await page.render({ canvasContext: pctx, viewport }).promise;
+            mapCanvas = pCanvas;
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+          }
+        } catch (pdfErr) {
+          console.warn("[download] PDF falhou para download, recorrendo à imagem salva:", pdfErr);
+        }
+      }
+
+      // 2. Se o PDF não gerou canvas (ou falhou), carregar imagem base com todos os fallbacks
+      if (!mapCanvas) {
+        const candidateUrls = [
+          (localDev as any).mapaImagemHighResBase64,
+          (localDev as any).mapaImagemBase64,
+          (localDev as any).mapaImagemUrl,
+          (localDev as any).mapaImagemMedResBase64,
+          pdfRenderedUrl,
+          mapaImagemOriginal,
+          mapaImagem !== "pdf" ? mapaImagem : "",
+        ].filter(Boolean) as string[];
+
+        let loaded = false;
+        for (const candidate of candidateUrls) {
+          try {
+            mapCanvas = await carregarImagemBaseMapa(candidate);
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+            loaded = true;
+            break;
+          } catch (cErr) {
+            console.warn("[download] Candidato de imagem falhou, tentando próximo:", cErr);
+          }
+        }
+
+        // Se ainda não carregou, tentar capturar canvas ativo da tela ou tag <img> no DOM
+        if (!loaded || !mapCanvas) {
+          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
+            const fallbackC = document.createElement("canvas");
+            fallbackC.width = activeCanvas.width;
+            fallbackC.height = activeCanvas.height;
+            const actx = fallbackC.getContext("2d")!;
+            actx.drawImage(activeCanvas, 0, 0);
+            mapCanvas = fallbackC;
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+            loaded = true;
+          } else {
+            const domImg = (mapImageFullscreenRef.current as HTMLImageElement) ||
+              (mapImageRef.current?.querySelector?.('img') as HTMLImageElement) ||
+              (mapImageRef.current as any as HTMLImageElement) ||
+              (document.querySelector('img[alt="Mapa do empreendimento"]') as HTMLImageElement) ||
+              (document.querySelector('img[alt*="mapa" i]') as HTMLImageElement);
+
+            if (domImg && domImg.src) {
+              try {
+                mapCanvas = await carregarImagemBaseMapa(domImg.src);
+                imgW = mapCanvas.width;
+                imgH = mapCanvas.height;
+                loaded = true;
+              } catch (domErr) {
+                console.warn("[download] Falha ao carregar imagem a partir do DOM:", domErr);
+              }
+            }
+          }
+        }
+
+        if (!loaded || !mapCanvas) {
+          reject(new Error("Nenhum mapa ou imagem encontrado para exportar. Por favor, certifique-se de que o mapa está carregado."));
+          return;
+        }
+
+        // Se houver configuração de corte salva que ainda não foi aplicada:
+        const crop = (localDev as any).mapaCrop;
+        if (crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
+          const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
+          const expectedCropW = naturalW ? Math.round((crop.width / 100) * naturalW) : 0;
+          if (expectedCropW > 0 && Math.abs(mapCanvas.width - naturalW) < Math.abs(mapCanvas.width - expectedCropW)) {
+            const sx = Math.max(0, Math.round((crop.x / 100) * mapCanvas.width));
+            const sy = Math.max(0, Math.round((crop.y / 100) * mapCanvas.height));
+            const sw = Math.min(mapCanvas.width - sx, Math.round((crop.width / 100) * mapCanvas.width));
+            const sh = Math.min(mapCanvas.height - sy, Math.round((crop.height / 100) * mapCanvas.height));
+            if (sw > 0 && sh > 0) {
+              const croppedC = document.createElement("canvas");
+              croppedC.width = sw;
+              croppedC.height = sh;
+              const cctx = croppedC.getContext("2d")!;
+              cctx.imageSmoothingEnabled = true;
+              cctx.imageSmoothingQuality = "high";
+              cctx.drawImage(mapCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+              mapCanvas = croppedC;
+              imgW = sw;
+              imgH = sh;
+            }
           }
         }
       }
 
-      // 2. Desenhar as bolinhas sobre o mapa
+      // 3. Desenhar as bolinhas sobre o mapa
       const mapCtx = mapCanvas.getContext("2d")!;
       const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
       const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
@@ -5647,7 +5798,7 @@ const LotDashboard = ({
         mapCtx.arc(x, y, radius, 0, Math.PI * 2);
 
         if (usePrecoColors) {
-          // Aba Preços: preenchimento pela cor do preço, sem sombra/efeito.
+          // Aba Preços: preenchimento pela cor da faixa de preço
           // Contorno com cor do status: azul disponível, vermelho vendido, amarelo reservado.
           const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
           mapCtx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6");
@@ -5659,7 +5810,7 @@ const LotDashboard = ({
           mapCtx.strokeStyle = indisponivel ? "#dc2626" : reservado ? "#d97706" : "#2563eb";
           mapCtx.stroke();
         } else {
-          // Aba Mapa: padrão clássico (azul disponível, vermelho vendido, amarelo reservado) com borda branca e sombra
+          // Aba Disponíveis: preenchimento do status com contorno branco clássico e sombra sutil
           mapCtx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6";
           mapCtx.shadowColor = 'rgba(0,0,0,0.3)';
           mapCtx.shadowBlur = Math.round(radius * 0.25);
@@ -5674,7 +5825,7 @@ const LotDashboard = ({
         mapCtx.restore();
       });
 
-      // 3. Montar Canvas final com Cabeçalho e Rodapé de Preços
+      // 4. Montar Canvas final com Cabeçalho e Rodapé de Preços
       const headerH = Math.max(80, Math.round(imgW * 0.095));
       const hasFooter = usePrecoColors && faixasPrecoGlobal.length > 0;
       const footerH = hasFooter ? Math.round(imgW * (faixasPrecoGlobal.length > 5 ? 0.30 : 0.18)) : 0;
@@ -5696,7 +5847,7 @@ const LotDashboard = ({
       // Desenhar mapa no centro
       finalCtx.drawImage(mapCanvas, 0, headerH);
 
-      // Desenhar rodapé com os cards de preço lado a lado (igual à imagem anexada)
+      // Desenhar rodapé com os cards de preço lado a lado
       if (hasFooter) {
         desenharRodapePrecosHorizontalNoCanvas(finalCtx, imgW, headerH + imgH, footerH);
       }
@@ -5710,72 +5861,65 @@ const LotDashboard = ({
   const [downloadProcessando, setDownloadProcessando] = React.useState<'img' | 'pdf' | null>(null);
 
   const baixarMapaInterativoImagem = async (forcarModoPreco?: boolean) => {
-    try {
-      const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
-      const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
-      const filename = getNomeArquivoMapaExportado("png", isPrecoTab);
-      
-      const blob = await new Promise<Blob | null>((res) => {
-        canvas.toBlob((b) => res(b), "image/png", 1.0);
-      });
+    const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
+    const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
+    const filename = getNomeArquivoMapaExportado("png", isPrecoTab);
 
-      if (blob) {
-        triggerDownload(blob, filename);
-      } else {
-        const link = document.createElement("a");
-        link.download = filename;
-        link.href = canvas.toDataURL("image/png", 1.0);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-    } catch (error: any) {
-      console.error("Erro no download de imagem:", error);
-      alert(error?.message || "Não foi possível baixar o mapa com as bolinhas.");
+    const blob = await new Promise<Blob | null>((res) => {
+      canvas.toBlob((b) => res(b), "image/png", 0.95);
+    });
+
+    if (blob) {
+      triggerDownload(blob, filename);
+    } else {
+      const dataUrl = canvas.toDataURL("image/png");
+      const link = document.createElement("a");
+      link.download = filename;
+      link.href = dataUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        try { if (document.body.contains(link)) document.body.removeChild(link); } catch {}
+      }, 5000);
     }
   };
 
   const baixarMapaInterativoPdf = async (forcarModoPreco?: boolean) => {
+    const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
+    const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
+    const { jsPDF } = await import("jspdf");
+    const landscape = canvas.width >= canvas.height;
+    const pdf = new jsPDF({
+      orientation: landscape ? "landscape" : "portrait",
+      unit: "px",
+      format: [canvas.width, canvas.height],
+      compress: true,
+    });
+
+    let imgData: string;
     try {
-      const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
-      const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
-      const { jsPDF } = await import("jspdf");
-      const landscape = canvas.width >= canvas.height;
-      // Formato baseado na proporção real do mapa
-      const pdf = new jsPDF({
-        orientation: landscape ? "landscape" : "portrait",
-        unit: "px",
-        format: [canvas.width, canvas.height],
-        compress: false,
-      });
+      imgData = canvas.toDataURL("image/jpeg", 0.92);
+      pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
+    } catch {
+      const scaleDown = document.createElement("canvas");
+      const maxDim = 2800;
+      const ratio = Math.min(1, maxDim / Math.max(canvas.width, canvas.height));
+      scaleDown.width = Math.round(canvas.width * ratio);
+      scaleDown.height = Math.round(canvas.height * ratio);
+      const sctx = scaleDown.getContext("2d")!;
+      sctx.drawImage(canvas, 0, 0, scaleDown.width, scaleDown.height);
+      imgData = scaleDown.toDataURL("image/jpeg", 0.90);
+      pdf.addImage(imgData, "JPEG", 0, 0, canvas.width, canvas.height, undefined, "FAST");
+    }
 
-      // Se o canvas for muito grande para dataURL, usar JPEG ou canvas direto
-      let imgData: string;
-      try {
-        imgData = canvas.toDataURL("image/png", 1.0);
-      } catch {
-        imgData = canvas.toDataURL("image/jpeg", 0.95);
-      }
-
-      pdf.addImage(
-        imgData,
-        "PNG",
-        0, 0,
-        canvas.width, canvas.height,
-        undefined,
-        "FAST"
-      );
-
-      const filename = getNomeArquivoMapaExportado("pdf", isPrecoTab);
-      const pdfBlob = pdf.output("blob");
-      if (pdfBlob) {
-        triggerDownload(pdfBlob, filename);
-      } else {
-        pdf.save(filename);
-      }
-    } catch (error: any) {
-      console.error("Erro no download de PDF:", error);
-      alert(error?.message || "Não foi possível baixar o mapa em PDF.");
+    const filename = getNomeArquivoMapaExportado("pdf", isPrecoTab);
+    const pdfBlob = pdf.output("blob");
+    if (pdfBlob) {
+      triggerDownload(pdfBlob, filename);
+    } else {
+      pdf.save(filename);
     }
   };
 
@@ -5785,8 +5929,8 @@ const LotDashboard = ({
       await baixarMapaInterativoImagem(forcarModoPreco);
       setDownloadModalAberto(false);
     } catch (err: any) {
-      console.error(err);
-      alert(err?.message || "Erro ao baixar imagem.");
+      console.error("Erro ao baixar imagem do mapa:", err);
+      alert(err?.message || "Não foi possível baixar a imagem do mapa.");
     } finally {
       setDownloadProcessando(null);
     }
@@ -5798,8 +5942,8 @@ const LotDashboard = ({
       await baixarMapaInterativoPdf(forcarModoPreco);
       setDownloadModalAberto(false);
     } catch (err: any) {
-      console.error(err);
-      alert(err?.message || "Erro ao baixar PDF.");
+      console.error("Erro ao baixar PDF do mapa:", err);
+      alert(err?.message || "Não foi possível baixar o PDF do mapa.");
     } finally {
       setDownloadProcessando(null);
     }
@@ -8759,77 +8903,6 @@ const LotDashboard = ({
                   );
                 })}
               </div>
-
-              {/* RODAPÉ DE PREÇOS EM TELA CHEIA (visível na aba de preços em tela cheia no desktop e celular) */}
-              {mode === "precos" && faixasPrecoGlobal.length > 0 && mapFullscreen && (
-                <div className="absolute bottom-3 sm:bottom-5 left-3 sm:left-4 right-16 sm:right-24 z-[100001] pointer-events-auto">
-                  <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200/90 p-2 sm:p-3 shadow-xl shadow-slate-900/10 space-y-1.5 sm:space-y-0 sm:flex sm:items-center sm:gap-2.5">
-                    <div className="flex-shrink-0 px-2 sm:px-2.5 sm:border-r border-slate-200 flex items-center justify-between sm:flex-col">
-                      <span className="text-[10px] font-black uppercase text-slate-800 block tracking-wider leading-tight">Preços</span>
-                      <span className="text-[9px] text-slate-500 font-bold">{faixasPrecoGlobal.length} {faixasPrecoGlobal.length === 1 ? "faixa" : "faixas"}</span>
-                    </div>
-                    <div className={`grid gap-1.5 sm:flex sm:items-center sm:gap-2 sm:overflow-x-auto py-0.5 ${
-                      faixasPrecoGlobal.length <= 2 ? 'grid-cols-2' :
-                      faixasPrecoGlobal.length === 3 ? 'grid-cols-3' :
-                      faixasPrecoGlobal.length === 4 ? 'grid-cols-2' :
-                      'grid-cols-3'
-                    }`} style={{ scrollbarWidth: 'none' }}>
-                      {faixasPrecoGlobal.map((faixa: any) => {
-                        const lotsFaixa = mapaPontos.filter((p: any) => {
-                          const info = getPrecoInfoDoLote(p.quadra, p.lote, p);
-                          return info?.preco === faixa.preco;
-                        });
-                        const infoSample = lotsFaixa[0] ? getPrecoInfoDoLote(lotsFaixa[0].quadra, lotsFaixa[0].lote, lotsFaixa[0]) : null;
-                        const entrada = infoSample?.entrada || 0;
-                        const parcelas = infoSample?.parcelas || 0;
-                        const avista = infoSample?.avista || parcelas === 0;
-                        const vlParcela = infoSample?.parcela || (parcelas > 0 ? Math.round((faixa.preco - entrada) / parcelas) : 0);
-
-                        return (
-                          <div
-                            key={faixa.preco}
-                            onClick={() => {
-                              if (lotsFaixa[0]) {
-                                const p = lotsFaixa[0];
-                                setSelectedPoint({ ...p, venda: vendaDoLote(p.quadra, p.lote) });
-                              }
-                            }}
-                            className="bg-slate-50 hover:bg-slate-100/90 rounded-xl p-1.5 sm:px-2.5 sm:py-1.5 border border-slate-200/80 flex flex-col justify-between sm:flex-row sm:items-center gap-1 sm:gap-2.5 transition-all cursor-pointer shadow-xs overflow-hidden"
-                            title={`Ver lote desta faixa (${lotsFaixa.length} lotes)`}
-                          >
-                            <div className="flex items-center gap-1 sm:gap-2 min-w-0">
-                              <span
-                                className="w-2.5 h-2.5 sm:w-3.5 sm:h-3.5 rounded-full border border-slate-300 flex-shrink-0"
-                                style={{ backgroundColor: faixa.color }}
-                              />
-                              <div className="leading-tight text-left min-w-0">
-                                <div className="flex items-center gap-1 sm:gap-1.5">
-                                  <span className="text-[11px] sm:text-xs md:text-sm font-black text-slate-900 whitespace-nowrap truncate">
-                                    R$ {Number(faixa.preco).toLocaleString('pt-BR')}
-                                  </span>
-                                  <span className="text-[8.5px] sm:text-[9px] font-black px-1.5 py-0.2 rounded bg-white border border-slate-200 text-slate-700">
-                                    {lotsFaixa.length}
-                                  </span>
-                                </div>
-                                <div className="text-[8px] sm:text-[9px] text-slate-500 whitespace-nowrap truncate mt-0.5">
-                                  {avista ? (
-                                    <span className="text-emerald-700 font-bold">À Vista</span>
-                                  ) : (
-                                    <span>
-                                      {entrada > 0 ? `Entr. R$ ${Number(entrada).toLocaleString('pt-BR')} + ` : ''}
-                                      <strong className="text-slate-800 font-bold">{parcelas}× R$ {Number(vlParcela).toLocaleString('pt-BR')}</strong>
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              )}
 
               {/* Controles flutuantes de zoom e ajuste em tela cheia */}
               <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
@@ -20252,17 +20325,6 @@ const ContratosSection = ({
       },
     });
     return canvas;
-  };
-
-  const triggerDownload = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    setTimeout(() => URL.revokeObjectURL(url), 10000);
   };
 
   const handleDownloadImage = async () => {
