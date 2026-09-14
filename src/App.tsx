@@ -4581,7 +4581,12 @@ const LotDashboard = ({
           const buffer = dataUrlToArrayBuffer(originalPdf);
           pdfDocCacheRef.current = await pdfjsLib.getDocument({ data: buffer }).promise;
         } else if (pdfUrl) {
-          pdfDocCacheRef.current = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+          try {
+            pdfDocCacheRef.current = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+          } catch (fetchErr: any) {
+            console.warn("[PDF Direct] Arquivo remoto inacessível:", fetchErr?.message || fetchErr);
+            return;
+          }
         }
       }
       const pdfDoc = pdfDocCacheRef.current;
@@ -4634,7 +4639,7 @@ const LotDashboard = ({
       updateDisplayedMapScale();
     } catch (err: any) {
       if (err?.name !== "RenderingCancelledException") {
-        console.error("Erro ao renderizar PDF direto:", err);
+        console.warn("[PDF Direct] Aviso ao renderizar PDF direto:", err?.message || err);
       }
     }
   };
@@ -25950,6 +25955,15 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [isOnline, setIsOnline] = useState(() => typeof navigator === "undefined" ? true : navigator.onLine);
   const [showOfflineBanner, setShowOfflineBanner] = useState(!navigator.onLine);
   const [offlineDraftCount, setOfflineDraftCount] = useState(() => readOfflineVendaDrafts().length);
+  const [dbStatusAlert, setDbStatusAlert] = useState<{ isQuotaExceeded?: boolean; error?: string } | null>(null);
+
+  useEffect(() => {
+    dbService.getDbStatus().then(status => {
+      if (status?.supabase?.isQuotaExceeded) {
+        setDbStatusAlert({ isQuotaExceeded: true, error: status.supabase.error || '' });
+      }
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const refreshOnlineState = () => {
@@ -27175,6 +27189,18 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
         <div style={{ position:'fixed', top:0, left:0, right:0, zIndex:99999, background:'linear-gradient(90deg,#92400e,#b45309)', color:'white', padding:'7px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, fontWeight:700, boxShadow:'0 2px 12px rgba(0,0,0,0.3)' }}>
           <span>📵 Modo Offline Ativo — Dados locais. Sync pausado. Mapas e lotes disponíveis.</span>
           <button onClick={()=>setShowOfflineBanner(false)} style={{background:'none',border:'none',color:'white',cursor:'pointer',fontSize:18}}>×</button>
+        </div>
+      )}
+      {/* BANNER STATUS SUPABASE / COTA */}
+      {dbStatusAlert && (
+        <div style={{ position:'fixed', top: showOfflineBanner ? 34 : 0, left:0, right:0, zIndex:99998, background:'linear-gradient(90deg,#9a3412,#c2410c)', color:'white', padding:'8px 16px', display:'flex', alignItems:'center', justifyContent:'space-between', fontSize:12, fontWeight:600, boxShadow:'0 2px 12px rgba(0,0,0,0.3)', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flex: 1 }}>
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>
+              <strong>Aviso de Nuvem:</strong> A cota do Supabase atingiu o limite gratuito (<em>exceed_egress_quota</em>). O sistema está operando com <strong>dados locais persistidos</strong>. Para restabelecer a nuvem, atualize o plano ou desative o Spend Cap no painel do Supabase.
+            </span>
+          </div>
+          <button onClick={() => setDbStatusAlert(null)} style={{ background:'none', border:'none', color:'white', cursor:'pointer', fontSize:18, padding:'0 6px' }}>×</button>
         </div>
       )}
       {/* Modal Prévia de Documentos */}

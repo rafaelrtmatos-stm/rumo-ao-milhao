@@ -98,6 +98,26 @@ async function apiDelete(path: string): Promise<void> {
 // ── Empreendimentos ───────────────────────────────────────────────────────────
 
 async function getEmpreendimentos(): Promise<Empreendimento[]> {
+  // 1. Ler dados salvos localmente (Dexie e localStorage) para prevenir perda de visibilidade
+  let localItems: Empreendimento[] = [];
+  try {
+    const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
+    localItems = records.map(r => injectCoordenadas(r.data));
+  } catch (e) {
+    console.warn('[db] Erro ao ler Dexie:', e);
+  }
+  if (localItems.length === 0) {
+    try {
+      const raw = localStorage.getItem('lotes_empreendimentos');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          localItems = parsed.map((r: any) => injectCoordenadas(r));
+        }
+      }
+    } catch {}
+  }
+
   if (navigator.onLine) {
     try {
       const controller = new AbortController();
@@ -107,28 +127,37 @@ async function getEmpreendimentos(): Promise<Empreendimento[]> {
       }).finally(() => clearTimeout(timer));
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const items: Empreendimento[] = await res.json();
-      // Salva no IndexedDB em segundo plano com bulkPut sem travar a inicialização do app
-      (async () => {
-        try {
-          const now = Date.now();
-          const bulkItems = items.map(item => ({
-            id: item.id,
-            data: item,
-            syncStatus: 'synced' as const,
-            updatedAt: now,
-          }));
-          await db.empreendimentos.bulkPut(bulkItems);
-        } catch (cacheErr) {
-          console.warn('[db] Falha ao persistir cache local de empreendimentos:', cacheErr);
-        }
-      })();
-      return items.map(r => injectCoordenadas(r));
+
+      if (Array.isArray(items) && items.length > 0) {
+        // Salva no IndexedDB em segundo plano com bulkPut sem travar a inicialização do app
+        (async () => {
+          try {
+            const now = Date.now();
+            const bulkItems = items.map(item => ({
+              id: item.id,
+              data: item,
+              syncStatus: 'synced' as const,
+              updatedAt: now,
+            }));
+            await db.empreendimentos.bulkPut(bulkItems);
+          } catch (cacheErr) {
+            console.warn('[db] Falha ao persistir cache local de empreendimentos:', cacheErr);
+          }
+        })();
+        return items.map(r => injectCoordenadas(r));
+      } else if (localItems.length > 0) {
+        // Se o servidor estiver vazio (ex: reinício enquanto Supabase estava inacessível),
+        // preserva os dados que o usuário já tinha e os envia ao servidor para persistir em disco!
+        console.warn('[db] Servidor com 0 empreendimentos; restaurando cache local salvo...');
+        saveEmpreendimentos(localItems).catch(console.warn);
+        return localItems;
+      }
     } catch (err) {
       console.warn('[db] getEmpreendimentos API falhou, usando cache:', err);
     }
   }
-  const records = await db.empreendimentos.filter(r => r.syncStatus !== 'deleted').toArray();
-  return records.map(r => injectCoordenadas(r.data));
+
+  return localItems;
 }
 
 async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
@@ -249,6 +278,23 @@ function stripHeavy(item: Empreendimento): Empreendimento {
 // ── Clientes ──────────────────────────────────────────────────────────────────
 
 async function getClientes(): Promise<Cliente[]> {
+  let localClientes: Cliente[] = [];
+  try {
+    const records = await db.clientes.filter(r => r.syncStatus !== 'deleted').toArray();
+    localClientes = records.map(r => r.data);
+  } catch (e) {
+    console.warn('[db] Erro ao ler clientes do Dexie:', e);
+  }
+  if (localClientes.length === 0) {
+    try {
+      const raw = localStorage.getItem('lotes_clientes');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) localClientes = parsed;
+      }
+    } catch {}
+  }
+
   if (navigator.onLine) {
     try {
       const controller2 = new AbortController();
@@ -258,28 +304,34 @@ async function getClientes(): Promise<Cliente[]> {
       }).finally(() => clearTimeout(timer2));
       if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
       const items: Cliente[] = await res2.json();
-      // Salva no IndexedDB em segundo plano com bulkPut
-      (async () => {
-        try {
-          const now = Date.now();
-          const bulkItems = items.map(item => ({
-            id: item.id,
-            data: item,
-            syncStatus: 'synced' as const,
-            updatedAt: now,
-          }));
-          await db.clientes.bulkPut(bulkItems);
-        } catch (cacheErr) {
-          console.warn('[db] Falha ao persistir cache local de clientes:', cacheErr);
-        }
-      })();
-      return items;
+
+      if (Array.isArray(items) && items.length > 0) {
+        (async () => {
+          try {
+            const now = Date.now();
+            const bulkItems = items.map(item => ({
+              id: item.id,
+              data: item,
+              syncStatus: 'synced' as const,
+              updatedAt: now,
+            }));
+            await db.clientes.bulkPut(bulkItems);
+          } catch (cacheErr) {
+            console.warn('[db] Falha ao persistir cache local de clientes:', cacheErr);
+          }
+        })();
+        return items;
+      } else if (localClientes.length > 0) {
+        console.warn('[db] Servidor com 0 clientes; restaurando cache local salvo...');
+        saveClientes(localClientes).catch(console.warn);
+        return localClientes;
+      }
     } catch (err) {
       console.warn('[db] getClientes API falhou, usando cache:', err);
     }
   }
-  const records = await db.clientes.filter(r => r.syncStatus !== 'deleted').toArray();
-  return records.map(r => r.data);
+
+  return localClientes;
 }
 
 async function saveClientes(items: Cliente[]): Promise<void> {
@@ -316,31 +368,53 @@ async function upsertCliente(item: Cliente): Promise<void> {
 // ── Vendas ────────────────────────────────────────────────────────────────────
 
 async function getVendas(): Promise<Venda[]> {
+  let localVendas: Venda[] = [];
+  try {
+    const records = await db.vendas.filter(r => r.syncStatus !== 'deleted').toArray();
+    localVendas = records.map(r => r.data);
+  } catch (e) {
+    console.warn('[db] Erro ao ler vendas do Dexie:', e);
+  }
+  if (localVendas.length === 0) {
+    try {
+      const raw = localStorage.getItem('lotes_vendas');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed) && parsed.length > 0) localVendas = parsed;
+      }
+    } catch {}
+  }
+
   if (navigator.onLine) {
     try {
       const items = await apiGet<Venda[]>('/api/vendas');
-      // Salva no IndexedDB em segundo plano com bulkPut
-      (async () => {
-        try {
-          const now = Date.now();
-          const bulkItems = items.map(item => ({
-            id: item.id,
-            data: item,
-            syncStatus: 'synced' as const,
-            updatedAt: now,
-          }));
-          await db.vendas.bulkPut(bulkItems);
-        } catch (cacheErr) {
-          console.warn('[db] Falha ao persistir cache local de vendas:', cacheErr);
-        }
-      })();
-      return items;
+      if (Array.isArray(items) && items.length > 0) {
+        (async () => {
+          try {
+            const now = Date.now();
+            const bulkItems = items.map(item => ({
+              id: item.id,
+              data: item,
+              syncStatus: 'synced' as const,
+              updatedAt: now,
+            }));
+            await db.vendas.bulkPut(bulkItems);
+          } catch (cacheErr) {
+            console.warn('[db] Falha ao persistir cache local de vendas:', cacheErr);
+          }
+        })();
+        return items;
+      } else if (localVendas.length > 0) {
+        console.warn('[db] Servidor com 0 vendas; restaurando cache local salvo...');
+        saveVendas(localVendas).catch(console.warn);
+        return localVendas;
+      }
     } catch (err) {
       console.warn('[db] getVendas API falhou, usando cache:', err);
     }
   }
-  const records = await db.vendas.filter(r => r.syncStatus !== 'deleted').toArray();
-  return records.map(r => r.data);
+
+  return localVendas;
 }
 
 async function saveVendas(items: Venda[]): Promise<void> {
@@ -405,17 +479,33 @@ async function deleteVendaById(id: string): Promise<void> {
 // ── Config ────────────────────────────────────────────────────────────────────
 
 async function getAppConfig(): Promise<AppConfig> {
+  let localCfg: AppConfig | null = null;
+  try {
+    const record = await db.config.get('main');
+    if (record?.data) localCfg = record.data;
+  } catch {}
+  if (!localCfg) {
+    try {
+      const raw = localStorage.getItem('lotes_config');
+      if (raw) localCfg = JSON.parse(raw);
+    } catch {}
+  }
+
   if (navigator.onLine) {
     try {
       const config = await apiGet<AppConfig>('/api/config');
-      await db.config.put({ id: 'main', data: config, syncStatus: 'synced', updatedAt: Date.now() });
-      return config;
+      if (config && (config.vendedores?.length || config.proprietarios?.length || config.theme)) {
+        await db.config.put({ id: 'main', data: config, syncStatus: 'synced', updatedAt: Date.now() });
+        return config;
+      } else if (localCfg) {
+        saveAppConfig(localCfg).catch(console.warn);
+        return localCfg;
+      }
     } catch (err) {
       console.warn('[db] getAppConfig API falhou, usando cache:', err);
     }
   }
-  const record = await db.config.get('main');
-  return record?.data ?? ({} as AppConfig);
+  return localCfg ?? ({} as AppConfig);
 }
 
 async function saveAppConfig(config: AppConfig): Promise<void> {
@@ -486,6 +576,20 @@ export async function forcSync(): Promise<{ synced: number; errors: number }> {
   return processSyncQueue();
 }
 
+export async function getDbStatus(): Promise<{
+  supabase?: { configured: boolean; ok: boolean; error: string | null; isQuotaExceeded: boolean };
+  counts?: { empreendimentos: number; vendas: number; clientes: number };
+}> {
+  try {
+    const res = await authFetch('/api/db-status');
+    if (res.ok) return await res.json();
+  } catch {}
+  return {
+    supabase: { configured: false, ok: false, error: null, isQuotaExceeded: false },
+    counts: { empreendimentos: 0, vendas: 0, clientes: 0 },
+  };
+}
+
 export const supabase = null;
 
 export const dbService = {
@@ -507,5 +611,6 @@ export const dbService = {
   subscribeToClientes,
   subscribeToVendas,
   migrateFromLocalStorage,
+  getDbStatus,
   forcSync,
 };

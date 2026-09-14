@@ -40,7 +40,27 @@ export async function uploadMapaImagem(
   return uploadMapaBlob(webpBlob, empreendimentoId, onProgress, 'webp', 'image/webp');
 }
 
-/** Faz upload direto de um Blob (WEBP/PNG) para o Supabase Storage. Retorna URL pública. */
+async function uploadToServer(blob: Blob | File, filename: string): Promise<string | null> {
+  try {
+    const res = await fetch('/api/upload-mapa', {
+      method: 'POST',
+      headers: {
+        'x-filename': encodeURIComponent(filename),
+        'Content-Type': blob.type || 'application/octet-stream',
+      },
+      body: blob,
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.url) return data.url;
+    }
+  } catch (err) {
+    console.warn('[mapaStorage] Upload local falhou, tentando fallback:', err);
+  }
+  return null;
+}
+
+/** Faz upload direto de um Blob (WEBP/PNG) para o Storage local ou Supabase. Retorna URL pública. */
 export async function uploadMapaBlob(
   blob: Blob,
   empreendimentoId: string,
@@ -48,10 +68,17 @@ export async function uploadMapaBlob(
   ext: string = 'webp',
   contentType: string = 'image/webp'
 ): Promise<string> {
-  onProgress?.(40);
+  onProgress?.(30);
   const nome = `${empreendimentoId}_${Date.now()}.${ext}`;
-  const file = new File([blob], `mapa.${ext}`, { type: contentType });
 
+  // 1. Tentar upload direto no servidor local (100% livre de limite de cota)
+  const localUrl = await uploadToServer(blob, nome);
+  if (localUrl) {
+    onProgress?.(100);
+    return localUrl;
+  }
+
+  const file = new File([blob], `mapa.${ext}`, { type: contentType });
   const supabase = getSupabase();
   if (supabase) {
     try {
@@ -179,7 +206,7 @@ export async function uploadDataUrlOuBlobAsWebP(
   return typeof dataUrlOrBlob === 'string' ? dataUrlOrBlob : URL.createObjectURL(dataUrlOrBlob);
 }
 
-/** Upload de PDF — armazena binário se Supabase configurado, ou retorna base64. */
+/** Upload de PDF — armazena no servidor local ou Supabase, ou retorna base64. */
 export async function uploadMapaPDF(
   file: File,
   empreendimentoId: string,
@@ -187,6 +214,13 @@ export async function uploadMapaPDF(
 ): Promise<string> {
   onProgress?.(10);
   const nome = `${empreendimentoId}_${Date.now()}.pdf`;
+
+  // 1. Tentar upload local no servidor
+  const localUrl = await uploadToServer(file, nome);
+  if (localUrl) {
+    onProgress?.(100);
+    return localUrl;
+  }
 
   const supabase = getSupabase();
   if (supabase) {

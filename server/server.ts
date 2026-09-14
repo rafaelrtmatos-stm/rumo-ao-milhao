@@ -35,11 +35,122 @@ const DEFAULT_USER_ID = "default";
 const JWT_SECRET = process.env.JWT_SECRET || process.env.SESSION_SECRET || "rumo-ao-milhao-jwt-secret-2025";
 // ─────────────────────────────────────────────────────────────────────────────
 
-// In-Memory Data Storage Fallback
+// In-Memory Data Storage Fallback & Local Disk Persistence
 const inMemoryEmpreendimentos = new Map<string, any>();
 const inMemoryClientes = new Map<string, any>();
 const inMemoryVendas = new Map<string, any>();
 let inMemoryConfig: any = { theme: "standard" };
+
+// Arquivos de persistência local em disco (data/*.json)
+const DATA_DIR = path.resolve(process.cwd(), "data");
+const EMPREENDIMENTOS_FILE = path.join(DATA_DIR, "empreendimentos.json");
+const CLIENTES_FILE = path.join(DATA_DIR, "clientes.json");
+const VENDAS_FILE = path.join(DATA_DIR, "vendas.json");
+const CONFIG_FILE = path.join(DATA_DIR, "app_config.json");
+
+let supabaseStatus = {
+  ok: true,
+  lastChecked: Date.now(),
+  error: null as string | null,
+};
+
+function isSupabaseAvailableForRead(): boolean {
+  if (!supabase) return false;
+  if (!supabaseStatus.ok && (supabaseStatus.error || "").includes("exceed_egress_quota")) {
+    const FIVE_MINUTES = 5 * 60 * 1000;
+    if (Date.now() - supabaseStatus.lastChecked < FIVE_MINUTES) {
+      return false; // Evita requisições repetidas e flood de erros no console enquanto a cota de egress estiver excedida
+    }
+  }
+  return true;
+}
+
+function loadLocalFilesData() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+    if (fs.existsSync(EMPREENDIMENTOS_FILE)) {
+      const raw = fs.readFileSync(EMPREENDIMENTOS_FILE, "utf-8");
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && item.id) inMemoryEmpreendimentos.set(item.id, item);
+        }
+        console.log(`[LocalStorage] Carregados ${inMemoryEmpreendimentos.size} empreendimentos do disco.`);
+      }
+    }
+    if (fs.existsSync(CLIENTES_FILE)) {
+      const raw = fs.readFileSync(CLIENTES_FILE, "utf-8");
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && item.id) inMemoryClientes.set(item.id, item);
+        }
+        console.log(`[LocalStorage] Carregados ${inMemoryClientes.size} clientes do disco.`);
+      }
+    }
+    if (fs.existsSync(VENDAS_FILE)) {
+      const raw = fs.readFileSync(VENDAS_FILE, "utf-8");
+      const list = JSON.parse(raw);
+      if (Array.isArray(list)) {
+        for (const item of list) {
+          if (item && item.id) inMemoryVendas.set(item.id, item);
+        }
+        console.log(`[LocalStorage] Carregadas ${inMemoryVendas.size} vendas do disco.`);
+      }
+    }
+    if (fs.existsSync(CONFIG_FILE)) {
+      const raw = fs.readFileSync(CONFIG_FILE, "utf-8");
+      inMemoryConfig = JSON.parse(raw);
+      console.log(`[LocalStorage] Configuração carregada do disco.`);
+    }
+  } catch (e) {
+    console.warn("[LocalStorage] Erro ao carregar dados locais dos arquivos:", e);
+  }
+}
+
+function saveEmpreendimentosToFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const list = Array.from(inMemoryEmpreendimentos.values());
+    fs.writeFileSync(EMPREENDIMENTOS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[LocalStorage] Erro ao salvar empreendimentos no disco:", e);
+  }
+}
+
+function saveClientesToFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const list = Array.from(inMemoryClientes.values());
+    fs.writeFileSync(CLIENTES_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[LocalStorage] Erro ao salvar clientes no disco:", e);
+  }
+}
+
+function saveVendasToFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    const list = Array.from(inMemoryVendas.values());
+    fs.writeFileSync(VENDAS_FILE, JSON.stringify(list, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[LocalStorage] Erro ao salvar vendas no disco:", e);
+  }
+}
+
+function saveConfigFile() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+    fs.writeFileSync(CONFIG_FILE, JSON.stringify(inMemoryConfig, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("[LocalStorage] Erro ao salvar config no disco:", e);
+  }
+}
+
+// Carregar dados persistidos no disco na inicialização do módulo
+loadLocalFilesData();
 
 let geminiAIClient: GoogleGenAI | null = null;
 function getGeminiAI(): GoogleGenAI | null {
@@ -390,13 +501,47 @@ app.get("/api/proxy-image", async (req: any, res) => {
   }
 });
 
+// --- Upload e armazenamento local de mapas (independente de nuvem/Supabase) ---
+const UPLOADS_DIR = path.resolve(process.cwd(), "uploads");
+const MAPAS_DIR = path.join(UPLOADS_DIR, "mapas");
+if (!fs.existsSync(MAPAS_DIR)) {
+  fs.mkdirSync(MAPAS_DIR, { recursive: true });
+}
+app.use("/uploads", express.static(UPLOADS_DIR, {
+  maxAge: "30d",
+  setHeaders: (res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+  }
+}));
+
+app.post("/api/upload-mapa", express.raw({ type: "*/*", limit: "150mb" }), async (req: any, res) => {
+  try {
+    const rawFilename = req.headers["x-filename"] || `mapa_${Date.now()}.webp`;
+    const safeName = decodeURIComponent(String(rawFilename)).replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = path.join(MAPAS_DIR, safeName);
+    fs.writeFileSync(filePath, req.body);
+    const publicUrl = `/uploads/mapas/${safeName}`;
+    console.log(`[Upload] Mapa salvo localmente com sucesso: ${filePath} (${req.body.length} bytes)`);
+    return res.json({ ok: true, url: publicUrl, size: req.body.length });
+  } catch (err: any) {
+    console.error("[Upload] Erro ao salvar mapa localmente:", err?.message || err);
+    return res.status(500).json({ error: err?.message || "Erro no upload local" });
+  }
+});
+
 // --- Empreendimentos ---
 app.get("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    if (supabase) {
+    if (isSupabaseAvailableForRead()) {
       const { data, error } = await supabase.from("empreendimentos").select("id, data");
-      if (!error && data && data.length > 0) {
+      if (error) {
+        supabaseStatus = { ok: false, lastChecked: Date.now(), error: error.message };
+        if (!error.message.includes("exceed_egress_quota")) {
+          console.warn("[Empreendimentos] Supabase query error:", error.message);
+        }
+      } else if (data && data.length > 0) {
+        supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
         const items = data.map((r: any) => ({
           ...(r.data || {}),
           id: r.id || r.data?.id,
@@ -404,11 +549,12 @@ app.get("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
         for (const item of items) {
           if (item.id) inMemoryEmpreendimentos.set(item.id, item);
         }
+        saveEmpreendimentosToFile();
         return res.json(items);
       }
     }
   } catch (e: any) {
-    console.warn("[Empreendimentos] Supabase fetch error, falling back:", e?.message);
+    supabaseStatus = { ok: false, lastChecked: Date.now(), error: e?.message || "Erro Supabase" };
   }
   try {
     if (isDbAvailable) {
@@ -429,6 +575,7 @@ app.post("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
     for (const item of items) {
       inMemoryEmpreendimentos.set(item.id, item);
     }
+    saveEmpreendimentosToFile();
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
@@ -487,6 +634,7 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
       dataToSave.mapaRecortado = true;
     }
     inMemoryEmpreendimentos.set(req.params.id, dataToSave);
+    saveEmpreendimentosToFile();
 
     if (supabase) {
       await supabase.from("empreendimentos").upsert({
@@ -515,6 +663,7 @@ app.put("/api/empreendimentos/:id/pontos", isAuthenticated, async (req: any, res
     const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
     const updatedData = { ...existing, mapaPontos };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
+    saveEmpreendimentosToFile();
 
     if (supabase) {
       await supabase.from("empreendimentos").upsert({
@@ -541,6 +690,7 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
     const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
     const updatedData = { ...existing, lotesInfo };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
+    saveEmpreendimentosToFile();
 
     if (supabase) {
       await supabase.from("empreendimentos").upsert({
@@ -596,6 +746,7 @@ app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) 
       ...(isRecortado ? { mapaPdfOriginalBase64: null, mapaPdfUrl: null, mapaPdfOriginalName: null, mapaPdfPagina: null } : {}),
     };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
+    saveEmpreendimentosToFile();
 
     if (supabase) {
       await supabase.from("empreendimentos").upsert({
@@ -618,6 +769,7 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
   try {
     const { id } = req.params;
     inMemoryEmpreendimentos.delete(id);
+    saveEmpreendimentosToFile();
     if (supabase) {
       await supabase.from("empreendimentos").delete().eq("id", id);
     }
@@ -635,9 +787,12 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
 app.get("/api/clientes", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    if (supabase) {
+    if (isSupabaseAvailableForRead()) {
       const { data, error } = await supabase.from("clientes").select("id, data");
-      if (!error && data && data.length > 0) {
+      if (error) {
+        supabaseStatus = { ok: false, lastChecked: Date.now(), error: error.message };
+      } else if (data && data.length > 0) {
+        supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
         const items = data.map((r: any) => ({
           ...(r.data || {}),
           id: r.id || r.data?.id,
@@ -645,6 +800,7 @@ app.get("/api/clientes", isAuthenticated, async (req: any, res) => {
         for (const it of items) {
           if (it.id) inMemoryClientes.set(it.id, it);
         }
+        saveClientesToFile();
         return res.json(items);
       }
     }
@@ -687,6 +843,7 @@ app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
     for (const item of items) {
       inMemoryClientes.set(item.id, item);
     }
+    saveClientesToFile();
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
@@ -720,6 +877,7 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
     const item = req.body;
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryClientes.set(req.params.id, item);
+    saveClientesToFile();
     if (supabase) {
       await supabase.from("clientes").upsert({
         id: req.params.id,
@@ -742,6 +900,7 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
 app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryClientes.delete(req.params.id);
+    saveClientesToFile();
     if (supabase) {
       await supabase.from("clientes").delete().eq("id", req.params.id);
     }
@@ -759,9 +918,12 @@ app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
 app.get("/api/vendas", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    if (supabase) {
+    if (isSupabaseAvailableForRead()) {
       const { data, error } = await supabase.from("vendas").select("id, data");
-      if (!error && data && data.length > 0) {
+      if (error) {
+        supabaseStatus = { ok: false, lastChecked: Date.now(), error: error.message };
+      } else if (data && data.length > 0) {
+        supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
         const items = data.map((r: any) => ({
           ...(r.data || {}),
           id: r.id || r.data?.id,
@@ -769,6 +931,7 @@ app.get("/api/vendas", isAuthenticated, async (req: any, res) => {
         for (const it of items) {
           if (it.id) inMemoryVendas.set(it.id, it);
         }
+        saveVendasToFile();
         return res.json(items);
       }
     }
@@ -794,6 +957,7 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
     for (const item of items) {
       inMemoryVendas.set(item.id, item);
     }
+    saveVendasToFile();
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
@@ -827,6 +991,7 @@ app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
     const item = req.body;
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryVendas.set(req.params.id, item);
+    saveVendasToFile();
     if (supabase) {
       await supabase.from("vendas").upsert({
         id: req.params.id,
@@ -849,6 +1014,7 @@ app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
 app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryVendas.delete(req.params.id);
+    saveVendasToFile();
     if (supabase) {
       await supabase.from("vendas").delete().eq("id", req.params.id);
     }
@@ -891,6 +1057,7 @@ app.post("/api/config", isAuthenticated, async (req: any, res) => {
   try {
     const config = req.body;
     inMemoryConfig = config;
+    saveConfigFile();
     if (supabase) {
       await supabase.from("app_config").upsert({
         user_id: SHARED_DATA_USER,
@@ -1012,44 +1179,89 @@ app.post("/api/contrato/avista-padrao", isAuthenticated, async (req: any, res) =
 
 // --- Preload Supabase Data into Memory Cache ---
 async function preloadSupabaseData() {
+  loadLocalFilesData();
   if (!supabase) return;
   try {
     const { data: emps, error: errEmps } = await supabase.from("empreendimentos").select("id, data");
-    if (!errEmps && emps && emps.length > 0) {
+    if (errEmps) {
+      supabaseStatus = {
+        ok: false,
+        lastChecked: Date.now(),
+        error: errEmps.message || "Quota de egress excedida ou restrição no Supabase",
+      };
+      console.warn("[Supabase] Aviso ao carregar empreendimentos:", errEmps.message);
+    } else if (emps && emps.length > 0) {
+      supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
       for (const r of emps) {
         const item = { ...(r.data || {}), id: r.id || r.data?.id };
         if (item.id) inMemoryEmpreendimentos.set(item.id, item);
       }
+      saveEmpreendimentosToFile();
       console.log(`[Supabase] Carregados ${inMemoryEmpreendimentos.size} empreendimentos no cache.`);
     }
 
     const { data: cls, error: errCls } = await supabase.from("clientes").select("id, data");
-    if (!errCls && cls && cls.length > 0) {
+    if (errCls) {
+      supabaseStatus = {
+        ok: false,
+        lastChecked: Date.now(),
+        error: errCls.message || "Quota de egress excedida ou restrição no Supabase",
+      };
+      console.warn("[Supabase] Aviso ao carregar clientes:", errCls.message);
+    } else if (cls && cls.length > 0) {
       for (const r of cls) {
         const item = { ...(r.data || {}), id: r.id || r.data?.id };
         if (item.id) inMemoryClientes.set(item.id, item);
       }
+      saveClientesToFile();
       console.log(`[Supabase] Carregados ${inMemoryClientes.size} clientes no cache.`);
     }
 
     const { data: vds, error: errVds } = await supabase.from("vendas").select("id, data");
-    if (!errVds && vds && vds.length > 0) {
+    if (errVds) {
+      supabaseStatus = {
+        ok: false,
+        lastChecked: Date.now(),
+        error: errVds.message || "Quota de egress excedida ou restrição no Supabase",
+      };
+      console.warn("[Supabase] Aviso ao carregar vendas:", errVds.message);
+    } else if (vds && vds.length > 0) {
       for (const r of vds) {
         const item = { ...(r.data || {}), id: r.id || r.data?.id };
         if (item.id) inMemoryVendas.set(item.id, item);
       }
+      saveVendasToFile();
       console.log(`[Supabase] Carregadas ${inMemoryVendas.size} vendas no cache.`);
     }
 
     const { data: cfg, error: errCfg } = await supabase.from("app_config").select("data").limit(1);
     if (!errCfg && cfg && cfg.length > 0 && cfg[0].data) {
       inMemoryConfig = cfg[0].data;
+      saveConfigFile();
       console.log(`[Supabase] Configuração carregada com sucesso.`);
     }
   } catch (e: any) {
+    supabaseStatus = { ok: false, lastChecked: Date.now(), error: e?.message || "Erro de conexão com Supabase" };
     console.warn("[Supabase] Falha ao pré-carregar dados:", e?.message);
   }
 }
+
+// Endpoint para verificar status do banco de dados e dados locais
+app.get("/api/db-status", async (_req, res) => {
+  res.json({
+    supabase: {
+      configured: !!supabase,
+      ok: supabaseStatus.ok,
+      error: supabaseStatus.error,
+      isQuotaExceeded: (supabaseStatus.error || "").includes("exceed_egress_quota"),
+    },
+    counts: {
+      empreendimentos: inMemoryEmpreendimentos.size,
+      vendas: inMemoryVendas.size,
+      clientes: inMemoryClientes.size,
+    },
+  });
+});
 
 // --- Setup / Admin seed ---
 async function seedAdminIfNeeded() {
