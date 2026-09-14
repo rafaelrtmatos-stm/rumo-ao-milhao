@@ -610,7 +610,13 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
 
     const prev = inMemoryEmpreendimentos.get(req.params.id) || {};
-    const isRecortado = item.mapaRecortado === true || (item.mapaCrop && item.mapaCrop.width > 0);
+    // CORREÇÃO: só considerar "recortado" quando o cliente sinaliza explicitamente essa intenção
+    // (mapaRecortado === true). Antes, a simples presença de um mapaCrop residual no payload
+    // (ex: de uma edição anterior revertida) já disparava a limpeza do PDF/mapa em QUALQUER
+    // salvamento genérico do empreendimento (preço, status de lote, etc.), apagando o mapa
+    // mesmo sem o usuário ter recortado nada. Isso fazia mapas cadastrados (ex: Botão, Céu Azul)
+    // perderem a referência da imagem/PDF silenciosamente.
+    const isRecortado = item.mapaRecortado === true;
     const dataToSave = {
       ...prev,
       ...item,
