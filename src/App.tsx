@@ -13410,10 +13410,18 @@ const EmpreendimentosSection = ({
   const [scriptPasteText, setScriptPasteText] = useState("");
   const [importandoScript, setImportandoScript] = useState(false);
   const [scriptMsg, setScriptMsg] = useState("");
+  const [scriptAplicadoOk, setScriptAplicadoOk] = useState(false);
   const [bulkAvailDev, setBulkAvailDev] = useState<Empreendimento | null>(null);
   const [bulkAvailTab, setBulkAvailTab] = useState<"marcarIndisponiveis" | "marcarDisponiveis">("marcarIndisponiveis");
   const [bulkSelectedQuadras, setBulkSelectedQuadras] = useState<string[]>([]);
   const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
+  const [massaAplicadoOk, setMassaAplicadoOk] = useState(false);
+  const [precosAplicadoOk, setPrecosAplicadoOk] = useState(false);
+
+  // Reseta a confirmação "✓ OK" sempre que os dados relevantes mudarem (nova alteração)
+  useEffect(() => { setPrecosAplicadoOk(false); }, [precosRegras]);
+  useEffect(() => { setMassaAplicadoOk(false); }, [bulkAvailTab, bulkSelectedQuadras, bulkLotesEspecificos]);
+  useEffect(() => { setScriptAplicadoOk(false); }, [scriptPasteText]);
   const [lotRegSearch, setLotRegSearch] = useState("");
   const { request: requestDelete, Modal: DeleteModal } = useDeleteConfirm();
   const [releaseLotPending, setReleaseLotPending] = useState<{
@@ -13472,26 +13480,31 @@ const EmpreendimentosSection = ({
     if (!lotRegDev) { alert("Erro: nenhum empreendimento selecionado. Feche e abra o gerenciador de lotes novamente."); return; }
     if (!scriptPasteText.trim()) { alert("Cole o texto do script antes de importar."); return; }
     setImportandoScript(true);
+    setScriptAplicadoOk(false);
     // setTimeout(0) força o navegador a renderizar o "Processando..." antes do trabalho pesado e síncrono começar
     setTimeout(() => {
       try {
-        executarImportacaoScript();
+        const sucesso = executarImportacaoScript();
+        setScriptAplicadoOk(!!sucesso);
+      } catch (err: any) {
+        setScriptAplicadoOk(false);
+        setScriptMsg("❌ Erro ao importar script: " + (err?.message || "tente novamente."));
       } finally {
         setImportandoScript(false);
       }
     }, 30);
   };
 
-  const executarImportacaoScript = () => {
-    if (!lotRegDev) return;
+  const executarImportacaoScript = (): boolean => {
+    if (!lotRegDev) return false;
     const parsed = parseLotScriptByQuadra(scriptPasteText);
     if (parsed.errors.length > 0) {
       alert("Corrija o script:\n\n" + parsed.errors.slice(0, 5).join("\n"));
-      return;
+      return false;
     }
     if (parsed.items.length === 0) {
       alert("Nenhum lote encontrado no script.");
-      return;
+      return false;
     }
 
     // ── 1. Detectar lotes do gerenciador que NÃO estão no script ─────────────
@@ -13569,7 +13582,7 @@ const EmpreendimentosSection = ({
         return `Q${quadra}:${lote} → ${(v as any)?.clienteNome || v?.clienteId || "?"}`;
       }).join("\n");
       const ok = window.confirm("⚠️ Lotes com X têm VENDA vinculada:\n\n" + msg + "\n\nExcluir mesmo assim?");
-      if (!ok) { setScriptMsg("❌ Importação cancelada — lotes com venda não foram excluídos."); return; }
+      if (!ok) { setScriptMsg("❌ Importação cancelada — lotes com venda não foram excluídos."); return false; }
     }
     // Processar exclusões via X
     itensExcluir.forEach(({ quadra, lote }) => {
@@ -13628,6 +13641,7 @@ const EmpreendimentosSection = ({
     setScriptMsg(msgFinal);
     alert(msgFinal);
     setScriptPasteText("");
+    return true;
   };
 
   const confirmarLiberarLoteVendido = () => {
@@ -15862,6 +15876,7 @@ const EmpreendimentosSection = ({
                   }
                 };
                 const aplicarPrecos = async () => {
+                  try {
                   // Aplicar preços no lotesInfo
                   const info = {...(lotRegDev.lotesInfo || {})} as any;
                   const aplicados: string[] = [];
@@ -15919,6 +15934,11 @@ const EmpreendimentosSection = ({
                     setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao, coresPorPreco} as any : prev);
                   }
                   setPrecosScriptMsg("✅ Preços e cores das bolinhas aplicados e salvos!");
+                  setPrecosAplicadoOk(true);
+                  } catch (err: any) {
+                    setPrecosAplicadoOk(false);
+                    setPrecosScriptMsg("❌ Erro ao aplicar preços: " + (err?.message || "tente novamente."));
+                  }
                 };
 
                 return (
@@ -16175,8 +16195,8 @@ const EmpreendimentosSection = ({
 
                     {/* Sem Padrão — lotes sem regra ficam sem preço */}
 
-                    <button onClick={aplicarPrecos} className="w-full py-3.5 bg-[#1a4a1a] text-white font-black text-sm rounded-2xl active:scale-95 transition-all">
-                      ✓ Aplicar Todos os Preços
+                    <button onClick={aplicarPrecos} className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all ${precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-[#1a4a1a] text-white"}`}>
+                      {precosAplicadoOk ? "✓ OK" : "✓ Aplicar Todos os Preços"}
                     </button>
                   </div>
                 );
@@ -16299,43 +16319,46 @@ const EmpreendimentosSection = ({
                       disabled={bulkSelectedQuadras.length === 0}
                       onClick={() => {
                         if (!lotRegDev) return;
-                        const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
-                        const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
-                        const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
-                        if (bulkAvailTab === "marcarIndisponiveis") {
-                          bulkSelectedQuadras.forEach(q => {
-                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                            lotes.forEach(l => {
-                              const key = `${q}-${l}`.toUpperCase();
-                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
-                              if (!temVendaAtiva) {
-                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
-                              }
+                        try {
+                          const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
+                          const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
+                          if (bulkAvailTab === "marcarIndisponiveis") {
+                            bulkSelectedQuadras.forEach(q => {
+                              const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                              lotes.forEach(l => {
+                                const key = `${q}-${l}`.toUpperCase();
+                                const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
+                                if (!temVendaAtiva) {
+                                  newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                                }
+                              });
                             });
-                          });
-                        } else {
-                          bulkSelectedQuadras.forEach(q => {
-                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                            const disponiveis = normalizeLotsInput(bulkLotesEspecificos[q] || "");
-                            lotes.forEach(l => {
-                              const key = `${q}-${l}`.toUpperCase();
-                              const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
-                              if (!temVendaAtiva) {
-                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
-                              }
+                          } else {
+                            bulkSelectedQuadras.forEach(q => {
+                              const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                              const disponiveis = normalizeLotsInput(bulkLotesEspecificos[q] || "");
+                              lotes.forEach(l => {
+                                const key = `${q}-${l}`.toUpperCase();
+                                const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
+                                if (!temVendaAtiva) {
+                                  newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
+                                }
+                              });
                             });
-                          });
+                          }
+                          onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
+                          setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
+                          // Mantém o painel/aba aberta para continuar editando — não navega nem limpa a seleção
+                          setMassaAplicadoOk(true);
+                        } catch (err: any) {
+                          setMassaAplicadoOk(false);
+                          alert("❌ Erro ao aplicar ação em massa: " + (err?.message || "tente novamente."));
                         }
-                        onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
-                        setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
-                        setBulkSelectedQuadras([]);
-                        setBulkLotesEspecificos({});
-                        setLotRegTab("lotes");
                       }}
-                      className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
+                      className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : massaAplicadoOk ? "bg-emerald-600 text-white" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
                     >
-                      {bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />}
-                      {bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade"}
+                      {massaAplicadoOk ? <Check size={15} /> : (bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />)}
+                      {massaAplicadoOk ? "✓ OK" : (bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade")}
                     </button>
                   </div>
                 </>
@@ -16697,14 +16720,18 @@ const EmpreendimentosSection = ({
                 <button
                   disabled={!scriptPasteText.trim() || importandoScript}
                   onClick={importarScriptFromModal}
-                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${scriptPasteText.trim() && !importandoScript ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-100 text-slate-400 cursor-not-allowed"}`}
+                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${
+                    !scriptPasteText.trim() || importandoScript
+                      ? (importandoScript ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400 cursor-not-allowed")
+                      : scriptAplicadoOk ? "bg-emerald-700 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"
+                  }`}
                 >
                   {importandoScript ? (
                     <>
                       <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
                       Processando lotes...
                     </>
-                  ) : "Importar Script"}
+                  ) : scriptAplicadoOk ? "✓ OK" : "Importar Script"}
                 </button>
               </div>
             </motion.div>
