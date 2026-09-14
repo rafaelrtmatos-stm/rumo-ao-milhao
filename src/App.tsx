@@ -26428,6 +26428,24 @@ export default function App({ onLogout, isAdmin, userId, userEmail, userPermissi
   const [clients, setClients] = useState<Cliente[]>([]);
   const [sales, setSales] = useState<Venda[]>([]);
   const [vendasExcluidas, setVendasExcluidas] = useState<VendaExcluida[]>(() => loadLixeira());
+
+  // Bloquear rolagem/interação da página de fundo sempre que qualquer card, modal ou popup estiver aberto.
+  // Todos os overlays do app usam o padrão de classe "fixed inset-0" cobrindo a tela inteira,
+  // então observamos o DOM e travamos o scroll do body enquanto qualquer um deles estiver presente.
+  useEffect(() => {
+    const atualizarBloqueioScroll = () => {
+      const overlayAberto = !!document.querySelector('.fixed.inset-0');
+      document.body.style.overflow = overlayAberto ? 'hidden' : '';
+    };
+    atualizarBloqueioScroll();
+    const observer = new MutationObserver(atualizarBloqueioScroll);
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      observer.disconnect();
+      document.body.style.overflow = '';
+    };
+  }, []);
+
   // Pré-preencher dados bancários uma única vez após montar (não no initializer)
   useEffect(() => {
     const defaults: Record<string, string> = {
