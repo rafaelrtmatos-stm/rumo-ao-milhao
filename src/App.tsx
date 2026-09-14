@@ -1563,22 +1563,21 @@ export function getTabelaPlanosEmpreendimento(nome?: string): TabelaEmpreendimen
 }
 
 export const CORES_PALETA_BOLINHAS = [
-  { cor: '#e11d48', nome: 'Rosa / Carmim' },
-  { cor: '#2563eb', nome: 'Azul' },
-  { cor: '#16a34a', nome: 'Verde' },
-  { cor: '#d97706', nome: 'Âmbar / Laranja' },
-  { cor: '#7c3aed', nome: 'Roxo / Violeta' },
-  { cor: '#0891b2', nome: 'Ciano / Turquesa' },
-  { cor: '#dc2626', nome: 'Vermelho' },
-  { cor: '#ea580c', nome: 'Laranja Vivo' },
-  { cor: '#059669', nome: 'Esmeralda' },
-  { cor: '#9333ea', nome: 'Púrpura' },
-  { cor: '#0284c7', nome: 'Azul Celeste' },
-  { cor: '#4f46e5', nome: 'Índigo' },
-  { cor: '#db2777', nome: 'Pink' },
-  { cor: '#ca8a04', nome: 'Amarelo Dourado' },
-  { cor: '#475569', nome: 'Chumbo' },
-  { cor: '#0f172a', nome: 'Grafite Escuro' },
+  { cor: '#0066FF', nome: 'Azul Elétrico' },
+  { cor: '#00BFFF', nome: 'Azul Ciano' },
+  { cor: '#00AFFF', nome: 'Azul Claro Vibrante' },
+  { cor: '#8A2BE2', nome: 'Roxo Vibrante' },
+  { cor: '#7F00FF', nome: 'Violeta Elétrico' },
+  { cor: '#FF00FF', nome: 'Magenta' },
+  { cor: '#FF1493', nome: 'Rosa Choque' },
+  { cor: '#FF0000', nome: 'Vermelho Vivo' },
+  { cor: '#FF6600', nome: 'Laranja Neon' },
+  { cor: '#FF4500', nome: 'Laranja Vibrante' },
+  { cor: '#FFFF00', nome: 'Amarelo Neon' },
+  { cor: '#7FFF00', nome: 'Verde Limão' },
+  { cor: '#39FF14', nome: 'Verde Neon' },
+  { cor: '#00C853', nome: 'Verde Esmeralda' },
+  { cor: '#00FFFF', nome: 'Ciano Neon' },
 ];
 export const CORES_FAIXAS_PRECO = CORES_PALETA_BOLINHAS.map(c => c.cor);
 
