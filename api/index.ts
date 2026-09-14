@@ -33,6 +33,40 @@ app.get("/api/debug", (_req: any, res: any) => {
   });
 });
 
+// Endpoint para verificar status do banco de dados e contagem de dados
+app.get("/api/db-status", async (_req: any, res: any) => {
+  try {
+    const [devs, vds, cls] = await Promise.all([
+      db.query.empreendimentos.findMany({ columns: { id: true } }),
+      db.query.vendas.findMany({ columns: { id: true } }),
+      db.query.clientes.findMany({ columns: { id: true } }),
+    ]);
+    res.json({
+      supabase: {
+        configured: !!process.env.VITE_SUPABASE_URL,
+        ok: true,
+        error: null,
+        isQuotaExceeded: false,
+      },
+      counts: {
+        empreendimentos: devs.length,
+        vendas: vds.length,
+        clientes: cls.length,
+      },
+    });
+  } catch (e: any) {
+    res.json({
+      supabase: {
+        configured: !!process.env.VITE_SUPABASE_URL,
+        ok: false,
+        error: e?.message || "Erro ao consultar banco de dados",
+        isQuotaExceeded: false,
+      },
+      counts: { empreendimentos: 0, vendas: 0, clientes: 0 },
+    });
+  }
+});
+
 // Configurar session store — PgSession se DATABASE_URL disponível, senão MemoryStore
 const PgSession = connectPgSimple(session);
 const sessionTtl = 7 * 24 * 60 * 60 * 1000;

@@ -9347,7 +9347,7 @@ const LotDashboard = ({
                   {faixasPrecoGlobal.map((f, idx) => (
                     <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/10 text-white text-[11px] font-bold">
                       <span className="w-3 h-3 rounded-full border border-white/40 flex-shrink-0" style={{ backgroundColor: f.cor }} />
-                      <span>{fmtCurrency(f.preco)}</span>
+                      <span>{new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(f.preco || 0)}</span>
                     </div>
                   ))}
                 </div>
