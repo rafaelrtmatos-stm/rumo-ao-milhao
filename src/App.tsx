@@ -15875,6 +15875,20 @@ const EmpreendimentosSection = ({
                 };
                 const aplicarPrecos = async () => {
                   try {
+                  // Validar cores repetidas entre as regras de preço (bolinhas) antes de aplicar
+                  const coresUsadas = new Map<string, number[]>();
+                  precosRegras.forEach((r, idx) => {
+                    const corRegra = (r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor).toLowerCase();
+                    if (!coresUsadas.has(corRegra)) coresUsadas.set(corRegra, []);
+                    coresUsadas.get(corRegra)!.push(idx + 1);
+                  });
+                  const duplicadas = Array.from(coresUsadas.entries()).filter(([, idxs]) => idxs.length > 1);
+                  if (duplicadas.length > 0) {
+                    const detalhe = duplicadas.map(([cor, idxs]) => `Regras ${idxs.join(", ")} usam a mesma cor (${cor})`).join(" — ");
+                    setPrecosScriptMsg("❌ Cores repetidas: " + detalhe + ". Escolha uma cor de bolinha diferente para cada regra antes de aplicar.");
+                    setPrecosAplicadoOk(false);
+                    return;
+                  }
                   // Aplicar preços no lotesInfo
                   const info = {...(lotRegDev.lotesInfo || {})} as any;
                   const aplicados: string[] = [];
@@ -16193,7 +16207,13 @@ const EmpreendimentosSection = ({
 
                     {/* Sem Padrão — lotes sem regra ficam sem preço */}
 
-                    <button onClick={aplicarPrecos} className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all ${precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-[#1a4a1a] text-white"}`}>
+                    <button
+                      onClick={() => {
+                        if (precosAplicadoOk) { setLotRegDev(null); return; }
+                        aplicarPrecos();
+                      }}
+                      className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all ${precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-[#1a4a1a] text-white"}`}
+                    >
                       {precosAplicadoOk ? "✓ OK" : "✓ Aplicar Todos os Preços"}
                     </button>
                   </div>
