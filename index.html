@@ -12,15 +12,26 @@
       window.__vite_plugin_react_preamble_installed__ = true;
       window.$RefreshReg$ = () => {};
       window.$RefreshSig$ = () => (type) => type;
+      function isWsError(msg) {
+        return /websocket|closed without opened|failed to connect to websocket/i.test(String(msg || ''));
+      }
+      window.addEventListener('error', function(event) {
+        if (isWsError(event?.message) || isWsError(event?.error?.message)) {
+          event.preventDefault();
+          event.stopImmediatePropagation?.();
+          return true;
+        }
+      }, true);
       window.addEventListener('unhandledrejection', function(event) {
         if (
           event &&
           event.reason &&
-          /websocket|failed to connect to websocket/i.test(String(event.reason.message || event.reason))
+          isWsError(event.reason.message || event.reason)
         ) {
           event.preventDefault();
+          event.stopImmediatePropagation?.();
         }
-      });
+      }, true);
     </script>
 
     <!-- Favicon PC -->

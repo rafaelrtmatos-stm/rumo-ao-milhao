@@ -128,6 +128,7 @@ import { uploadMapaImagem, uploadMapaBlob, uploadMapaPDF, precacheMapaUrl } from
 import LoadingScreen from "./components/LoadingScreen";
 import ReservaPublica from "./components/ReservaPublica";
 import { CropMapModal } from "./components/CropMapModal";
+import { ColorPickerModal } from "./components/ColorPickerModal";
 import * as pdfjsLibLocal from "pdfjs-dist";
 // Vite empacota o worker como asset local (sem depender de CDN externo como cdnjs.cloudflare.com,
 // que pode ser bloqueado por extensões de segurança/antivírus/políticas de rede corporativa)
@@ -2787,6 +2788,33 @@ const LotDashboard = ({
   const [cardPrecoVisivel, setCardPrecoVisivel] = useState<boolean>(true);
   const [cardPrecoMinimizado, setCardPrecoMinimizado] = useState<boolean>(false);
   const [showCropModal, setShowCropModal] = useState<boolean>(false);
+  const [colorPickerConfig, setColorPickerConfig] = useState<{
+    isOpen: boolean;
+    currentColor: string;
+    onSelectColor: (color: string) => void;
+    title?: string;
+    subtitle?: string;
+  }>({
+    isOpen: false,
+    currentColor: '#2563eb',
+    onSelectColor: () => {},
+  });
+
+  const latestDevRef = useRef<Empreendimento>(localDev);
+  latestDevRef.current = localDev;
+  const latestPontosRef = useRef<any[]>(((localDev as any).mapaPontos || []) as any[]);
+  useEffect(() => {
+    latestPontosRef.current = ((localDev as any).mapaPontos || []) as any[];
+  }, [(localDev as any).mapaPontos]);
+
+  const syncPontosDirect = (devId: string, pontos: any[]) => {
+    if (!devId) return;
+    authFetch(`/api/empreendimentos/${devId}/pontos`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mapaPontos: pontos }),
+    }).catch((e) => console.warn("[db] Falha ao sincronizar pontos na API:", e));
+  };
 
   const handleConfirmCrop = async (
     croppedBase64: string,
@@ -3351,7 +3379,6 @@ const LotDashboard = ({
       if (e?.detail && ["lite", "pro", "pc"].includes(e.detail)) {
         setTipoVisualizacao(e.detail);
         if (e.detail === "lite") {
-          setIsEditingMap(false);
           setMapAction("visualizar");
         }
       }
@@ -3704,9 +3731,11 @@ const LotDashboard = ({
 
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
-  // Zoom > 5.0 (500%): carrega o mapa em alta resolução / pesado
-  const MED_RES_ZOOM_THRESHOLD = 5.0;
-  const HIGH_RES_ZOOM_THRESHOLD = 5.0;
+  // Zoom > 3.0 (300%): carrega o mapa em alta resolução / pesado sem resetar zoom ou posição
+  const MED_RES_ZOOM_THRESHOLD = 3.0;
+  const HIGH_RES_ZOOM_THRESHOLD = 3.0;
+  const hasFittedMapForDevIdRef = useRef<string | null>(null);
+  const hasFittedFullscreenRef = useRef<boolean>(false);
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -3906,11 +3935,16 @@ const LotDashboard = ({
     const incomingMarkerSize = Number((dev as any).mapaMarkerSizePercent ?? 100);
     if (Number.isFinite(incomingMarkerSize)) setMarkerSizePercent(Math.max(40, Math.min(220, incomingMarkerSize)));
     // NÃO resetar mapAction aqui — a edição só encerra via salvarEdicaoMapa
-    if (!((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64)) setMode("quadradinhos");
-    // Gerar imagem leve para imagens antigas que nao tem mapaImagemLeveBase64
+    const hasMap = Boolean((dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || (dev as any).mapaPdfUrl || (dev as any).mapaPdfOriginalBase64);
+    if (hasMap) {
+      setMode((prev) => (prev === "precos" ? "precos" : "mapa"));
+    } else {
+      setMode("quadradinhos");
+    }
+    // Gerar imagem leve para mapas que ainda não tem mapaImagemLeveBase64 (carregamento instantâneo)
     const original = (dev as any).mapaImagemBase64 || (dev as any).mapaImagemUrl || "";
-    if (false && original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
-      gerarImagemLeve(original, 800, 0.3).then((leve) => {
+    if (original && !(dev as any).mapaImagemLeveBase64 && !(dev as any).mapaPdfOriginalBase64) {
+      gerarImagemLeve(original, 900, 0.4).then((leve) => {
         if (leve && leve !== original) {
           persistDev({ ...dev, mapaImagemLeveBase64: leve } as any);
         }
@@ -4201,16 +4235,20 @@ const LotDashboard = ({
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
   // Para imagens (nao PDF): original ja e a melhor resolucao disponivel
   // REGRA: mapaImagem NUNCA pode ser string vazia — sempre cai para original
-  // No zoom baixo (<= 500% / 5.0) usa imagem leve (se disponível), economizando memória e carregamento rápido.
-  // Ao ultrapassar o zoom de 500%, carrega a imagem em alta resolução / mapa mais pesado.
+  // No zoom baixo (<= 300% / 3.0) usa imagem leve (se disponível), economizando memória e carregamento rápido.
+  // Ao ultrapassar 300%, carrega a imagem em melhor resolução / mapa pesado sem resetar zoom ou posição.
   const mapaImagem = (() => {
-    if (((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) return mapaImagemOriginal || "pdf";
-    const imagemPesadaOriginal = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal;
-    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) {
-      return imagemPesadaOriginal;
+    const imagemPesadaOriginal = (localDev as any).mapaImagemHighResBase64 || (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal;
+    if (mapZoom > 3.0) {
+      return imagemPesadaOriginal || (localDev as any).mapaImagemLeveBase64 || "";
     }
-    // Zoom normal/inicial (<= 500%): prefere imagem leve se disponível
-    return mapaImagemLeveBase64 || imagemPesadaOriginal;
+    // Zoom até 300% (<= 3.0): carrega primeiro imagem leve se disponível para exibição instantânea
+    return (
+      (localDev as any).mapaImagemLeveBase64 ||
+      imagemPesadaOriginal ||
+      (!isMapRecortado ? pdfRenderedUrl : "") ||
+      ((((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? "pdf" : "")
+    );
   })();
 
   // Imagem de fundo (fallback enquanto a imagem pesada carrega no zoom alto)
@@ -4479,28 +4517,50 @@ const LotDashboard = ({
   };
 
   // Gera versao comprimida da imagem para uso no zoom baixo (carregamento rapido)
-  const gerarImagemLeve = (dataUrl: string, maxWidth = 800, quality = 0.3): Promise<string> => {
+  const gerarImagemLeve = (dataUrl: string, maxWidth = 900, quality = 0.4): Promise<string> => {
+    if (!dataUrl) return Promise.resolve("");
     return new Promise((resolve) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        // Yield antes de processar imagem grande
-        requestAnimationFrame(() => {
-          const scale = Math.min(1, maxWidth / img.width);
+      const tentarComCanvas = (imgEl: HTMLImageElement) => {
+        try {
+          const w = imgEl.naturalWidth || imgEl.width;
+          const h = imgEl.naturalHeight || imgEl.height;
+          if (!w || !h) { resolve(dataUrl); return; }
+          const scale = Math.min(1, maxWidth / w);
           const canvas = document.createElement("canvas");
-          canvas.width = Math.floor(img.width * scale);
-          canvas.height = Math.floor(img.height * scale);
-          const ctx = canvas.getContext("2d")!;
+          canvas.width = Math.max(200, Math.floor(w * scale));
+          canvas.height = Math.max(150, Math.floor(h * scale));
+          const ctx = canvas.getContext("2d");
+          if (!ctx) { resolve(dataUrl); return; }
           ctx.imageSmoothingEnabled = true;
           ctx.imageSmoothingQuality = "medium";
-          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-          // Yield antes de toDataURL (pode ser pesado)
-          requestAnimationFrame(() => {
+          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+          try {
             resolve(canvas.toDataURL("image/webp", quality));
-          });
-        });
+          } catch {
+            try {
+              resolve(canvas.toDataURL("image/jpeg", quality));
+            } catch {
+              resolve(dataUrl);
+            }
+          }
+        } catch {
+          resolve(dataUrl);
+        }
       };
-      img.onerror = () => resolve(dataUrl);
+
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => tentarComCanvas(img);
+      img.onerror = () => {
+        if (dataUrl.startsWith("http")) {
+          const proxyImg = new Image();
+          proxyImg.onload = () => tentarComCanvas(proxyImg);
+          proxyImg.onerror = () => resolve(dataUrl);
+          proxyImg.src = `/api/proxy-image?url=${encodeURIComponent(dataUrl)}`;
+        } else {
+          resolve(dataUrl);
+        }
+      };
       img.src = dataUrl;
     });
   };
@@ -4584,8 +4644,14 @@ const LotDashboard = ({
           try {
             pdfDocCacheRef.current = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
           } catch (fetchErr: any) {
-            console.warn("[PDF Direct] Arquivo remoto inacessível:", fetchErr?.message || fetchErr);
-            return;
+            console.warn("[PDF Direct] Tentando carregar PDF via proxy:", fetchErr?.message || fetchErr);
+            try {
+              const proxied = `/api/proxy-image?url=${encodeURIComponent(pdfUrl)}`;
+              pdfDocCacheRef.current = await pdfjsLib.getDocument({ url: proxied }).promise;
+            } catch (proxyErr: any) {
+              console.warn("[PDF Direct] Falha ao carregar PDF remoto:", proxyErr?.message || proxyErr);
+              return;
+            }
           }
         }
       }
@@ -4825,12 +4891,21 @@ const LotDashboard = ({
     if (vp && vp.offsetWidth > 0) setMapRenderWidth(vp.offsetWidth);
   }, [mapaImagem, mapFullscreen, mode]);
 
-  // Encaixar mapa ao abrir no modo visualização
+  // Encaixar mapa ao abrir no modo visualização (apenas na carga inicial do empreendimento, sem resetar zoom ao alternar resolução)
   useEffect(() => {
     if (mode === "mapa" && mapaImagem && mapAction === "visualizar") {
-      setTimeout(fitMapToScreen, 100);
+      if (hasFittedMapForDevIdRef.current !== localDev.id) {
+        hasFittedMapForDevIdRef.current = localDev.id;
+        setTimeout(fitMapToScreen, 100);
+      }
     }
-  }, [mode, mapaImagem]);
+  }, [mode, localDev.id, mapAction, !mapaImagem]);
+
+  useEffect(() => {
+    if (!mapFullscreen) {
+      hasFittedFullscreenRef.current = false;
+    }
+  }, [mapFullscreen]);
 
   const quadras = getQuadraList(localDev);
   const lotDivergences = getLotDivergenceDetails(localDev, sales);
@@ -4845,6 +4920,8 @@ const LotDashboard = ({
 
   const persistDev = (nextDev: Empreendimento) => {
     const recalculado = recalcularEstatisticasEmpreendimento(nextDev, sales);
+    latestDevRef.current = recalculado;
+    latestPontosRef.current = (recalculado as any).mapaPontos || [];
     setLocalDev(recalculado);
     onSaveDev(recalculado);
   };
@@ -5093,6 +5170,7 @@ const LotDashboard = ({
 
         const isLandscape = nw > nh;
         const a4RefWidth = isLandscape ? 1123 : 794;
+        const leveBase64 = await gerarImagemLeve(dataUrl, 900, 0.4);
 
         // 4. Salvar permanentemente no banco com URLs públicas fixadas
         persistDev({
@@ -5102,7 +5180,7 @@ const LotDashboard = ({
           mapaPdfOriginalName: file.name,
           mapaPdfPagina: pdfPage,
           mapaImagemBase64: dataUrl,
-          mapaImagemLeveBase64: "",
+          mapaImagemLeveBase64: leveBase64,
           mapaImagemMedResBase64: "",
           mapaImagemHighResBase64: "",
           mapaPdfOriginalBase64: "",
@@ -5144,11 +5222,12 @@ const LotDashboard = ({
       });
       // A4 a 96dpi: portrait=794×1123px, landscape=1123×794px
       const a4RefWidth = isLandscape ? 1123 : 794;
+      const leveBase64 = await gerarImagemLeve(url, 900, 0.4);
       persistDev({
         ...localDev,
         mapaImagemUrl: url,
         mapaImagemBase64: "",
-        mapaImagemLeveBase64: "",
+        mapaImagemLeveBase64: leveBase64,
         mapaImagemMedResBase64: "",
         mapaImagemHighResBase64: "",
         mapaPdfOriginalBase64: "",
@@ -5277,39 +5356,44 @@ const LotDashboard = ({
     return `${empreendimento}_${tipoAba}_${diaSemana}_${dia}-${mes}-${ano}_${hora}.${ext}`;
   };
 
-  // Utilitário para disparar download via Blob URL com fallbacks
+  // Utilitário para disparar download via Blob URL com fallbacks e link direto para o usuário
+  const [downloadConcluidoUrl, setDownloadConcluidoUrl] = React.useState<string | null>(null);
+  const [downloadConcluidoFilename, setDownloadConcluidoFilename] = React.useState<string>("");
+
   const triggerDownload = (blob: Blob, filename: string) => {
     try {
       const url = URL.createObjectURL(blob);
+      setDownloadConcluidoUrl(url);
+      setDownloadConcluidoFilename(filename);
+
       const link = document.createElement('a');
       link.href = url;
       link.download = filename;
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
       link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
       setTimeout(() => {
         try {
           if (document.body.contains(link)) document.body.removeChild(link);
-          URL.revokeObjectURL(url);
         } catch {}
-      }, 20000);
+      }, 10000);
     } catch (e) {
       console.error('Falha no triggerDownload com Blob URL:', e);
       try {
         const reader = new FileReader();
         reader.onload = () => {
+          const dataUrl = reader.result as string;
+          setDownloadConcluidoUrl(dataUrl);
+          setDownloadConcluidoFilename(filename);
           const link = document.createElement('a');
-          link.href = reader.result as string;
+          link.href = dataUrl;
           link.download = filename;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
+          link.style.display = 'none';
           document.body.appendChild(link);
           link.click();
           setTimeout(() => {
             try { if (document.body.contains(link)) document.body.removeChild(link); } catch {}
-          }, 5000);
+          }, 10000);
         };
         reader.readAsDataURL(blob);
       } catch (e2) {
@@ -5639,242 +5723,284 @@ const LotDashboard = ({
     }
   };
 
-  const gerarCanvasMapaInterativo = (usePrecoColors = false): Promise<HTMLCanvasElement> => {
-    return new Promise(async (resolve, reject) => {
-      let mapCanvas: HTMLCanvasElement | null = null;
-      let imgW = 1200;
-      let imgH = 800;
+  const gerarCanvasMapaInterativo = async (usePrecoColors = false): Promise<HTMLCanvasElement> => {
+    let mapCanvas: HTMLCanvasElement | null = null;
+    let imgW = 1200;
+    let imgH = 800;
 
-      // 1. Tentar renderizar base do PDF se existir e não for recortado
-      const originalPdf = (localDev as any).mapaPdfOriginalBase64;
-      const pdfUrl = (localDev as any).mapaPdfUrl;
-      const hasPdf = Boolean(originalPdf || pdfUrl);
-      const isRecortado = Boolean((localDev as any).mapaRecortado || (localDev as any).mapaCrop);
+    const originalPdf = (localDev as any).mapaPdfOriginalBase64;
+    const pdfUrl = (localDev as any).mapaPdfUrl;
+    const hasPdf = Boolean(originalPdf || pdfUrl);
+    const isRecortado = Boolean((localDev as any).mapaRecortado || (localDev as any).mapaCrop);
+    const crop = (localDev as any).mapaCrop;
 
-      if (hasPdf && !isRecortado) {
+    // 1. Se o mapa foi recortado, priorizar a imagem base já recortada (base64 ou url) em alta resolução
+    if (isRecortado) {
+      const croppedCandidates = [
+        (localDev as any).mapaImagemHighResBase64,
+        (localDev as any).mapaImagemBase64,
+        (localDev as any).mapaImagemUrl,
+        (localDev as any).mapaImagemLeveBase64,
+      ].filter(Boolean) as string[];
+
+      for (const cand of croppedCandidates) {
         try {
-          const pdfjsLib = await loadPdfJsIfNeeded();
-          let pdfDoc: any = null;
-          if (pdfDocCacheRef.current) {
-            pdfDoc = pdfDocCacheRef.current;
-          } else if (originalPdf) {
-            const buffer = dataUrlToArrayBuffer(originalPdf);
-            pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
-          } else if (pdfUrl) {
-            try {
-              pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
-            } catch {
-              // Se falhar direto (ex: CORS), buscar via proxy de imagem
-              const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(pdfUrl)}`;
-              const pRes = await fetch(proxyUrl);
-              if (pRes.ok) {
-                const pBuf = await pRes.arrayBuffer();
-                pdfDoc = await pdfjsLib.getDocument({ data: pBuf }).promise;
-              }
-            }
-          }
-
-          if (pdfDoc) {
-            const pageNum = (localDev as any).mapaPdfPagina || 1;
-            const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
-            const baseViewport = page.getViewport({ scale: 1 });
-            const targetW = Math.min(4000, Math.max(2400, baseViewport.width * 3));
-            const exportScale = Math.min(8192 / Math.max(baseViewport.width, baseViewport.height), targetW / baseViewport.width);
-            const viewport = page.getViewport({ scale: exportScale });
-            const pCanvas = document.createElement("canvas");
-            pCanvas.width = Math.floor(viewport.width);
-            pCanvas.height = Math.floor(viewport.height);
-            const pctx = pCanvas.getContext("2d")!;
-            pctx.imageSmoothingEnabled = true;
-            pctx.imageSmoothingQuality = "high";
-            await page.render({ canvasContext: pctx, viewport }).promise;
-            mapCanvas = pCanvas;
+          mapCanvas = await carregarImagemBaseMapa(cand);
+          if (mapCanvas && mapCanvas.width > 0 && mapCanvas.height > 0) {
             imgW = mapCanvas.width;
             imgH = mapCanvas.height;
+            break;
           }
-        } catch (pdfErr) {
-          console.warn("[download] PDF falhou para download, recorrendo à imagem salva:", pdfErr);
+        } catch (cErr) {
+          console.warn("[download] Candidato recortado falhou:", cErr);
+        }
+      }
+    }
+
+    // 2. Tentar renderizar base do PDF se existir e não tiver sido carregado recortado
+    if (!mapCanvas && hasPdf && !isRecortado) {
+      try {
+        const pdfjsLib = await loadPdfJsIfNeeded();
+        let pdfDoc: any = null;
+        if (pdfDocCacheRef.current) {
+          pdfDoc = pdfDocCacheRef.current;
+        } else if (originalPdf) {
+          const buffer = dataUrlToArrayBuffer(originalPdf);
+          pdfDoc = await pdfjsLib.getDocument({ data: buffer }).promise;
+        } else if (pdfUrl) {
+          try {
+            pdfDoc = await pdfjsLib.getDocument({ url: pdfUrl }).promise;
+          } catch {
+            const proxyUrl = `/api/proxy-image?url=${encodeURIComponent(pdfUrl)}`;
+            const pRes = await fetch(proxyUrl);
+            if (pRes.ok) {
+              const pBuf = await pRes.arrayBuffer();
+              pdfDoc = await pdfjsLib.getDocument({ data: pBuf }).promise;
+            }
+          }
+        }
+
+        if (pdfDoc) {
+          const pageNum = (localDev as any).mapaPdfPagina || 1;
+          const page = await pdfDoc.getPage(Math.min(pageNum, pdfDoc.numPages));
+          const baseViewport = page.getViewport({ scale: 1 });
+          const targetW = Math.min(4000, Math.max(2400, baseViewport.width * 3));
+          const exportScale = Math.min(8192 / Math.max(baseViewport.width, baseViewport.height), targetW / baseViewport.width);
+          const viewport = page.getViewport({ scale: exportScale });
+          const pCanvas = document.createElement("canvas");
+          pCanvas.width = Math.floor(viewport.width);
+          pCanvas.height = Math.floor(viewport.height);
+          const pctx = pCanvas.getContext("2d")!;
+          pctx.imageSmoothingEnabled = true;
+          pctx.imageSmoothingQuality = "high";
+          await page.render({ canvasContext: pctx, viewport }).promise;
+          mapCanvas = pCanvas;
+          imgW = mapCanvas.width;
+          imgH = mapCanvas.height;
+        }
+      } catch (pdfErr) {
+        console.warn("[download] PDF falhou para download, recorrendo à imagem salva:", pdfErr);
+      }
+    }
+
+    // 3. Se o PDF não gerou canvas (ou falhou/foi recortado), carregar imagem base com todos os fallbacks
+    if (!mapCanvas) {
+      const candidateUrls = [
+        (localDev as any).mapaImagemHighResBase64,
+        (localDev as any).mapaImagemBase64,
+        (localDev as any).mapaImagemUrl,
+        (localDev as any).mapaImagemMedResBase64,
+        (localDev as any).mapaImagemLeveBase64,
+        pdfRenderedUrl,
+        mapaImagemOriginal,
+        mapaImagem !== "pdf" ? mapaImagem : "",
+      ].filter(Boolean) as string[];
+
+      for (const candidate of candidateUrls) {
+        try {
+          mapCanvas = await carregarImagemBaseMapa(candidate);
+          if (mapCanvas && mapCanvas.width > 0 && mapCanvas.height > 0) {
+            imgW = mapCanvas.width;
+            imgH = mapCanvas.height;
+            break;
+          }
+        } catch (cErr) {
+          console.warn("[download] Candidato de imagem falhou, tentando próximo:", cErr);
         }
       }
 
-      // 2. Se o PDF não gerou canvas (ou falhou), carregar imagem base com todos os fallbacks
+      // Se ainda não carregou, tentar capturar canvas ativo da tela ou tag <img> no DOM
       if (!mapCanvas) {
-        // Se o mapa foi recortado, a imagem salva cortada (mapaImagemUrl ou mapaImagemBase64) tem prioridade absoluta
-        const candidateUrls = [
-          isRecortado ? (localDev as any).mapaImagemUrl : "",
-          isRecortado ? (localDev as any).mapaImagemBase64 : "",
-          (localDev as any).mapaImagemHighResBase64,
-          (localDev as any).mapaImagemBase64,
-          (localDev as any).mapaImagemUrl,
-          (localDev as any).mapaImagemMedResBase64,
-          pdfRenderedUrl,
-          mapaImagemOriginal,
-          mapaImagem !== "pdf" ? mapaImagem : "",
-        ].filter(Boolean) as string[];
+        const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
+        if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
+          const fallbackC = document.createElement("canvas");
+          fallbackC.width = activeCanvas.width;
+          fallbackC.height = activeCanvas.height;
+          const actx = fallbackC.getContext("2d")!;
+          actx.drawImage(activeCanvas, 0, 0);
+          mapCanvas = fallbackC;
+          imgW = mapCanvas.width;
+          imgH = mapCanvas.height;
+        } else {
+          const domImg = (mapImageFullscreenRef.current as HTMLImageElement) ||
+            (mapImageRef.current?.querySelector?.('img') as HTMLImageElement) ||
+            (mapImageRef.current as any as HTMLImageElement) ||
+            (document.querySelector('img[alt="Mapa do empreendimento"]') as HTMLImageElement) ||
+            (document.querySelector('img[alt*="mapa" i]') as HTMLImageElement);
 
-        let loaded = false;
-        for (const candidate of candidateUrls) {
-          try {
-            mapCanvas = await carregarImagemBaseMapa(candidate);
-            imgW = mapCanvas.width;
-            imgH = mapCanvas.height;
-            loaded = true;
-            break;
-          } catch (cErr) {
-            console.warn("[download] Candidato de imagem falhou, tentando próximo:", cErr);
-          }
-        }
-
-        // Se ainda não carregou, tentar capturar canvas ativo da tela ou tag <img> no DOM
-        if (!loaded || !mapCanvas) {
-          const activeCanvas = pdfCanvasFullscreenRef.current || pdfCanvasRef.current;
-          if (activeCanvas && activeCanvas.width > 0 && activeCanvas.height > 0) {
-            const fallbackC = document.createElement("canvas");
-            fallbackC.width = activeCanvas.width;
-            fallbackC.height = activeCanvas.height;
-            const actx = fallbackC.getContext("2d")!;
-            actx.drawImage(activeCanvas, 0, 0);
-            mapCanvas = fallbackC;
-            imgW = mapCanvas.width;
-            imgH = mapCanvas.height;
-            loaded = true;
-          } else {
-            const domImg = (mapImageFullscreenRef.current as HTMLImageElement) ||
-              (mapImageRef.current?.querySelector?.('img') as HTMLImageElement) ||
-              (mapImageRef.current as any as HTMLImageElement) ||
-              (document.querySelector('img[alt="Mapa do empreendimento"]') as HTMLImageElement) ||
-              (document.querySelector('img[alt*="mapa" i]') as HTMLImageElement);
-
-            if (domImg && domImg.src) {
-              try {
-                mapCanvas = await carregarImagemBaseMapa(domImg.src);
+          if (domImg && domImg.src) {
+            try {
+              mapCanvas = await carregarImagemBaseMapa(domImg.src);
+              if (mapCanvas) {
                 imgW = mapCanvas.width;
                 imgH = mapCanvas.height;
-                loaded = true;
-              } catch (domErr) {
-                console.warn("[download] Falha ao carregar imagem a partir do DOM:", domErr);
               }
-            }
-          }
-        }
-
-        if (!loaded || !mapCanvas) {
-          reject(new Error("Nenhum mapa ou imagem encontrado para exportar. Por favor, certifique-se de que o mapa está carregado."));
-          return;
-        }
-
-        // Se houver configuração de corte salva que ainda não foi aplicada ao canvas base:
-        // Se mapaRecortado for verdadeiro, a imagem em mapaCanvas já é a versão recortada.
-        // Cortamos aqui APENAS se o canvas carregado ainda for a imagem inteira original (não recortada).
-        const crop = (localDev as any).mapaCrop;
-        const isAlreadyRecortado = Boolean((localDev as any).mapaRecortado);
-        if (!isAlreadyRecortado && crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
-          const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
-          const expectedCropW = naturalW ? Math.round((crop.width / 100) * naturalW) : 0;
-          if (expectedCropW > 0 && Math.abs(mapCanvas.width - naturalW) < Math.abs(mapCanvas.width - expectedCropW)) {
-            const sx = Math.max(0, Math.round((crop.x / 100) * mapCanvas.width));
-            const sy = Math.max(0, Math.round((crop.y / 100) * mapCanvas.height));
-            const sw = Math.min(mapCanvas.width - sx, Math.round((crop.width / 100) * mapCanvas.width));
-            const sh = Math.min(mapCanvas.height - sy, Math.round((crop.height / 100) * mapCanvas.height));
-            if (sw > 0 && sh > 0) {
-              const croppedC = document.createElement("canvas");
-              croppedC.width = sw;
-              croppedC.height = sh;
-              const cctx = croppedC.getContext("2d")!;
-              cctx.imageSmoothingEnabled = true;
-              cctx.imageSmoothingQuality = "high";
-              cctx.drawImage(mapCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
-              mapCanvas = croppedC;
-              imgW = sw;
-              imgH = sh;
+            } catch (domErr) {
+              console.warn("[download] Falha ao carregar imagem a partir do DOM:", domErr);
             }
           }
         }
       }
+    }
 
-      // 3. Desenhar as bolinhas sobre o mapa
-      const mapCtx = mapCanvas.getContext("2d")!;
-      const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
-      const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
-      const BASE_SIZE_A4 = 10;
-      const radius = Math.max(3, Math.round((BASE_SIZE_A4 / 2) * (imgW / refWidth) * pct));
+    if (!mapCanvas) {
+      throw new Error("Nenhum mapa ou imagem encontrado para exportar. Por favor, certifique-se de que o mapa está carregado.");
+    }
 
-      let borderWidth: number;
-      if (markerKeepRatio) {
-        borderWidth = Math.max(1, Math.round((radius * 2) * ((markerBorderWidth || 3) / 14)));
+    // 4. Se houver corte configurado e o canvas carregado ainda for a imagem inteira original (não recortada):
+    if (!isRecortado && crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.5 || crop.height < 99.5 || crop.x > 0.5 || crop.y > 0.5)) {
+      const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
+      const naturalH = (localDev as any).mapaImagemNaturalHeight || 0;
+      const cropAspect = crop.width / crop.height;
+      const canvasAspect = mapCanvas.width / mapCanvas.height;
+      // Se a proporção do canvas é a da imagem original e difere da do corte, recortar o canvas agora:
+      const needsCrop = Math.abs(canvasAspect - cropAspect) > 0.08 || (naturalW > 0 && Math.abs(mapCanvas.width - naturalW) < 50);
+      if (needsCrop) {
+        const sx = Math.max(0, Math.round((crop.x / 100) * mapCanvas.width));
+        const sy = Math.max(0, Math.round((crop.y / 100) * mapCanvas.height));
+        const sw = Math.min(mapCanvas.width - sx, Math.round((crop.width / 100) * mapCanvas.width));
+        const sh = Math.min(mapCanvas.height - sy, Math.round((crop.height / 100) * mapCanvas.height));
+        if (sw > 0 && sh > 0) {
+          const croppedC = document.createElement("canvas");
+          croppedC.width = sw;
+          croppedC.height = sh;
+          const cctx = croppedC.getContext("2d")!;
+          cctx.imageSmoothingEnabled = true;
+          cctx.imageSmoothingQuality = "high";
+          cctx.drawImage(mapCanvas, sx, sy, sw, sh, 0, 0, sw, sh);
+          mapCanvas = croppedC;
+          imgW = sw;
+          imgH = sh;
+        }
+      }
+    }
+
+    // 4.1 Garantir alta resolução (mínimo 2400px de largura mantendo a proporção exata)
+    if (imgW < 2400 && imgW > 0 && imgH > 0) {
+      const targetW = 2800;
+      const targetH = Math.round(targetW * (imgH / imgW));
+      const hiResCanvas = document.createElement("canvas");
+      hiResCanvas.width = targetW;
+      hiResCanvas.height = targetH;
+      const hctx = hiResCanvas.getContext("2d")!;
+      hctx.imageSmoothingEnabled = true;
+      hctx.imageSmoothingQuality = "high";
+      hctx.drawImage(mapCanvas, 0, 0, targetW, targetH);
+      mapCanvas = hiResCanvas;
+      imgW = targetW;
+      imgH = targetH;
+    }
+
+    // 5. Desenhar as bolinhas sobre o mapa recortado/ajustado
+    const mapCtx = mapCanvas.getContext("2d")!;
+    const refWidth = Math.max(320, Number((localDev as any).mapaMarkerReferenceWidth || 794));
+    const pct = Math.max(40, Math.min(220, Number(markerSizePercent) || 100)) / 100;
+    const BASE_SIZE_A4 = 10;
+    const radius = Math.max(3, Math.round((BASE_SIZE_A4 / 2) * (imgW / refWidth) * pct));
+
+    let borderWidth: number;
+    if (markerKeepRatio) {
+      borderWidth = Math.max(1, Math.round((radius * 2) * ((markerBorderWidth || 3) / 14)));
+    } else {
+      const scaleFator = imgW / refWidth;
+      borderWidth = Math.max(1, Math.round((markerBorderWidth || 3) * scaleFator));
+    }
+
+    mapaPontos.forEach((ponto) => {
+      const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
+      const indisponivel = ponto.status === "indisponivel" || !!venda;
+      const reservado = !indisponivel && ponto.status === "reservado";
+      const xp = parseFloat(String(ponto.xPercent).replace(',', '.')) || 0;
+      const yp = parseFloat(String(ponto.yPercent).replace(',', '.')) || 0;
+      const x = (xp / 100) * imgW;
+      const y = (yp / 100) * imgH;
+
+      mapCtx.save();
+      mapCtx.beginPath();
+      mapCtx.arc(x, y, radius, 0, Math.PI * 2);
+
+      if (usePrecoColors) {
+        // Aba Preços: preenchimento pela cor da faixa de preço
+        // Contorno com cor do status: azul disponível, vermelho vendido, amarelo reservado.
+        const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
+        mapCtx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6");
+        mapCtx.shadowColor = 'transparent';
+        mapCtx.shadowBlur = 0;
+        mapCtx.fill();
+
+        mapCtx.lineWidth = borderWidth;
+        mapCtx.strokeStyle = indisponivel ? "#dc2626" : reservado ? "#d97706" : "#2563eb";
+        mapCtx.stroke();
       } else {
-        const scaleFator = imgW / refWidth;
-        borderWidth = Math.max(1, Math.round((markerBorderWidth || 3) * scaleFator));
+        // Aba Disponíveis: preenchimento do status com contorno branco clássico e sombra sutil
+        mapCtx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6";
+        mapCtx.shadowColor = 'rgba(0,0,0,0.3)';
+        mapCtx.shadowBlur = Math.round(radius * 0.25);
+        mapCtx.fill();
+
+        mapCtx.shadowColor = 'transparent';
+        mapCtx.shadowBlur = 0;
+        mapCtx.lineWidth = Math.max(1.5, Math.round(borderWidth * 0.75));
+        mapCtx.strokeStyle = "#ffffff";
+        mapCtx.stroke();
       }
-
-      mapaPontos.forEach((ponto) => {
-        const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-        const indisponivel = ponto.status === "indisponivel" || !!venda;
-        const reservado = !indisponivel && ponto.status === "reservado";
-        const x = (Number(ponto.xPercent) / 100) * imgW;
-        const y = (Number(ponto.yPercent) / 100) * imgH;
-
-        mapCtx.save();
-        mapCtx.beginPath();
-        mapCtx.arc(x, y, radius, 0, Math.PI * 2);
-
-        if (usePrecoColors) {
-          // Aba Preços: preenchimento pela cor da faixa de preço
-          // Contorno com cor do status: azul disponível, vermelho vendido, amarelo reservado.
-          const corPreco = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
-          mapCtx.fillStyle = corPreco || (indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6");
-          mapCtx.shadowColor = 'transparent';
-          mapCtx.shadowBlur = 0;
-          mapCtx.fill();
-
-          mapCtx.lineWidth = borderWidth;
-          mapCtx.strokeStyle = indisponivel ? "#dc2626" : reservado ? "#d97706" : "#2563eb";
-          mapCtx.stroke();
-        } else {
-          // Aba Disponíveis: preenchimento do status com contorno branco clássico e sombra sutil
-          mapCtx.fillStyle = indisponivel ? "#ef4444" : reservado ? "#f59e0b" : "#3b82f6";
-          mapCtx.shadowColor = 'rgba(0,0,0,0.3)';
-          mapCtx.shadowBlur = Math.round(radius * 0.25);
-          mapCtx.fill();
-
-          mapCtx.shadowColor = 'transparent';
-          mapCtx.shadowBlur = 0;
-          mapCtx.lineWidth = Math.max(1.5, Math.round(borderWidth * 0.75));
-          mapCtx.strokeStyle = "#ffffff";
-          mapCtx.stroke();
-        }
-        mapCtx.restore();
-      });
-
-      // 4. Montar Canvas final com Cabeçalho e Rodapé de Preços
-      const headerH = Math.max(80, Math.round(imgW * 0.095));
-      const hasFooter = usePrecoColors && faixasPrecoGlobal.length > 0;
-      const footerH = hasFooter ? Math.round(imgW * (faixasPrecoGlobal.length > 5 ? 0.30 : 0.18)) : 0;
-
-      const finalCanvas = document.createElement("canvas");
-      finalCanvas.width = imgW;
-      finalCanvas.height = headerH + imgH + footerH;
-      const finalCtx = finalCanvas.getContext("2d")!;
-      finalCtx.imageSmoothingEnabled = true;
-      finalCtx.imageSmoothingQuality = "high";
-
-      // Fundo branco geral
-      finalCtx.fillStyle = '#ffffff';
-      finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
-
-      // Desenhar cabeçalho no topo com legenda e contadores
-      desenharCabecalhoNoCanvas(finalCtx, imgW, headerH, usePrecoColors);
-
-      // Desenhar mapa no centro
-      finalCtx.drawImage(mapCanvas, 0, headerH);
-
-      // Desenhar rodapé com os cards de preço lado a lado
-      if (hasFooter) {
-        desenharRodapePrecosHorizontalNoCanvas(finalCtx, imgW, headerH + imgH, footerH);
-      }
-
-      resolve(finalCanvas);
+      mapCtx.restore();
     });
+
+    // 6. Montar Canvas final com Cabeçalho e Rodapé de Preços
+    const headerH = Math.max(80, Math.round(imgW * 0.095));
+    const hasFooter = usePrecoColors && faixasPrecoGlobal.length > 0;
+    const footerH = hasFooter ? Math.round(imgW * (faixasPrecoGlobal.length > 5 ? 0.30 : 0.18)) : 0;
+
+    const totalContentH = headerH + imgH + footerH;
+    const minLandscapeW = Math.round(totalContentH * 1.35);
+    const finalW = Math.max(imgW, minLandscapeW);
+    const finalH = totalContentH;
+
+    const finalCanvas = document.createElement("canvas");
+    finalCanvas.width = finalW;
+    finalCanvas.height = finalH;
+    const finalCtx = finalCanvas.getContext("2d")!;
+    finalCtx.imageSmoothingEnabled = true;
+    finalCtx.imageSmoothingQuality = "high";
+
+    // Fundo branco geral
+    finalCtx.fillStyle = '#ffffff';
+    finalCtx.fillRect(0, 0, finalCanvas.width, finalCanvas.height);
+
+    // Desenhar cabeçalho no topo cobrindo a largura total finalW
+    desenharCabecalhoNoCanvas(finalCtx, finalW, headerH, usePrecoColors);
+
+    // Desenhar mapa centralizado horizontalmente no canvas paisagem mantendo o enquadramento exato
+    const offsetX = Math.round((finalW - imgW) / 2);
+    finalCtx.drawImage(mapCanvas, offsetX, headerH, imgW, imgH);
+
+    // Desenhar rodapé com os cards de preço lado a lado cobrindo a largura total finalW
+    if (hasFooter) {
+      desenharRodapePrecosHorizontalNoCanvas(finalCtx, finalW, headerH + imgH, footerH);
+    }
+
+    return finalCanvas;
   };
 
   const [downloadModalAberto, setDownloadModalAberto] = React.useState(false);
@@ -5894,11 +6020,12 @@ const LotDashboard = ({
       triggerDownload(blob, filename);
     } else {
       const dataUrl = canvas.toDataURL("image/png");
+      setDownloadConcluidoUrl(dataUrl);
+      setDownloadConcluidoFilename(filename);
       const link = document.createElement("a");
       link.download = filename;
       link.href = dataUrl;
-      link.target = "_blank";
-      link.rel = "noopener noreferrer";
+      link.style.display = "none";
       document.body.appendChild(link);
       link.click();
       setTimeout(() => {
@@ -5911,9 +6038,8 @@ const LotDashboard = ({
     const isPrecoTab = forcarModoPreco !== undefined ? forcarModoPreco : (downloadTipoAba === "precos" || mode === "precos");
     const canvas = await gerarCanvasMapaInterativo(isPrecoTab);
     const { jsPDF } = await import("jspdf");
-    const landscape = canvas.width >= canvas.height;
     const pdf = new jsPDF({
-      orientation: landscape ? "landscape" : "portrait",
+      orientation: "landscape",
       unit: "px",
       format: [canvas.width, canvas.height],
       compress: true,
@@ -5947,8 +6073,8 @@ const LotDashboard = ({
   const executarDownloadImagem = async (forcarModoPreco?: boolean) => {
     try {
       setDownloadProcessando('img');
+      setDownloadConcluidoUrl(null);
       await baixarMapaInterativoImagem(forcarModoPreco);
-      setDownloadModalAberto(false);
     } catch (err: any) {
       console.error("Erro ao baixar imagem do mapa:", err);
       alert(err?.message || "Não foi possível baixar a imagem do mapa.");
@@ -5960,8 +6086,8 @@ const LotDashboard = ({
   const executarDownloadPdf = async (forcarModoPreco?: boolean) => {
     try {
       setDownloadProcessando('pdf');
+      setDownloadConcluidoUrl(null);
       await baixarMapaInterativoPdf(forcarModoPreco);
-      setDownloadModalAberto(false);
     } catch (err: any) {
       console.error("Erro ao baixar PDF do mapa:", err);
       alert(err?.message || "Não foi possível baixar o PDF do mapa.");
@@ -5969,6 +6095,169 @@ const LotDashboard = ({
       setDownloadProcessando(null);
     }
   };
+
+  // Renderizador centralizado de modais compartilhados (disponível no PC, Mobile Pro e Mobile Lite)
+  const renderModaisCompartilhados = () => (
+    <>
+      {/* SELETOR DE CORES HEX / TABELA MODAL */}
+      {colorPickerConfig.isOpen && (
+        <ColorPickerModal
+          isOpen={colorPickerConfig.isOpen}
+          onClose={() => setColorPickerConfig((prev) => ({ ...prev, isOpen: false }))}
+          currentColor={colorPickerConfig.currentColor}
+          onSelectColor={colorPickerConfig.onSelectColor}
+          title={colorPickerConfig.title}
+          subtitle={colorPickerConfig.subtitle}
+        />
+      )}
+
+      {/* MODAL DE CORTE DO MAPA */}
+      {showCropModal && Boolean(mapaImagem || localDev.mapaImagemBase64 || localDev.mapaImagemUrl || pdfRenderedUrl) && (
+        <CropMapModal
+          isOpen={showCropModal}
+          onClose={() => setShowCropModal(false)}
+          imageUrl={(localDev.mapaImagemUrl || localDev.mapaImagemBase64 || pdfRenderedUrl || (mapaImagem !== "pdf" ? mapaImagem : "")) as string}
+          onConfirmCrop={handleConfirmCrop}
+          existingPoints={mapaPontos}
+        />
+      )}
+
+      {/* MODAL DE DOWNLOAD DO MAPA (Para ambos os modos: Mapa de Lotes ou Mapa de Preços) */}
+      {downloadModalAberto && (
+        <div
+          className="fixed inset-0 z-[100005] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
+          onClick={() => setDownloadModalAberto(false)}
+        >
+          <div
+            className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between">
+              <div>
+                <h3 className="text-base font-black text-slate-900 leading-tight">Baixar Mapa</h3>
+                <p className="text-xs text-slate-500 truncate max-w-[220px]">{localDev.nome}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDownloadModalAberto(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-all"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* SELETOR DA ABA DO MAPA PARA EXPORTAÇÃO */}
+            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => setDownloadTipoAba("mapa")}
+                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  downloadTipoAba === "mapa"
+                    ? "bg-white text-slate-900 border border-slate-200/80 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-blue-600 flex-shrink-0" />
+                <span>Disponíveis</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setDownloadTipoAba("precos")}
+                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
+                  downloadTipoAba === "precos"
+                    ? "bg-white text-emerald-800 border border-slate-200/80 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 flex-shrink-0" />
+                <span>Cores de Preço {faixasPrecoGlobal.length > 0 ? `(${faixasPrecoGlobal.length})` : ''}</span>
+              </button>
+            </div>
+
+            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 text-xs text-slate-600 leading-relaxed">
+              {downloadTipoAba === "precos" ? (
+                <p>
+                  Exporta o mapa com as <strong>bolinhas coloridas pelas faixas de preço</strong> e tabela de condições comerciais no rodapé (à vista, entrada e parcelas).
+                </p>
+              ) : (
+                <p>
+                  Exporta o mapa com as <strong>bolinhas de status</strong> (azul disponíveis, amarelo reservados e vermelho vendidos) com legenda completa.
+                </p>
+              )}
+            </div>
+
+            {/* Feedback de download concluído com link direto de salvamento */}
+            {downloadConcluidoUrl && (
+              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-2xl flex flex-col gap-1.5">
+                <div className="flex items-center gap-2 text-emerald-900 text-xs font-black">
+                  <span>✅</span>
+                  <span>Arquivo gerado com sucesso!</span>
+                </div>
+                <a
+                  href={downloadConcluidoUrl}
+                  download={downloadConcluidoFilename}
+                  className="text-[11px] font-bold text-emerald-700 underline hover:text-emerald-950 text-center py-0.5"
+                >
+                  Se não baixou automaticamente, clique aqui para salvar
+                </a>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2">
+              <button
+                type="button"
+                disabled={downloadProcessando !== null}
+                onClick={() => executarDownloadImagem(downloadTipoAba === "precos")}
+                className="w-full py-3 px-4 rounded-2xl bg-[#1a4a1a] hover:bg-[#245424] active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-[#1a4a1a]/20 transition-all disabled:opacity-60"
+              >
+                {downloadProcessando === 'img' ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Gerando Imagem...</span>
+                  </div>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                    <span>Baixar Imagem (PNG)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                disabled={downloadProcessando !== null}
+                onClick={() => executarDownloadPdf(downloadTipoAba === "precos")}
+                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all disabled:opacity-60"
+              >
+                {downloadProcessando === 'pdf' ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Gerando PDF...</span>
+                  </div>
+                ) : (
+                  <>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    <span>Baixar em PDF</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => {
+                setDownloadModalAberto(false);
+                setDownloadConcluidoUrl(null);
+              }}
+              className="w-full py-2 text-xs text-slate-400 font-bold hover:text-slate-700 transition-colors"
+            >
+              Fechar
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
 
   // ──────────────────────────────────────────────
   // CRIAR/PERSISTIR BOLINHA
@@ -6067,7 +6356,10 @@ const LotDashboard = ({
       mapaPontos: nextPontos,
     } as Empreendimento, sales);
     if (!raw.moveExisting) pushUndo((localDev as any).mapaPontos ?? [], `Bolinha Q${raw.quadra} L${raw.lote}`);
+    latestPontosRef.current = nextPontos;
+    latestDevRef.current = nextDev;
     persistDev(nextDev);
+    syncPontosDirect(localDev.id, nextPontos);
     if (!raw.moveExisting) setLastSessionPointIds((prev) => [...prev, pontoBase.id]);
     // Sync com Gerenciador de Lotes
     if (onMarkerSaved) onMarkerSaved(ensured.quadraName, lote, finalStatus, finalObs || "");
@@ -6137,7 +6429,10 @@ const LotDashboard = ({
     });
     const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
     pushUndo((localDev as any).mapaPontos ?? [], `Sequencia Q${form.quadra} L${form.loteInicial}-${form.loteFinal}`);
+    latestPontosRef.current = finalDev.mapaPontos || [];
+    latestDevRef.current = finalDev;
     persistDev(finalDev);
+    syncPontosDirect(localDev.id, finalDev.mapaPontos || []);
     setLastSessionPointIds((prev) => [...prev, ...newIds]);
   };
 
@@ -6180,7 +6475,10 @@ const LotDashboard = ({
       if (!existingPoint) newIds.push(id);
     });
     const finalDev = recalcularEstatisticasEmpreendimento(nextDevLocal, sales);
+    latestPontosRef.current = finalDev.mapaPontos || [];
+    latestDevRef.current = finalDev;
     persistDev(finalDev);
+    syncPontosDirect(localDev.id, finalDev.mapaPontos || []);
     setLastSessionPointIds((prev) => [...prev, ...newIds]);
   };
 
@@ -6264,37 +6562,39 @@ const LotDashboard = ({
   // ──────────────────────────────────────────────
   // ARRASTAR BOLINHAS (modo edição)
   // ──────────────────────────────────────────────
-  const handleBallMouseDown = (e: React.MouseEvent, ponto: any) => {
+  // ──────────────────────────────────────────────
+  // CONTROLE DE ARRASTE VS CLIQUE NAS BOLINHAS
+  // ──────────────────────────────────────────────
+  const ballDragRef = useRef<{
+    pontoId: string;
+    startX: number;
+    startY: number;
+    hasMoved: boolean;
+    initialPositions: Record<string, { x: number; y: number }>;
+    idsParaMover: string[];
+    ponto: any;
+    venda: any;
+  } | null>(null);
+
+  const justDraggedRef = useRef<boolean>(false);
+
+  const handleBallMouseDown = (e: React.MouseEvent | React.PointerEvent, ponto: any, venda?: any) => {
     if (!isEditingMap) return;
     if (e.ctrlKey) return;
     e.stopPropagation();
-    e.preventDefault();
-    // Salvar estado no undo ANTES de arrastar
-    const currentPontosForUndo = ((localDev as any).mapaPontos || []) as any[];
-    setMapUndoStack(prev => [...prev.slice(-29), { pontos: currentPontosForUndo, markerSize: Number(markerSizePercent) }]);
-    setMapRedoStack([]);
-    setDraggingId(ponto.id);
 
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    const grupoId = gruposMap[ponto.id];
+    const currentPontos = ((latestDevRef.current as any).mapaPontos || (localDev as any).mapaPontos || []) as any[];
 
     // DETERMINAR QUAIS MARCADORES SERÃO ARRASTADOS:
-    // Regra: por padrão, mover ESTRITAMENTE e APENAS a bolinha clicada!
-    // Isso evita o problema onde arrastar uma bolinha deslocava outra sem ela estar selecionada.
-    // Múltiplas bolinhas só se movem juntas se:
-    // 1. O usuário estiver no modo explícito de ação em massa (mapAction === "massa") com seleção ativa contendo esta bolinha; OU
-    // 2. O usuário estiver segurando Shift ao arrastar tendo uma seleção ativa contendo esta bolinha.
     let idsParaMover: Set<string>;
     if (mapAction === "massa" && massaSelIds.has(ponto.id) && massaSelIds.size > 1) {
       idsParaMover = new Set(massaSelIds);
     } else if (e.shiftKey && ctrlSelectedIds.has(ponto.id) && ctrlSelectedIds.size > 1) {
       idsParaMover = new Set(ctrlSelectedIds);
     } else {
-      // Mover SOMENTE a bolinha clicada (garante que nenhuma outra seja deslocada)
       idsParaMover = new Set([ponto.id]);
     }
 
-    // Guardar posição inicial de cada bolinha a ser movida
     const initialPositions: Record<string, { x: number; y: number }> = {};
     currentPontos.forEach((p: any) => {
       if (idsParaMover.has(p.id)) {
@@ -6302,16 +6602,113 @@ const LotDashboard = ({
       }
     });
 
-    setDragStart({
-      mouseX: e.clientX,
-      mouseY: e.clientY,
-      xPercent: ponto.xPercent,
-      yPercent: ponto.yPercent,
+    ballDragRef.current = {
+      pontoId: ponto.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      hasMoved: false,
       initialPositions,
       idsParaMover: Array.from(idsParaMover),
-      isMultiMove: idsParaMover.size > 1,
-    } as any);
+      ponto,
+      venda,
+    };
   };
+
+  useEffect(() => {
+    const handleGlobalMove = (e: MouseEvent | PointerEvent | TouchEvent) => {
+      const drag = ballDragRef.current;
+      if (!drag || !mapContainerRef.current) return;
+
+      const clientX = 'touches' in e ? e.touches[0].clientX : (e as MouseEvent).clientX;
+      const clientY = 'touches' in e ? e.touches[0].clientY : (e as MouseEvent).clientY;
+
+      const dist = Math.hypot(clientX - drag.startX, clientY - drag.startY);
+
+      // Limiar de 4px para diferenciar clique de arraste
+      if (!drag.hasMoved) {
+        if (dist < 4) return;
+        drag.hasMoved = true;
+        setDraggingId(drag.pontoId);
+
+        // Salvar estado no undo antes de mover
+        const currentPontosForUndo = ((latestDevRef.current as any).mapaPontos || (localDev as any).mapaPontos || []) as any[];
+        setMapUndoStack(prev => [...prev.slice(-29), { pontos: currentPontosForUndo, markerSize: Number(markerSizePercent) }]);
+        setMapRedoStack([]);
+      }
+
+      if (e.cancelable) e.preventDefault();
+
+      const rect = mapContainerRef.current.getBoundingClientRect();
+      if (!rect || rect.width <= 0 || rect.height <= 0) return;
+
+      // Deslocamento percentual exato relativo ao tamanho visível do mapa
+      const dx = ((clientX - drag.startX) / rect.width) * 100;
+      const dy = ((clientY - drag.startY) / rect.height) * 100;
+
+      const currentPontos = ((latestDevRef.current as any).mapaPontos || (localDev as any).mapaPontos || []) as any[];
+      const idsParaMover = new Set(drag.idsParaMover);
+      const initPositions = drag.initialPositions;
+
+      const nextPontos = currentPontos.map((p: any) => {
+        if (!idsParaMover.has(p.id)) return p;
+        const initX = initPositions[p.id]?.x ?? p.xPercent;
+        const initY = initPositions[p.id]?.y ?? p.yPercent;
+        return {
+          ...p,
+          xPercent: Math.max(0.1, Math.min(99.9, initX + dx)),
+          yPercent: Math.max(0.1, Math.min(99.9, initY + dy)),
+          atualizadoEm: new Date().toISOString(),
+        };
+      });
+
+      latestPontosRef.current = nextPontos;
+      latestDevRef.current = { ...latestDevRef.current, mapaPontos: nextPontos } as any;
+      setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
+    };
+
+    const handleGlobalUp = () => {
+      const drag = ballDragRef.current;
+      if (!drag) return;
+
+      if (drag.hasMoved) {
+        // Marcador foi arrastado: ativa flag para impedir abertura de modal no clique
+        justDraggedRef.current = true;
+        setTimeout(() => {
+          justDraggedRef.current = false;
+        }, 200);
+
+        // Salvar automaticamente a nova posição
+        const currentPontos = latestPontosRef.current;
+        const currentDev = {
+          ...latestDevRef.current,
+          mapaPontos: currentPontos,
+        } as Empreendimento;
+        persistDev(currentDev);
+        syncPontosDirect(currentDev.id, currentPontos);
+      } else {
+        // Foi apenas clique simples
+        justDraggedRef.current = false;
+      }
+
+      ballDragRef.current = null;
+      setDraggingId(null);
+      setDragStart(null);
+    };
+
+    window.addEventListener("pointermove", handleGlobalMove, { passive: false });
+    window.addEventListener("pointerup", handleGlobalUp);
+    window.addEventListener("pointercancel", handleGlobalUp);
+    window.addEventListener("touchmove", handleGlobalMove, { passive: false });
+    window.addEventListener("touchend", handleGlobalUp);
+
+    return () => {
+      window.removeEventListener("pointermove", handleGlobalMove);
+      window.removeEventListener("pointerup", handleGlobalUp);
+      window.removeEventListener("pointercancel", handleGlobalUp);
+      window.removeEventListener("touchmove", handleGlobalMove);
+      window.removeEventListener("touchend", handleGlobalUp);
+    };
+  }, []);
 
   const handleMapMouseUp = () => {
     if (ctrlPanRef.current.active) {
@@ -6320,7 +6717,7 @@ const LotDashboard = ({
     if (mapMousePanRef.current.active) {
       mapMousePanRef.current.active = false;
     }
-    if (draggingId) {
+    if (draggingId || ballDragRef.current?.hasMoved) {
       commitDrag();
     }
   };
@@ -6343,37 +6740,16 @@ const LotDashboard = ({
       setMapPan(clampMapPan(nextPan));
       return;
     }
-    if (!draggingId || !dragStart || !mapContainerRef.current) return;
-    const rect = mapContainerRef.current.getBoundingClientRect();
-    // Dividir pela escala (zoom) para acertar o movimento real
-    const scale = mapZoomRef.current || 1;
-    const dx = ((e.clientX - dragStart.mouseX) / (rect.width / scale)) * 100 / scale;
-    const dy = ((e.clientY - dragStart.mouseY) / (rect.height / scale)) * 100 / scale;
-    const currentPontos = ((localDev as any).mapaPontos || []) as any[];
-    
-    // Obter IDs salvos para movimentação síncrona
-    const idsList = (dragStart as any).idsParaMover as string[] | undefined;
-    const idsParaMover = idsList ? new Set(idsList) : new Set([draggingId]);
-    const initialPositions = (dragStart as any).initialPositions || {};
-
-    const nextPontos = currentPontos.map((p: any) => {
-      if (!idsParaMover.has(p.id)) return p;
-      // Usar posição INICIAL salva no mousedown + delta acumulado desde início
-      const initX = initialPositions[p.id]?.x ?? (p.id === draggingId ? dragStart.xPercent : p.xPercent);
-      const initY = initialPositions[p.id]?.y ?? (p.id === draggingId ? dragStart.yPercent : p.yPercent);
-      return {
-        ...p,
-        xPercent: Math.max(0.2, Math.min(99.8, initX + dx)),
-        yPercent: Math.max(0.2, Math.min(99.8, initY + dy)),
-        atualizadoEm: new Date().toISOString()
-      };
-    });
-    setLocalDev((prev) => ({ ...prev, mapaPontos: nextPontos } as any));
   };
 
   const commitDrag = () => {
-    if (!draggingId) return;
-    persistDev(localDev);
+    const currentPontos = latestPontosRef.current;
+    const currentDev = {
+      ...latestDevRef.current,
+      mapaPontos: currentPontos,
+    } as Empreendimento;
+    persistDev(currentDev);
+    syncPontosDirect(currentDev.id, currentPontos);
     setDraggingId(null);
     setDragStart(null);
   };
@@ -6512,7 +6888,10 @@ const LotDashboard = ({
             }
           : p
       );
+      latestPontosRef.current = nextPontos;
+      latestDevRef.current = { ...nextDev, mapaPontos: nextPontos } as Empreendimento;
       persistDev({ ...nextDev, mapaPontos: nextPontos } as Empreendimento);
+      syncPontosDirect(localDev.id, nextPontos);
     } else {
       const ensured = ensureLotExistsInEmpreendimento(localDev, quadra, lote);
       const oldKey = getLotInfoKey(ponto.quadra, ponto.lote);
@@ -6526,7 +6905,10 @@ const LotDashboard = ({
       if (oldKey !== ensured.lotInfoKey && !vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId)) {
         delete (lotesInfo as any)[oldKey];
       }
+      latestPontosRef.current = nextPontos;
+      latestDevRef.current = { ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento;
       persistDev({ ...ensured.dev, lotesInfo, mapaPontos: nextPontos } as Empreendimento);
+      syncPontosDirect(localDev.id, nextPontos);
     }
 
     if (onMarkerSaved) onMarkerSaved(quadra, lote, status, observacao);
@@ -7111,10 +7493,14 @@ const LotDashboard = ({
   // SALVAR / SAIR DO MODO EDIÇÃO
   // ──────────────────────────────────────────────
   const salvarEdicaoMapa = () => {
-    persistDev({
-      ...localDev,
+    const currentPontos = latestPontosRef.current;
+    const devToSave = {
+      ...latestDevRef.current,
+      mapaPontos: currentPontos,
       mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
-    } as Empreendimento);
+    } as Empreendimento;
+    persistDev(devToSave);
+    syncPontosDirect(devToSave.id, currentPontos);
     setDraggingId(null);
     setDragStart(null);
     setSelectedPoint(null);
@@ -7186,10 +7572,14 @@ const LotDashboard = ({
 
   // Aplicar: salva parcialmente sem sair da edicao
   const aplicarEdicaoMapa = () => {
-    persistDev({
-      ...localDev,
+    const currentPontos = latestPontosRef.current;
+    const devToSave = {
+      ...latestDevRef.current,
+      mapaPontos: currentPontos,
       mapaMarkerSizePercent: Math.max(40, Math.min(220, Number(markerSizePercent) || 100)),
-    } as any);
+    } as any;
+    persistDev(devToSave);
+    syncPontosDirect(devToSave.id, currentPontos);
     setMapUndoStack([]);
     setMapRedoStack([]);
     setMapPendingPontos(null);
@@ -7390,15 +7780,28 @@ const LotDashboard = ({
                   <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
                 </div>
               )}
-              {(((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
-                <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
-              ) : mapaImagem ? (
+              {mapaImagem && mapaImagem !== "pdf" ? (
                 <>
                   {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
                     <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
                   )}
-                  <img ref={mapImageRef} src={mapaImagem} alt="Mapa do empreendimento" className="block w-full h-auto pointer-events-none relative" draggable={false} onLoad={() => { updateDisplayedMapScale(); setTimeout(fitMapToScreen, 80); }} />
+                  <img
+                    ref={mapImageRef}
+                    src={mapaImagem}
+                    alt="Mapa do empreendimento"
+                    className="block w-full h-auto pointer-events-none relative"
+                    draggable={false}
+                    onLoad={() => {
+                      updateDisplayedMapScale();
+                      if (hasFittedMapForDevIdRef.current !== localDev.id) {
+                        hasFittedMapForDevIdRef.current = localDev.id;
+                        setTimeout(fitMapToScreen, 80);
+                      }
+                    }}
+                  />
                 </>
+              ) : (((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
+                <canvas ref={pdfCanvasRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : null}
 
               {/* Preview bolinhas + linha para multi-lote */}
@@ -7407,7 +7810,7 @@ const LotDashboard = ({
               {/* BOLINHAS */}
               {mapaPontos.map((ponto) => {
                 const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                const isVendido = ponto.status === "indisponivel" || !!venda;
+                const isVendido = ponto.status === "indisponivel" || ponto.status === "vendido" || ponto.status === "bloqueado" || !!venda;
                 const isReservado = !isVendido && ponto.status === "reservado";
                 const isAbaPrecos = mode === "precos";
                 // Cor do lote e estilo condicional:
@@ -7442,84 +7845,41 @@ const LotDashboard = ({
                 return (
                   <button
                     key={ponto.id}
-                    onMouseDown={(e) => isEditingMap ? handleBallMouseDown(e, ponto) : undefined}
-                    onPointerDown={(ev) => { ev.stopPropagation(); setMapActive(true); }}
+                    onMouseDown={(e) => {
+                      if (isEditingMap) handleBallMouseDown(e, ponto, venda);
+                    }}
+                    onPointerDown={(ev) => {
+                      ev.stopPropagation();
+                      setMapActive(true);
+                      if (isEditingMap) handleBallMouseDown(ev, ponto, venda);
+                    }}
                     onTouchStart={(ev) => {
                       ev.stopPropagation();
-                      if (!isEditingMap) return;
-                      const touch = ev.touches[0];
-                      // Se bolinha já está selecionada → iniciar drag imediatamente
-                      if (mobileSelectedId === ponto.id || mobileSelIds.has(ponto.id)) {
-                        const rect = mapContainerRef.current?.getBoundingClientRect();
-                        if (!rect) return;
-                        const scale = mapZoomRef.current || 1;
-                        const initPositions: Record<string,{x:number;y:number}> = {};
-                        const cp = ((localDev as any).mapaPontos || []) as any[];
-                        // Mover SOMENTE a bolinha selecionada (não arrastar fileira inteira)
-                        cp.forEach((p: any) => {
-                          if (p.id === ponto.id) {
-                            initPositions[p.id] = { x: p.xPercent, y: p.yPercent };
-                          }
-                        });
-                        setMobileDragId(ponto.id);
-                        mobileDragStart.current = { touchX: touch.clientX, touchY: touch.clientY, xPct: ponto.xPercent, yPct: ponto.yPercent, initialPositions: initPositions };
-                        setMapUndoStack(prev => [...prev.slice(-29), { pontos: cp, markerSize: Number(markerSizePercent) }]);
-                        return;
-                      }
-                      // Toque longo (500ms) → modo seleção múltipla
-                      longPressTimer.current = setTimeout(() => {
-                        setMobileSelMode(true);
-                        setMobileSelIds(prev => { const n = new Set(prev); n.add(ponto.id); return n; });
-                      }, 500);
-                    }}
-                    onTouchMove={(ev) => {
-                      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-                      if (!mobileDragId || mobileDragId !== ponto.id || !mobileDragStart.current || !mapContainerRef.current) return;
-                      ev.stopPropagation(); ev.preventDefault();
-                      const touch = ev.touches[0];
-                      const rect = mapContainerRef.current.getBoundingClientRect();
-                      const scale = mapZoomRef.current || 1;
-                      const dx = ((touch.clientX - mobileDragStart.current.touchX) / (rect.width / scale)) * 100 / scale;
-                      const dy = ((touch.clientY - mobileDragStart.current.touchY) / (rect.height / scale)) * 100 / scale;
-                      const cp = ((localDev as any).mapaPontos || []) as any[];
-                      const initPos = mobileDragStart.current.initialPositions;
-                      const next = cp.map((p: any) => {
-                        if (!initPos[p.id]) return p;
-                        return { ...p, xPercent: Math.max(0,Math.min(100,initPos[p.id].x+dx)), yPercent: Math.max(0,Math.min(100,initPos[p.id].y+dy)) };
-                      });
-                      setLocalDev(prev => ({ ...prev, mapaPontos: next } as any));
-                    }}
-                    onTouchEnd={(ev) => {
-                      if (longPressTimer.current) { clearTimeout(longPressTimer.current); longPressTimer.current = null; }
-                      if (mobileDragId === ponto.id) {
-                        persistDev(localDev);
-                        setMobileDragId(null);
-                        mobileDragStart.current = null;
+                      setMapActive(true);
+                      if (isEditingMap && ev.touches && ev.touches[0]) {
+                        const touch = ev.touches[0];
+                        handleBallMouseDown({
+                          clientX: touch.clientX,
+                          clientY: touch.clientY,
+                          stopPropagation: () => {},
+                          preventDefault: () => {},
+                          ctrlKey: false,
+                          shiftKey: false,
+                        } as any, ponto, venda);
                       }
                     }}
                     onClick={(ev) => {
-                      if (draggingId) return;
+                      if (justDraggedRef.current || draggingId) return;
                       ev.stopPropagation();
-                      // Mobile modo seleção múltipla: toggle
-                      if (isMobile && mobileSelMode && isEditingMap) {
-                        setMobileSelIds(prev => { const n = new Set(prev); n.has(ponto.id) ? n.delete(ponto.id) : n.add(ponto.id); return n; });
-                        return;
-                      }
-                      // Mobile modo edição: 1º toque seleciona para arrastar, 2º toque abre modal
-                      if (isMobile && isEditingMap) {
-                        if (mobileSelectedId === ponto.id) {
-                          setMobileSelectedId(null); // deseleciona no 2º toque (abre modal abaixo)
-                        } else {
-                          setMobileSelectedId(ponto.id);
-                          return; // apenas seleciona, não abre modal
-                        }
-                      }
                       // CTRL seleção múltipla no modo edição: também alimenta a edição em massa.
                       if (isEditingMap && ev.ctrlKey) {
                         toggleCtrlSel(ponto.id);
                         return;
                       }
-                      if (isEditingMap && mapAction === "massa") { toggleMassaSel(ponto.id); return; }
+                      if (isEditingMap && mapAction === "massa") {
+                        toggleMassaSel(ponto.id);
+                        return;
+                      }
                       setSelectedPoint({ ...ponto, venda });
                     }}
                     title={`Q${ponto.quadra} L${ponto.lote}`}
@@ -7538,6 +7898,7 @@ const LotDashboard = ({
                       boxShadow: "none",
                       transform: "translate(-50%,-50%)",
                       pointerEvents: "auto",
+                      touchAction: isEditingMap ? "none" : "auto",
                       opacity: tipoVisualizacao === "lite" && liteStatusFiltro !== "todos" && ponto.status !== liteStatusFiltro ? 0.25 : (isDragging ? 0.8 : 1),
                       display: "flex",
                       alignItems: "center",
@@ -8807,6 +9168,49 @@ const LotDashboard = ({
               </div>
 
               <div className="flex items-center gap-2">
+                {/* Alternar Mapa / Preços em Tela Cheia */}
+                <div className="flex items-center bg-slate-900/85 backdrop-blur-md p-1 rounded-xl border border-white/10 shadow-xl">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("mapa");
+                      setDownloadTipoAba("mapa");
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${
+                      mode === "mapa" ? "bg-emerald-600 text-white shadow" : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    Mapa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("precos");
+                      setDownloadTipoAba("precos");
+                    }}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-black uppercase tracking-wide transition-all ${
+                      mode === "precos" ? "bg-amber-600 text-white shadow" : "text-slate-300 hover:text-white"
+                    }`}
+                  >
+                    Preços
+                  </button>
+                </div>
+
+                {/* Baixar mapa atual */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloadTipoAba(mode === "precos" ? "precos" : "mapa");
+                    setDownloadModalAberto(true);
+                  }}
+                  className="rounded-xl bg-blue-600 hover:bg-blue-500 text-white px-3.5 py-2 text-xs font-black uppercase shadow-md transition-all active:scale-95 flex items-center gap-1.5"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                  </svg>
+                  Baixar
+                </button>
+
                 <button
                   type="button"
                   onClick={() => {
@@ -8861,9 +9265,7 @@ const LotDashboard = ({
                   <p className="text-xs text-slate-400">Processando e fixando mapa para exibição rápida.</p>
                 </div>
               )}
-              {(((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
-                <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
-              ) : mapaImagem ? (
+              {mapaImagem && mapaImagem !== "pdf" ? (
                 <>
                   {mapaImagemFallback && mapaImagemFallback !== mapaImagem && (
                     <img src={mapaImagemFallback} alt="" className="block w-full h-auto pointer-events-none absolute inset-0" draggable={false} aria-hidden />
@@ -8876,20 +9278,32 @@ const LotDashboard = ({
                     draggable={false}
                     onLoad={() => {
                       updateDisplayedMapScale();
-                      setTimeout(() => fitMapToWidth(), 60);
+                      if (!hasFittedFullscreenRef.current) {
+                        hasFittedFullscreenRef.current = true;
+                        setTimeout(() => fitMapToWidth(), 60);
+                      }
                     }}
                   />
                 </>
+              ) : (((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) ? (
+                <canvas ref={pdfCanvasFullscreenRef} className="block w-full h-auto pointer-events-none" style={{ display: "block" }} />
               ) : null}
 
                 {mapaPontos.map((ponto) => {
                   const venda = vendaDoLote(ponto.quadra, ponto.lote, ponto.vendaId);
-                  const isVendidoFS = ponto.status === "indisponivel" || !!venda;
+                  const isVendidoFS = ponto.status === "indisponivel" || ponto.status === "vendido" || ponto.status === "bloqueado" || !!venda;
                   const isReservadoFS = !isVendidoFS && ponto.status === "reservado";
-                  const corPrecoFS = getCorPorPreco(ponto.quadra, ponto.lote, ponto);
-                  const ballBgFS = corPrecoFS || (isVendidoFS ? "#ef4444" : isReservadoFS ? "#f59e0b" : "#3b82f6");
-                  const ballBorderFS = isVendidoFS ? "#dc2626" : isReservadoFS ? "#d97706" : "#2563eb";
-                  const borderWidthFS = ballSize.border ?? Math.max(2.5, Math.round(ballSize.size * 0.22));
+                  const isPrecosModeFS = mode === "precos" || downloadTipoAba === "precos";
+                  const corPrecoFS = isPrecosModeFS ? getCorPorPreco(ponto.quadra, ponto.lote, ponto) : null;
+                  const ballBgFS = isPrecosModeFS
+                    ? (corPrecoFS || (isVendidoFS ? "#ef4444" : isReservadoFS ? "#f59e0b" : "#3b82f6"))
+                    : (isVendidoFS ? "#ef4444" : isReservadoFS ? "#f59e0b" : "#3b82f6");
+                  const ballBorderFS = isPrecosModeFS
+                    ? (isVendidoFS ? "#dc2626" : isReservadoFS ? "#d97706" : "#2563eb")
+                    : "#ffffff";
+                  const borderWidthFS = isPrecosModeFS
+                    ? (ballSize.border ?? Math.max(2.5, Math.round(ballSize.size * 0.22)))
+                    : Math.max(1.5, Math.round(ballSize.border * 0.75));
                     return (
                     <button
                       key={`fullscreen-${ponto.id}`}
@@ -8924,6 +9338,22 @@ const LotDashboard = ({
                   );
                 })}
               </div>
+
+              {/* Legenda de faixas de preço flutuante em tela cheia (quando em modo preços) */}
+              {(mode === "precos" || downloadTipoAba === "precos") && faixasPrecoGlobal.length > 0 && (
+                <div className="absolute bottom-6 left-5 z-[100001] max-w-[calc(100vw-120px)] sm:max-w-xl bg-slate-900/90 backdrop-blur-md p-3 rounded-2xl border border-white/10 shadow-2xl pointer-events-auto flex flex-wrap gap-2 items-center">
+                  <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-300 mr-1">
+                    <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                    <span>Faixas de Preço:</span>
+                  </div>
+                  {faixasPrecoGlobal.map((f, idx) => (
+                    <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/10 text-white text-[11px] font-bold">
+                      <span className="w-3 h-3 rounded-full border border-white/40 flex-shrink-0" style={{ backgroundColor: f.cor }} />
+                      <span>{fmtCurrency(f.preco)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Controles flutuantes de zoom e ajuste em tela cheia */}
               <div className="absolute bottom-6 right-5 z-[100001] flex flex-col gap-2 pointer-events-auto">
@@ -10340,6 +10770,9 @@ const LotDashboard = ({
               </div>
             </div>
           ) : null}
+
+          {/* Modais Compartilhados */}
+          {renderModaisCompartilhados()}
         </div>
       );
     }
@@ -10968,16 +11401,23 @@ const LotDashboard = ({
 
                           {/* Seletor de cor e ação */}
                           <div className="flex items-center justify-between pt-1.5 border-t border-slate-100" onClick={(e) => e.stopPropagation()}>
-                            <label className="flex items-center gap-1.5 cursor-pointer group" title="Clique para mudar a cor das bolinhas desta faixa">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setColorPickerConfig({
+                                  isOpen: true,
+                                  currentColor: cor,
+                                  title: `Cor da Faixa: R$ ${Number(faixa.preco).toLocaleString('pt-BR')}`,
+                                  subtitle: 'Selecione uma cor da tabela ou digite o código hexadecimal para todas as bolinhas deste valor',
+                                  onSelectColor: (novaCor) => salvarCorFaixaPreco(faixa.preco, novaCor),
+                                });
+                              }}
+                              className="flex items-center gap-1.5 cursor-pointer group hover:opacity-80 transition-opacity"
+                              title="Clique para abrir a tabela de cores e digitar código hexadecimal"
+                            >
                               <div className="w-3.5 h-3.5 rounded-full border border-black/20 group-hover:scale-110 transition-transform" style={{ background: cor }} />
-                              <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Cor</span>
-                              <input
-                                type="color"
-                                value={cor}
-                                onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
-                                className="sr-only"
-                              />
-                            </label>
+                              <span className="text-[9px] font-bold text-slate-500 group-hover:text-slate-800 underline decoration-dashed">Personalizar Cor</span>
+                            </button>
                             <span className="text-[9px] font-bold text-emerald-800">Ver no mapa →</span>
                           </div>
                         </div>
@@ -11490,6 +11930,9 @@ const LotDashboard = ({
       {mapFullscreen && mode !== "mapa" && !isEditingMap && (
         <>{renderMapa()}</>
       )}
+
+      {/* Modais Compartilhados */}
+      {renderModaisCompartilhados()}
       </>
     );
   }
@@ -11792,10 +12235,39 @@ const LotDashboard = ({
             <div className="flex-1 flex flex-col min-w-0 min-h-0 bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden relative">
 
               {/* Barra Superior do Mapa */}
-              <div className="flex-shrink-0 pt-2.5 pb-2 px-4 flex items-center justify-between border-b border-slate-100 bg-white z-10">
-                <p className="text-sm font-black text-slate-800 uppercase tracking-wide">
+              <div className="flex-shrink-0 pt-2 pb-2 px-4 flex items-center justify-between border-b border-slate-100 bg-white z-10 gap-3">
+                <p className="text-sm font-black text-slate-800 uppercase tracking-wide truncate">
                   Empreendimento {localDev.nome}
                 </p>
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMapFullscreen(true);
+                      scheduleMapScaleUpdate(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase tracking-wide transition-all active:scale-95 shadow-xs"
+                    title="Abrir o mapa em tela cheia"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                    Tela Cheia
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setMode("precos");
+                      setDownloadTipoAba("precos");
+                      setMapFullscreen(true);
+                      scheduleMapScaleUpdate(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-black uppercase tracking-wide transition-all active:scale-95 shadow-xs"
+                    title="Abrir o mapa com preços em tela cheia"
+                  >
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Preços
+                  </button>
+                </div>
               </div>
 
               {/* Rosa dos ventos — canto sup direito */}
@@ -11879,21 +12351,25 @@ const LotDashboard = ({
                           >
                             <div className="flex items-center justify-between gap-2 mb-1">
                               <div className="flex items-center gap-2 min-w-0">
-                                <label
-                                  title="Clique para alterar a cor desta faixa"
-                                  className="cursor-pointer relative inline-flex items-center justify-center flex-shrink-0"
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setColorPickerConfig({
+                                      isOpen: true,
+                                      currentColor: faixa.color,
+                                      title: `Cor da Faixa: R$ ${Number(faixa.preco).toLocaleString('pt-BR')}`,
+                                      subtitle: 'Selecione uma cor da tabela ou digite o código hexadecimal para todas as bolinhas deste valor',
+                                      onSelectColor: (novaCor) => salvarCorFaixaPreco(faixa.preco, novaCor),
+                                    });
+                                  }}
+                                  title="Clique para abrir o seletor de cores da tabela e código hexadecimal"
+                                  className="cursor-pointer relative inline-flex items-center justify-center flex-shrink-0 hover:scale-110 active:scale-95 transition-transform"
                                 >
                                   <span
-                                    className="w-4 h-4 rounded-full border-2 border-white block"
+                                    className="w-4 h-4 rounded-full border-2 border-white block shadow-xs"
                                     style={{ backgroundColor: faixa.color, boxShadow: "none" }}
                                   />
-                                  <input
-                                    type="color"
-                                    value={faixa.color}
-                                    onChange={(e) => salvarCorFaixaPreco(faixa.preco, e.target.value)}
-                                    className="sr-only"
-                                  />
-                                </label>
+                                </button>
                                 <span className="text-xs font-black text-slate-900 tracking-tight">
                                   R$ {Number(faixa.preco).toLocaleString('pt-BR')}
                                 </span>
@@ -12001,22 +12477,62 @@ const LotDashboard = ({
                     <span className="text-[9px] font-bold">Centralizar</span>
                   </button>
                 </div>
-                <button onClick={baixarMapaInterativoImagem}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-100 hover:bg-slate-50 active:scale-95 transition-all text-slate-600 mb-2">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                  <span className="text-[9px] font-bold">Imagem</span>
-                </button>
-                <button onClick={baixarMapaInterativoPdf}
-                  className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-[#1a4a1a] text-white hover:bg-[#245424] active:scale-95 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  <span className="text-[9px] font-bold">PDF</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDownloadTipoAba(mode === "precos" ? "precos" : "mapa");
+                    setDownloadModalAberto(true);
+                  }}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all text-white font-black text-xs uppercase tracking-wide shadow-sm"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  <span>Baixar Mapa</span>
                 </button>
               </div>
             </div>
           </div>
 
           {/* MOBILE mapa */}
-          <div className="sm:hidden flex-1 overflow-y-auto p-3 relative" style={{minHeight: '60vh'}}>
+          <div className="sm:hidden flex-1 overflow-y-auto p-3 relative flex flex-col gap-2" style={{minHeight: '60vh'}}>
+            <div className="flex items-center justify-between gap-2 p-2 bg-white rounded-xl shadow-xs border border-slate-100 flex-shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  setMapFullscreen(true);
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg bg-slate-100 active:bg-slate-200 text-slate-700 text-[11px] font-black uppercase tracking-wide transition-all active:scale-95"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                Tela Cheia
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("precos");
+                  setDownloadTipoAba("precos");
+                  setMapFullscreen(true);
+                  scheduleMapScaleUpdate(true);
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg bg-amber-50 active:bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-black uppercase tracking-wide transition-all active:scale-95"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                Preços
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setDownloadTipoAba(mode === "precos" ? "precos" : "mapa");
+                  setDownloadModalAberto(true);
+                }}
+                className="flex-1 flex items-center justify-center gap-1.5 py-2 px-2 rounded-lg bg-blue-600 active:bg-blue-700 text-white text-[11px] font-black uppercase tracking-wide transition-all active:scale-95 shadow-xs"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Baixar
+              </button>
+            </div>
             {renderMapa()}
             <AnimatePresence>{selectedPoint && renderSelectedPointModal()}</AnimatePresence>
           </div>
@@ -12580,124 +13096,8 @@ const LotDashboard = ({
           </div>
         </div>
       )}
-      {showCropModal && Boolean(mapaImagem || localDev.mapaImagemBase64 || localDev.mapaImagemUrl || pdfRenderedUrl) && (
-        <CropMapModal
-          isOpen={showCropModal}
-          onClose={() => setShowCropModal(false)}
-          imageUrl={(localDev.mapaImagemUrl || localDev.mapaImagemBase64 || pdfRenderedUrl || (mapaImagem !== "pdf" ? mapaImagem : "")) as string}
-          existingPoints={localDev.mapaPontos || []}
-          onConfirmCrop={handleConfirmCrop}
-        />
-      )}
-
-      {/* MODAL DE DOWNLOAD DO MAPA (Para ambos os modos: Mapa de Lotes ou Mapa de Preços) */}
-      {downloadModalAberto && (
-        <div
-          className="fixed inset-0 z-[100005] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4"
-          onClick={() => setDownloadModalAberto(false)}
-        >
-          <div
-            className="bg-white rounded-3xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 flex flex-col gap-4 animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-base font-black text-slate-900 leading-tight">Baixar Mapa</h3>
-                <p className="text-xs text-slate-500 truncate max-w-[220px]">{localDev.nome}</p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setDownloadModalAberto(false)}
-                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-all"
-              >
-                ✕
-              </button>
-            </div>
-
-            {/* SELETOR DA ABA DO MAPA PARA EXPORTAÇÃO */}
-            <div className="grid grid-cols-2 gap-1.5 p-1 bg-slate-100 rounded-2xl border border-slate-200/80">
-              <button
-                type="button"
-                onClick={() => setDownloadTipoAba("mapa")}
-                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
-                  downloadTipoAba === "mapa"
-                    ? "bg-white text-slate-900 border border-slate-200/80 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-blue-600 flex-shrink-0" />
-                <span>Disponíveis</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setDownloadTipoAba("precos")}
-                className={`py-2 px-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center justify-center gap-1.5 transition-all ${
-                  downloadTipoAba === "precos"
-                    ? "bg-white text-emerald-800 border border-slate-200/80 shadow-xs"
-                    : "text-slate-500 hover:text-slate-800"
-                }`}
-              >
-                <span className="w-2 h-2 rounded-full bg-emerald-600 flex-shrink-0" />
-                <span>Preços ({faixasPrecoGlobal.length})</span>
-              </button>
-            </div>
-
-            <div className="bg-slate-50 rounded-2xl p-3 border border-slate-200/60 text-xs text-slate-600 leading-relaxed">
-              {downloadTipoAba === "precos" ? (
-                <p>
-                  Exporta o mapa com as <strong>bolas coloridas pelas faixas de preço</strong> e o resumo das condições de pagamento (à vista, entrada e parcelas).
-                </p>
-              ) : (
-                <p>
-                  Exporta o mapa com as <strong>bolas dos disponíveis</strong>, reservas e vendidos, com legenda completa e contadores de status.
-                </p>
-              )}
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <button
-                type="button"
-                disabled={downloadProcessando !== null}
-                onClick={() => executarDownloadImagem(downloadTipoAba === "precos")}
-                className="w-full py-3 px-4 rounded-2xl bg-[#1a4a1a] hover:bg-[#245424] active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-[#1a4a1a]/20 transition-all disabled:opacity-60"
-              >
-                {downloadProcessando === 'img' ? (
-                  <span>Gerando Imagem...</span>
-                ) : (
-                  <>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    <span>Baixar Imagem (PNG)</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                disabled={downloadProcessando !== null}
-                onClick={() => executarDownloadPdf(downloadTipoAba === "precos")}
-                className="w-full py-3 px-4 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-black text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-md shadow-blue-600/20 transition-all disabled:opacity-60"
-              >
-                {downloadProcessando === 'pdf' ? (
-                  <span>Gerando PDF...</span>
-                ) : (
-                  <>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                    <span>Baixar em PDF</span>
-                  </>
-                )}
-              </button>
-            </div>
-
-            <button
-              type="button"
-              onClick={() => setDownloadModalAberto(false)}
-              className="w-full py-2 text-xs text-slate-400 font-bold hover:text-slate-700 transition-colors"
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
-      )}
+      {/* MODAIS COMPARTILHADOS (Download, Corte de Mapa, Seletor de Cores) */}
+      {renderModaisCompartilhados()}
     </>
   );
 };
@@ -12924,6 +13324,17 @@ const EmpreendimentosSection = ({
     const saved = (lotRegDev as any)?.precosRegras;
     if (saved?.length) return saved.map((r:any, idx:number) => ({...r, parcela: r.parcela || "", cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor}));
     return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:"", avista:false, cor: CORES_PALETA_BOLINHAS[0].cor}];
+  });
+  const [appColorPickerConfig, setAppColorPickerConfig] = useState<{
+    isOpen: boolean;
+    currentColor: string;
+    onSelectColor: (color: string) => void;
+    title?: string;
+    subtitle?: string;
+  }>({
+    isOpen: false,
+    currentColor: '#2563eb',
+    onSelectColor: () => {},
   });
 
   useEffect(() => {
@@ -14563,6 +14974,7 @@ const EmpreendimentosSection = ({
         {selectedDevForMap && (
           <>
           <LotDashboard
+            key={selectedDevForMap.id}
             dev={selectedDevForMap}
             sales={sales}
             clients={clients}
@@ -14865,6 +15277,23 @@ const EmpreendimentosSection = ({
                               title={c.nome}
                             />
                           ))}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setAppColorPickerConfig({
+                                isOpen: true,
+                                currentColor: lotRegForm.corPreco || '#3b82f6',
+                                title: 'Cor da Bolinha do Lote',
+                                subtitle: 'Escolha uma cor da tabela ou digite o código hexadecimal',
+                                onSelectColor: (novaCor) => setLotRegForm({ ...lotRegForm, corPreco: novaCor }),
+                              });
+                            }}
+                            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:border-blue-400 hover:bg-blue-50/40 shadow-xs active:scale-95 transition-all"
+                            title="Abrir tabela de cores e seletor hexadecimal"
+                          >
+                            <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ background: lotRegForm.corPreco || '#3b82f6' }} />
+                            <span>Personalizar (Hex / Tabela)</span>
+                          </button>
                           {lotRegForm.corPreco && (
                             <button
                               type="button"
@@ -15689,19 +16118,25 @@ const EmpreendimentosSection = ({
                                   />
                                   <span className="text-[10px] font-black text-slate-700">Cor da Bolinha no Mapa</span>
                                 </div>
-                                <label className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 bg-white text-[9px] font-bold text-slate-600 hover:border-slate-400 cursor-pointer shadow-xs transition-all">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setAppColorPickerConfig({
+                                      isOpen: true,
+                                      currentColor: corRegra,
+                                      title: `Cor da Bolinha - Regra #${i + 1}`,
+                                      subtitle: `Escolha uma cor da tabela ou digite o código hexadecimal para a Regra #${i + 1}`,
+                                      onSelectColor: (novaCor) => {
+                                        setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: novaCor } : x));
+                                      },
+                                    });
+                                  }}
+                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:border-blue-400 hover:bg-blue-50/40 shadow-xs active:scale-95 transition-all"
+                                  title="Clique para abrir o modal de escolha de cores da tabela ou código hexadecimal"
+                                >
                                   <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ background: corRegra }} />
-                                  <span>Personalizar</span>
-                                  <input
-                                    type="color"
-                                    value={corRegra}
-                                    onChange={e => {
-                                      const novaCor = e.target.value;
-                                      setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: novaCor } : x));
-                                    }}
-                                    className="sr-only"
-                                  />
-                                </label>
+                                  <span>Personalizar (Hex / Tabela)</span>
+                                </button>
                               </div>
 
                               {/* Paleta rápida de cores com indicação da selecionada */}
@@ -16049,6 +16484,23 @@ const EmpreendimentosSection = ({
                         title={c.nome}
                       />
                     ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppColorPickerConfig({
+                          isOpen: true,
+                          currentColor: quickPriceLot.corPreco || '#3b82f6',
+                          title: `Cor da Bolinha - Q${quickPriceLot.quadra}·L${quickPriceLot.lote}`,
+                          subtitle: 'Escolha uma cor da tabela ou digite o código hexadecimal',
+                          onSelectColor: (novaCor) => setQuickPriceLot({ ...quickPriceLot, corPreco: novaCor }),
+                        });
+                      }}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:border-blue-400 hover:bg-blue-50/40 shadow-xs active:scale-95 transition-all"
+                      title="Abrir tabela de cores e seletor hexadecimal"
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ background: quickPriceLot.corPreco || '#3b82f6' }} />
+                      <span>Personalizar (Hex / Tabela)</span>
+                    </button>
                     {quickPriceLot.corPreco && (
                       <button
                         type="button"
@@ -16476,6 +16928,17 @@ const EmpreendimentosSection = ({
           </div>
         )}
       </AnimatePresence>
+
+      {appColorPickerConfig.isOpen && (
+        <ColorPickerModal
+          isOpen={appColorPickerConfig.isOpen}
+          onClose={() => setAppColorPickerConfig((prev) => ({ ...prev, isOpen: false }))}
+          currentColor={appColorPickerConfig.currentColor}
+          onSelectColor={appColorPickerConfig.onSelectColor}
+          title={appColorPickerConfig.title}
+          subtitle={appColorPickerConfig.subtitle}
+        />
+      )}
 
       {releaseLotPending && (
         <div className="fixed inset-0 z-[999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">

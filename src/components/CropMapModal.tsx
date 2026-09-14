@@ -36,7 +36,9 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
   const [dragMode, setDragMode] = useState<string | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const [displayedSize, setDisplayedSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
   const dragStartRef = useRef<{
     clientX: number;
     clientY: number;
@@ -80,7 +82,9 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
     getSafeImage(imageUrl)
       .then((img) => {
         if (isCancelled) return;
-        setNaturalSize({ width: img.naturalWidth || img.width, height: img.naturalHeight || img.height });
+        const nw = img.naturalWidth || img.width || 1200;
+        const nh = img.naturalHeight || img.height || 800;
+        setNaturalSize({ width: nw, height: nh });
         // Iniciar com área total
         setCrop({ x: 0, y: 0, width: 100, height: 100 });
       })
@@ -92,6 +96,31 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
       isCancelled = true;
     };
   }, [imageUrl, isOpen]);
+
+  // Recalcular tamanho exato exibido da imagem no viewport para eliminar qualquer letterbox
+  useEffect(() => {
+    if (!naturalSize.width || !naturalSize.height || !viewportRef.current) return;
+    const updateSize = () => {
+      if (!viewportRef.current || !naturalSize.width || !naturalSize.height) return;
+      const vpRect = viewportRef.current.getBoundingClientRect();
+      const pad = 24;
+      const availW = Math.max(100, vpRect.width - pad);
+      const availH = Math.max(100, vpRect.height - pad);
+      const imgAspect = naturalSize.width / naturalSize.height;
+      let w = availW;
+      let h = availW / imgAspect;
+      if (h > availH) {
+        h = availH;
+        w = availH * imgAspect;
+      }
+      setDisplayedSize({ width: Math.max(50, Math.round(w)), height: Math.max(50, Math.round(h)) });
+    };
+
+    updateSize();
+    const ro = new ResizeObserver(updateSize);
+    ro.observe(viewportRef.current);
+    return () => ro.disconnect();
+  }, [naturalSize]);
 
   if (!isOpen) return null;
 
@@ -260,19 +289,22 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
         {/* Corpo: Área do Mapa com Caixa de Recorte Interativa */}
         <div className="flex-1 min-h-0 flex flex-col lg:flex-row overflow-hidden">
           {/* Viewport da Imagem */}
-          <div className="flex-1 bg-slate-900 relative overflow-hidden flex items-center justify-center p-3 select-none">
+          <div ref={viewportRef} className="flex-1 bg-slate-900 relative overflow-hidden flex items-center justify-center p-3 select-none">
             <div
               ref={containerRef}
-              className="relative max-w-full max-h-full inline-block shadow-2xl"
+              className="relative shadow-2xl rounded-lg select-none"
               style={{
-                aspectRatio: naturalSize.width && naturalSize.height ? `${naturalSize.width} / ${naturalSize.height}` : "auto",
+                width: displayedSize.width > 0 ? `${displayedSize.width}px` : "auto",
+                height: displayedSize.height > 0 ? `${displayedSize.height}px` : "auto",
+                maxWidth: "100%",
+                maxHeight: "100%",
               }}
             >
               <img
                 ref={imgRef}
                 src={imageUrl}
                 alt="Mapa para corte"
-                className="block max-w-full max-h-[58vh] lg:max-h-[70vh] object-contain pointer-events-none rounded-lg"
+                className="w-full h-full block object-fill pointer-events-none rounded-lg"
                 draggable={false}
               />
 

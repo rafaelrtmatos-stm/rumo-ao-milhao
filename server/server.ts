@@ -660,8 +660,14 @@ app.put("/api/empreendimentos/:id/pontos", isAuthenticated, async (req: any, res
   try {
     const { mapaPontos } = req.body;
     if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
-    const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
-    const updatedData = { ...existing, mapaPontos };
+    let existing = inMemoryEmpreendimentos.get(req.params.id);
+    if (!existing && supabase) {
+      try {
+        const { data } = await supabase.from("empreendimentos").select("data").eq("id", req.params.id).maybeSingle();
+        if (data?.data) existing = data.data;
+      } catch {}
+    }
+    const updatedData = { ...(existing || {}), id: req.params.id, mapaPontos };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
     saveEmpreendimentosToFile();
 
