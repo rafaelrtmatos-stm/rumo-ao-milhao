@@ -562,7 +562,20 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
 app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) => {
   res.setHeader("Cache-Control", "no-store");
   try {
-    const { mapaImagemBase64, mapaImagemUrl, mapaPdfUrl, mapaPdfOriginalBase64, mapaPdfOriginalName, mapaPdfPagina, mapaRecortado, mapaCrop } = req.body;
+    const {
+      mapaImagemBase64,
+      mapaImagemUrl,
+      mapaPdfUrl,
+      mapaPdfOriginalBase64,
+      mapaPdfOriginalName,
+      mapaPdfPagina,
+      mapaRecortado,
+      mapaCrop,
+      mapaOrientacao,
+      mapaMarkerReferenceWidth,
+      mapaImagemNaturalWidth,
+      mapaImagemNaturalHeight,
+    } = req.body;
     if (!req.params.id) return res.status(400).json({ error: "ID inválido." });
     const existing = inMemoryEmpreendimentos.get(req.params.id) || {};
     const isRecortado = mapaRecortado === true || (mapaCrop && mapaCrop.width > 0);
@@ -576,6 +589,10 @@ app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) 
       ...(mapaImagemBase64 !== undefined ? { mapaImagemBase64: mapaImagemBase64 ?? null } : {}),
       ...(mapaRecortado !== undefined ? { mapaRecortado } : {}),
       ...(mapaCrop !== undefined ? { mapaCrop } : {}),
+      ...(mapaOrientacao !== undefined ? { mapaOrientacao } : {}),
+      ...(mapaMarkerReferenceWidth !== undefined ? { mapaMarkerReferenceWidth } : {}),
+      ...(mapaImagemNaturalWidth !== undefined ? { mapaImagemNaturalWidth } : {}),
+      ...(mapaImagemNaturalHeight !== undefined ? { mapaImagemNaturalHeight } : {}),
       ...(isRecortado ? { mapaPdfOriginalBase64: null, mapaPdfUrl: null, mapaPdfOriginalName: null, mapaPdfPagina: null } : {}),
     };
     inMemoryEmpreendimentos.set(req.params.id, updatedData);

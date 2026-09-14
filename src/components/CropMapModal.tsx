@@ -453,7 +453,7 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
                 <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 block mb-1.5">
                   Atalhos de Enquadramento
                 </span>
-                <div className="grid grid-cols-3 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5 mb-1.5">
                   <button
                     type="button"
                     onClick={() => setCrop({ x: 0, y: 0, width: 100, height: 100 })}
@@ -474,6 +474,61 @@ export const CropMapModal: React.FC<CropMapModalProps> = ({
                     className="py-1.5 px-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black transition-colors text-center"
                   >
                     Centro 80%
+                  </button>
+                </div>
+                {/* Presets de Orientação (Retrato A4 / Paisagem) */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!naturalSize.width || !naturalSize.height) {
+                        setCrop({ x: 15, y: 0, width: 70, height: 100 });
+                        return;
+                      }
+                      // Enquadrar em proporção retrato (1:1.414 - A4 vertical)
+                      const targetAspect = 1 / 1.414;
+                      const imageAspect = naturalSize.width / naturalSize.height;
+                      if (imageAspect > targetAspect) {
+                        // Imagem é mais larga que o A4 retrato: recortar as laterais
+                        const wPct = Math.min(100, Number(((targetAspect / imageAspect) * 100).toFixed(2)));
+                        const xPct = Number(((100 - wPct) / 2).toFixed(2));
+                        setCrop({ x: xPct, y: 0, width: wPct, height: 100 });
+                      } else {
+                        // Imagem é mais alta: recortar topo/base
+                        const hPct = Math.min(100, Number(((imageAspect / targetAspect) * 100).toFixed(2)));
+                        const yPct = Number(((100 - hPct) / 2).toFixed(2));
+                        setCrop({ x: 0, y: yPct, width: 100, height: hPct });
+                      }
+                    }}
+                    className="py-1.5 px-2 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-xl text-[10px] font-black transition-colors text-center flex items-center justify-center gap-1"
+                    title="Enquadrar centralizado no formato Retrato (A4 vertical)"
+                  >
+                    <span>📄</span> Modo Retrato
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!naturalSize.width || !naturalSize.height) {
+                        setCrop({ x: 0, y: 15, width: 100, height: 70 });
+                        return;
+                      }
+                      // Enquadrar em proporção paisagem (1.414:1 - A4 horizontal)
+                      const targetAspect = 1.414;
+                      const imageAspect = naturalSize.width / naturalSize.height;
+                      if (imageAspect > targetAspect) {
+                        const wPct = Math.min(100, Number(((targetAspect / imageAspect) * 100).toFixed(2)));
+                        const xPct = Number(((100 - wPct) / 2).toFixed(2));
+                        setCrop({ x: xPct, y: 0, width: wPct, height: 100 });
+                      } else {
+                        const hPct = Math.min(100, Number(((imageAspect / targetAspect) * 100).toFixed(2)));
+                        const yPct = Number(((100 - hPct) / 2).toFixed(2));
+                        setCrop({ x: 0, y: yPct, width: 100, height: hPct });
+                      }
+                    }}
+                    className="py-1.5 px-2 bg-slate-50 hover:bg-slate-100 text-slate-800 border border-slate-200 rounded-xl text-[10px] font-black transition-colors text-center flex items-center justify-center gap-1"
+                    title="Enquadrar centralizado no formato Paisagem (A4 horizontal)"
+                  >
+                    <span>🖼️</span> Modo Paisagem
                   </button>
                 </div>
               </div>

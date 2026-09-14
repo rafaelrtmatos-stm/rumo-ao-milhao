@@ -2825,7 +2825,7 @@ const LotDashboard = ({
     }
 
     const finalUrl = (storageUrl && storageUrl.startsWith('http')) ? storageUrl : croppedBase64;
-    const isLandscape = (nw && nh) ? (nw > nh) : true;
+    const isLandscape = (nw && nh) ? (nw >= nh) : true;
     const a4RefWidth = isLandscape ? 1123 : 794;
 
     const nextDev: Empreendimento = {
@@ -2865,6 +2865,10 @@ const LotDashboard = ({
           mapaPdfPagina: null,
           mapaRecortado: true,
           mapaCrop: cropArea || (localDev as any).mapaCrop,
+          mapaOrientacao: isLandscape ? "landscape" : "portrait",
+          mapaMarkerReferenceWidth: a4RefWidth,
+          mapaImagemNaturalWidth: nw || (localDev as any).mapaImagemNaturalWidth,
+          mapaImagemNaturalHeight: nh || (localDev as any).mapaImagemNaturalHeight,
         }),
       });
 
@@ -3700,8 +3704,9 @@ const LotDashboard = ({
 
   // Estado pendente: alteracoes nao salvas (null = sem edicao pendente)
   const [mapPendingPontos, setMapPendingPontos] = useState<any[] | null>(null);
-  const MED_RES_ZOOM_THRESHOLD = 1.5;   // zoom > 1.5 → original
-  const HIGH_RES_ZOOM_THRESHOLD = 1.5;  // mesmo threshold — só 2 versões
+  // Zoom > 5.0 (500%): carrega o mapa em alta resolução / pesado
+  const MED_RES_ZOOM_THRESHOLD = 5.0;
+  const HIGH_RES_ZOOM_THRESHOLD = 5.0;
   // No PC, o usuário precisa de botões para aproximar/mover o mapa e marcar bolinhas com precisão.
   const [mapEditTool, setMapEditTool] = useState<"marcar" | "mover">("marcar");
   const mapMousePanRef = useRef<{ active: boolean; startX: number; startY: number; startPanX: number; startPanY: number }>({
@@ -4196,15 +4201,20 @@ const LotDashboard = ({
   const mapaImagemAlta = (localDev as any).mapaImagemHighResBase64 || "";
   // Para imagens (nao PDF): original ja e a melhor resolucao disponivel
   // REGRA: mapaImagem NUNCA pode ser string vazia — sempre cai para original
-  // Imagem atual para exibição — nunca vazia para evitar tela branca
-  // Usa sempre a melhor qualidade disponível sem trocar durante zoom
+  // No zoom baixo (<= 500% / 5.0) usa imagem leve (se disponível), economizando memória e carregamento rápido.
+  // Ao ultrapassar o zoom de 500%, carrega a imagem em alta resolução / mapa mais pesado.
   const mapaImagem = (() => {
     if (((localDev as any).mapaPdfOriginalBase64 || (localDev as any).mapaPdfUrl) && !isMapRecortado) return mapaImagemOriginal || "pdf";
-    return (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal; // sempre original — sem troca, sem complexidade
+    const imagemPesadaOriginal = (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal;
+    if (mapZoom > HIGH_RES_ZOOM_THRESHOLD) {
+      return imagemPesadaOriginal;
+    }
+    // Zoom normal/inicial (<= 500%): prefere imagem leve se disponível
+    return mapaImagemLeveBase64 || imagemPesadaOriginal;
   })();
 
-  // Imagem de fundo (fallback enquanto a principal carrega)
-  const mapaImagemFallback = mapaImagemOriginal;
+  // Imagem de fundo (fallback enquanto a imagem pesada carrega no zoom alto)
+  const mapaImagemFallback = mapaImagemLeveBase64 || mapaImagemOriginal;
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
@@ -5684,7 +5694,10 @@ const LotDashboard = ({
 
       // 2. Se o PDF não gerou canvas (ou falhou), carregar imagem base com todos os fallbacks
       if (!mapCanvas) {
+        // Se o mapa foi recortado, a imagem salva cortada (mapaImagemUrl ou mapaImagemBase64) tem prioridade absoluta
         const candidateUrls = [
+          isRecortado ? (localDev as any).mapaImagemUrl : "",
+          isRecortado ? (localDev as any).mapaImagemBase64 : "",
           (localDev as any).mapaImagemHighResBase64,
           (localDev as any).mapaImagemBase64,
           (localDev as any).mapaImagemUrl,
@@ -5745,9 +5758,12 @@ const LotDashboard = ({
           return;
         }
 
-        // Se houver configuração de corte salva que ainda não foi aplicada:
+        // Se houver configuração de corte salva que ainda não foi aplicada ao canvas base:
+        // Se mapaRecortado for verdadeiro, a imagem em mapaCanvas já é a versão recortada.
+        // Cortamos aqui APENAS se o canvas carregado ainda for a imagem inteira original (não recortada).
         const crop = (localDev as any).mapaCrop;
-        if (crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
+        const isAlreadyRecortado = Boolean((localDev as any).mapaRecortado);
+        if (!isAlreadyRecortado && crop && crop.width > 0 && crop.height > 0 && (crop.width < 99.9 || crop.height < 99.9 || crop.x > 0.1 || crop.y > 0.1)) {
           const naturalW = (localDev as any).mapaImagemNaturalWidth || 0;
           const expectedCropW = naturalW ? Math.round((crop.width / 100) * naturalW) : 0;
           if (expectedCropW > 0 && Math.abs(mapCanvas.width - naturalW) < Math.abs(mapCanvas.width - expectedCropW)) {
