@@ -3061,8 +3061,7 @@ const LotDashboard = ({
       precosRegras: updatedRegras,
     };
     setLocalDev(updatedDev);
-    if (onSaveDevExternal) onSaveDevExternal(updatedDev);
-    if (onUpdateLotesInfo) onUpdateLotesInfo(localDev.id, newLotesInfo);
+    onSaveDev(updatedDev);
   };
 
   // Helper universal e flexível para buscar preço, parcelas e cor de um lote
@@ -15929,7 +15928,7 @@ const EmpreendimentosSection = ({
                     coresPorPreco: coresPorPreco,
                   };
                   setLotRegDev(devComRegras as any);
-                  onSaveDevExternal && onSaveDevExternal(devComRegras);
+                  onSave(devComRegras);
                   if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
                     setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao, coresPorPreco} as any : prev);
                   }
