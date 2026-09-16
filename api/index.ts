@@ -736,20 +736,37 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
       .where(and(eq(empreendimentos.id, req.params.id), eq(empreendimentos.userId, SHARED_USER)));
     if (existing?.data) {
       const prev = existing.data as any;
-      const estaDefinindoImagemAlternativa = !!(item.mapaImagemBase64 || item.mapaPdfOriginalBase64 || item.mapaPdfUrl);
+      // Só tratar como "recorte" quando o cliente sinaliza explicitamente essa intenção.
+      // A simples presença de mapaCrop/mapaPdfUrl residual no payload NÃO pode disparar limpeza.
+      const isRecortado = item.mapaRecortado === true;
       dataToSave = {
+        // CRÍTICO: partir de prev. O cliente envia stripHeavy(item), que remove vários campos
+        // pesados; sem o spread de prev, todo campo ausente no payload era apagado no banco.
+        ...prev,
         ...item,
         // Preservar imagens se não vieram no payload
         ...((!item.mapaImagemBase64 && prev.mapaImagemBase64) ? { mapaImagemBase64: prev.mapaImagemBase64 } : {}),
         ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
-        ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
-        // Proteção contra race condition: nunca apagar uma mapaImagemUrl já salva com um payload vazio,
-        // exceto quando uma imagem alternativa (Base64/PDF) está sendo definida nesse mesmo save (limpeza intencional).
-        ...((!item.mapaImagemUrl && prev.mapaImagemUrl && !estaDefinindoImagemAlternativa) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
+        ...((!item.mapaImagemMedResBase64 && prev.mapaImagemMedResBase64) ? { mapaImagemMedResBase64: prev.mapaImagemMedResBase64 } : {}),
+        ...((!item.mapaImagemHighResBase64 && prev.mapaImagemHighResBase64) ? { mapaImagemHighResBase64: prev.mapaImagemHighResBase64 } : {}),
+        ...((!isRecortado && !item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
+        // Nunca apagar uma mapaImagemUrl já salva com um payload vazio.
+        ...((!item.mapaImagemUrl && prev.mapaImagemUrl) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
+        // Referências do PDF de origem — sem elas o mapa não pode ser re-renderizado.
+        ...((!isRecortado && !item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
+        ...((!isRecortado && !item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
+        ...((!isRecortado && !item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
         // CRÍTICO: preservar mapaPontos e lotesInfo — nunca apagar bolinhas!
         ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
         ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
       };
+      if (isRecortado) {
+        dataToSave.mapaPdfOriginalBase64 = null;
+        dataToSave.mapaPdfUrl = null;
+        dataToSave.mapaPdfOriginalName = null;
+        dataToSave.mapaPdfPagina = null;
+        dataToSave.mapaRecortado = true;
+      }
     }
     await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_USER, data: dataToSave })
       .onConflictDoUpdate({ target: empreendimentos.id, set: { data: dataToSave } });
