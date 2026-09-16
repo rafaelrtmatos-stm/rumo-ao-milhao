@@ -4247,6 +4247,11 @@ const LotDashboard = ({
   // Ao ultrapassar 300%, carrega a imagem em melhor resolução / mapa pesado sem resetar zoom ou posição.
   const mapaImagem = (() => {
     const imagemPesadaOriginal = (localDev as any).mapaImagemHighResBase64 || (localDev as any).mapaImagemUrl || (localDev as any).mapaImagemBase64 || mapaImagemOriginal;
+    // Modo de edição: sempre exibir a melhor qualidade disponível (original/alta resolução),
+    // independente do zoom, para permitir ver perfeitamente os campos/lotes ao editar o mapa.
+    if (isEditingMap) {
+      return imagemPesadaOriginal || (localDev as any).mapaImagemLeveBase64 || "";
+    }
     if (mapZoom > 3.0) {
       return imagemPesadaOriginal || (localDev as any).mapaImagemLeveBase64 || "";
     }
@@ -4261,6 +4266,14 @@ const LotDashboard = ({
 
   // Imagem de fundo (fallback enquanto a imagem pesada carrega no zoom alto)
   const mapaImagemFallback = mapaImagemLeveBase64 || mapaImagemOriginal;
+
+  // Ao entrar em modo de edição: gerar/carregar imediatamente a versão em alta resolução
+  // (sem esperar o preload de background), garantindo que os campos/lotes fiquem nítidos.
+  useEffect(() => {
+    if (isEditingMap) {
+      void requestHighResolutionMap();
+    }
+  }, [isEditingMap, localDev.id]);
 
   const handleMapWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     // Comportamento tipo Google Maps:
