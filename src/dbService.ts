@@ -268,8 +268,6 @@ function stripHeavy(item: Empreendimento): Empreendimento {
       ...rest,
       mapaRecortado: true,
       mapaCrop: (item as any).mapaCrop,
-      mapaPdfUrl: null,
-      mapaPdfOriginalBase64: null,
     } as any;
   }
   return rest as Empreendimento;

@@ -617,6 +617,10 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     // mesmo sem o usuário ter recortado nada. Isso fazia mapas cadastrados (ex: Botão, Céu Azul)
     // perderem a referência da imagem/PDF silenciosamente.
     const isRecortado = item.mapaRecortado === true;
+    const prevPontos = Array.isArray(prev.mapaPontos) ? prev.mapaPontos : [];
+    const itemPontos = Array.isArray(item.mapaPontos) ? item.mapaPontos : null;
+    const shouldKeepPrevPontos = prevPontos.length > 0 && (!itemPontos || (itemPontos.length === 0 && !item.forcarLimparPontos));
+
     const dataToSave = {
       ...prev,
       ...item,
@@ -624,19 +628,15 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
       ...((!item.mapaImagemLeveBase64 && prev.mapaImagemLeveBase64) ? { mapaImagemLeveBase64: prev.mapaImagemLeveBase64 } : {}),
       ...((!item.mapaImagemMedResBase64 && prev.mapaImagemMedResBase64) ? { mapaImagemMedResBase64: prev.mapaImagemMedResBase64 } : {}),
       ...((!item.mapaImagemHighResBase64 && prev.mapaImagemHighResBase64) ? { mapaImagemHighResBase64: prev.mapaImagemHighResBase64 } : {}),
-      ...((!isRecortado && !item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
+      ...((!item.mapaPdfOriginalBase64 && prev.mapaPdfOriginalBase64) ? { mapaPdfOriginalBase64: prev.mapaPdfOriginalBase64 } : {}),
       ...((!item.mapaImagemUrl && prev.mapaImagemUrl) ? { mapaImagemUrl: prev.mapaImagemUrl } : {}),
-      ...((!isRecortado && !item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
-      ...((!isRecortado && !item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
-      ...((!isRecortado && !item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
-      ...((!item.mapaPontos && prev.mapaPontos) ? { mapaPontos: prev.mapaPontos } : {}),
+      ...((!item.mapaPdfUrl && prev.mapaPdfUrl) ? { mapaPdfUrl: prev.mapaPdfUrl } : {}),
+      ...((!item.mapaPdfOriginalName && prev.mapaPdfOriginalName) ? { mapaPdfOriginalName: prev.mapaPdfOriginalName } : {}),
+      ...((!item.mapaPdfPagina && prev.mapaPdfPagina) ? { mapaPdfPagina: prev.mapaPdfPagina } : {}),
+      ...(shouldKeepPrevPontos ? { mapaPontos: prevPontos } : {}),
       ...((!item.lotesInfo && prev.lotesInfo) ? { lotesInfo: prev.lotesInfo } : {}),
     };
     if (isRecortado) {
-      dataToSave.mapaPdfOriginalBase64 = null;
-      dataToSave.mapaPdfUrl = null;
-      dataToSave.mapaPdfOriginalName = null;
-      dataToSave.mapaPdfPagina = null;
       dataToSave.mapaRecortado = true;
     }
     inMemoryEmpreendimentos.set(req.params.id, dataToSave);
@@ -1206,7 +1206,27 @@ async function preloadSupabaseData() {
       supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
       for (const r of emps) {
         const item = { ...(r.data || {}), id: r.id || r.data?.id };
-        if (item.id) inMemoryEmpreendimentos.set(item.id, item);
+        if (item.id) {
+          const existing = inMemoryEmpreendimentos.get(item.id);
+          if (existing) {
+            // Preserva mapaPontos se o registro local tiver pontos e o remoto estiver vazio
+            const existingPts = Array.isArray(existing.mapaPontos) ? existing.mapaPontos : [];
+            const itemPts = Array.isArray(item.mapaPontos) ? item.mapaPontos : [];
+            if (existingPts.length > 0 && itemPts.length === 0) {
+              item.mapaPontos = existingPts;
+            }
+            if (existing.mapaPdfUrl && !item.mapaPdfUrl) item.mapaPdfUrl = existing.mapaPdfUrl;
+            if (existing.mapaImagemUrl && !item.mapaImagemUrl) item.mapaImagemUrl = existing.mapaImagemUrl;
+            if (existing.mapaPdfOriginalBase64 && !item.mapaPdfOriginalBase64) item.mapaPdfOriginalBase64 = existing.mapaPdfOriginalBase64;
+            if (existing.mapaImagemLeveBase64 && !item.mapaImagemLeveBase64) item.mapaImagemLeveBase64 = existing.mapaImagemLeveBase64;
+            if (existing.mapaImagemMedResBase64 && !item.mapaImagemMedResBase64) item.mapaImagemMedResBase64 = existing.mapaImagemMedResBase64;
+            if (existing.mapaImagemHighResBase64 && !item.mapaImagemHighResBase64) item.mapaImagemHighResBase64 = existing.mapaImagemHighResBase64;
+            if (existing.mapaPdfOriginalName && !item.mapaPdfOriginalName) item.mapaPdfOriginalName = existing.mapaPdfOriginalName;
+            if (existing.mapaPdfPagina && !item.mapaPdfPagina) item.mapaPdfPagina = existing.mapaPdfPagina;
+            if (existing.lotesInfo && (!item.lotesInfo || Object.keys(item.lotesInfo).length === 0)) item.lotesInfo = existing.lotesInfo;
+          }
+          inMemoryEmpreendimentos.set(item.id, item);
+        }
       }
       saveEmpreendimentosToFile();
       console.log(`[Supabase] Carregados ${inMemoryEmpreendimentos.size} empreendimentos no cache.`);

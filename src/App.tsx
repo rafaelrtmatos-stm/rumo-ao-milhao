@@ -433,9 +433,19 @@ function getQuadraList(dev?: Empreendimento | null): string[] {
   });
 }
 
+function cleanQuadraNormalized(val: string): string {
+  const s = String(val || "").trim().toUpperCase();
+  const withoutPrefix = s.replace(/^(QUADRA|QD|Q)\s*/i, "").trim();
+  return withoutPrefix.replace(/^0+/, "") || "0";
+}
+
 function findQuadraName(dev: Empreendimento, quadra: string): string | null {
+  const quadras = getQuadraList(dev);
   const wanted = normalizeLotKeyPart(quadra);
-  return getQuadraList(dev).find((q) => normalizeLotKeyPart(q) === wanted) || null;
+  const exact = quadras.find((q) => normalizeLotKeyPart(q) === wanted);
+  if (exact) return exact;
+  const wantedClean = cleanQuadraNormalized(quadra);
+  return quadras.find((q) => cleanQuadraNormalized(q) === wantedClean) || null;
 }
 
 function getLotInfoKey(quadra: string, lote: string): string {
@@ -4675,9 +4685,9 @@ const LotDashboard = ({
       }
       const viewport = page.getViewport({ scale: fitScale });
 
-      if (pdfRenderTaskRef.current) {
-        pdfRenderTaskRef.current.cancel();
-        pdfRenderTaskRef.current = null;
+      if ((canvasEl as any)._pdfRenderTask) {
+        try { (canvasEl as any)._pdfRenderTask.cancel(); } catch (_) {}
+        (canvasEl as any)._pdfRenderTask = null;
       }
 
       // Canvas físico = tamanho real em pixels do dispositivo
@@ -4693,9 +4703,15 @@ const LotDashboard = ({
       ctx.imageSmoothingEnabled = true;
       ctx.imageSmoothingQuality = "high";
       const task = page.render({ canvasContext: ctx, viewport });
+      (canvasEl as any)._pdfRenderTask = task;
       pdfRenderTaskRef.current = task;
       await task.promise;
-      pdfRenderTaskRef.current = null;
+      if ((canvasEl as any)._pdfRenderTask === task) {
+        (canvasEl as any)._pdfRenderTask = null;
+      }
+      if (pdfRenderTaskRef.current === task) {
+        pdfRenderTaskRef.current = null;
+      }
 
       if (baseViewport.width > 0 && baseViewport.height > 0) {
         setMapAspectRatio(baseViewport.width / baseViewport.height);
