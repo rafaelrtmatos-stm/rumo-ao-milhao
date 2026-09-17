@@ -58,6 +58,7 @@ import {
   CreditCard,
   Layers,
   Sparkles,
+  Sliders,
   Copy,
   Save,
   FileCheck,
@@ -74,7 +75,6 @@ import {
   GripHorizontal,
   RotateCcw,
   Crosshair,
-  Sliders,
   Grid,
   Tag,
   Hand,
@@ -3210,6 +3210,7 @@ const LotDashboard = ({
       const info = lotesInfo[k] || lotesInfo[k.toUpperCase()] || lotesInfo[k.toLowerCase()];
       const prc = parsePrecoNumero(info?.preco ?? info?.valor ?? info?.valorLote ?? info?.precoLote);
       if (prc > 0) {
+        const prcAvista = parsePrecoNumero(info?.precoAvista ?? info?.valorAvista);
         const ent = parsePrecoNumero(info?.entrada);
         const par = parseInt(String(info?.parcelas || 0), 10) || 0;
         const valPar = parsePrecoNumero(info?.parcela ?? info?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
@@ -3220,6 +3221,7 @@ const LotDashboard = ({
         }
         return {
           preco: prc,
+          precoAvista: prcAvista > 0 ? prcAvista : undefined,
           entrada: ent,
           parcelas: par,
           parcela: valPar,
@@ -3238,6 +3240,7 @@ const LotDashboard = ({
       if (matchQ(kQuadra) && matchL(kLote)) {
         const prc = parsePrecoNumero((v as any)?.preco ?? (v as any)?.valor ?? (v as any)?.valorLote ?? (v as any)?.precoLote);
         if (prc > 0) {
+          const prcAvista = parsePrecoNumero((v as any)?.precoAvista ?? (v as any)?.valorAvista);
           const ent = parsePrecoNumero((v as any)?.entrada);
           const par = parseInt(String((v as any)?.parcelas || 0), 10) || 0;
           const valPar = parsePrecoNumero((v as any)?.parcela ?? (v as any)?.valorParcela) || (par > 0 ? Math.round((prc - ent) / par) : 0);
@@ -3248,6 +3251,7 @@ const LotDashboard = ({
           }
           return {
             preco: prc,
+            precoAvista: prcAvista > 0 ? prcAvista : undefined,
             entrada: ent,
             parcelas: par,
             parcela: valPar,
@@ -3268,6 +3272,7 @@ const LotDashboard = ({
       }
       if (prc <= 0) continue;
 
+      const prcAvista = parsePrecoNumero((r as any)?.precoAvista ?? (r as any)?.valorAvista);
       const ent = parsePrecoNumero(r.entrada ?? (String(r.script || '').match(/ENTRADA:\s*([\d.,]+)/i)?.[1] || 0));
       const par = parseInt(String(r.parcelas || (String(r.script || '').match(/PARCELAS:\s*(\d+)/i)?.[1] || 0)), 10) || 0;
       const valPar = parsePrecoNumero(r.parcela ?? (String(r.script || '').match(/PARCELA:\s*([\d.,]+)/i)?.[1] || 0)) || (par > 0 ? Math.round((prc - ent) / par) : 0);
@@ -3280,7 +3285,7 @@ const LotDashboard = ({
       // Se a regra tiver campos diretos de quadra/lote
       if (r.quadra && matchQ(r.quadra)) {
         if (!r.lotes || matchL(r.lotes)) {
-          return { preco: prc, entrada: ent, parcelas: par, parcela: valPar, avista: !!r.avista || par === 0, cor: cor || null };
+          return { preco: prc, precoAvista: prcAvista > 0 ? prcAvista : undefined, entrada: ent, parcelas: par, parcela: valPar, avista: !!r.avista || par === 0, cor: cor || null };
         }
       }
 
@@ -3379,12 +3384,14 @@ const LotDashboard = ({
         const fx = faixasPrecoGlobal.find(f => Number(f.preco) === precoPadraoDev);
         if (fx) corPadrao = fx.color;
       }
+      const prcAvistaPadrao = parsePrecoNumero((localDev as any)?.precosPadrao?.precoAvista ?? (localDev as any)?.precosPadrao?.valorAvista);
       return {
         preco: precoPadraoDev,
+        precoAvista: prcAvistaPadrao > 0 ? prcAvistaPadrao : undefined,
         entrada: parsePrecoNumero((localDev as any)?.precosPadrao?.entrada ?? 0),
         parcelas: parseInt(String((localDev as any)?.precosPadrao?.parcelas || 0), 10) || 0,
         parcela: parsePrecoNumero((localDev as any)?.precosPadrao?.parcela ?? (localDev as any)?.precosPadrao?.valorParcela) || 0,
-        avista: false,
+        avista: !!(localDev as any)?.precosPadrao?.avista || false,
         cor: corPadrao || null,
       };
     }
@@ -10738,10 +10745,17 @@ const LotDashboard = ({
               {precoSel?.preco ? (
                 <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 flex items-center justify-between">
                   <div>
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Valor do Lote</span>
-                    <span className="text-lg font-black text-slate-900 leading-tight">
+                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      {precoSel.avista ? "Valor À Vista" : "Valor do Lote (Total)"}
+                    </span>
+                    <span className="text-lg font-black text-slate-900 leading-tight block">
                       R$ {Number(precoSel.preco).toLocaleString('pt-BR')}
                     </span>
+                    {!precoSel.avista && precoSel.precoAvista && (
+                      <span className="inline-block text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded-md mt-1">
+                        À vista: R$ {Number(precoSel.precoAvista).toLocaleString('pt-BR')}
+                      </span>
+                    )}
                   </div>
 
                   <div className="text-right">
@@ -13209,34 +13223,127 @@ function gerarPixPayload(params: {
   return semCRC + (crc & 0xFFFF).toString(16).toUpperCase().padStart(4, '0');
 }
 
+interface FaixaLoteIntervalo {
+  id: string;
+  quadra: string;
+  loteInicial: string;
+  loteFinal: string;
+}
+
+function scriptParaFaixas(script: string): FaixaLoteIntervalo[] {
+  if (!script || !script.trim()) return [];
+  const faixas: FaixaLoteIntervalo[] = [];
+  const blockRegex = /(?:Q|Quadra\s*)(\w+)\s*:\s*([^QV\n\r]+?)(?=(?:Q\w+|Quadra\s*\w+)\s*:|\s*VALOR:|\s*$)/gi;
+  let match;
+  let idx = 1;
+  while ((match = blockRegex.exec(script)) !== null) {
+    const quadra = match[1].trim();
+    const content = match[2].trim();
+    const tokens = content.split(/[\s,.;]+/).filter(Boolean);
+    for (let i = 0; i < tokens.length; i++) {
+      const tok = tokens[i].replace(/[DIRdir]+$/, "").trim();
+      if (!tok) continue;
+      const rangeMatch = tok.match(/^(\w+)-(\w+)$/);
+      if (rangeMatch) {
+        faixas.push({
+          id: `f-${idx++}`,
+          quadra,
+          loteInicial: rangeMatch[1],
+          loteFinal: rangeMatch[2],
+        });
+        continue;
+      }
+      if (i + 2 < tokens.length && ["a", "ao", "ate", "até"].includes(tokens[i + 1].toLowerCase())) {
+        const fimTok = tokens[i + 2].replace(/[DIRdir]+$/, "").trim();
+        faixas.push({
+          id: `f-${idx++}`,
+          quadra,
+          loteInicial: tok,
+          loteFinal: fimTok,
+        });
+        i += 2;
+        continue;
+      }
+      faixas.push({
+        id: `f-${idx++}`,
+        quadra,
+        loteInicial: tok,
+        loteFinal: tok,
+      });
+    }
+  }
+  return faixas;
+}
+
+function faixasParaScript(faixas: FaixaLoteIntervalo[]): string {
+  if (!faixas || faixas.length === 0) return "";
+  const porQuadra: Record<string, string[]> = {};
+  faixas.forEach(f => {
+    const q = f.quadra.trim();
+    if (!q) return;
+    if (!porQuadra[q]) porQuadra[q] = [];
+    const ini = f.loteInicial.trim();
+    const fim = f.loteFinal.trim();
+    if (ini && fim) {
+      if (ini === fim) {
+        porQuadra[q].push(ini);
+      } else {
+        porQuadra[q].push(`${ini}-${fim}`);
+      }
+    } else if (ini) {
+      porQuadra[q].push(ini);
+    } else if (fim) {
+      porQuadra[q].push(fim);
+    }
+  });
+
+  return Object.entries(porQuadra)
+    .map(([q, lts]) => `Q${q}: ${lts.join(", ")}.`)
+    .join(" ");
+}
+
+function getRegraFaixas(r: any): FaixaLoteIntervalo[] {
+  if (Array.isArray(r.faixas)) {
+    return r.faixas;
+  }
+  if (r.script) {
+    return scriptParaFaixas(r.script);
+  }
+  return [];
+}
+
 function formatarRegrasAtuaisTexto(dev: Empreendimento | null, regras?: any[]): string {
   if (!dev) return "";
-  if (regras && Array.isArray(regras) && regras.length > 0 && regras.some(r => r.script && r.valor)) {
+  if (regras && Array.isArray(regras) && regras.length > 0 && regras.some(r => r.script && (r.valor || r.precoAvista))) {
     return regras
-      .filter(r => r.script && r.valor)
+      .filter(r => r.script && (r.valor || r.precoAvista))
       .map((r, i) => {
         if (r.avista) {
-          return `REGRA${i + 1}: ${r.script} VALOR:${r.valor} AVISTA`;
+          return `REGRA${i + 1}: ${r.script} VALOR:${r.precoAvista || r.valor} AVISTA`;
         }
-        return `REGRA${i + 1}: ${r.script} VALOR:${r.valor} ENTRADA:${r.entrada || 0} PARCELAS:${r.parcelas || 0}${r.parcela ? ` PARCELA:${r.parcela}` : ""}`;
+        const avistaPart = r.precoAvista ? ` AVISTA:${r.precoAvista}` : "";
+        return `REGRA${i + 1}: ${r.script} VALOR:${r.valor}${avistaPart} ENTRADA:${r.entrada || 0} PARCELAS:${r.parcelas || 0}${r.parcela ? ` PARCELA:${r.parcela}` : ""}`;
       })
       .join("\n");
   }
 
   const lotesInfo = dev.lotesInfo || {};
-  const grupos: Record<string, { lotes: { q: string; l: string }[]; valor: number; entrada: number; parcelas: number; parcela: number; avista: boolean }> = {};
+  const grupos: Record<string, { lotes: { q: string; l: string }[]; valor: number; precoAvista?: number; entrada: number; parcelas: number; parcela: number; avista: boolean }> = {};
 
   Object.entries(lotesInfo).forEach(([key, info]: [string, any]) => {
-    if (!info?.preco) return;
+    const prc = parsePrecoNumero(info?.preco ?? info?.valor);
+    const prcAv = parsePrecoNumero(info?.precoAvista ?? info?.valorAvista);
+    if (!prc && !prcAv) return;
     const parts = key.split("-");
     if (parts.length < 2) return;
     const q = parts[0];
     const l = parts.slice(1).join("-");
-    const sig = `${info.preco}_${info.entrada || 0}_${info.parcelas || 0}_${info.avista ? "av" : "parc"}`;
+    const sig = `${prc}_${prcAv}_${info.entrada || 0}_${info.parcelas || 0}_${info.avista ? "av" : "parc"}`;
     if (!grupos[sig]) {
       grupos[sig] = {
         lotes: [],
-        valor: info.preco,
+        valor: prc || prcAv,
+        precoAvista: prcAv > 0 ? prcAv : undefined,
         entrada: info.entrada || 0,
         parcelas: info.parcelas || 0,
         parcela: info.parcela || 0,
@@ -13266,10 +13373,11 @@ function formatarRegrasAtuaisTexto(dev: Empreendimento | null, regras?: any[]): 
       .join(" ");
 
     if (g.avista) {
-      return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.valor} AVISTA`;
+      return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.precoAvista || g.valor} AVISTA`;
     }
     const vlParcela = g.parcela || (g.parcelas > 0 ? Math.round((g.valor - g.entrada) / g.parcelas) : 0);
-    return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.valor} ENTRADA:${g.entrada} PARCELAS:${g.parcelas}${vlParcela ? ` PARCELA:${vlParcela}` : ""}`;
+    const avistaPart = g.precoAvista ? ` AVISTA:${g.precoAvista}` : "";
+    return `REGRA${idx + 1}: ${scriptQuadras} VALOR:${g.valor}${avistaPart} ENTRADA:${g.entrada} PARCELAS:${g.parcelas}${vlParcela ? ` PARCELA:${vlParcela}` : ""}`;
   }).join("\n");
 }
 
@@ -13378,6 +13486,7 @@ const EmpreendimentosSection = ({
     rua: "",
     status: "disponivel" as MapaLoteStatus,
     preco: "",
+    precoAvista: "",
     entrada: "",
     parcelas: "",
     parcela: "",
@@ -13390,6 +13499,7 @@ const EmpreendimentosSection = ({
     lote: string;
     info: any;
     preco: string;
+    precoAvista?: string;
     entrada: string;
     parcelas: string;
     parcela: string;
@@ -13397,10 +13507,15 @@ const EmpreendimentosSection = ({
     corPreco: string;
   } | null>(null);
   const [lotRegTab, setLotRegTab] = useState<"cadastrar" | "lotes" | "acoesMassa" | "precos">("cadastrar");
-  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; entrada:string; parcelas:string; parcela:string; avista?:boolean; cor?:string}[]>(() => {
+  const [precosRegras, setPrecosRegras] = useState<{id:number; script:string; valor:string; precoAvista?:string; entrada:string; parcelas:string; parcela:string; avista?:boolean; cor?:string; faixas?:any[]}[]>(() => {
     const saved = (lotRegDev as any)?.precosRegras;
-    if (saved?.length) return saved.map((r:any, idx:number) => ({...r, parcela: r.parcela || "", cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor}));
-    return [{id:1, script:"", valor:"", entrada:"", parcelas:"", parcela:"", avista:false, cor: CORES_PALETA_BOLINHAS[0].cor}];
+    if (saved?.length) return saved.map((r:any, idx:number) => ({
+      ...r,
+      parcela: r.parcela || "",
+      precoAvista: r.precoAvista || (r.avista ? r.valor : "") || "",
+      cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor
+    }));
+    return [{id:1, script:"", valor:"", precoAvista:"", entrada:"", parcelas:"", parcela:"", avista:false, cor: CORES_PALETA_BOLINHAS[0].cor}];
   });
   const [appColorPickerConfig, setAppColorPickerConfig] = useState<{
     isOpen: boolean;
@@ -13421,6 +13536,7 @@ const EmpreendimentosSection = ({
         setPrecosRegras(saved.map((r: any, idx: number) => ({
           ...r,
           parcela: r.parcela || "",
+          precoAvista: r.precoAvista || (r.avista ? r.valor : "") || "",
           cor: r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor,
         })));
       } else {
@@ -13429,19 +13545,21 @@ const EmpreendimentosSection = ({
         if (textoRegras) {
           const regrasRec: typeof precosRegras = [];
           let id = 1;
-          const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)?/gi;
+          const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+AVISTA:([\d.,]+))?(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)?/gi;
           let m;
           while ((m = regraRegex.exec(textoRegras)) !== null) {
-            const isAvista = textoRegras.substring(m.index, m.index + m[0].length).toUpperCase().includes("AVISTA");
+            const isAvista = textoRegras.substring(m.index, m.index + m[0].length).toUpperCase().includes("AVISTA") && !m[4];
             const valLimpo = (m[2] || "").replace(/\./g, "").replace(",", ".");
-            const entLimpo = (m[3] || "0").replace(/\./g, "").replace(",", ".");
-            const parN = parseInt(m[4] || "0");
-            const parcLimpo = m[5] ? m[5].replace(/\./g, "").replace(",", ".") : "";
+            const avistaLimpo = m[3] ? m[3].replace(/\./g, "").replace(",", ".") : (isAvista ? valLimpo : "");
+            const entLimpo = (m[4] || "0").replace(/\./g, "").replace(",", ".");
+            const parN = parseInt(m[5] || "0");
+            const parcLimpo = m[6] ? m[6].replace(/\./g, "").replace(",", ".") : "";
             const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
             regrasRec.push({
               id: id++,
               script: m[1].trim(),
               valor: valLimpo,
+              precoAvista: avistaLimpo,
               entrada: entLimpo,
               parcelas: String(parN),
               parcela: parcLimpo || (parN > 0 ? String(Math.round((parseFloat(valLimpo) - parseFloat(entLimpo)) / parN)) : ""),
@@ -13494,6 +13612,14 @@ const EmpreendimentosSection = ({
   const [bulkLotesEspecificos, setBulkLotesEspecificos] = useState<Record<string, string>>({});
   const [massaAplicadoOk, setMassaAplicadoOk] = useState(false);
   const [precosAplicadoOk, setPrecosAplicadoOk] = useState(false);
+  const [precosSubTab, setPrecosSubTab] = useState<"manual" | "massa">("manual");
+  const [selectedPrecoRegraId, setSelectedPrecoRegraId] = useState<number | null>(null);
+  const [precosSearchQuery, setPrecosSearchQuery] = useState("");
+  const [precosSortOrder, setPrecosSortOrder] = useState<"menor-maior" | "maior-menor" | "mais-lotes">("menor-maior");
+  const [novoLoteQuadra, setNovoLoteQuadra] = useState("");
+  const [novoLoteInicial, setNovoLoteInicial] = useState("");
+  const [novoLoteFinal, setNovoLoteFinal] = useState("");
+  const [regraParaExcluirConfirm, setRegraParaExcluirConfirm] = useState<{ id: number; valor: string; index: number } | null>(null);
 
   // Reseta a confirmação "✓ OK" sempre que os dados relevantes mudarem (nova alteração)
   useEffect(() => { setPrecosAplicadoOk(false); }, [precosRegras]);
@@ -13788,6 +13914,7 @@ const EmpreendimentosSection = ({
       return;
     }
     const prc = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+    const prcAv = parseFloat(String(lotRegForm.precoAvista || "").replace(/\./g, "").replace(",", ".")) || 0;
     const ent = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
     const par = parseInt(String(lotRegForm.parcelas || "0")) || 0;
     const parc = parseFloat(String(lotRegForm.parcela || "").replace(/\./g, "").replace(",", ".")) ||
@@ -13799,8 +13926,15 @@ const EmpreendimentosSection = ({
       rua: lotRegForm.rua,
       status: lotRegForm.status,
     };
-    if (prc > 0 || lotRegForm.preco !== "") {
-      newInfo.preco = prc;
+    if (prc > 0 || prcAv > 0 || lotRegForm.preco !== "") {
+      newInfo.preco = prc || prcAv;
+      if (prcAv > 0 || lotRegForm.avista) {
+        newInfo.precoAvista = prcAv || prc;
+        newInfo.valorAvista = prcAv || prc;
+      } else {
+        delete newInfo.precoAvista;
+        delete newInfo.valorAvista;
+      }
       newInfo.entrada = ent;
       newInfo.parcelas = par;
       newInfo.parcela = parc;
@@ -13831,6 +13965,7 @@ const EmpreendimentosSection = ({
       rua: "",
       status: "disponivel",
       preco: "",
+      precoAvista: "",
       entrada: "",
       parcelas: "",
       parcela: "",
@@ -15114,74 +15249,82 @@ const EmpreendimentosSection = ({
 
       {/* Modal: Cadastrar / Gerenciar Lotes */}
       <AnimatePresence>
-        {lotRegDev && (
+        {lotRegDev && (() => {
+          const totalLotesCount = (() => {
+            const set = new Set<string>();
+            getQuadraList(lotRegDev).forEach((q) => {
+              getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]).forEach((l) => set.add(getLotInfoKey(q, l)));
+            });
+            Object.keys(lotRegDev.lotesInfo || {}).forEach((k) => { if (k) set.add(k.toUpperCase()); });
+            const pt = (lotRegDev as any).mapaPontos;
+            if (Array.isArray(pt)) {
+              pt.forEach((p: any) => { if (p?.quadra && p?.lote) set.add(getLotInfoKey(p.quadra, p.lote)); });
+            }
+            getActiveSaleLotKeys(lotRegDev, sales).forEach((k) => set.add(k));
+            return Math.max(set.size, Array.isArray(pt) ? pt.length : 0, Number(lotRegDev.totalLotes || 0));
+          })();
+
+          return (
           <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
             <motion.div
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-lg rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[90vh]"
+              className={`bg-white w-full ${
+                lotRegTab === "precos" ? "max-w-5xl" : "max-w-lg"
+              } rounded-[28px] shadow-2xl flex flex-col overflow-hidden max-h-[92vh] transition-all duration-200`}
             >
               {/* Header */}
-              <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-center">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast">
-                    <MapPin size={20} />
+                  <div className="p-2.5 bg-primary-main rounded-xl text-primary-contrast flex items-center justify-center">
+                    {lotRegTab === "precos" ? <DollarSign size={20} /> : <MapPin size={20} />}
                   </div>
                   <div>
-                    <h3 className="text-lg font-display font-bold text-slate-800">Lotes do Empreendimento</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{lotRegDev.nome}</p>
+                    <h3 className="text-base sm:text-lg font-display font-bold text-slate-800">
+                      {lotRegTab === "precos" ? "Preços dos Lotes" : "Lotes do Empreendimento"}
+                    </h3>
+                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                      {lotRegTab === "precos" ? "Gerencie os preços e adicione os lotes que utilizam cada valor" : lotRegDev.nome}
+                    </p>
                   </div>
                 </div>
-                <button onClick={() => setLotRegDev(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
+                <button onClick={() => setLotRegDev(null)} className="p-2 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer">
                   <X size={20} className="text-slate-500" />
                 </button>
               </div>
 
               {/* Tabs redesenhadas */}
-              {(() => {
-                const totalLotesCount = (() => {
-                  const set = new Set<string>();
-                  getQuadraList(lotRegDev).forEach((q) => {
-                    getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]).forEach((l) => set.add(getLotInfoKey(q, l)));
-                  });
-                  Object.keys(lotRegDev.lotesInfo || {}).forEach((k) => { if (k) set.add(k.toUpperCase()); });
-                  const pt = (lotRegDev as any).mapaPontos;
-                  if (Array.isArray(pt)) {
-                    pt.forEach((p: any) => { if (p?.quadra && p?.lote) set.add(getLotInfoKey(p.quadra, p.lote)); });
-                  }
-                  getActiveSaleLotKeys(lotRegDev, sales).forEach((k) => set.add(k));
-                  return Math.max(set.size, Array.isArray(pt) ? pt.length : 0, Number(lotRegDev.totalLotes || 0));
-                })();
-
-                return (
-                  <div className="flex border-b border-slate-100 bg-slate-50/50 px-2 gap-0.5 pt-1">
-                    {[
-                      { key: "cadastrar", icon: <Plus size={14}/>, label: "Novo" },
-                      { key: "lotes", icon: <List size={14}/>, label: "Lotes", badge: totalLotesCount || null },
-                      { key: "script", icon: <ClipboardPaste size={14}/>, label: "Texto" },
-                      { key: "acoesMassa", icon: <Settings size={14}/>, label: "Massa" },
-                      { key: "precos", icon: <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, label: "Preços" },
-                    ].map(({key, icon, label, badge}) => (
-                      <button key={key}
-                        onClick={() => {
-                          if (key === "script") { setScriptPasteText(""); setScriptMsg(""); setScriptGerado(""); setShowScriptModal(true); return; }
-                          if (key === "acoesMassa") { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }
-                          setLotRegTab(key as any);
-                        }}
-                        className={`relative flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-t-lg text-[9px] font-bold transition-all ${
-                          lotRegTab === key
-                            ? "text-[#1a4a1a] border-b-2 border-[#1a4a1a] bg-white"
-                            : "text-slate-400 hover:text-slate-600"
-                        }`}>
-                        {icon}
-                        <span>{label}</span>
-                        {badge ? <span className="absolute top-1 right-1 bg-[#1a4a1a] text-white text-[7px] font-black px-1 py-0.5 rounded-full leading-none">{badge}</span> : null}
-                      </button>
-                    ))}
-                  </div>
-                );
-              })()}
+              <div className="flex border-b border-slate-100 bg-slate-50/50 px-2 gap-0.5 pt-1">
+                {[
+                  { key: "cadastrar", icon: <Plus size={14}/>, label: "Novo" },
+                  { key: "lotes", icon: <List size={14}/>, label: "Lotes", badge: totalLotesCount || null },
+                  { key: "script", icon: <ClipboardPaste size={14}/>, label: "Texto" },
+                  { key: "acoesMassa", icon: <Settings size={14}/>, label: "Massa" },
+                  { key: "precos", icon: <DollarSign size={14}/>, label: "Preços", badge: (lotRegDev?.precosRegras?.length ? `${lotRegDev.precosRegras.length}` : null) },
+                ].map(({key, icon, label, badge}) => (
+                  <button key={key}
+                    onClick={() => {
+                      if (key === "script") {
+                        setScriptPasteText("");
+                        setScriptMsg("");
+                        const s = gerarScriptAtualParaModal();
+                        if (s) setScriptGerado(s);
+                      }
+                      if (key === "acoesMassa") { setBulkAvailTab("marcarIndisponiveis"); setBulkSelectedQuadras([]); setBulkLotesEspecificos({}); }
+                      setLotRegTab(key as any);
+                    }}
+                    className={`relative flex-1 flex flex-col items-center gap-0.5 py-2 px-1 rounded-t-lg text-[9px] font-bold transition-all ${
+                      lotRegTab === key
+                        ? "text-[#1a4a1a] border-b-2 border-[#1a4a1a] bg-white"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}>
+                    {icon}
+                    <span>{label}</span>
+                    {badge ? <span className="absolute top-1 right-1 bg-[#1a4a1a] text-white text-[7px] font-black px-1 py-0.5 rounded-full leading-none">{badge}</span> : null}
+                  </button>
+                ))}
+              </div>
 
               {/* Tab: Cadastrar */}
               {lotRegTab === "cadastrar" && (
@@ -15299,80 +15442,103 @@ const EmpreendimentosSection = ({
                         </label>
                       </div>
 
-                      <div className="grid grid-cols-2 gap-3">
+                      {lotRegForm.avista ? (
                         <div>
-                          <label className="text-[10px] font-bold text-slate-600 mb-1 block">Valor Total (R$)</label>
+                          <label className="text-[10px] font-bold text-emerald-900 mb-1 block">Preço à Vista (R$) *</label>
                           <input
                             type="text"
-                            className="input-field bg-white"
+                            className="input-field bg-white border-emerald-300"
                             placeholder="Ex: 25.000"
-                            value={lotRegForm.preco}
+                            value={lotRegForm.precoAvista || lotRegForm.preco}
                             onChange={(e) => {
-                              const novoVal = e.target.value;
-                              const numVal = parseFloat(novoVal.replace(/\./g, "").replace(",", ".")) || 0;
-                              const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
-                              const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
-                              const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
-                              setLotRegForm({ ...lotRegForm, preco: novoVal, parcela: parcCalc });
+                              const v = e.target.value;
+                              setLotRegForm({ ...lotRegForm, preco: v, precoAvista: v });
                             }}
                           />
                         </div>
+                      ) : (
+                        <>
+                          <div className="grid grid-cols-2 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 mb-1 block">Total Parcelado (R$) *</label>
+                              <input
+                                type="text"
+                                className="input-field bg-white"
+                                placeholder="Ex: 25.000"
+                                value={lotRegForm.preco}
+                                onChange={(e) => {
+                                  const novoVal = e.target.value;
+                                  const numVal = parseFloat(novoVal.replace(/\./g, "").replace(",", ".")) || 0;
+                                  const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                  const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
+                                  const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
+                                  setLotRegForm({ ...lotRegForm, preco: novoVal, parcela: parcCalc });
+                                }}
+                              />
+                            </div>
 
-                        {!lotRegForm.avista ? (
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Entrada (R$)</label>
-                            <input
-                              type="text"
-                              className="input-field bg-white"
-                              placeholder="Ex: 1.000"
-                              value={lotRegForm.entrada}
-                              onChange={(e) => {
-                                const novaEnt = e.target.value;
-                                const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
-                                const numEnt = parseFloat(novaEnt.replace(/\./g, "").replace(",", ".")) || 0;
-                                const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
-                                const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
-                                setLotRegForm({ ...lotRegForm, entrada: novaEnt, parcela: parcCalc });
-                              }}
-                            />
+                            <div>
+                              <label className="text-[10px] font-bold text-emerald-800 mb-1 block">Preço à Vista (R$)</label>
+                              <input
+                                type="text"
+                                className="input-field bg-white border-emerald-300"
+                                placeholder="Ex: 20.000"
+                                value={lotRegForm.precoAvista}
+                                onChange={(e) => setLotRegForm({ ...lotRegForm, precoAvista: e.target.value })}
+                                title="Valor à vista com desconto para este lote"
+                              />
+                            </div>
                           </div>
-                        ) : (
-                          <div className="flex items-center text-xs font-bold text-emerald-700 p-3 bg-white/70 rounded-xl">
-                            Pagamento somente à vista
-                          </div>
-                        )}
-                      </div>
 
-                      {!lotRegForm.avista && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Nº de Parcelas</label>
-                            <input
-                              type="number"
-                              className="input-field bg-white"
-                              placeholder="Ex: 60"
-                              value={lotRegForm.parcelas}
-                              onChange={(e) => {
-                                const nParc = e.target.value;
-                                const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
-                                const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
-                                const pInt = parseInt(nParc || "0") || 0;
-                                const parcCalc = pInt > 0 ? String(Math.round((numVal - numEnt) / pInt)) : "";
-                                setLotRegForm({ ...lotRegForm, parcelas: nParc, parcela: parcCalc });
-                              }}
-                            />
+                          <div className="grid grid-cols-3 gap-3">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 mb-1 block">Entrada (R$)</label>
+                              <input
+                                type="text"
+                                className="input-field bg-white"
+                                placeholder="Ex: 1.000"
+                                value={lotRegForm.entrada}
+                                onChange={(e) => {
+                                  const novaEnt = e.target.value;
+                                  const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                  const numEnt = parseFloat(novaEnt.replace(/\./g, "").replace(",", ".")) || 0;
+                                  const numParc = parseInt(lotRegForm.parcelas || "0") || 0;
+                                  const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : lotRegForm.parcela;
+                                  setLotRegForm({ ...lotRegForm, entrada: novaEnt, parcela: parcCalc });
+                                }}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 mb-1 block">Nº Parcelas</label>
+                              <input
+                                type="number"
+                                className="input-field bg-white"
+                                placeholder="Ex: 60"
+                                value={lotRegForm.parcelas}
+                                onChange={(e) => {
+                                  const nParc = e.target.value;
+                                  const numVal = parseFloat(String(lotRegForm.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                  const numEnt = parseFloat(String(lotRegForm.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
+                                  const pInt = parseInt(nParc || "0") || 0;
+                                  const parcCalc = pInt > 0 ? String(Math.round((numVal - numEnt) / pInt)) : "";
+                                  setLotRegForm({ ...lotRegForm, parcelas: nParc, parcela: parcCalc });
+                                }}
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-600 mb-1 block">Valor Parcela (R$)</label>
+                              <input
+                                type="text"
+                                className="input-field bg-white"
+                                placeholder="Ex: 400"
+                                value={lotRegForm.parcela}
+                                onChange={(e) => setLotRegForm({ ...lotRegForm, parcela: e.target.value })}
+                              />
+                            </div>
                           </div>
-                          <div>
-                            <label className="text-[10px] font-bold text-slate-600 mb-1 block">Valor da Parcela (R$)</label>
-                            <input
-                              type="text"
-                              className="input-field bg-white"
-                              placeholder="Ex: 400"
-                              value={lotRegForm.parcela}
-                              onChange={(e) => setLotRegForm({ ...lotRegForm, parcela: e.target.value })}
-                            />
-                          </div>
-                        </div>
+                        </>
                       )}
 
                       {/* Cor da Bolinha no Mapa */}
@@ -15515,9 +15681,20 @@ const EmpreendimentosSection = ({
                     <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100 flex flex-col gap-2">
                       <div className="flex items-center justify-between text-[11px] font-bold text-slate-500">
                         <span>Total: <b className="text-slate-800">{allLotsInDev.length}</b> lotes</span>
-                        <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px]">
-                          📍 {totalComBolinha} no mapa
-                        </span>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setLotRegTab("precos")}
+                            className="flex items-center gap-1 text-emerald-800 bg-emerald-100 hover:bg-emerald-200 border border-emerald-300 px-2 py-0.5 rounded-md text-[10px] font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
+                            title="Ir para aba de Adicionar / Gerenciar Preços"
+                          >
+                            <DollarSign size={11} />
+                            <span>Adicionar Preço</span>
+                          </button>
+                          <span className="flex items-center gap-1 text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md text-[10px]">
+                            📍 {totalComBolinha} no mapa
+                          </span>
+                        </div>
                       </div>
                       <div className="relative">
                         <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -15604,6 +15781,7 @@ const EmpreendimentosSection = ({
                                               lote,
                                               info,
                                               preco: String(info.preco || ""),
+                                              precoAvista: info.precoAvista || info.valorAvista ? String(info.precoAvista || info.valorAvista) : (info.avista && info.preco ? String(info.preco) : ""),
                                               entrada: String(info.entrada || ""),
                                               parcelas: String(info.parcelas || ""),
                                               parcela: String(info.parcela || info.valorParcela || ""),
@@ -15618,7 +15796,14 @@ const EmpreendimentosSection = ({
                                             className="w-2 h-2 rounded-full flex-shrink-0"
                                             style={{ background: info.corPreco || info.cor || info.corBolinha || "#10b981" }}
                                           />
-                                          R$ {Number(info.preco).toLocaleString('pt-BR')}
+                                          <div className="flex flex-col items-start leading-tight text-left">
+                                            <span>R$ {Number(info.preco).toLocaleString('pt-BR')}</span>
+                                            {info.precoAvista && info.precoAvista !== info.preco && (
+                                              <span className="text-[8px] text-emerald-700 font-bold">
+                                                À vista: R$ {Number(info.precoAvista).toLocaleString('pt-BR')}
+                                              </span>
+                                            )}
+                                          </div>
                                         </button>
                                       ) : (
                                         <button
@@ -15630,6 +15815,7 @@ const EmpreendimentosSection = ({
                                               lote,
                                               info,
                                               preco: "",
+                                              precoAvista: "",
                                               entrada: "",
                                               parcelas: "",
                                               parcela: "",
@@ -15685,6 +15871,7 @@ const EmpreendimentosSection = ({
                                               lote,
                                               info,
                                               preco: info.preco ? String(info.preco) : "",
+                                              precoAvista: info.precoAvista || info.valorAvista ? String(info.precoAvista || info.valorAvista) : (info.avista && info.preco ? String(info.preco) : ""),
                                               entrada: info.entrada ? String(info.entrada) : "",
                                               parcelas: info.parcelas ? String(info.parcelas) : "",
                                               parcela: info.parcela || info.valorParcela ? String(info.parcela || info.valorParcela) : "",
@@ -15706,6 +15893,7 @@ const EmpreendimentosSection = ({
                                               rua: info.rua || "",
                                               status: (status as any) || "disponivel",
                                               preco: info.preco ? String(info.preco) : "",
+                                              precoAvista: info.precoAvista || info.valorAvista ? String(info.precoAvista || info.valorAvista) : (info.avista && info.preco ? String(info.preco) : ""),
                                               entrada: info.entrada ? String(info.entrada) : "",
                                               parcelas: info.parcelas ? String(info.parcelas) : "",
                                               parcela: info.parcela || info.valorParcela ? String(info.parcela || info.valorParcela) : "",
@@ -15816,38 +16004,370 @@ const EmpreendimentosSection = ({
                 );
               })()}
 
-              {/* Tab: Preços em Massa */}
+              {/* Tab: Script / Texto */}
+              {lotRegTab === "script" && (
+                <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+                  <div className="p-5 overflow-y-auto flex-1 space-y-4">
+                    <div className="p-3.5 bg-blue-50 rounded-2xl text-xs text-blue-800 border border-blue-100 flex items-start gap-3">
+                      <div className="p-2 bg-blue-600 rounded-xl text-white shrink-0 mt-0.5">
+                        <ClipboardPaste size={16} />
+                      </div>
+                      <div>
+                        <p className="font-bold text-blue-900 mb-0.5">Importar / Exportar Lotes por Texto</p>
+                        <p className="text-blue-700 leading-relaxed">
+                          Padrão por quadra: <span className="font-mono font-bold bg-blue-100/70 px-1 py-0.5 rounded text-blue-900">Q1:1D,2I,3R.</span> (D=disponível, I=indisponível, R=reservado).
+                        </p>
+                        <p className="mt-1 text-[11px] text-blue-600">
+                          1. Copie o script e envie ao ChatGPT com a imagem do mapa.
+                          <br />
+                          2. Cole a resposta do ChatGPT no campo abaixo e clique em <b>Importar Script</b>.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => { setScriptGerado(""); setScriptPasteText(""); setScriptMsg(""); copyScriptToClipboard(); }}
+                        className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-black uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200 transition-colors shadow-xs active:scale-95 cursor-pointer"
+                      >
+                        <Copy size={14} />
+                        Copiar Script Atual
+                      </button>
+                      <button
+                        type="button"
+                        onClick={pasteScriptFromClipboard}
+                        className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl text-xs font-black uppercase bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-xs active:scale-95 cursor-pointer"
+                      >
+                        <ClipboardPaste size={14} />
+                        Colar do Clipboard
+                      </button>
+                    </div>
+
+                    {scriptMsg && (
+                      <div className={`text-xs font-bold p-3 rounded-xl border flex items-center gap-2 ${
+                        scriptMsg.includes("✅") || scriptMsg.includes("sucesso") || scriptMsg.includes("copiado")
+                          ? "text-emerald-800 bg-emerald-50 border-emerald-200"
+                          : scriptMsg.includes("❌") || scriptMsg.includes("Erro") || scriptMsg.includes("Falha")
+                          ? "text-rose-800 bg-rose-50 border-rose-200"
+                          : "text-slate-700 bg-slate-50 border-slate-200"
+                      }`}>
+                        <span>{scriptMsg}</span>
+                      </div>
+                    )}
+
+                    {/* Script gerado — visível para cópia manual se clipboard falhar */}
+                    {scriptGerado && !scriptPasteText && (
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Script gerado atual</p>
+                          <button
+                            type="button"
+                            onClick={copyScriptToClipboard}
+                            className="text-[10px] font-bold text-blue-600 hover:underline flex items-center gap-1 cursor-pointer"
+                          >
+                            <Copy size={11} /> Copiar novamente
+                          </button>
+                        </div>
+                        <textarea
+                          readOnly
+                          className="input-field min-h-[110px] text-[11px] font-mono leading-relaxed bg-slate-50 select-all"
+                          value={scriptGerado}
+                          onFocus={(e) => e.target.select()}
+                        />
+                      </div>
+                    )}
+
+                    {/* Campo para colar resposta do ChatGPT */}
+                    <div>
+                      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">
+                        Resposta do ChatGPT / Script de Lotes
+                      </p>
+                      <textarea
+                        className="input-field min-h-[140px] text-[11px] font-mono leading-relaxed"
+                        value={scriptPasteText}
+                        onChange={(e) => setScriptPasteText(e.target.value)}
+                        placeholder="Cole aqui o script gerado pelo ChatGPT (ex: Q1:1D,2I,3R. Q2:1D,2D,3I.)"
+                        inputMode="text"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Footer da aba */}
+                  <div className="p-4 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => { setScriptPasteText(""); setScriptMsg(""); setScriptGerado(""); }}
+                      className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+                    >
+                      Limpar
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={!scriptPasteText.trim() || importandoScript}
+                      onClick={importarScriptFromModal}
+                      className={`px-6 py-2.5 rounded-xl text-xs font-black uppercase transition-all flex items-center justify-center gap-2 shadow-xs cursor-pointer ${
+                        !scriptPasteText.trim() || importandoScript
+                          ? (importandoScript ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-400 cursor-not-allowed")
+                          : scriptAplicadoOk ? "bg-emerald-700 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700 active:scale-95"
+                      }`}
+                    >
+                      {importandoScript ? (
+                        <>
+                          <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
+                          Processando lotes...
+                        </>
+                      ) : scriptAplicadoOk ? "✓ Importado com Sucesso" : "Importar Script"}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Tab: Preços */}
               {lotRegTab === "precos" && (() => {
-                const temLotes = Object.keys(lotRegDev.lotesInfo || {}).length > 0 || Object.keys(lotRegDev.lotesPorQuadra || {}).length > 0;
+                const temLotes = (typeof totalLotesCount !== "undefined" ? totalLotesCount > 0 : false) ||
+                  Object.keys(lotRegDev.lotesInfo || {}).length > 0 ||
+                  Object.keys(lotRegDev.lotesPorQuadra || {}).length > 0 ||
+                  ((lotRegDev as any).mapaPontos || []).length > 0 ||
+                  Number(lotRegDev.totalLotes || 0) > 0;
+
+                const quadrasDisponiveis = (() => {
+                  const set = new Set<string>();
+                  if (lotRegDev.quadras) {
+                    lotRegDev.quadras.split(",").forEach(q => {
+                      const trimmed = q.trim();
+                      if (trimmed) set.add(trimmed);
+                    });
+                  }
+                  getQuadraList(lotRegDev).forEach(q => { if (q) set.add(q); });
+                  if (lotRegDev.lotesPorQuadra) {
+                    Object.keys(lotRegDev.lotesPorQuadra).forEach(q => { if (q) set.add(q); });
+                  }
+                  if (lotRegDev.lotesInfo) {
+                    Object.keys(lotRegDev.lotesInfo).forEach(k => {
+                      const parts = k.split("-");
+                      if (parts[0]) set.add(parts[0]);
+                    });
+                  }
+                  const arr = Array.from(set).sort((a, b) => {
+                    const na = parseInt(a), nb = parseInt(b);
+                    if (!isNaN(na) && !isNaN(nb)) return na - nb;
+                    return a.localeCompare(b);
+                  });
+                  return arr.length > 0 ? arr : ["A", "B", "C", "D", "E"];
+                })();
+
+                const quadraSelecionadaForm = novoLoteQuadra || quadrasDisponiveis[0] || "A";
+
                 const interpretarScript = (script: string) => {
                   const lotes: string[] = [];
-                  // Normalizar: garantir ponto no fim de cada grupo Q
-                  const scriptNorm = script.replace(/Q(\w+):([\d.\s]+?)(?=\s+Q|\s+VALOR|\s*$)/gi,
-                    (match: string) => match.trim().endsWith('.') ? match : match.trim() + '.'
-                  );
-                  // Separador APENAS ponto (.) — não vírgula nem ponto-e-vírgula
-                  const regex2 = /Q(\w+):([\d.\s]+?)\./g;
-                  let m2;
-                  while ((m2 = regex2.exec(scriptNorm)) !== null) {
-                    const quadraNum = m2[1];
-                    const nums = m2[2].split('.').map((n: string) => n.trim().replace(/[DIRdir]+$/, '').trim()).filter(Boolean);
-                    nums.forEach((nLote: string) => { lotes.push('Q' + quadraNum + '·L' + nLote); });
+                  if (!script || !script.trim()) return lotes;
+                  const blockRegex = /(?:Q|Quadra\s*)(\w+)\s*:\s*([^QV\n\r]+?)(?=(?:Q\w+|Quadra\s*\w+)\s*:|\s*VALOR:|\s*$)/gi;
+                  let match;
+                  while ((match = blockRegex.exec(script)) !== null) {
+                    const quadra = match[1].trim();
+                    const content = match[2].trim();
+                    const tokens = content.split(/[\s,.;]+/).filter(Boolean);
+                    for (let i = 0; i < tokens.length; i++) {
+                      const tok = tokens[i].replace(/[DIRdir]+$/, "").trim();
+                      if (!tok) continue;
+                      const rangeMatch = tok.match(/^(\d+)-(\d+)$/);
+                      if (rangeMatch) {
+                        const start = parseInt(rangeMatch[1]);
+                        const end = parseInt(rangeMatch[2]);
+                        const min = Math.min(start, end);
+                        const max = Math.max(start, end);
+                        for (let n = min; n <= max; n++) lotes.push(`Q${quadra}·L${n}`);
+                        continue;
+                      }
+                      if (i + 2 < tokens.length && ["a", "ao", "ate", "até"].includes(tokens[i + 1].toLowerCase())) {
+                        const start = parseInt(tok);
+                        const end = parseInt(tokens[i + 2].replace(/[DIRdir]+$/, ""));
+                        if (!isNaN(start) && !isNaN(end)) {
+                          const min = Math.min(start, end);
+                          const max = Math.max(start, end);
+                          for (let n = min; n <= max; n++) lotes.push(`Q${quadra}·L${n}`);
+                          i += 2;
+                          continue;
+                        }
+                      }
+                      if (/^\d+$/.test(tok) || /^\w+$/.test(tok)) {
+                        lotes.push(`Q${quadra}·L${tok}`);
+                      }
+                    }
                   }
                   return lotes;
                 };
+
+                // Regra ativa selecionada para edição no modo manual
+                let regraAtiva = precosRegras.find(r => r.id === selectedPrecoRegraId);
+                if (!regraAtiva && precosRegras.length > 0) {
+                  regraAtiva = precosRegras[0];
+                }
+                const activeRuleId = regraAtiva ? regraAtiva.id : null;
+                const activeRuleIndex = regraAtiva ? precosRegras.findIndex(r => r.id === regraAtiva!.id) : 0;
+                const faixasAtiva = regraAtiva ? getRegraFaixas(regraAtiva) : [];
+                const corRegraAtiva = regraAtiva?.cor || (activeRuleIndex >= 0 ? CORES_PALETA_BOLINHAS[activeRuleIndex % CORES_PALETA_BOLINHAS.length].cor : CORES_PALETA_BOLINHAS[0].cor);
+                const totalLotesFaixa = regraAtiva ? interpretarScript(regraAtiva.script || "").length : 0;
+
+                // Filtragem e ordenação da lista de faixas
+                let regrasExibidas = [...precosRegras];
+                if (precosSearchQuery.trim()) {
+                  const q = precosSearchQuery.toLowerCase().trim();
+                  regrasExibidas = regrasExibidas.filter(r => {
+                    const valorStr = String(r.valor || "").toLowerCase();
+                    const scriptStr = String(r.script || "").toLowerCase();
+                    const faixasStr = getRegraFaixas(r).map(f => `${f.quadra} ${f.loteInicial} ${f.loteFinal}`).join(" ").toLowerCase();
+                    return valorStr.includes(q) || scriptStr.includes(q) || faixasStr.includes(q);
+                  });
+                }
+                if (precosSortOrder === "menor-maior") {
+                  regrasExibidas.sort((a, b) => (parseFloat(String(a.valor).replace(/\./g, "").replace(",", ".")) || 0) - (parseFloat(String(b.valor).replace(/\./g, "").replace(",", ".")) || 0));
+                } else if (precosSortOrder === "maior-menor") {
+                  regrasExibidas.sort((a, b) => (parseFloat(String(b.valor).replace(/\./g, "").replace(",", ".")) || 0) - (parseFloat(String(a.valor).replace(/\./g, "").replace(",", ".")) || 0));
+                } else if (precosSortOrder === "mais-lotes") {
+                  regrasExibidas.sort((a, b) => interpretarScript(b.script || "").length - interpretarScript(a.script || "").length);
+                }
+
+                const handleCriarNovaFaixa = () => {
+                  const nextId = Date.now();
+                  const nextCor = CORES_PALETA_BOLINHAS[precosRegras.length % CORES_PALETA_BOLINHAS.length].cor;
+                  const novaRegra = {
+                    id: nextId,
+                    script: "",
+                    valor: "15000",
+                    precoAvista: "12000",
+                    entrada: "500",
+                    parcelas: "50",
+                    parcela: "290",
+                    avista: false,
+                    cor: nextCor,
+                    faixas: [],
+                  };
+                  setPrecosRegras(prev => [...prev, novaRegra]);
+                  setSelectedPrecoRegraId(nextId);
+                  setPrecosScriptMsg("✅ Nova faixa de preço criada!");
+                };
+
+                const solicitarExclusaoRegra = (e: React.MouseEvent | undefined, regraId: number) => {
+                  if (e) e.stopPropagation();
+                  const rIdx = precosRegras.findIndex(x => x.id === regraId);
+                  const regra = precosRegras.find(x => x.id === regraId);
+                  setRegraParaExcluirConfirm({
+                    id: regraId,
+                    valor: regra ? String(regra.precoAvista || regra.valor || "") : "",
+                    index: rIdx >= 0 ? rIdx : 0,
+                  });
+                };
+
+                const executarExclusaoRegra = (regraId: number) => {
+                  if (precosRegras.length <= 1) {
+                    setPrecosRegras([{
+                      id: Date.now(),
+                      script: "",
+                      valor: "",
+                      precoAvista: "",
+                      entrada: "",
+                      parcelas: "",
+                      parcela: "",
+                      avista: false,
+                      cor: CORES_PALETA_BOLINHAS[0].cor,
+                      faixas: [],
+                    }]);
+                    setSelectedPrecoRegraId(null);
+                    setPrecosScriptMsg("✅ Faixa de preço redefinida.");
+                    return;
+                  }
+                  setPrecosRegras(prev => {
+                    const filtered = prev.filter(x => x.id !== regraId);
+                    if (selectedPrecoRegraId === regraId && filtered.length > 0) {
+                      setSelectedPrecoRegraId(filtered[0].id);
+                    }
+                    return filtered;
+                  });
+                  setPrecosScriptMsg("✅ Faixa de preço excluída.");
+                };
+
+                const handleLimparTodosLotesFaixa = () => {
+                  if (!regraAtiva) return;
+                  setPrecosRegras(prev => prev.map(r => r.id === regraAtiva!.id ? { ...r, script: "", faixas: [] } : r));
+                  setPrecosScriptMsg("✅ Todos os lotes foram desvinculados desta faixa de preço.");
+                };
+
+                const handleAdicionarLoteFaixa = () => {
+                  if (!regraAtiva) return;
+                  const quadra = quadraSelecionadaForm;
+                  const ini = novoLoteInicial.trim();
+                  const fim = (novoLoteFinal.trim()) || ini;
+                  if (!ini) {
+                    setPrecosScriptMsg("⚠️ Informe ao menos o lote inicial.");
+                    return;
+                  }
+                  const novaFaixa: FaixaLoteIntervalo = {
+                    id: `f-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+                    quadra,
+                    loteInicial: ini,
+                    loteFinal: fim,
+                  };
+                  const novasFaixas = [...faixasAtiva, novaFaixa];
+                  const novoScript = faixasParaScript(novasFaixas);
+                  setPrecosRegras(prev => prev.map(r => r.id === regraAtiva!.id ? { ...r, script: novoScript, faixas: novasFaixas } : r));
+                  setNovoLoteInicial("");
+                  setNovoLoteFinal("");
+                  setPrecosScriptMsg(`✅ Lote(s) ${ini === fim ? ini : `${ini} ao ${fim}`} da Quadra ${quadra} adicionado(s) à faixa!`);
+                };
+
+                const handleRemoverFaixaLote = (faixaId: string) => {
+                  if (!regraAtiva) return;
+                  const novasFaixas = faixasAtiva.filter(f => f.id !== faixaId);
+                  const novoScript = faixasParaScript(novasFaixas);
+                  setPrecosRegras(prev => prev.map(r => r.id === regraAtiva!.id ? { ...r, script: novoScript, faixas: novasFaixas } : r));
+                  setPrecosScriptMsg("✅ Intervalo de lotes removido da faixa.");
+                };
+
                 const copiarScriptPrecos = async () => {
                   const linhas = ["GERENCIADOR DE PREÇOS — " + lotRegDev.nome, ""];
+                  const limparLote = (l: string) => String(l).replace(/[DIRdir]+$/, "").trim();
 
                   // Pegar pontos reais do mapa (quadras e lotes cadastrados)
-                  const pontosDoMapa = (lotRegDev as any).mapaPontos as {quadra:string;lote:string;status?:string}[] || [];
+                  const pontosDoMapa = ((lotRegDev as any).mapaPontos || []) as {quadra:string;lote:string;status?:string}[];
                   const quadraMapaMap: Record<string, string[]> = {};
                   pontosDoMapa.forEach(p => {
                     const q = String(p.quadra || "").trim();
-                    const l = String(p.lote || "").trim();
+                    const l = limparLote(p.lote || "");
                     if (!q || !l) return;
                     if (!quadraMapaMap[q]) quadraMapaMap[q] = [];
                     if (!quadraMapaMap[q].includes(l)) quadraMapaMap[q].push(l);
                   });
+
+                  // Complementar com lotesInfo se houver
+                  if (lotRegDev.lotesInfo) {
+                    Object.keys(lotRegDev.lotesInfo).forEach(k => {
+                      const parts = k.split("-");
+                      if (parts.length >= 2) {
+                        const q = parts[0].trim();
+                        const l = limparLote(parts.slice(1).join("-"));
+                        if (!q || !l) return;
+                        if (!quadraMapaMap[q]) quadraMapaMap[q] = [];
+                        if (!quadraMapaMap[q].includes(l)) quadraMapaMap[q].push(l);
+                      }
+                    });
+                  }
+
+                  // Complementar com lotesPorQuadra se houver
+                  if (lotRegDev.lotesPorQuadra) {
+                    Object.entries(lotRegDev.lotesPorQuadra).forEach(([q, lts]: [string, any]) => {
+                      const arr = getLotesDeQuadra(lts);
+                      if (arr && arr.length) {
+                        if (!quadraMapaMap[q]) quadraMapaMap[q] = [];
+                        arr.forEach(l => {
+                          const cl = limparLote(l);
+                          if (cl && !quadraMapaMap[q].includes(cl)) quadraMapaMap[q].push(cl);
+                        });
+                      }
+                    });
+                  }
 
                   // Ordenar lotes numericamente
                   const quadrasOrdenadas = Object.keys(quadraMapaMap).sort((a,b) => {
@@ -15855,45 +16375,23 @@ const EmpreendimentosSection = ({
                     return na !== nb ? na - nb : a.localeCompare(b);
                   });
 
-                  // Fallback: usar lotesPorQuadra se não tiver pontos no mapa
-                  const usarPontos = quadrasOrdenadas.length > 0;
-                  const quadrasConf = Object.keys(lotRegDev.lotesPorQuadra || {});
-
-                  const totalQuadras = usarPontos ? quadrasOrdenadas.length : quadrasConf.length;
-                  const totalLotes = usarPontos
-                    ? pontosDoMapa.length
-                    : quadrasConf.reduce((s, q) => {
-                        const lts = (lotRegDev.lotesPorQuadra as any)[q];
-                        const n = typeof lts === "object" && !Array.isArray(lts)
-                          ? (lts.fim||0)-(lts.inicio||1)+1
-                          : (Array.isArray(lts) ? lts.length : 0);
-                        return s + n;
-                      }, 0);
+                  let totalLotesCalculado = 0;
+                  quadrasOrdenadas.forEach(q => { totalLotesCalculado += quadraMapaMap[q].length; });
+                  if (totalLotesCalculado === 0) totalLotesCalculado = Number(lotRegDev.totalLotes || 0);
 
                   linhas.push(`EMPREENDIMENTO: ${lotRegDev.nome}`);
-                  linhas.push(`TOTAL DE QUADRAS: ${totalQuadras}`);
-                  linhas.push(`TOTAL DE LOTES: ${totalLotes}`);
+                  linhas.push(`TOTAL DE QUADRAS: ${quadrasOrdenadas.length || (lotRegDev.quadras?.split(",").length || 0)}`);
+                  linhas.push(`TOTAL DE LOTES: ${totalLotesCalculado}`);
                   linhas.push("");
-                  linhas.push("LOTES POR QUADRA (todos os lotes cadastrados no mapa):");
+                  linhas.push("LOTES POR QUADRA (todos os lotes cadastrados):");
 
-                  // Limpar sufixos D/I/R do número do lote (ex: "1D" → "1", "12I" → "12")
-                  const limparLote = (l: string) => String(l).replace(/[DIRdir]+$/, "").trim();
-
-                  if (usarPontos) {
+                  if (quadrasOrdenadas.length > 0) {
                     quadrasOrdenadas.forEach(q => {
                       const lts = quadraMapaMap[q]
                         .map(limparLote)
                         .filter((v,i,a) => a.indexOf(v) === i) // deduplicar
                         .sort((a,b) => (parseInt(a)||0)-(parseInt(b)||0));
                       linhas.push(`Q${q}: ${lts.length} lotes — ${lts.join(".")}.`);
-                    });
-                  } else if (quadrasConf.length) {
-                    quadrasConf.forEach(q => {
-                      const lts = (lotRegDev.lotesPorQuadra as any)[q];
-                      const lst: string[] = (typeof lts === "object" && !Array.isArray(lts)
-                        ? Array.from({length:(lts.fim||0)-(lts.inicio||1)+1},(_,i)=>String((lts.inicio||1)+i))
-                        : (Array.isArray(lts) ? lts : [])).map(limparLote);
-                      linhas.push(`Q${q}: ${lst.length} lotes — ${lst.join(".")}.`);
                     });
                   } else {
                     linhas.push("(Nenhum lote cadastrado no mapa ainda)");
@@ -15920,133 +16418,177 @@ const EmpreendimentosSection = ({
                   try { await navigator.clipboard.writeText(txt); setPrecosScriptMsg("✅ Script com regras atuais copiado! Cole no ChatGPT."); }
                   catch { setPrecosScriptMsg("❌ Erro ao copiar. Selecione manualmente."); }
                 };
-                const copiarApenasRegrasAtuais = async () => {
-                  const regrasAtuais = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
-                  if (!regrasAtuais) {
-                    setPrecosScriptMsg("⚠️ Nenhuma regra de preço configurada ainda.");
-                    return;
+
+                const interpretarTextoScript = (txt: string) => {
+                  const textoLimpo = (txt || "").trim();
+                  if (!textoLimpo) {
+                    setPrecosScriptMsg("⚠️ Campo de texto vazio. Cole as regras do ChatGPT.");
+                    return false;
                   }
-                  try {
-                    await navigator.clipboard.writeText(regrasAtuais);
-                    setPrecosScriptMsg("✅ Regras atuais copiadas para a área de transferência!");
-                  } catch {
-                    setPrecosScriptMsg("❌ Erro ao copiar regras.");
+                  const regras: typeof precosRegras = [];
+                  let id = 1;
+                  const regraRegex = /REGRA\s*\d*:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+AVISTA:([\d.,]+))?(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)?/gi;
+                  let m;
+                  while ((m = regraRegex.exec(textoLimpo)) !== null) {
+                    const isAvista = textoLimpo.substring(m.index, m.index + m[0].length).toUpperCase().includes("AVISTA") && !m[4];
+                    const valorN = parseFloat(String(m[2] || "0").replace(/\./g, "").replace(",", "."));
+                    const precoAvistaN = m[3] ? parseFloat(String(m[3]).replace(/\./g, "").replace(",", ".")) : (isAvista ? valorN : 0);
+                    const entradaN = parseFloat(String(m[4] || "0").replace(/\./g, "").replace(",", "."));
+                    const parcelasN = parseInt(m[5] || "0") || 0;
+                    const parcelaCalcN = m[6]
+                      ? parseFloat(String(m[6]).replace(/\./g, "").replace(",", "."))
+                      : (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
+                    const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
+                    regras.push({
+                      id: id++,
+                      script: m[1].trim(),
+                      valor: String(valorN),
+                      precoAvista: precoAvistaN > 0 ? String(precoAvistaN) : "",
+                      entrada: String(entradaN),
+                      parcelas: String(parcelasN),
+                      parcela: String(parcelaCalcN),
+                      avista: isAvista,
+                      cor: corAuto,
+                    });
+                  }
+                  if (regras.length) {
+                    setPrecosRegras(regras);
+                    if (selectedPrecoRegraId === null || !regras.some(r => r.id === selectedPrecoRegraId)) {
+                      setSelectedPrecoRegraId(regras[0].id);
+                    }
+                    setPrecosScriptMsg(`✅ ${regras.length} regra(s) de preço interpretada(s) com sucesso!`);
+                    return true;
+                  } else {
+                    setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique se o formato contém: REGRA1: Q... VALOR:...");
+                    return false;
                   }
                 };
-                const colarRespostaChat = async () => {
+
+                const handleColarDoChatGPT = async () => {
                   try {
-                    const txt = await navigator.clipboard.readText();
-                    // Interpretar resposta do ChatGPT
-                    const regras: typeof precosRegras = [];
-                    let id = 1;
-                    // Suporte a: VALOR:X ENTRADA:X PARCELAS:X  OU  VALOR:X AVISTA
-                    const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)/gi;
-                    let m;
-                    while ((m = regraRegex.exec(txt)) !== null) {
-                      const avista = !m[3] && !m[4];
-                      const valorN = parseFloat(String(m[2] || "0").replace(/\./g, "").replace(",", "."));
-                      const entradaN = parseFloat(String(m[3] || "0").replace(/\./g, "").replace(",", "."));
-                      const parcelasN = parseInt(m[4] || "0") || 0;
-                      // Calcular parcela automaticamente se não informada
-                      const parcelaCalcN = m[5]
-                        ? parseFloat(String(m[5]).replace(/\./g, "").replace(",", "."))
-                        : (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
-                      const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
-                      regras.push({
-                        id: id++,
-                        script: m[1].trim(),
-                        valor: String(valorN),
-                        entrada: String(entradaN),
-                        parcelas: String(parcelasN),
-                        parcela: String(parcelaCalcN),
-                        avista,
-                        cor: corAuto,
-                      });
+                    const text = await navigator.clipboard.readText();
+                    if (!text || !text.trim()) {
+                      setPrecosScriptMsg("⚠️ Área de transferência vazia.");
+                      return;
                     }
-                    if (regras.length) {
-                      setPrecosRegras(regras);
-                      setPrecosScriptMsg("✅ " + regras.length + " regra(s) importada(s)!");
-                    } else {
-                      setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
-                    }
+                    setPrecosScriptInput(text);
+                    interpretarTextoScript(text);
                   } catch {
-                    setPrecosScriptMsg("❌ Erro ao ler clipboard.");
+                    setPrecosScriptMsg("Cole o texto do ChatGPT diretamente na caixa de texto (Ctrl+V) e clique em Interpretar Texto.");
                   }
                 };
+
                 const aplicarPrecos = async () => {
                   try {
-                  // Validar cores repetidas entre as regras de preço (bolinhas) antes de aplicar
-                  const coresUsadas = new Map<string, number[]>();
-                  precosRegras.forEach((r, idx) => {
-                    const corRegra = (r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor).toLowerCase();
-                    if (!coresUsadas.has(corRegra)) coresUsadas.set(corRegra, []);
-                    coresUsadas.get(corRegra)!.push(idx + 1);
-                  });
-                  const duplicadas = Array.from(coresUsadas.entries()).filter(([, idxs]) => idxs.length > 1);
-                  if (duplicadas.length > 0) {
-                    const detalhe = duplicadas.map(([cor, idxs]) => `Regras ${idxs.join(", ")} usam a mesma cor (${cor})`).join(" — ");
-                    setPrecosScriptMsg("❌ Cores repetidas: " + detalhe + ". Escolha uma cor de bolinha diferente para cada regra antes de aplicar.");
-                    setPrecosAplicadoOk(false);
-                    return;
-                  }
-                  // Aplicar preços no lotesInfo
-                  const info = {...(lotRegDev.lotesInfo || {})} as any;
-                  const aplicados: string[] = [];
-                  const coresPorPreco: Record<number, string> = { ...((lotRegDev as any).coresPorPreco || {}) };
-
-                  precosRegras.forEach((r, idx) => {
-                    const corFinal = r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor;
-                    const valorNum = parseFloat(String(r.valor).replace(/\./g,'').replace(',','.')) || 0;
-                    if (valorNum > 0) {
-                      coresPorPreco[valorNum] = corFinal;
-                    }
-                    const entradaNum = parseFloat(String(r.entrada).replace(/\./g,'').replace(',','.')) || 0;
-                    const parcelasNum = parseInt(r.parcelas) || 0;
-                    const parcelaCalc = r.parcela
-                      ? parseFloat(String(r.parcela).replace(/\./g,'').replace(',','.')) || 0
-                      : parcelasNum > 0 ? Math.round((valorNum - entradaNum) / parcelasNum) : 0;
-                    interpretarScript(r.script).forEach(tag => {
-                      // tag = "Q1·L5" → quadra=1, lote=5
-                      const m = tag.match(/Q(\w+)·L(\w+)/);
-                      if (!m) return;
-                      const [, qRaw, l] = m;
-                      // Resolver nome real da quadra (pode ser "Quadra 2" em vez de "2")
-                      const quadraReal = findQuadraName(lotRegDev, qRaw) || qRaw;
-                      const key = getLotInfoKey(quadraReal, l);
-                      if (!info[key]) info[key] = {};
-                      const prc2 = parseFloat(r.valor.replace(/\./g,"").replace(",",".")) || 0;
-                      const ent2 = parseFloat(r.entrada.replace(/\./g,"").replace(",",".")) || 0;
-                      const par2 = parseInt(r.parcelas) || 0;
-                      const vlParc2 = parcelaCalc || (par2 > 0 ? Math.round((prc2 - ent2) / par2) : 0);
-                      info[key].preco = prc2;
-                      info[key].entrada = ent2;
-                      info[key].parcelas = par2;
-                      info[key].parcela = vlParc2;
-                      info[key].valorParcela = vlParc2;
-                      info[key].avista = (r as any).avista || false;
-                      info[key].cor = corFinal;
-                      info[key].corPreco = corFinal;
-                      info[key].corBolinha = corFinal;
-                      aplicados.push('Q' + qRaw + '·L' + l);
+                    // Validar cores repetidas entre as regras de preço (bolinhas) antes de aplicar
+                    const coresUsadas = new Map<string, number[]>();
+                    precosRegras.forEach((r, idx) => {
+                      const corRegra = (r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor).toLowerCase();
+                      if (!coresUsadas.has(corRegra)) coresUsadas.set(corRegra, []);
+                      coresUsadas.get(corRegra)!.push(idx + 1);
                     });
-                  });
-                  // Salvar preços e cores nos lotes
-                  onUpdateLotesInfo(lotRegDev!.id, info);
-                  // Persistir as regras e cores no empreendimento para reedição
-                  const devComRegras = {
-                    ...(lotRegDev as any),
-                    lotesInfo: info,
-                    precosRegras: precosRegras,
-                    precosPadrao: precosPadrao,
-                    coresPorPreco: coresPorPreco,
-                  };
-                  setLotRegDev(devComRegras as any);
-                  onSave(devComRegras);
-                  if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
-                    setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, precosRegras, precosPadrao, coresPorPreco} as any : prev);
-                  }
-                  setPrecosScriptMsg("✅ Preços e cores das bolinhas aplicados e salvos!");
-                  setPrecosAplicadoOk(true);
+                    const duplicadas = Array.from(coresUsadas.entries()).filter(([, idxs]) => idxs.length > 1);
+                    if (duplicadas.length > 0) {
+                      const detalhe = duplicadas.map(([cor, idxs]) => `Regras ${idxs.join(", ")} usam a mesma cor (${cor})`).join(" — ");
+                      setPrecosScriptMsg("❌ Cores repetidas: " + detalhe + ". Escolha uma cor de bolinha diferente para cada regra antes de aplicar.");
+                      setPrecosAplicadoOk(false);
+                      return;
+                    }
+                    // Aplicar preços no lotesInfo
+                    const info = {...(lotRegDev.lotesInfo || {})} as any;
+                    const aplicados: string[] = [];
+                    const coresPorPreco: Record<number, string> = { ...((lotRegDev as any).coresPorPreco || {}) };
+
+                    precosRegras.forEach((r, idx) => {
+                      const corFinal = r.cor || CORES_PALETA_BOLINHAS[idx % CORES_PALETA_BOLINHAS.length].cor;
+                      const valorNum = parseFloat(String(r.valor).replace(/\./g,'').replace(',','.')) || 0;
+                      if (valorNum > 0) {
+                        coresPorPreco[valorNum] = corFinal;
+                      }
+                      const entradaNum = parseFloat(String(r.entrada).replace(/\./g,'').replace(',','.')) || 0;
+                      const parcelasNum = parseInt(r.parcelas) || 0;
+                      const parcelaCalc = r.parcela
+                        ? parseFloat(String(r.parcela).replace(/\./g,'').replace(',','.')) || 0
+                        : parcelasNum > 0 ? Math.round((valorNum - entradaNum) / parcelasNum) : 0;
+                      interpretarScript(r.script).forEach(tag => {
+                        // tag = "Q1·L5" → quadra=1, lote=5
+                        const m = tag.match(/Q(\w+)·L(\w+)/);
+                        if (!m) return;
+                        const [, qRaw, lRaw] = m;
+                        // Resolver nome real da quadra (pode ser "Quadra 2" em vez de "2")
+                        const quadraReal = findQuadraName(lotRegDev, qRaw) || qRaw;
+                        let targetKey = getLotInfoKey(quadraReal, lRaw);
+                        const lNum = parseInt(lRaw);
+                        for (const existingKey of Object.keys(info)) {
+                          const parts = existingKey.split("-");
+                          if (parts.length >= 2) {
+                            const eq = parts[0];
+                            const el = parts.slice(1).join("-");
+                            if (normalizeLotKeyPart(eq) === normalizeLotKeyPart(quadraReal)) {
+                              if (normalizeLotKeyPart(el) === normalizeLotKeyPart(lRaw) || (!isNaN(lNum) && parseInt(el) === lNum)) {
+                                targetKey = existingKey;
+                                break;
+                              }
+                            }
+                          }
+                        }
+                        if (!info[targetKey]) info[targetKey] = {};
+                        const prc2 = parseFloat(String(r.valor).replace(/\./g,"").replace(",",".")) || 0;
+                        const prcAv2 = parseFloat(String((r as any).precoAvista || "").replace(/\./g,"").replace(",",".")) || 0;
+                        const ent2 = parseFloat(String(r.entrada).replace(/\./g,"").replace(",",".")) || 0;
+                        const par2 = parseInt(String(r.parcelas)) || 0;
+                        const vlParc2 = parcelaCalc || (par2 > 0 ? Math.round((prc2 - ent2) / par2) : 0);
+                        info[targetKey].preco = prc2 || prcAv2;
+                        if (prcAv2 > 0 || (r as any).avista) {
+                          info[targetKey].precoAvista = prcAv2 || prc2;
+                          info[targetKey].valorAvista = prcAv2 || prc2;
+                        } else {
+                          delete info[targetKey].precoAvista;
+                          delete info[targetKey].valorAvista;
+                        }
+                        info[targetKey].entrada = ent2;
+                        info[targetKey].parcelas = par2;
+                        info[targetKey].parcela = vlParc2;
+                        info[targetKey].valorParcela = vlParc2;
+                        info[targetKey].avista = (r as any).avista || false;
+                        info[targetKey].cor = corFinal;
+                        info[targetKey].corPreco = corFinal;
+                        info[targetKey].corBolinha = corFinal;
+                        aplicados.push('Q' + qRaw + '·L' + lRaw);
+                      });
+                    });
+
+                    // Atualizar cores também nos pontos do mapa
+                    const nextPontos = Array.isArray((lotRegDev as any).mapaPontos)
+                      ? (lotRegDev as any).mapaPontos.map((p: any) => {
+                          const qReal = findQuadraName(lotRegDev, p.quadra) || p.quadra;
+                          const k = getLotInfoKey(qReal, p.lote);
+                          const inf = info[k] || info[getLotInfoKey(p.quadra, p.lote)];
+                          if (inf?.corPreco || inf?.cor) {
+                            return { ...p, corPreco: inf.corPreco || inf.cor, cor: inf.cor || inf.corPreco };
+                          }
+                          return p;
+                        })
+                      : (lotRegDev as any).mapaPontos;
+
+                    // Salvar preços e cores nos lotes
+                    onUpdateLotesInfo(lotRegDev!.id, info);
+                    // Persistir as regras e cores no empreendimento para reedição
+                    const devComRegras = {
+                      ...(lotRegDev as any),
+                      lotesInfo: info,
+                      mapaPontos: nextPontos,
+                      precosRegras: precosRegras,
+                      precosPadrao: precosPadrao,
+                      coresPorPreco: coresPorPreco,
+                    };
+                    setLotRegDev(devComRegras as any);
+                    onSave(devComRegras);
+                    if (selectedDevForMap && selectedDevForMap.id === lotRegDev!.id) {
+                      setSelectedDevForMap(prev => prev ? {...prev, lotesInfo: info, mapaPontos: nextPontos, precosRegras, precosPadrao, coresPorPreco} as any : prev);
+                    }
+                    setPrecosScriptMsg("✅ Preços e cores das bolinhas aplicados e salvos!");
+                    setPrecosAplicadoOk(true);
                   } catch (err: any) {
                     setPrecosAplicadoOk(false);
                     setPrecosScriptMsg("❌ Erro ao aplicar preços: " + (err?.message || "tente novamente."));
@@ -16054,268 +16596,833 @@ const EmpreendimentosSection = ({
                 };
 
                 return (
-                  <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                  <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
                     {!temLotes && (
                       <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 text-center">
                         <p className="text-sm font-bold text-amber-700 mb-1">⚠️ Sem lotes cadastrados</p>
                         <p className="text-xs text-amber-600">Cadastre os lotes primeiro na aba <strong>Novo</strong> ou <strong>Texto</strong></p>
-                        <button onClick={() => setLotRegTab("cadastrar")} className="mt-3 px-4 py-2 bg-[#1a4a1a] text-white text-xs font-bold rounded-xl">Ir para Cadastro</button>
+                        <button onClick={() => setLotRegTab("cadastrar")} className="mt-3 px-4 py-2 bg-[#1a4a1a] text-white text-xs font-bold rounded-xl cursor-pointer">Ir para Cadastro</button>
                       </div>
                     )}
 
-                    {/* Botões Copiar/Colar */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      <button onClick={copiarScriptPrecos} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-slate-900 text-white text-xs font-bold active:scale-95 transition-all" title="Copia lista de lotes e regras atuais para o ChatGPT">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        Copiar p/ Chat
-                      </button>
-                      <button onClick={copiarApenasRegrasAtuais} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-700 text-white text-xs font-bold active:scale-95 transition-all" title="Copia somente o texto das regras atuais">
-                        <Copy size={13} />
-                        Copiar Regras
-                      </button>
-                      <button onClick={() => setShowPrecosInput(v => !v)} className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-blue-600 text-white text-xs font-bold active:scale-95 transition-all" title="Abrir campo para colar ou editar regras">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
-                        Colar / Editar
-                      </button>
+                    {/* Barra superior de alternância entre Modo Manual e Texto em Massa */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                      <div className="flex items-center gap-1.5 p-1 bg-slate-100 rounded-xl">
+                        <button
+                          type="button"
+                          onClick={() => setPrecosSubTab("manual")}
+                          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            precosSubTab === "manual"
+                              ? "bg-white text-emerald-800 shadow-xs"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          <Sliders size={13} />
+                          <span>Modo Manual (Visual)</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPrecosSubTab("massa")}
+                          className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                            precosSubTab === "massa"
+                              ? "bg-white text-emerald-800 shadow-xs"
+                              : "text-slate-500 hover:text-slate-800"
+                          }`}
+                        >
+                          <ClipboardPaste size={13} />
+                          <span>Texto em Massa (ChatGPT)</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-slate-500 bg-slate-100 px-2.5 py-1 rounded-full">
+                          {precosRegras.length} {precosRegras.length === 1 ? "faixa de preço" : "faixas de preço"}
+                        </span>
+                      </div>
                     </div>
-                    {precosScriptMsg && <p className="text-xs text-center font-bold" style={{color: precosScriptMsg.startsWith("✅") ? "#16a34a" : precosScriptMsg.startsWith("⚠️") ? "#d97706" : "#ef4444"}}>{precosScriptMsg}</p>}
 
-                    {/* Campo de texto para colar script do ChatGPT */}
-                    {showPrecosInput && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Texto das Regras (Script ChatGPT):</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const texto = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
-                              if (texto) {
-                                setPrecosScriptInput(texto);
-                                setPrecosScriptMsg("✅ Regras atuais carregadas no campo de texto!");
-                              } else {
-                                setPrecosScriptMsg("⚠️ Nenhuma regra atual encontrada.");
-                              }
-                            }}
-                            className="text-[10px] font-bold text-blue-600 hover:text-blue-800 underline"
-                          >
-                            Carregar Regras Atuais
-                          </button>
+                    {precosScriptMsg && (
+                      <div
+                        className="p-2.5 rounded-xl text-xs font-bold text-center border"
+                        style={{
+                          backgroundColor: precosScriptMsg.startsWith("✅") ? "#f0fdf4" : precosScriptMsg.startsWith("⚠️") ? "#fffbeb" : "#fef2f2",
+                          borderColor: precosScriptMsg.startsWith("✅") ? "#bbf7d0" : precosScriptMsg.startsWith("⚠️") ? "#fde68a" : "#fecaca",
+                          color: precosScriptMsg.startsWith("✅") ? "#166534" : precosScriptMsg.startsWith("⚠️") ? "#92400e" : "#991b1b",
+                        }}
+                      >
+                        {precosScriptMsg}
+                      </div>
+                    )}
+
+                    {/* MODO MANUAL (DESIGN CONFORME IMAGEM DO USUÁRIO) */}
+                    {precosSubTab === "manual" && (
+                      <div className="space-y-4">
+                        {/* Barra de Busca, Ordenação e Nova Faixa */}
+                        <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-center">
+                          <div className="sm:col-span-6 relative">
+                            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <input
+                              type="text"
+                              value={precosSearchQuery}
+                              onChange={(e) => setPrecosSearchQuery(e.target.value)}
+                              placeholder="Buscar preço, quadra ou lote..."
+                              className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-600 focus:bg-white transition-all"
+                            />
+                            {precosSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setPrecosSearchQuery("")}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                              >
+                                <X size={13} />
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="sm:col-span-3">
+                            <select
+                              value={precosSortOrder}
+                              onChange={(e) => setPrecosSortOrder(e.target.value as any)}
+                              className="w-full py-2 px-3 text-xs bg-white border border-slate-200 rounded-xl outline-none focus:border-emerald-600 text-slate-700 font-medium cursor-pointer"
+                            >
+                              <option value="menor-maior">Ordenar por preço (menor &gt; maior)</option>
+                              <option value="maior-menor">Ordenar por preço (maior &gt; menor)</option>
+                              <option value="mais-lotes">Mais lotes cadastrados</option>
+                            </select>
+                          </div>
+
+                          <div className="sm:col-span-3">
+                            <button
+                              type="button"
+                              onClick={handleCriarNovaFaixa}
+                              className="w-full flex items-center justify-center gap-1.5 py-2 px-3 bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                            >
+                              <Plus size={14} />
+                              <span>Nova Faixa de Preço</span>
+                            </button>
+                          </div>
                         </div>
-                        <textarea
-                          value={precosScriptInput}
-                          onChange={e => setPrecosScriptInput(e.target.value)}
-                          placeholder="REGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400&#10;REGRA2: Q2:4.5. VALOR:18000 ENTRADA:500 PARCELAS:48&#10;REGRA3: Q3:1.2.3. VALOR:15000 AVISTA"
-                          className="w-full border border-slate-200 rounded-xl p-3 text-xs font-mono outline-none resize-none bg-white"
-                          rows={6}
-                          autoFocus
-                        />
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => {
-                              const txt = precosScriptInput;
-                              if (!txt.trim()) { setPrecosScriptMsg("⚠️ Campo vazio."); return; }
-                              const regras: typeof precosRegras = [];
-                              let id = 1;
-                              const regraRegex = /REGRA\d+:\s*([^V]+?)VALOR:([\d.,]+)(?:\s+ENTRADA:([\d.,]*)\s+PARCELAS:(\d+)(?:\s+PARCELA:([\d.,]*))?|\s+AVISTA)/gi;
-                              let m;
-                              while ((m = regraRegex.exec(txt)) !== null) {
-                                const avista = !m[3] && !m[4];
-                                const valorN = parseFloat(String(m[2] || "0").replace(/\./g, "").replace(",", "."));
-                                const entradaN = parseFloat(String(m[3] || "0").replace(/\./g, "").replace(",", "."));
-                                const parcelasN = parseInt(m[4] || "0") || 0;
-                                const parcelaCalcN = m[5]
-                                  ? parseFloat(String(m[5]).replace(/\./g, "").replace(",", "."))
-                                  : (parcelasN > 0 ? Math.round((valorN - entradaN) / parcelasN) : 0);
-                                const corAuto = CORES_PALETA_BOLINHAS[(id - 1) % CORES_PALETA_BOLINHAS.length].cor;
-                                regras.push({
-                                  id: id++,
-                                  script: m[1].trim(),
-                                  valor: String(valorN),
-                                  entrada: String(entradaN),
-                                  parcelas: String(parcelasN),
-                                  parcela: String(parcelaCalcN),
-                                  avista,
-                                  cor: corAuto,
-                                });
-                              }
-                              if (regras.length) {
-                                setPrecosRegras(regras);
-                                setPrecosScriptMsg("✅ " + regras.length + " regra(s) interpretada(s) com sucesso!");
-                                setShowPrecosInput(false);
-                                setPrecosScriptInput("");
-                              } else {
-                                setPrecosScriptMsg("⚠️ Nenhuma regra encontrada. Verifique o formato.");
-                              }
-                            }}
-                            className="flex-1 py-2.5 bg-blue-600 text-white text-xs font-black rounded-xl active:scale-95 transition-all"
-                          >
-                            ✓ Interpretar e Aplicar nas Regras
-                          </button>
+
+                        {/* Layout de 2 colunas: Lista de Faixas (Esq) e Editor da Faixa (Dir) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+                          {/* Coluna Esquerda: Faixas de Preço cadastradas */}
+                          <div className="lg:col-span-5 space-y-2.5 max-h-[58vh] overflow-y-auto pr-1">
+                            {regrasExibidas.length === 0 ? (
+                              <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                                <p className="text-xs text-slate-400 font-bold mb-2">Nenhuma faixa de preço encontrada.</p>
+                                <button
+                                  type="button"
+                                  onClick={handleCriarNovaFaixa}
+                                  className="px-3.5 py-1.5 bg-emerald-800 text-white text-xs font-bold rounded-xl cursor-pointer"
+                                >
+                                  + Adicionar Faixa
+                                </button>
+                              </div>
+                            ) : (
+                              regrasExibidas.map((r, i) => {
+                                const isSelected = (regraAtiva && regraAtiva.id === r.id);
+                                const corRegra = r.cor || CORES_PALETA_BOLINHAS[i % CORES_PALETA_BOLINHAS.length].cor;
+                                const rFaixas = getRegraFaixas(r);
+                                const countLotes = interpretarScript(r.script || "").length;
+                                const valorFmt = Number(r.valor || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+                                return (
+                                  <div
+                                    key={r.id}
+                                    onClick={() => setSelectedPrecoRegraId(r.id)}
+                                    className={`relative p-3.5 rounded-2xl border transition-all cursor-pointer ${
+                                      isSelected
+                                        ? "border-emerald-600 bg-emerald-50/30 ring-2 ring-emerald-500/20 shadow-xs"
+                                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/40"
+                                    }`}
+                                  >
+                                    <div className="flex items-start justify-between gap-2">
+                                      <div>
+                                        <div className="flex items-center gap-2">
+                                          <span
+                                            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+                                            style={{ backgroundColor: corRegra }}
+                                            title="Cor da bolinha no mapa"
+                                          />
+                                          <h4 className="text-sm sm:text-base font-black text-slate-800 font-display">
+                                            R$ {valorFmt}
+                                          </h4>
+                                          {r.precoAvista && (
+                                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/70 px-1.5 py-0.5 rounded ml-1">
+                                              À vista: R$ {Number(r.precoAvista).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                            </span>
+                                          )}
+                                        </div>
+
+                                        {/* Detalhes de quadras e intervalos */}
+                                        <div className="mt-2 space-y-0.5 text-xs text-slate-600 font-medium">
+                                          {rFaixas.length === 0 ? (
+                                            <p className="text-[11px] text-slate-400 italic">Sem quadras/lotes vinculados</p>
+                                          ) : (
+                                            rFaixas.slice(0, 4).map((f, fIdx) => (
+                                              <div key={f.id || fIdx} className="flex items-center gap-1 text-[11px]">
+                                                <span className="font-bold text-slate-700">{f.quadra}:</span>
+                                                <span>
+                                                  {f.loteInicial === f.loteFinal
+                                                    ? `Lote ${f.loteInicial}`
+                                                    : `${f.loteInicial} ao ${f.loteFinal}`}
+                                                </span>
+                                              </div>
+                                            ))
+                                          )}
+                                          {rFaixas.length > 4 && (
+                                            <p className="text-[10px] text-slate-400 font-bold">
+                                              +{rFaixas.length - 4} outro(s) intervalo(s)
+                                            </p>
+                                          )}
+                                        </div>
+                                      </div>
+
+                                      <div className="flex flex-col items-end gap-2">
+                                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                                          {countLotes} lote(s)
+                                        </span>
+
+                                        <div className="flex items-center gap-1 mt-1">
+                                          <button
+                                            type="button"
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              setSelectedPrecoRegraId(r.id);
+                                            }}
+                                            className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                                            title="Editar esta faixa de preço"
+                                          >
+                                            <Pencil size={13} />
+                                          </button>
+                                          <button
+                                            type="button"
+                                            onClick={(e) => solicitarExclusaoRegra(e, r.id)}
+                                            className="p-1.5 rounded-lg border border-rose-200 text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                                            title="Excluir faixa de preço"
+                                          >
+                                            <Trash2 size={13} />
+                                          </button>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })
+                            )}
+
+                            <button
+                              type="button"
+                              onClick={handleCriarNovaFaixa}
+                              className="w-full py-3 border-2 border-dashed border-slate-200 rounded-2xl text-xs font-bold text-slate-500 hover:border-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                            >
+                              <Plus size={14} />
+                              <span>Nova Faixa de Preço</span>
+                            </button>
+                          </div>
+
+                          {/* Coluna Direita: Editor da Faixa Selecionada */}
+                          <div className="lg:col-span-7 space-y-4 bg-white border border-slate-200/90 rounded-2xl p-4 sm:p-5 shadow-xs">
+                            {regraAtiva ? (
+                              <>
+                                {/* Cabeçalho da Faixa */}
+                                <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-100">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-xl bg-emerald-800 text-white flex items-center justify-center shadow-xs">
+                                      <DollarSign size={16} />
+                                    </div>
+                                    <div>
+                                      <h3 className="text-sm font-black text-slate-800 font-display">
+                                        Faixa de Preço
+                                      </h3>
+                                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                        Regra #{activeRuleIndex + 1}
+                                      </p>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2">
+                                    <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                                      {totalLotesFaixa} lote(s) cadastrados
+                                    </span>
+
+                                    {/* Seletor de cor da bolinha para esta regra */}
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setAppColorPickerConfig({
+                                          isOpen: true,
+                                          currentColor: corRegraAtiva,
+                                          title: `Cor da Bolinha - Regra #${activeRuleIndex + 1}`,
+                                          subtitle: `Escolha a cor da bolinha no mapa para a faixa de preço R$ ${regraAtiva.valor || "0"}`,
+                                          onSelectColor: (novaCor) => {
+                                            setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? { ...x, cor: novaCor } : x));
+                                          },
+                                        });
+                                      }}
+                                      className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-slate-200 hover:border-slate-300 text-[10px] font-bold text-slate-600 cursor-pointer"
+                                      title="Personalizar cor no mapa"
+                                    >
+                                      <span className="w-3 h-3 rounded-full border border-black/10" style={{ backgroundColor: corRegraAtiva }} />
+                                      <span className="hidden sm:inline">Cor</span>
+                                    </button>
+
+                                    {/* Botão de Excluir esta faixa de preço */}
+                                    <button
+                                      type="button"
+                                      onClick={() => solicitarExclusaoRegra(undefined, regraAtiva.id)}
+                                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-rose-200 hover:border-rose-300 bg-rose-50/70 hover:bg-rose-100 text-[10px] font-bold text-rose-600 transition-all cursor-pointer active:scale-95"
+                                      title="Excluir esta faixa de preço"
+                                    >
+                                      <Trash2 size={12} />
+                                      <span className="hidden sm:inline">Excluir Faixa</span>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Formulário de Preço e Parcelamento */}
+                                <div className="space-y-3 p-3.5 bg-slate-50/70 border border-slate-200/80 rounded-2xl">
+                                  <div className="flex items-center justify-between pb-1 border-b border-slate-200/60">
+                                    <span className="text-[11px] font-bold text-slate-600">Condições Comerciais da Faixa</span>
+                                    <label className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!regraAtiva.avista}
+                                        onChange={(e) => {
+                                          const isAv = e.target.checked;
+                                          setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? { ...x, avista: isAv } : x));
+                                        }}
+                                        className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
+                                      />
+                                      Somente à vista
+                                    </label>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                                    {regraAtiva.avista ? (
+                                      <div className="sm:col-span-10">
+                                        <label className="block text-[11px] font-bold text-emerald-900 mb-1">
+                                          Preço à Vista (R$) *
+                                        </label>
+                                        <input
+                                          type="text"
+                                          value={regraAtiva.precoAvista || regraAtiva.valor || ""}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? { ...x, valor: val, precoAvista: val } : x));
+                                          }}
+                                          placeholder="Ex: 25000"
+                                          className="w-full py-2 px-3 text-xs font-bold border border-emerald-300 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                        />
+                                      </div>
+                                    ) : (
+                                      <>
+                                        <div className="sm:col-span-3">
+                                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                            Total Parcelado (R$) *
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={regraAtiva.valor || ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? calcularPreco("valor", val, x) : x));
+                                            }}
+                                            placeholder="Ex: 25000"
+                                            className="w-full py-2 px-3 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                          />
+                                        </div>
+
+                                        <div className="sm:col-span-3">
+                                          <label className="block text-[11px] font-bold text-emerald-800 mb-1">
+                                            Preço à Vista (R$)
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={regraAtiva.precoAvista || ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? { ...x, precoAvista: val } : x));
+                                            }}
+                                            placeholder="Ex: 20000"
+                                            className="w-full py-2 px-3 text-xs font-bold border border-emerald-300 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                            title="Preço diferenciado/com desconto para pagamento à vista"
+                                          />
+                                        </div>
+
+                                        <div className="sm:col-span-2">
+                                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                            Entrada (R$)
+                                          </label>
+                                          <input
+                                            type="text"
+                                            value={regraAtiva.entrada || ""}
+                                            onChange={(e) => {
+                                              const val = e.target.value;
+                                              setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? calcularPreco("entrada", val, x) : x));
+                                            }}
+                                            placeholder="0"
+                                            className="w-full py-2 px-3 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                          />
+                                        </div>
+
+                                        <div className="sm:col-span-2">
+                                          <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                                            Parcelamento
+                                          </label>
+                                          <div className="flex items-center gap-1">
+                                            <input
+                                              type="text"
+                                              value={regraAtiva.parcelas || ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? calcularPreco("parcelas", val, x) : x));
+                                              }}
+                                              placeholder="50"
+                                              className="w-11 py-2 px-1 text-center text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                              title="Nº de parcelas"
+                                            />
+                                            <span className="text-slate-400 font-bold text-xs">x</span>
+                                            <input
+                                              type="text"
+                                              value={regraAtiva.parcela || ""}
+                                              onChange={(e) => {
+                                                const val = e.target.value;
+                                                setPrecosRegras(prev => prev.map(x => x.id === regraAtiva!.id ? calcularPreco("parcela", val, x) : x));
+                                              }}
+                                              placeholder="350"
+                                              className="flex-1 min-w-0 py-2 px-1 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                              title="Valor da parcela"
+                                            />
+                                          </div>
+                                        </div>
+                                      </>
+                                    )}
+
+                                    <div className="sm:col-span-2">
+                                      <button
+                                        type="button"
+                                        onClick={() => aplicarPrecos()}
+                                        className="w-full flex items-center justify-center gap-1 py-2 px-2 bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
+                                        title="Salvar configurações desta faixa de preço"
+                                      >
+                                        <Save size={13} />
+                                        <span>Salvar</span>
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+
+                                {/* Seção: Lotes deste preço */}
+                                <div className="space-y-2 pt-2 border-t border-slate-100">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-6 h-6 rounded-lg bg-slate-100 text-slate-700 flex items-center justify-center">
+                                        <List size={13} />
+                                      </div>
+                                      <div>
+                                        <h4 className="text-xs font-bold text-slate-800">Lotes deste preço</h4>
+                                        <p className="text-[10px] text-slate-400">Adicione as quadras e lotes que utilizam este valor.</p>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-[10px] font-bold text-slate-500">
+                                        {faixasAtiva.length} intervalo(s)
+                                      </span>
+                                      {faixasAtiva.length > 0 && (
+                                        <button
+                                          type="button"
+                                          onClick={handleLimparTodosLotesFaixa}
+                                          className="text-[10px] font-bold text-rose-500 hover:text-rose-700 underline cursor-pointer"
+                                          title="Desvincular todos os lotes desta regra de preço"
+                                        >
+                                          Limpar lotes
+                                        </button>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  {/* Tabela de Lotes e Quadras */}
+                                  <div className="border border-slate-200 rounded-xl overflow-hidden bg-white">
+                                    <table className="w-full text-xs text-left">
+                                      <thead className="bg-slate-50 border-b border-slate-100 text-[10px] font-black text-slate-500 uppercase tracking-wider">
+                                        <tr>
+                                          <th className="py-2 px-3 text-center">Quadra</th>
+                                          <th className="py-2 px-3 text-center">Lote inicial</th>
+                                          <th className="py-2 px-3 text-center">Lote final</th>
+                                          <th className="py-2 px-3 text-center">Ações</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-slate-100">
+                                        {faixasAtiva.length === 0 ? (
+                                          <tr>
+                                            <td colSpan={4} className="py-6 text-center text-xs text-slate-400">
+                                              Nenhum lote ou quadra adicionado a este preço ainda.
+                                            </td>
+                                          </tr>
+                                        ) : (
+                                          faixasAtiva.map((faixa) => (
+                                            <tr key={faixa.id} className="hover:bg-slate-50/50 transition-colors">
+                                              <td className="py-2 px-3 font-bold text-slate-800 text-center">
+                                                {faixa.quadra}
+                                              </td>
+                                              <td className="py-2 px-3 text-slate-600 font-medium text-center">
+                                                {faixa.loteInicial}
+                                              </td>
+                                              <td className="py-2 px-3 text-slate-600 font-medium text-center">
+                                                {faixa.loteFinal}
+                                              </td>
+                                              <td className="py-2 px-3 text-center">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleRemoverFaixaLote(faixa.id)}
+                                                  className="p-1 rounded-lg border border-rose-200 text-rose-500 hover:bg-rose-50 transition-colors cursor-pointer"
+                                                  title="Remover intervalo"
+                                                >
+                                                  <Trash2 size={12} />
+                                                </button>
+                                              </td>
+                                            </tr>
+                                          ))
+                                        )}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </div>
+
+                                {/* Caixa: Adicionar Lote nesta faixa */}
+                                <div className="bg-emerald-50/50 border border-emerald-100/90 rounded-2xl p-4 space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-5 h-5 rounded-lg bg-emerald-800 text-white flex items-center justify-center text-[10px] font-black">
+                                      <Plus size={12} />
+                                    </div>
+                                    <div>
+                                      <h5 className="text-xs font-bold text-slate-800">Adicionar Lote nesta faixa</h5>
+                                      <p className="text-[10px] text-slate-500">Selecione a quadra e informe o intervalo de lotes.</p>
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-1 sm:grid-cols-12 gap-2.5 items-end">
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-slate-700 mb-1">
+                                        Quadra *
+                                      </label>
+                                      <select
+                                        value={quadraSelecionadaForm}
+                                        onChange={(e) => setNovoLoteQuadra(e.target.value)}
+                                        className="w-full py-2 px-2.5 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white cursor-pointer"
+                                      >
+                                        {quadrasDisponiveis.map(q => (
+                                          <option key={q} value={q}>Quadra {q}</option>
+                                        ))}
+                                      </select>
+                                    </div>
+
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-slate-700 mb-1">
+                                        Lote inicial *
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={novoLoteInicial}
+                                        onChange={(e) => setNovoLoteInicial(e.target.value)}
+                                        placeholder="Ex: 01"
+                                        className="w-full py-2 px-2.5 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                      />
+                                    </div>
+
+                                    <div className="sm:col-span-3">
+                                      <label className="block text-[10px] font-bold text-slate-700 mb-1">
+                                        Lote final *
+                                      </label>
+                                      <input
+                                        type="text"
+                                        value={novoLoteFinal}
+                                        onChange={(e) => setNovoLoteFinal(e.target.value)}
+                                        placeholder="Ex: 05"
+                                        className="w-full py-2 px-2.5 text-xs font-bold border border-slate-200 rounded-xl outline-none focus:border-emerald-600 bg-white"
+                                      />
+                                    </div>
+
+                                    <div className="sm:col-span-3">
+                                      <button
+                                        type="button"
+                                        onClick={handleAdicionarLoteFaixa}
+                                        className="w-full py-2 px-3 bg-emerald-800 hover:bg-emerald-900 active:scale-95 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                                      >
+                                        <Plus size={13} />
+                                        <span>Adicionar Lote</span>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Dica */}
+                                  <div className="flex items-start gap-2.5 p-3 bg-white/80 border border-emerald-100 rounded-xl text-emerald-950 text-xs">
+                                    <div className="w-4 h-4 rounded-full bg-emerald-700 text-white flex items-center justify-center shrink-0 mt-0.5 text-[10px] font-bold">
+                                      i
+                                    </div>
+                                    <p className="leading-relaxed text-[11px] text-slate-600">
+                                      <strong className="font-bold text-emerald-900">Dica:</strong> Você pode adicionar um lote individual (ex: 05 até 05) ou um intervalo de lotes (ex: 01 até 10). Os lotes cadastrados aqui serão automaticamente vinculados ao preço.
+                                    </p>
+                                  </div>
+                                </div>
+                              </>
+                            ) : (
+                              <div className="p-12 text-center text-slate-400">
+                                <p className="text-sm font-bold">Nenhuma faixa selecionada.</p>
+                                <p className="text-xs mt-1">Selecione uma faixa à esquerda ou crie uma nova.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Botão principal de salvar */}
+                        <div className="pt-3 border-t border-slate-100">
                           <button
                             type="button"
-                            onClick={() => setShowPrecosInput(false)}
-                            className="px-4 py-2.5 bg-slate-100 text-slate-600 text-xs font-bold rounded-xl hover:bg-slate-200"
+                            onClick={() => {
+                              if (precosAplicadoOk) { setLotRegDev(null); return; }
+                              aplicarPrecos();
+                            }}
+                            className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all cursor-pointer shadow-xs ${
+                              precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-emerald-800 hover:bg-emerald-900 text-white"
+                            }`}
                           >
-                            Fechar
+                            {precosAplicadoOk ? "✓ Preços Salvos com Sucesso!" : "✓ Salvar e Aplicar Preços nos Lotes"}
                           </button>
                         </div>
                       </div>
                     )}
 
-                    {/* Regras */}
-                    <div>
-                      <p className="text-[9px] font-black text-slate-400 uppercase tracking-widest mb-2">Regras de Preço e Cores das Bolinhas</p>
-                      {precosRegras.map((r, i) => {
-                        const corRegra = r.cor || CORES_PALETA_BOLINHAS[i % CORES_PALETA_BOLINHAS.length].cor;
-                        return (
-                          <div key={r.id} className="bg-slate-50 border border-slate-200 rounded-2xl p-3 mb-3 shadow-xs space-y-2.5">
-                            {/* Cabeçalho da regra com badge colorido */}
-                            <div className="flex items-center justify-between">
+                    {/* MODO TEXTO EM MASSA (SCRIPT CHATGPT) */}
+                    {precosSubTab === "massa" && (
+                      <div className="space-y-4">
+                        {/* Card Superior de Ações com ChatGPT */}
+                        <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white rounded-2xl p-4 shadow-sm">
+                          <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+                            <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span
-                                  className="w-6 h-6 text-white text-[10px] font-black rounded-full flex items-center justify-center flex-shrink-0"
-                                  style={{ background: corRegra, boxShadow: "none" }}
-                                >
-                                  {i+1}
-                                </span>
-                                <span className="text-xs font-black text-slate-800">Regra #{i+1}</span>
-                                {r.valor && (
-                                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700">
-                                    R$ {Number(r.valor).toLocaleString('pt-BR')}
-                                  </span>
-                                )}
+                                <Sparkles size={16} className="text-amber-400" />
+                                <h4 className="text-sm font-black tracking-tight">Assistente ChatGPT de Preços</h4>
                               </div>
-                              {precosRegras.length > 1 && (
-                                <button
-                                  type="button"
-                                  onClick={() => setPrecosRegras(p => p.filter(x => x.id !== r.id))}
-                                  className="text-slate-400 hover:text-red-500 text-lg leading-none transition-colors p-1"
-                                  title="Excluir regra"
-                                >
-                                  ×
-                                </button>
-                              )}
+                              <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
+                                Copie a lista de quadras e lotes para o ChatGPT estruturar as faixas de preço, ou cole aqui o script gerado para atualizar tudo de uma só vez.
+                              </p>
                             </div>
 
-                            {/* Script de quadras e lotes */}
-                            <div>
-                              <p className="text-[8px] font-bold text-slate-400 mb-1">Quadras e Lotes (Script)</p>
-                              <textarea
-                                value={r.script}
-                                onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? {...x, script:e.target.value} : x))}
-                                placeholder="Ex: Q1:1,2,3,4. Q2:5,6."
-                                className="w-full border border-slate-200 rounded-xl p-2 text-xs font-mono outline-none resize-none bg-white mb-1.5"
-                                rows={2}
-                              />
-                            </div>
-
-                            {r.script && (
-                              <div className="flex flex-wrap gap-1">
-                                {interpretarScript(r.script).slice(0,10).map(t => (
-                                  <span key={t} className="text-white text-[8px] font-bold px-1.5 py-0.5 rounded" style={{ background: corRegra }}>{t}</span>
-                                ))}
-                                {interpretarScript(r.script).length > 10 && <span className="text-[8px] text-slate-400">+{interpretarScript(r.script).length-10} lotes</span>}
-                              </div>
-                            )}
-
-                            {/* Valores Financeiros */}
-                            <div className="grid grid-cols-2 gap-2">
-                              {[["valor","Total R$"],["entrada","Entrada R$"],["parcelas","Nº Parcelas"],["parcela","Vl. Parcela"]].map(([k,l]) => (
-                                <div key={k}>
-                                  <p className="text-[8px] font-bold text-slate-400 mb-1">{l}</p>
-                                  <input
-                                    value={(r as any)[k] || ""}
-                                    onChange={e => setPrecosRegras(p => p.map(x => x.id===r.id ? calcularPreco(k, e.target.value, x) : x))}
-                                    className="w-full border border-slate-200 rounded-lg p-1.5 text-xs font-bold text-center outline-none bg-white"
-                                    placeholder="0"
-                                    inputMode="numeric"
-                                  />
-                                </div>
-                              ))}
-                            </div>
-
-                            {r.valor && r.parcelas && r.parcela && (
-                              <div className="px-2 py-1.5 bg-[#1a4a1a]/5 rounded-xl text-[9px] text-[#1a4a1a] font-black text-center">
-                                R$ {Number(r.entrada||0).toLocaleString('pt-BR')} entrada + {r.parcelas}× R$ {Number(r.parcela||0).toLocaleString('pt-BR')} = R$ {Number(r.valor||0).toLocaleString('pt-BR')}
-                              </div>
-                            )}
-
-                            {/* SELEÇÃO DE COR DA BOLINHA */}
-                            <div className="pt-2 border-t border-slate-200/80">
-                              <div className="flex items-center justify-between mb-1.5">
-                                <div className="flex items-center gap-1.5">
-                                  <div
-                                    className="w-3.5 h-3.5 rounded-full border-2 border-white flex-shrink-0"
-                                    style={{ background: corRegra, boxShadow: "none" }}
-                                  />
-                                  <span className="text-[10px] font-black text-slate-700">Cor da Bolinha no Mapa</span>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setAppColorPickerConfig({
-                                      isOpen: true,
-                                      currentColor: corRegra,
-                                      title: `Cor da Bolinha - Regra #${i + 1}`,
-                                      subtitle: `Escolha uma cor da tabela ou digite o código hexadecimal para a Regra #${i + 1}`,
-                                      onSelectColor: (novaCor) => {
-                                        setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: novaCor } : x));
-                                      },
-                                    });
-                                  }}
-                                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 bg-white text-[10px] font-bold text-slate-700 hover:border-blue-400 hover:bg-blue-50/40 shadow-xs active:scale-95 transition-all"
-                                  title="Clique para abrir o modal de escolha de cores da tabela ou código hexadecimal"
-                                >
-                                  <span className="w-2.5 h-2.5 rounded-full border border-black/20" style={{ background: corRegra }} />
-                                  <span>Personalizar (Hex / Tabela)</span>
-                                </button>
-                              </div>
-
-                              {/* Paleta rápida de cores com indicação da selecionada */}
-                              <div className="flex flex-wrap items-center gap-1.5 p-2 bg-white rounded-xl border border-slate-200/70">
-                                {CORES_PALETA_BOLINHAS.map((c) => {
-                                  const isSelected = corRegra.toLowerCase() === c.cor.toLowerCase();
-                                  return (
-                                    <button
-                                      key={c.cor}
-                                      type="button"
-                                      onClick={() => setPrecosRegras(p => p.map(x => x.id === r.id ? { ...x, cor: c.cor } : x))}
-                                      className={`w-5 h-5 rounded-full transition-transform active:scale-90 flex items-center justify-center relative ${
-                                        isSelected ? 'ring-2 ring-offset-1 ring-slate-800 scale-110 shadow-xs' : 'hover:scale-110 opacity-90 hover:opacity-100'
-                                      }`}
-                                      style={{ background: c.cor }}
-                                      title={c.nome}
-                                    >
-                                      {isSelected && (
-                                        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3.5">
-                                          <polyline points="20 6 9 17 4 12" />
-                                        </svg>
-                                      )}
-                                    </button>
-                                  );
-                                })}
-                              </div>
+                            {/* Botões de Ação Principal Diretos */}
+                            <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+                              <button
+                                type="button"
+                                onClick={copiarScriptPrecos}
+                                className="flex-1 md:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+                                title="Copia todos os lotes cadastrados no empreendimento e instruções formatadas para o ChatGPT"
+                              >
+                                <Copy size={14} />
+                                <span>Copiar para ChatGPT</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={handleColarDoChatGPT}
+                                className="flex-1 md:flex-initial flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+                                title="Lê o texto do script da área de transferência e interpreta as regras de preço"
+                              >
+                                <ClipboardPaste size={14} />
+                                <span>Colar do ChatGPT</span>
+                              </button>
                             </div>
                           </div>
-                        );
-                      })}
-                      <button onClick={() => setPrecosRegras(p => [...p, {id:Date.now(), script:"", valor:"", entrada:"", parcelas:"", parcela:"", cor: CORES_PALETA_BOLINHAS[p.length % CORES_PALETA_BOLINHAS.length].cor}])}
-                        className="w-full py-2.5 border-2 border-dashed border-slate-200 rounded-xl text-xs font-bold text-slate-400 hover:border-[#1a4a1a] hover:text-[#1a4a1a] transition-all">
-                        + Nova Regra
-                      </button>
-                    </div>
+                        </div>
 
-                    {/* Sem Padrão — lotes sem regra ficam sem preço */}
+                        {/* Área do Script / Editor de Texto em Massa */}
+                        <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-3 shadow-xs">
+                          <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-100">
+                            <div className="flex items-center gap-2">
+                              <FileCheck size={14} className="text-slate-600" />
+                              <span className="text-xs font-bold text-slate-700">Script de Regras de Preço</span>
+                              <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                {precosRegras.length} {precosRegras.length === 1 ? "faixa de preço" : "faixas de preço"}
+                              </span>
+                            </div>
 
-                    <button
-                      onClick={() => {
-                        if (precosAplicadoOk) { setLotRegDev(null); return; }
-                        aplicarPrecos();
-                      }}
-                      className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all ${precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-[#1a4a1a] text-white"}`}
-                    >
-                      {precosAplicadoOk ? "✓ OK" : "✓ Aplicar Todos os Preços"}
-                    </button>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const texto = formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
+                                  if (texto) {
+                                    setPrecosScriptInput(texto);
+                                    setPrecosScriptMsg("✅ Regras atuais recarregadas na caixa de texto!");
+                                  } else {
+                                    setPrecosScriptMsg("⚠️ Nenhuma regra encontrada para carregar.");
+                                  }
+                                }}
+                                className="text-[11px] font-bold text-slate-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition-colors"
+                                title="Recarregar texto com as regras salvas atualmente"
+                              >
+                                <RotateCcw size={11} />
+                                Recarregar Regras Atuais
+                              </button>
+                              <span className="text-slate-300">|</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setPrecosScriptInput("");
+                                  setPrecosScriptMsg("Caixa de texto limpa.");
+                                }}
+                                className="text-[11px] font-bold text-slate-400 hover:text-red-600 cursor-pointer transition-colors"
+                                title="Limpar caixa de texto"
+                              >
+                                Limpar
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Textarea do Script sempre aberto */}
+                          <textarea
+                            value={precosScriptInput !== "" ? precosScriptInput : formatarRegrasAtuaisTexto(lotRegDev, precosRegras)}
+                            onChange={e => setPrecosScriptInput(e.target.value)}
+                            placeholder={`Exemplo de formato:\nREGRA1: Q1:1.2.3. VALOR:25000 ENTRADA:1000 PARCELAS:60 PARCELA:400\nREGRA2: Q2:1-10. VALOR:30000 ENTRADA:1500 PARCELAS:72\nREGRA3: Q3:1.2. VALOR:20000 AVISTA`}
+                            className="w-full border border-slate-200 rounded-xl p-3.5 text-xs font-mono outline-none resize-y bg-slate-50/60 focus:bg-white focus:border-blue-400 focus:ring-2 focus:ring-blue-100 transition-all text-slate-800 leading-relaxed"
+                            rows={7}
+                          />
+
+                          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+                            <p className="text-[11px] text-slate-400">
+                              Dica: Digite ou cole o texto do ChatGPT com <span className="font-mono font-bold text-slate-600">REGRA1: Q1:1-10 VALOR:...</span>
+                            </p>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const txt = precosScriptInput !== "" ? precosScriptInput : formatarRegrasAtuaisTexto(lotRegDev, precosRegras);
+                                interpretarTextoScript(txt);
+                              }}
+                              className="flex items-center gap-2 py-2 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                            >
+                              <CheckCircle2 size={13} />
+                              <span>Interpretar Texto e Atualizar Faixas</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Pré-visualização das Faixas de Preço Interpretradas */}
+                        <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Tag size={13} className="text-slate-500" />
+                              <span className="text-xs font-bold text-slate-700">Resumo das Faixas Detectadas ({precosRegras.length})</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setPrecosSubTab("manual")}
+                              className="text-[11px] font-bold text-emerald-800 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <span>Ajustar no Modo Visual</span>
+                              <ExternalLink size={11} />
+                            </button>
+                          </div>
+
+                          {precosRegras.length === 0 ? (
+                            <div className="p-4 text-center text-xs text-slate-400 bg-white rounded-xl border border-dashed border-slate-200">
+                              Nenhuma regra carregada no momento. Cole o script acima ou clique em "Copiar para ChatGPT".
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 max-h-72 overflow-y-auto pr-1">
+                              {precosRegras.map((r, i) => {
+                                const cor = r.cor || CORES_PALETA_BOLINHAS[i % CORES_PALETA_BOLINHAS.length].cor;
+                                const lotesArr = interpretarScript(r.script || "");
+                                const valorFmt = r.valor ? `R$ ${Number(r.valor).toLocaleString('pt-BR')}` : "A definir";
+                                return (
+                                  <div key={r.id} className="bg-white border border-slate-200 rounded-xl p-3 flex items-start gap-3 shadow-2xs">
+                                    <span
+                                      className="w-6 h-6 rounded-full text-white text-[10px] font-black flex items-center justify-center shrink-0 mt-0.5"
+                                      style={{ background: cor }}
+                                    >
+                                      {i + 1}
+                                    </span>
+                                    <div className="flex-1 min-w-0 space-y-1">
+                                      <div className="flex items-center justify-between gap-1">
+                                        <span className="text-xs font-bold text-slate-800 truncate">{valorFmt}</span>
+                                        <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded">
+                                          {lotesArr.length} lotes
+                                        </span>
+                                      </div>
+                                      <p className="text-[11px] text-slate-500 font-medium">
+                                        {r.avista ? "À vista" : `Entrada: R$ ${Number(r.entrada||0).toLocaleString('pt-BR')} + ${r.parcelas||0}x R$ ${Number(r.parcela||0).toLocaleString('pt-BR')}`}
+                                      </p>
+                                      <p className="text-[10px] font-mono text-slate-400 truncate" title={r.script}>
+                                        {r.script || "(sem lotes definidos)"}
+                                      </p>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Botão Final de Salvar e Aplicar Preços */}
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (precosAplicadoOk) { setLotRegDev(null); return; }
+                              aplicarPrecos();
+                            }}
+                            className={`w-full py-3.5 font-black text-sm rounded-2xl active:scale-95 transition-all shadow-sm cursor-pointer ${
+                              precosAplicadoOk ? "bg-emerald-600 text-white" : "bg-emerald-800 hover:bg-emerald-900 text-white"
+                            }`}
+                          >
+                            {precosAplicadoOk ? "✓ Preços Salvos com Sucesso!" : "✓ Salvar e Aplicar Preços nos Lotes"}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Modal de Confirmação para Excluir Faixa de Preço */}
+                    {regraParaExcluirConfirm && (
+                      <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
+                        <div className="bg-white rounded-2xl p-5 max-w-sm w-full shadow-2xl border border-slate-100 space-y-4">
+                          <div className="flex items-center gap-3 text-rose-600">
+                            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center shrink-0">
+                              <Trash2 size={20} />
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-black text-slate-800">Excluir Faixa de Preço?</h4>
+                              <p className="text-xs text-slate-500 font-medium">
+                                Regra #{regraParaExcluirConfirm.index + 1}
+                                {regraParaExcluirConfirm.valor ? ` • R$ ${Number(regraParaExcluirConfirm.valor).toLocaleString('pt-BR')}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                          <p className="text-xs text-slate-600 leading-relaxed">
+                            {precosRegras.length <= 1
+                              ? "Esta é a única faixa restante. Ao excluir, seus valores e lotes vinculados serão resetados."
+                              : "Tem certeza que deseja remover esta faixa de preço? Os lotes associados a ela ficarão sem preço definido até que recebam uma nova regra."}
+                          </p>
+                          <div className="flex gap-2 pt-1">
+                            <button
+                              type="button"
+                              onClick={() => setRegraParaExcluirConfirm(null)}
+                              className="flex-1 py-2.5 px-3 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer transition-colors"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                executarExclusaoRegra(regraParaExcluirConfirm.id);
+                                setRegraParaExcluirConfirm(null);
+                              }}
+                              className="flex-1 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-xs font-bold text-white shadow-xs cursor-pointer active:scale-95 transition-all"
+                            >
+                              Sim, Excluir
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -16483,8 +17590,9 @@ const EmpreendimentosSection = ({
               )}
             </motion.div>
           </div>
-        )}
-      </AnimatePresence>
+        );
+      })()}
+    </AnimatePresence>
 
       {/* Modal: Edição Rápida de Preço Manual do Lote */}
       <AnimatePresence>
@@ -16534,7 +17642,9 @@ const EmpreendimentosSection = ({
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Valor Total (R$)</label>
+                    <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">
+                      {quickPriceLot.avista ? "Preço à Vista (R$)" : "Valor Total (R$)"}
+                    </label>
                     <input
                       type="text"
                       className="input-field bg-white text-sm font-bold text-slate-800"
@@ -16546,13 +17656,33 @@ const EmpreendimentosSection = ({
                         const numEnt = parseFloat(String(quickPriceLot.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
                         const numParc = parseInt(quickPriceLot.parcelas || "0") || 0;
                         const parcCalc = numParc > 0 ? String(Math.round((numVal - numEnt) / numParc)) : quickPriceLot.parcela;
-                        setQuickPriceLot({ ...quickPriceLot, preco: novoVal, parcela: parcCalc });
+                        setQuickPriceLot({ ...quickPriceLot, preco: novoVal, parcela: parcCalc, ...(quickPriceLot.avista ? { precoAvista: novoVal } : {}) });
                       }}
                       autoFocus
                     />
                   </div>
 
                   {!quickPriceLot.avista ? (
+                    <div>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-emerald-800 mb-1 block">Preço à Vista (R$)</label>
+                      <input
+                        type="text"
+                        className="input-field bg-white text-sm font-bold text-slate-800 border-emerald-300"
+                        placeholder="Ex: 20.000"
+                        value={quickPriceLot.precoAvista || ""}
+                        onChange={(e) => setQuickPriceLot({ ...quickPriceLot, precoAvista: e.target.value })}
+                        title="Valor com desconto se pago à vista"
+                      />
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl p-3">
+                      Pagamento somente à vista
+                    </div>
+                  )}
+                </div>
+
+                {!quickPriceLot.avista && (
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Entrada (R$)</label>
                       <input
@@ -16570,17 +17700,9 @@ const EmpreendimentosSection = ({
                         }}
                       />
                     </div>
-                  ) : (
-                    <div className="flex items-center justify-center text-xs font-bold text-emerald-700 bg-emerald-50 rounded-xl p-3">
-                      Sem parcelamento
-                    </div>
-                  )}
-                </div>
 
-                {!quickPriceLot.avista && (
-                  <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Nº de Parcelas</label>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Nº Parcelas</label>
                       <input
                         type="number"
                         className="input-field bg-white text-sm font-bold text-slate-800"
@@ -16596,8 +17718,9 @@ const EmpreendimentosSection = ({
                         }}
                       />
                     </div>
+
                     <div>
-                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Valor da Parcela (R$)</label>
+                      <label className="text-[10px] font-black uppercase tracking-wider text-slate-500 mb-1 block">Valor Parcela (R$)</label>
                       <input
                         type="text"
                         className="input-field bg-white text-sm font-bold text-slate-800"
@@ -16703,6 +17826,7 @@ const EmpreendimentosSection = ({
                       onClick={() => {
                         const key = quickPriceLot.key;
                         const valNum = parseFloat(String(quickPriceLot.preco || "").replace(/\./g, "").replace(",", ".")) || 0;
+                        const prcAvNum = parseFloat(String(quickPriceLot.precoAvista || "").replace(/\./g, "").replace(",", ".")) || 0;
                         const entNum = parseFloat(String(quickPriceLot.entrada || "").replace(/\./g, "").replace(",", ".")) || 0;
                         const parNum = parseInt(quickPriceLot.parcelas || "0") || 0;
                         const calcParc = quickPriceLot.parcela
@@ -16713,7 +17837,7 @@ const EmpreendimentosSection = ({
 
                         const infoAtualizada: any = {
                           ...(lotRegDev.lotesInfo?.[key] || {}),
-                          preco: valNum,
+                          preco: valNum || prcAvNum,
                           entrada: entNum,
                           parcelas: parNum,
                           parcela: calcParc,
@@ -16721,6 +17845,13 @@ const EmpreendimentosSection = ({
                           avista: !!quickPriceLot.avista,
                           corPreco: corFinal,
                         };
+                        if (prcAvNum > 0 || quickPriceLot.avista) {
+                          infoAtualizada.precoAvista = prcAvNum || valNum;
+                          infoAtualizada.valorAvista = prcAvNum || valNum;
+                        } else {
+                          delete infoAtualizada.precoAvista;
+                          delete infoAtualizada.valorAvista;
+                        }
                         if (corFinal) {
                           infoAtualizada.cor = corFinal;
                           infoAtualizada.corBolinha = corFinal;
@@ -16763,99 +17894,7 @@ const EmpreendimentosSection = ({
         )}
       </AnimatePresence>
 
-      {/* Modal: Adicionar por Texto (Script ChatGPT) */}
-      <AnimatePresence>
-        {showScriptModal && (
-          <div className="fixed inset-0 z-[130] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="bg-white w-full max-w-md rounded-[24px] shadow-2xl flex flex-col overflow-hidden"
-            >
-              <div className="p-5 border-b border-slate-100 flex justify-between items-center">
-                <div className="flex items-center gap-3">
-                  <div className="p-2.5 bg-blue-600 rounded-xl text-white"><ClipboardPaste size={18} /></div>
-                  <div>
-                    <h3 className="text-base font-display font-bold text-slate-800">Adicionar por Texto</h3>
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Script ChatGPT</p>
-                  </div>
-                </div>
-                <button onClick={() => { setShowScriptModal(false); setScriptGerado(""); setScriptPasteText(""); setScriptMsg(""); }} className="p-2 hover:bg-slate-100 rounded-xl transition-colors">
-                  <X size={18} className="text-slate-500" />
-                </button>
-              </div>
-              <div className="p-5 space-y-4">
-                <div className="p-3 bg-blue-50 rounded-xl text-xs text-blue-700 border border-blue-100">
-                  <p className="font-bold mb-1">Padrão: <span className="font-mono">Q1:1D,2I,3R.</span></p>
-                  <p>D=disponível, I=indisponível, R=reservado.</p>
-                  <p className="mt-1 text-blue-600">1. Copie o script, envie ao ChatGPT com o mapa. 2. Copie a resposta. 3. Clique Colar e depois Importar.</p>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => { setScriptGerado(""); setScriptPasteText(""); setScriptMsg(""); copyScriptToClipboard(); }}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200"
-                  >
-                    <Copy size={14} />
-                    Copiar Script
-                  </button>
-                  <button
-                    onClick={pasteScriptFromClipboard}
-                    className="flex items-center justify-center gap-2 py-2.5 rounded-xl text-xs font-black uppercase bg-blue-600 text-white hover:bg-blue-700"
-                  >
-                    <ClipboardPaste size={14} />
-                    Colar
-                  </button>
-                </div>
-                {scriptMsg && (
-                  <p className="text-[11px] font-bold text-emerald-800 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl">{scriptMsg}</p>
-                )}
-                {/* Script gerado — visível para cópia manual se clipboard falhar */}
-                {scriptGerado && !scriptPasteText && (
-                  <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Script gerado (selecione e copie se necessário)</p>
-                    <textarea
-                      readOnly
-                      className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed bg-slate-50"
-                      value={scriptGerado}
-                      onFocus={(e) => e.target.select()}
-                    />
-                  </div>
-                )}
-                {/* Campo para colar resposta do ChatGPT */}
-                <div>
-                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Resposta do ChatGPT</p>
-                    <textarea
-                      className="input-field min-h-[100px] text-[11px] font-mono leading-relaxed"
-                      value={scriptPasteText}
-                      onChange={(e) => setScriptPasteText(e.target.value)}
-                      placeholder="Cole aqui o script do ChatGPT (ex: Q1:1D,2I,3R.)"
-                      inputMode="text"
-                      autoFocus
-                      onFocus={(e) => e.target.select()}
-                    />
-                  </div>
-                <button
-                  disabled={!scriptPasteText.trim() || importandoScript}
-                  onClick={importarScriptFromModal}
-                  className={`w-full py-3 rounded-xl text-xs font-black uppercase transition-colors flex items-center justify-center gap-2 ${
-                    !scriptPasteText.trim() || importandoScript
-                      ? (importandoScript ? "bg-emerald-600 text-white" : "bg-slate-100 text-slate-400 cursor-not-allowed")
-                      : scriptAplicadoOk ? "bg-emerald-700 text-white" : "bg-emerald-600 text-white hover:bg-emerald-700"
-                  }`}
-                >
-                  {importandoScript ? (
-                    <>
-                      <svg className="animate-spin" width="14" height="14" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" opacity="0.25"/><path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round"/></svg>
-                      Processando lotes...
-                    </>
-                  ) : scriptAplicadoOk ? "✓ OK" : "Importar Script"}
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
+      {/* Modal: Adicionar por Texto integrado como aba inline na tela de lotes */}
 
       {/* Modal: Gerenciar Disponibilidade em Massa */}
       <AnimatePresence>

@@ -63,36 +63,25 @@ export async function processSyncQueue(): Promise<{ synced: number; errors: numb
           });
         } else {
           const endpoint = entityEndpoint(item.entity);
+          const encEntityId = encodeURIComponent(item.entityId);
           if (item.operation === 'delete') {
-            res = await authFetch(`${endpoint}/${item.entityId}`, { method: 'DELETE' });
+            res = await authFetch(`${endpoint}/${encEntityId}`, { method: 'DELETE' });
           } else {
-            // Remove Base64 — imagens agora são URLs do Supabase Storage
+            // Remove Base64 e data: URLs gigantes
             const { mapaImagemBase64, mapaImagemLeveBase64,
               mapaImagemMedResBase64, mapaImagemHighResBase64,
               mapaPdfOriginalBase64, ...cleanPayload } = item.payload as any;
 
-            if (item.entity === 'empreendimento') {
-              const { mapaPontos, lotesInfo, ...base } = cleanPayload;
-              // Base sempre leve (sem imagens)
-              res = await authFetch(`${endpoint}/${item.entityId}`, {
-                method: 'PUT', body: JSON.stringify(base),
-              });
-              // Pontos e lotes separados se necessário
-              if (res.ok && mapaPontos !== undefined) {
-                await authFetch(`${endpoint}/${item.entityId}/pontos`, {
-                  method: 'PUT', body: JSON.stringify({ mapaPontos: mapaPontos ?? [] }),
-                });
-              }
-              if (res.ok && lotesInfo !== undefined) {
-                await authFetch(`${endpoint}/${item.entityId}/lotes`, {
-                  method: 'PUT', body: JSON.stringify({ lotesInfo: lotesInfo ?? {} }),
-                });
-              }
-            } else {
-              res = await authFetch(`${endpoint}/${item.entityId}`, {
-                method: 'PUT', body: JSON.stringify(cleanPayload),
-              });
+            if (typeof cleanPayload.mapaImagemUrl === 'string' && cleanPayload.mapaImagemUrl.startsWith('data:')) {
+              delete cleanPayload.mapaImagemUrl;
             }
+            if (typeof cleanPayload.mapaPdfUrl === 'string' && cleanPayload.mapaPdfUrl.startsWith('data:')) {
+              delete cleanPayload.mapaPdfUrl;
+            }
+
+            res = await authFetch(`${endpoint}/${encEntityId}`, {
+              method: 'PUT', body: JSON.stringify(cleanPayload),
+            });
           }
         }
 

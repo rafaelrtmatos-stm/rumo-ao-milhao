@@ -1,0 +1,20 @@
+{
+  "theme": "standard",
+  "vendedores": [],
+  "proprietarios": [
+    {
+      "id": "prop-1778812982683",
+      "rg": "6741509",
+      "cep": "68038-300",
+      "cpf": "025.803.262-60",
+      "nome": "Rafael Tavares Matos",
+      "bairro": "Elcione Barbalho",
+      "cidade": "Santarém",
+      "estado": "PA",
+      "numero": "287",
+      "endereco": "Avenida Maracanã",
+      "estadoCivil": "solteiro",
+      "nacionalidade": "Brasileiro"
+    }
+  ]
+}

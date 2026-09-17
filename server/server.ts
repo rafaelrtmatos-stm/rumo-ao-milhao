@@ -65,6 +65,42 @@ function isSupabaseAvailableForRead(): boolean {
   return true;
 }
 
+process.on("unhandledRejection", (reason) => {
+  console.warn("[Server] Unhandled Promise Rejection:", reason);
+});
+process.on("uncaughtException", (error) => {
+  console.error("[Server] Uncaught Exception:", error);
+});
+
+function syncSupabaseInBackground(table: string, op: 'upsert' | 'delete', payload: any) {
+  if (!supabase) return;
+  (async () => {
+    try {
+      if (op === 'upsert') {
+        const { error } = await supabase.from(table).upsert(payload);
+        if (error) {
+          supabaseStatus = { ok: false, lastChecked: Date.now(), error: error.message };
+          console.warn(`[Supabase sync] ${table} upsert aviso:`, error.message);
+        } else {
+          supabaseStatus = { ok: true, lastChecked: Date.now(), error: null };
+        }
+      } else if (op === 'delete') {
+        const { error } = await supabase.from(table).delete().eq("id", payload);
+        if (error) {
+          console.warn(`[Supabase sync] ${table} delete aviso:`, error.message);
+        }
+      }
+    } catch (e: any) {
+      console.warn(`[Supabase sync] ${table} exceção:`, e?.message);
+    }
+  })();
+}
+
+function syncDbInBackground(fn: () => Promise<any>) {
+  if (!isDbAvailable) return;
+  fn().catch((e: any) => console.warn("[DB local sync] aviso:", e?.message));
+}
+
 function loadLocalFilesData() {
   try {
     if (!fs.existsSync(DATA_DIR)) {
@@ -576,15 +612,17 @@ app.post("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
       inMemoryEmpreendimentos.set(item.id, item);
     }
     saveEmpreendimentosToFile();
+    res.json({ ok: true });
+
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
         user_id: SHARED_DATA_USER,
         data: item,
       }));
-      await supabase.from("empreendimentos").upsert(rows);
+      syncSupabaseInBackground("empreendimentos", "upsert", rows);
     }
-    if (isDbAvailable) {
+    syncDbInBackground(async () => {
       const existing = await db.select({ id: empreendimentos.id }).from(empreendimentos).where(eq(empreendimentos.userId, SHARED_DATA_USER));
       const existingIds = new Set(existing.map((e: any) => e.id));
       const newIds = new Set(items.map((e: any) => e.id));
@@ -596,10 +634,9 @@ app.post("/api/empreendimentos", isAuthenticated, async (req: any, res) => {
       for (const item of items) {
         await db.insert(empreendimentos).values({ id: item.id, userId: SHARED_DATA_USER, data: item }).onConflictDoUpdate({ target: empreendimentos.id, set: { data: item } });
       }
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
-    console.error(e);
+    console.error("POST /api/empreendimentos error:", e);
     res.json({ ok: true });
   }
 });
@@ -642,19 +679,18 @@ app.put("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) => {
     inMemoryEmpreendimentos.set(req.params.id, dataToSave);
     saveEmpreendimentosToFile();
 
-    if (supabase) {
-      await supabase.from("empreendimentos").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: dataToSave,
-      });
-    }
-    if (isDbAvailable) {
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("empreendimentos", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: dataToSave,
+    });
+    syncDbInBackground(async () => {
       await db.insert(empreendimentos)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: dataToSave })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: dataToSave } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     console.error("PUT /api/empreendimentos/:id error:", e);
     res.json({ ok: true });
@@ -677,18 +713,17 @@ app.put("/api/empreendimentos/:id/pontos", isAuthenticated, async (req: any, res
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
     saveEmpreendimentosToFile();
 
-    if (supabase) {
-      await supabase.from("empreendimentos").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: updatedData,
-      });
-    }
-    if (isDbAvailable) {
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("empreendimentos", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: updatedData,
+    });
+    syncDbInBackground(async () => {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     res.json({ ok: true });
   }
@@ -704,18 +739,17 @@ app.put("/api/empreendimentos/:id/lotes", isAuthenticated, async (req: any, res)
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
     saveEmpreendimentosToFile();
 
-    if (supabase) {
-      await supabase.from("empreendimentos").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: updatedData,
-      });
-    }
-    if (isDbAvailable) {
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("empreendimentos", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: updatedData,
+    });
+    syncDbInBackground(async () => {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     res.json({ ok: true });
   }
@@ -760,18 +794,17 @@ app.put("/api/empreendimentos/:id/mapa", isAuthenticated, async (req: any, res) 
     inMemoryEmpreendimentos.set(req.params.id, updatedData);
     saveEmpreendimentosToFile();
 
-    if (supabase) {
-      await supabase.from("empreendimentos").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: updatedData,
-      });
-    }
-    if (isDbAvailable) {
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("empreendimentos", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: updatedData,
+    });
+    syncDbInBackground(async () => {
       await db.insert(empreendimentos).values({ id: req.params.id, userId: SHARED_DATA_USER, data: updatedData })
         .onConflictDoUpdate({ target: empreendimentos.id, set: { data: updatedData } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     res.json({ ok: true });
   }
@@ -782,13 +815,13 @@ app.delete("/api/empreendimentos/:id", isAuthenticated, async (req: any, res) =>
     const { id } = req.params;
     inMemoryEmpreendimentos.delete(id);
     saveEmpreendimentosToFile();
-    if (supabase) {
-      await supabase.from("empreendimentos").delete().eq("id", id);
-    }
-    if (isDbAvailable) {
-      await db.delete(empreendimentos).where(and(eq(empreendimentos.id, id), eq(empreendimentos.userId, SHARED_DATA_USER)));
-    }
+
     res.json({ ok: true });
+
+    syncSupabaseInBackground("empreendimentos", "delete", id);
+    syncDbInBackground(async () => {
+      await db.delete(empreendimentos).where(and(eq(empreendimentos.id, id), eq(empreendimentos.userId, SHARED_DATA_USER)));
+    });
   } catch (e: any) {
     console.error(e);
     res.json({ ok: true });
@@ -856,15 +889,17 @@ app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
       inMemoryClientes.set(item.id, item);
     }
     saveClientesToFile();
+    res.json({ ok: true });
+
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
         user_id: SHARED_DATA_USER,
         data: item,
       }));
-      await supabase.from("clientes").upsert(rows);
+      syncSupabaseInBackground("clientes", "upsert", rows);
     }
-    if (isDbAvailable) {
+    syncDbInBackground(async () => {
       const existing = await db.select({ id: clientes.id }).from(clientes).where(eq(clientes.userId, SHARED_DATA_USER));
       const existingIds = new Set(existing.map((e: any) => e.id));
       const newIds = new Set(items.map((e: any) => e.id));
@@ -876,10 +911,9 @@ app.post("/api/clientes", isAuthenticated, async (req: any, res) => {
       for (const item of items) {
         await db.insert(clientes).values({ id: item.id, userId: SHARED_DATA_USER, data: item }).onConflictDoUpdate({ target: clientes.id, set: { data: item } });
       }
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
-    console.error(e);
+    console.error("POST /api/clientes error:", e);
     res.json({ ok: true });
   }
 });
@@ -890,19 +924,19 @@ app.put("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryClientes.set(req.params.id, item);
     saveClientesToFile();
-    if (supabase) {
-      await supabase.from("clientes").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: item,
-      });
-    }
-    if (isDbAvailable) {
+
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("clientes", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: item,
+    });
+    syncDbInBackground(async () => {
       await db.insert(clientes)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: item })
         .onConflictDoUpdate({ target: clientes.id, set: { data: item } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     console.error("PUT /api/clientes/:id error:", e);
     res.json({ ok: true });
@@ -913,13 +947,13 @@ app.delete("/api/clientes/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryClientes.delete(req.params.id);
     saveClientesToFile();
-    if (supabase) {
-      await supabase.from("clientes").delete().eq("id", req.params.id);
-    }
-    if (isDbAvailable) {
-      await db.delete(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_DATA_USER)));
-    }
+
     res.json({ ok: true });
+
+    syncSupabaseInBackground("clientes", "delete", req.params.id);
+    syncDbInBackground(async () => {
+      await db.delete(clientes).where(and(eq(clientes.id, req.params.id), eq(clientes.userId, SHARED_DATA_USER)));
+    });
   } catch (e: any) {
     console.error("DELETE /api/clientes/:id error:", e);
     res.json({ ok: true });
@@ -970,15 +1004,17 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
       inMemoryVendas.set(item.id, item);
     }
     saveVendasToFile();
+    res.json({ ok: true });
+
     if (supabase) {
       const rows = items.map((item) => ({
         id: item.id,
         user_id: SHARED_DATA_USER,
         data: item,
       }));
-      await supabase.from("vendas").upsert(rows);
+      syncSupabaseInBackground("vendas", "upsert", rows);
     }
-    if (isDbAvailable) {
+    syncDbInBackground(async () => {
       const existing = await db.select({ id: vendas.id }).from(vendas).where(eq(vendas.userId, SHARED_DATA_USER));
       const existingIds = new Set(existing.map((e: any) => e.id));
       const newIds = new Set(items.map((e: any) => e.id));
@@ -990,10 +1026,9 @@ app.post("/api/vendas", isAuthenticated, async (req: any, res) => {
       for (const item of items) {
         await db.insert(vendas).values({ id: item.id, userId: SHARED_DATA_USER, data: item }).onConflictDoUpdate({ target: vendas.id, set: { data: item } });
       }
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
-    console.error(e);
+    console.error("POST /api/vendas error:", e);
     res.json({ ok: true });
   }
 });
@@ -1004,19 +1039,19 @@ app.put("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
     if (!item || !req.params.id) return res.status(400).json({ error: "Dados inválidos." });
     inMemoryVendas.set(req.params.id, item);
     saveVendasToFile();
-    if (supabase) {
-      await supabase.from("vendas").upsert({
-        id: req.params.id,
-        user_id: SHARED_DATA_USER,
-        data: item,
-      });
-    }
-    if (isDbAvailable) {
+
+    res.json({ ok: true });
+
+    syncSupabaseInBackground("vendas", "upsert", {
+      id: req.params.id,
+      user_id: SHARED_DATA_USER,
+      data: item,
+    });
+    syncDbInBackground(async () => {
       await db.insert(vendas)
         .values({ id: req.params.id, userId: SHARED_DATA_USER, data: item })
         .onConflictDoUpdate({ target: vendas.id, set: { data: item } });
-    }
-    res.json({ ok: true });
+    });
   } catch (e: any) {
     console.error("PUT /api/vendas/:id error:", e);
     res.json({ ok: true });
@@ -1027,13 +1062,13 @@ app.delete("/api/vendas/:id", isAuthenticated, async (req: any, res) => {
   try {
     inMemoryVendas.delete(req.params.id);
     saveVendasToFile();
-    if (supabase) {
-      await supabase.from("vendas").delete().eq("id", req.params.id);
-    }
-    if (isDbAvailable) {
-      await db.delete(vendas).where(and(eq(vendas.id, req.params.id), eq(vendas.userId, SHARED_DATA_USER)));
-    }
+
     res.json({ ok: true });
+
+    syncSupabaseInBackground("vendas", "delete", req.params.id);
+    syncDbInBackground(async () => {
+      await db.delete(vendas).where(and(eq(vendas.id, req.params.id), eq(vendas.userId, SHARED_DATA_USER)));
+    });
   } catch (e: any) {
     console.error("DELETE /api/vendas/:id error:", e);
     res.json({ ok: true });
@@ -1070,18 +1105,18 @@ app.post("/api/config", isAuthenticated, async (req: any, res) => {
     const config = req.body;
     inMemoryConfig = config;
     saveConfigFile();
-    if (supabase) {
-      await supabase.from("app_config").upsert({
-        user_id: SHARED_DATA_USER,
-        data: config,
-      });
-    }
-    if (isDbAvailable) {
-      await db.insert(appConfig).values({ userId: SHARED_DATA_USER, data: config }).onConflictDoUpdate({ target: appConfig.userId, set: { data: config } });
-    }
+
     res.json({ ok: true });
+
+    syncSupabaseInBackground("app_config", "upsert", {
+      user_id: SHARED_DATA_USER,
+      data: config,
+    });
+    syncDbInBackground(async () => {
+      await db.insert(appConfig).values({ userId: SHARED_DATA_USER, data: config }).onConflictDoUpdate({ target: appConfig.userId, set: { data: config } });
+    });
   } catch (e: any) {
-    console.error(e);
+    console.error("POST /api/config error:", e);
     res.json({ ok: true });
   }
 });

@@ -72,10 +72,20 @@ async function apiGet<T>(path: string): Promise<T> {
 }
 
 async function apiPut(path: string, body: unknown): Promise<void> {
-  const res = await authFetch(path, { method: 'PUT', body: JSON.stringify(body) });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error((err as any)?.error || `Erro ${res.status}`);
+  let attempts = 0;
+  while (attempts < 2) {
+    try {
+      const res = await authFetch(path, { method: 'PUT', body: JSON.stringify(body) });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any)?.error || `Erro ${res.status}`);
+      }
+      return;
+    } catch (err: any) {
+      attempts++;
+      if (attempts >= 2) throw err;
+      await new Promise((r) => setTimeout(r, 400));
+    }
   }
 }
 
@@ -183,34 +193,21 @@ async function saveEmpreendimentos(items: Empreendimento[]): Promise<void> {
 }
 
 async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
+  const encId = encodeURIComponent(item.id);
   await db.empreendimentos.put({ id: item.id, data: item, syncStatus: 'pending', updatedAt: Date.now() });
 
   if (navigator.onLine) {
     try {
-      // 1. Dados básicos sem campos pesados
-      const base = stripHeavy(item);
-      console.log('[db] upsertEmpreendimento base size:', JSON.stringify(base).length, 'bytes');
-      await apiPut(`/api/empreendimentos/${item.id}`, base);
+      // 1. Dados limpos de campos pesados e imagens data: URLs gigantes
+      const payload = stripHeavy(item);
+      console.log('[db] upsertEmpreendimento payload size:', JSON.stringify(payload).length, 'bytes');
+      await apiPut(`/api/empreendimentos/${encId}`, payload);
 
-      // 2. mapaPontos separado (pode ser grande com muitas bolinhas)
-      if ((item as any).mapaPontos !== undefined) {
-        await apiPut(`/api/empreendimentos/${item.id}/pontos`, {
-          mapaPontos: (item as any).mapaPontos ?? [],
-        });
-      }
-
-      // 3. lotesInfo separado
-      if ((item as any).lotesInfo !== undefined) {
-        await apiPut(`/api/empreendimentos/${item.id}/lotes`, {
-          lotesInfo: (item as any).lotesInfo ?? {},
-        });
-      }
-
-      // 4. Imagem do mapa — se já possui mapaImagemUrl permanente, limpa base64 antigo para liberar espaço
-      const hasUrl = !!(item as any).mapaImagemUrl;
+      // 2. Se houver nova imagem base64 temporária sendo substituída por url permanente
+      const hasUrl = !!(item as any).mapaImagemUrl && !(item as any).mapaImagemUrl.startsWith('data:');
       const base64Val = (item as any).mapaImagemBase64 || '';
       if (hasUrl && base64Val) {
-        await apiPut(`/api/empreendimentos/${item.id}/mapa`, {
+        await apiPut(`/api/empreendimentos/${encId}/mapa`, {
           mapaImagemBase64: null,
         }).catch(() => {});
       }
@@ -218,7 +215,7 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
       await db.empreendimentos.update(item.id, { syncStatus: 'synced' });
       return;
     } catch (err) {
-      console.error('[db] upsertEmpreendimento FALHOU:', err);
+      console.warn('[db] upsertEmpreendimento falhou online, enfileirando para sincronização offline:', err);
     }
   }
   await enqueue('empreendimento', 'upsert', item.id, item);
@@ -226,10 +223,11 @@ async function upsertEmpreendimento(item: Empreendimento): Promise<void> {
 }
 
 async function deleteEmpreendimento(id: string): Promise<void> {
+  const encId = encodeURIComponent(id);
   await db.empreendimentos.delete(id);
   if (navigator.onLine) {
     try {
-      await apiDelete(`/api/empreendimentos/${id}`);
+      await apiDelete(`/api/empreendimentos/${encId}`);
       return;
     } catch (err) {
       console.warn('[db] deleteEmpreendimento API falhou, enfileirando:', err);
@@ -251,7 +249,7 @@ function stripBase64(item: Empreendimento): Empreendimento {
   return rest as Empreendimento;
 }
 
-// Remove tudo pesado — só dados básicos do empreendimento
+// Remove tudo pesado — imagens base64 e data: URLs gigantes (mantém pontos e lotesInfo leves)
 function stripHeavy(item: Empreendimento): Empreendimento {
   const {
     mapaImagemBase64,
@@ -259,18 +257,26 @@ function stripHeavy(item: Empreendimento): Empreendimento {
     mapaImagemMedResBase64,
     mapaImagemHighResBase64,
     mapaPdfOriginalBase64,
-    mapaPontos,
-    lotesInfo,
     ...rest
   } = item as any;
+
+  const cleanRest = { ...rest };
+  // Se mapaImagemUrl ou mapaPdfUrl forem data: URLs grandes, remove do payload para não sobrecarregar a requisição
+  if (typeof cleanRest.mapaImagemUrl === 'string' && cleanRest.mapaImagemUrl.startsWith('data:')) {
+    delete cleanRest.mapaImagemUrl;
+  }
+  if (typeof cleanRest.mapaPdfUrl === 'string' && cleanRest.mapaPdfUrl.startsWith('data:')) {
+    delete cleanRest.mapaPdfUrl;
+  }
+
   if ((item as any).mapaRecortado) {
     return {
-      ...rest,
+      ...cleanRest,
       mapaRecortado: true,
       mapaCrop: (item as any).mapaCrop,
     } as any;
   }
-  return rest as Empreendimento;
+  return cleanRest as Empreendimento;
 }
 
 // ── Clientes ──────────────────────────────────────────────────────────────────
@@ -349,10 +355,11 @@ async function saveClientes(items: Cliente[]): Promise<void> {
 }
 
 async function upsertCliente(item: Cliente): Promise<void> {
+  const encId = encodeURIComponent(item.id);
   await db.clientes.put({ id: item.id, data: item, syncStatus: 'pending', updatedAt: Date.now() });
   if (navigator.onLine) {
     try {
-      await apiPut(`/api/clientes/${item.id}`, item);
+      await apiPut(`/api/clientes/${encId}`, item);
       await db.clientes.update(item.id, { syncStatus: 'synced' });
       return;
     } catch (err) {
@@ -432,10 +439,11 @@ async function saveVendas(items: Venda[]): Promise<void> {
 }
 
 async function upsertVenda(item: Venda): Promise<void> {
+  const encId = encodeURIComponent(item.id);
   await db.vendas.put({ id: item.id, data: item, syncStatus: 'pending', updatedAt: Date.now() });
   if (navigator.onLine) {
     try {
-      await apiPut(`/api/vendas/${item.id}`, item);
+      await apiPut(`/api/vendas/${encId}`, item);
       await db.vendas.update(item.id, { syncStatus: 'synced' });
       return;
     } catch (err) {
@@ -447,10 +455,11 @@ async function upsertVenda(item: Venda): Promise<void> {
 }
 
 async function deleteClienteById(id: string): Promise<void> {
+  const encId = encodeURIComponent(id);
   await db.clientes.delete(id);
   if (navigator.onLine) {
     try {
-      await apiDelete(`/api/clientes/${id}`);
+      await apiDelete(`/api/clientes/${encId}`);
       return;
     } catch (err) {
       console.warn('[db] deleteClienteById API falhou, enfileirando:', err);
@@ -461,10 +470,11 @@ async function deleteClienteById(id: string): Promise<void> {
 }
 
 async function deleteVendaById(id: string): Promise<void> {
+  const encId = encodeURIComponent(id);
   await db.vendas.delete(id);
   if (navigator.onLine) {
     try {
-      await apiDelete(`/api/vendas/${id}`);
+      await apiDelete(`/api/vendas/${encId}`);
       return;
     } catch (err) {
       console.warn('[db] deleteVendaById API falhou, enfileirando:', err);
