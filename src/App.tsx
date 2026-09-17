@@ -910,13 +910,17 @@ function countSoldLots(dev: Empreendimento, vendas: Venda[]): number {
   return soldKeys.size;
 }
 
-function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda[] = []): Empreendimento {
+function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda[] = [], currentUserNameOrEmail?: string): Empreendimento {
   const configuredKeys = getConfiguredLotKeys(dev);
   const pontosMapa = ((dev as any)?.mapaPontos || []) as any[];
   const totalLotes = Math.max(configuredKeys.size, pontosMapa.length, Number(dev.totalLotes || 0));
   const soldKeys = new Set<string>();
+  const appSoldKeys = new Set<string>();
+  const userSoldKeys = new Set<string>();
   const indisponiveis = new Set<string>();
   const reservados = new Set<string>();
+
+  const normUser = (currentUserNameOrEmail || "").trim().toLowerCase();
 
   vendas.forEach((v) => {
     if (
@@ -926,41 +930,72 @@ function recalcularEstatisticasEmpreendimento(dev: Empreendimento, vendas: Venda
       v.quadra &&
       v.numeroLote
     ) {
-      soldKeys.add(getLotInfoKey(v.quadra, v.numeroLote));
+      const key = getLotInfoKey(v.quadra, v.numeroLote);
+      soldKeys.add(key);
+      appSoldKeys.add(key);
+
+      const vendNorm = (v.vendedor || "").trim().toLowerCase();
+      if (!normUser || vendNorm.includes(normUser) || normUser.includes(vendNorm)) {
+        userSoldKeys.add(key);
+      }
     }
   });
 
   Object.entries(dev.lotesInfo || {}).forEach(([key, info]) => {
     const normalizedKey = key.toUpperCase();
-    if ((info as any)?.status === "vendido") soldKeys.add(normalizedKey);
-    if ((info as any)?.status === "reservado") reservados.add(normalizedKey);
-    if ((info as any)?.status === "indisponivel") indisponiveis.add(normalizedKey);
+    const st = (info as any)?.status;
+    if (st === "vendido") soldKeys.add(normalizedKey);
+    else if (st === "indisponivel") indisponiveis.add(normalizedKey);
+    else if (st === "reservado") reservados.add(normalizedKey);
   });
 
   // Também levar em conta o status e venda vinculada diretamente nos marcadores do mapa
   pontosMapa.forEach((p) => {
     if (!p?.quadra || !p?.lote) return;
     const key = getLotInfoKey(p.quadra, p.lote);
-    if (p.vendaId) soldKeys.add(key);
-    else if (p.status === "indisponivel") indisponiveis.add(key);
-    else if (p.status === "reservado") reservados.add(key);
+    if (p.vendaId) {
+      soldKeys.add(key);
+      appSoldKeys.add(key);
+      userSoldKeys.add(key);
+    } else if (p.status === "vendido") {
+      soldKeys.add(key);
+    } else if (p.status === "indisponivel") {
+      indisponiveis.add(key);
+    } else if (p.status === "reservado") {
+      reservados.add(key);
+    }
   });
 
-  soldKeys.forEach((key) => { indisponiveis.delete(key); reservados.delete(key); });
-  reservados.forEach((key) => indisponiveis.delete(key));
+  // No site e no empreendimento: qualquer lote indisponível ou vendido é um lote VENDIDO
+  // (Ex.: 100 total, 50 vendidos logo 50 disponíveis)
+  const todosVendidosKeys = new Set<string>([...soldKeys, ...indisponiveis]);
+  reservados.forEach((key) => {
+    todosVendidosKeys.delete(key);
+  });
 
-  const lotesVendidos = soldKeys.size;
-  const lotesReservados = reservados.size;
-  const lotesIndisponiveis = indisponiveis.size;
-  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesReservados - lotesIndisponiveis);
+  let lotesVendidos = todosVendidosKeys.size;
+  let lotesReservados = reservados.size;
+
+  // Se não tem mapa nem lotes cadastrados individualmente, preservar lotesVendidos manual
+  if (pontosMapa.length === 0 && configuredKeys.size === 0) {
+    lotesVendidos = Math.max(todosVendidosKeys.size, Number(dev.lotesVendidos || 0));
+    lotesReservados = Math.max(reservados.size, Number(dev.lotesReservados || 0));
+  }
+
+  // Regra clara e matemática: Disponíveis = Total - Vendidos - Reservados
+  const lotesDisponiveis = Math.max(0, totalLotes - lotesVendidos - lotesReservados);
+  const lotesVendidosApp = appSoldKeys.size;
+  const lotesVendidosUsuario = userSoldKeys.size > 0 ? userSoldKeys.size : appSoldKeys.size;
 
   return {
     ...dev,
     totalLotes,
     lotesVendidos,
-    lotesIndisponiveis,
+    lotesIndisponiveis: lotesVendidos,
     lotesReservados,
     lotesDisponiveis,
+    lotesVendidosUsuario,
+    lotesVendidosApp,
   } as Empreendimento;
 }
 
@@ -11563,6 +11598,15 @@ const LotDashboard = ({
                     </div>
                   ))}
                 </div>
+                {(recalcStats.lotesVendidosUsuario || 0) > 0 && (
+                  <div className="flex items-center justify-between px-3 py-2 bg-blue-50/90 border border-blue-200/60 rounded-xl text-xs text-blue-900">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <CheckCircle2 size={13} className="text-blue-600" />
+                      Vendidos por você no App:
+                    </span>
+                    <span className="font-black text-sm">{recalcStats.lotesVendidosUsuario}</span>
+                  </div>
+                )}
                 <div className="flex gap-4">
                   {([{c:'#3b82f6',l:'Disponível'},{c:'#f59e0b',l:'Reservado'},{c:'#ef4444',l:'Indisponível'}] as any[]).map((i:any) => (
                     <div key={i.l} className="flex items-center gap-1.5">
@@ -11964,10 +12008,10 @@ const LotDashboard = ({
     );
   }
   // ── FIM LAYOUT MOBILE ──────────────────────────────────────────────────────
-  const statsDisponiveis = Math.max(0, recalcStats.lotesDisponiveis ?? Math.max(0, localDev.totalLotes - localDev.lotesVendidos));
+  const statsTotal = recalcStats.totalLotes ?? localDev.totalLotes ?? 0;
+  const statsDisponiveis = recalcStats.lotesDisponiveis ?? Math.max(0, statsTotal - (recalcStats.lotesVendidos || 0));
   const statsReservados = recalcStats.lotesReservados ?? 0;
   const statsIndisponiveis = recalcStats.lotesVendidos ?? localDev.lotesVendidos ?? 0;
-  const statsTotal = localDev.totalLotes ?? 0;
   const statsPct = statsTotal > 0 ? Math.round((statsIndisponiveis / statsTotal) * 100) : 0;
 
   return (
@@ -12087,6 +12131,12 @@ const LotDashboard = ({
                   <span className="w-2 h-2 rounded-full bg-red-500 inline-block" />
                   <span className="text-slate-500 font-medium">{statsIndisponiveis} vend.</span>
                 </div>
+                {(recalcStats.lotesVendidosUsuario || 0) > 0 && (
+                  <div className="flex items-center gap-1 text-xs bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-lg border border-blue-200/60" title="Lotes vendidos pelo usuário no app">
+                    <CheckCircle2 size={11} className="text-blue-600" />
+                    <span>{recalcStats.lotesVendidosUsuario} no app</span>
+                  </div>
+                )}
                 <div className="w-px h-4 bg-slate-200" />
                 <span className="text-xs font-black text-slate-600">{statsPct}%</span>
               </div>
@@ -14771,8 +14821,10 @@ const EmpreendimentosSection = ({
           {filteredDevelopments.map((dev) => {
             const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
             const total = recalc.totalLotes ?? dev.totalLotes ?? 0;
-            const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0)));
-            const pct = total > 0 ? Math.round(((recalc.lotesVendidos || 0) / total) * 100) : 0;
+            const disponiveis = recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0));
+            const vendidos = recalc.lotesVendidos ?? dev.lotesVendidos ?? 0;
+            const vendidosUsuario = recalc.lotesVendidosUsuario ?? 0;
+            const pct = total > 0 ? Math.round((vendidos / total) * 100) : 0;
             const temMaps = !!getEmpreendimentoMapsUrl(dev);
             return (
               <div key={dev.id} className="bg-white border border-slate-200 rounded-2xl px-3 py-2.5 flex items-center gap-2 hover:border-slate-300 hover:shadow-sm transition-all min-w-0">
@@ -14787,9 +14839,14 @@ const EmpreendimentosSection = ({
                 </div>
                 {/* Stats inline */}
                 <div className="flex items-center gap-1.5 flex-shrink-0 text-[11px] font-black">
-                  <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-lg">{disponiveis}</span>
+                  <span className="bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded-lg" title="Lotes disponíveis">{disponiveis} disp.</span>
                   <span className="text-slate-300">/</span>
-                  <span className="text-slate-500">{total}</span>
+                  <span className="text-slate-500" title="Total de lotes">{total}</span>
+                  {vendidosUsuario > 0 && (
+                    <span className="bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-lg font-bold ml-1" title="Lotes vendidos pelo usuário no app">
+                      {vendidosUsuario} no app
+                    </span>
+                  )}
                   <span className="text-slate-300 ml-0.5">•</span>
                   <span className="text-slate-400">{pct}%</span>
                 </div>
@@ -14833,9 +14890,10 @@ const EmpreendimentosSection = ({
         {filteredDevelopments.map((dev) => {
           const recalc = recalcularEstatisticasEmpreendimento(dev, sales);
           const total = recalc.totalLotes ?? dev.totalLotes ?? 0;
-          const disponiveis = Math.max(0, recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0)));
+          const disponiveis = recalc.lotesDisponiveis ?? Math.max(0, total - (recalc.lotesVendidos || 0));
           const reservados = recalc.lotesReservados ?? 0;
           const vendidos = recalc.lotesVendidos ?? dev.lotesVendidos ?? 0;
+          const vendidosUsuario = recalc.lotesVendidosUsuario ?? 0;
           const pct = total > 0 ? Math.round((vendidos / total) * 100) : 0;
           const temMapa = !!(dev as any).mapaImagemBase64 || !!(dev as any).mapaPdfOriginalBase64 || !!(dev as any).mapaImagemUrl || !!(dev as any).mapaPdfUrl;
           const temGps = !!getEmpreendimentoMapsUrl(dev);
@@ -14886,10 +14944,16 @@ const EmpreendimentosSection = ({
               </div>
 
               {/* Pill de status */}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] font-black px-2.5 py-1 rounded-full uppercase tracking-widest ${disponiveis > 0 ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                   {disponiveis > 0 ? "Em Vendas" : "Esgotado"}
                 </span>
+                {vendidosUsuario > 0 && (
+                  <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200/60 flex items-center gap-1" title="Lotes vendidos pelo usuário/corretor no app">
+                    <CheckCircle2 size={11} className="text-blue-600" />
+                    <span>{vendidosUsuario} no app</span>
+                  </span>
+                )}
                 {numQuadras > 0 && (
                   <span className="text-[10px] text-slate-400 font-semibold">{numQuadras} quadra{numQuadras !== 1 ? "s" : ""} • {total} lotes</span>
                 )}
@@ -14914,8 +14978,15 @@ const EmpreendimentosSection = ({
             {/* BARRA DE PROGRESSO */}
             <div className="px-5 pb-4">
               <div className="flex justify-between items-center mb-1.5">
-                <span className="text-[11px] text-slate-400 font-semibold">{pct}% vendido</span>
-                {temMapa && <span className="text-[10px] text-primary-main font-bold">Com mapa ✓</span>}
+                <span className="text-[11px] text-slate-400 font-semibold">{pct}% vendido ({vendidos} de {total})</span>
+                <div className="flex items-center gap-2">
+                  {vendidosUsuario > 0 && (
+                    <span className="text-[10px] text-blue-600 font-bold">
+                      {vendidosUsuario} por você
+                    </span>
+                  )}
+                  {temMapa && <span className="text-[10px] text-primary-main font-bold">Com mapa ✓</span>}
+                </div>
               </div>
               <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
                 <div className="h-full bg-primary-main rounded-full transition-all duration-500"

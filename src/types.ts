@@ -128,6 +128,9 @@ export interface Empreendimento {
   lotesVendidos: number;
   lotesDisponiveis?: number;
   lotesIndisponiveis?: number;
+  lotesReservados?: number;
+  lotesVendidosUsuario?: number;
+  lotesVendidosApp?: number;
   descricao?: string;
   comunidade?: string;
   quadras?: string;
