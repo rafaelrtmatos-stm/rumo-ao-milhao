@@ -66,6 +66,12 @@ export interface Venda {
   medidaFundos?: string;
   areaTotal?: string;
   comprador2?: any;
+  // Dados do recibo — persistidos para que, ao gerar o recibo novamente,
+  // continuem preenchidos (e ainda editáveis) em vez de resetar.
+  reciboObservacao?: string;
+  reciboCarimboPago?: boolean;
+  reciboCorretor?: string;
+  reciboCidade?: string;
 }
 
 

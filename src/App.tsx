@@ -21162,6 +21162,19 @@ const ContratosSection = ({
   const [comCarimbo, setComCarimbo] = useState(false);
   const [reciboCidade, setReciboCidade] = useState('');
   const [reciboCorretor, setReciboCorretor] = useState('');
+
+  // Abre o modal "Gerar Recibo" carregando os dados salvos anteriormente para
+  // ESTA venda (carimbo PAGO, corretor, cidade e observação), em vez de
+  // resetar tudo — assim, ao gerar o recibo de novo, a informação continua
+  // lá (e ainda pode ser editada normalmente).
+  const openReciboModalFor = (venda: Venda) => {
+    setSelectedVenda(venda);
+    setReciboObservacao((venda as any).reciboObservacao || "");
+    setComCarimbo(Boolean((venda as any).reciboCarimboPago));
+    setReciboCorretor((venda as any).reciboCorretor || "");
+    setReciboCidade((venda as any).reciboCidade || "");
+    setShowReciboModal(true);
+  };
   const [searchTerm, setSearchTerm] = useState("");
   const [corretorFilter, setCorretorFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -23250,7 +23263,7 @@ VENDEDOR: ${vendedorLabel}`;
                   <span className="text-[9px] font-bold uppercase">{venda.contratoGerado ? "Contrato" : "Gerar"}</span>
                 </button>
                 <button
-                  onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
+                  onClick={() => { openReciboModalFor(venda); }}
                   className="flex flex-col items-center gap-1 p-3 bg-white text-emerald-600 rounded-xl shadow-sm border border-border-subtle transition-all"
                 >
                   <FileCheck size={18} />
@@ -23388,7 +23401,7 @@ VENDEDOR: ${vendedorLabel}`;
                     {venda.contratoGerado ? "Ver" : "Gerar"}
                   </button>
                   {/* Recibo */}
-                  <button onClick={() => { setSelectedVenda(venda); setReciboObservacao((venda as any).reciboObservacao || ""); setShowReciboModal(true); }}
+                  <button onClick={() => { openReciboModalFor(venda); }}
                     className="px-2 py-1.5 bg-white text-emerald-600 rounded-lg border border-emerald-200 hover:bg-emerald-600 hover:text-white transition-all flex items-center gap-1 text-[10px] font-bold whitespace-nowrap"
                     title="Gerar recibo">
                     <FileCheck size={11} />
@@ -23619,7 +23632,7 @@ VENDEDOR: ${vendedorLabel}`;
                     {downloadingPdf ? "Gerando PDF..." : <><FileDown size={17} /> PDF</>}
                   </button>
                   <button
-                    onClick={() => { setReciboObservacao((selectedVenda as any)?.reciboObservacao || ""); setShowReciboModal(true); }}
+                    onClick={() => { if (selectedVenda) openReciboModalFor(selectedVenda); }}
                     className="btn-secondary h-11 px-4 text-sm font-semibold flex items-center justify-center gap-2"
                     title="Gerar recibo"
                   >
@@ -23849,7 +23862,11 @@ VENDEDOR: ${vendedorLabel}`;
                     <span className="block text-[10px] font-black uppercase tracking-widest text-emerald-700">Carimbo PAGO</span>
                     <span className="block text-xs text-emerald-700/80">Marque para sair com carimbo e data no recibo.</span>
                   </span>
-                  <input type="checkbox" checked={comCarimbo} onChange={(e) => setComCarimbo(e.target.checked)} className="w-5 h-5 accent-emerald-600" />
+                  <input type="checkbox" checked={comCarimbo} onChange={(e) => {
+                    const val = e.target.checked;
+                    setComCarimbo(val);
+                    if (selectedVenda) onUpdateVenda({ ...selectedVenda, reciboCarimboPago: val } as any);
+                  }} className="w-5 h-5 accent-emerald-600" />
                 </label>
                 <div className="grid grid-cols-2 gap-3 mb-3">
                   <div>
@@ -23857,13 +23874,21 @@ VENDEDOR: ${vendedorLabel}`;
                     <input className="input-field text-sm"
                       placeholder="Nome do corretor"
                       value={reciboCorretor}
-                      onChange={e => setReciboCorretor(e.target.value)}/>
+                      onChange={e => {
+                        const val = e.target.value;
+                        setReciboCorretor(val);
+                        if (selectedVenda) onUpdateVenda({ ...selectedVenda, reciboCorretor: val } as any);
+                      }}/>
                   </div>
                   <div>
                     <label className="block text-[10px] font-black uppercase tracking-widest text-slate-500 mb-1.5">Cidade</label>
                     <select className="input-field text-sm"
                       value={reciboCidade}
-                      onChange={e => setReciboCidade(e.target.value)}>
+                      onChange={e => {
+                        const val = e.target.value;
+                        setReciboCidade(val);
+                        if (selectedVenda) onUpdateVenda({ ...selectedVenda, reciboCidade: val } as any);
+                      }}>
                       <option value="">Selecionar</option>
                       <option value="Santarém">Santarém</option>
                       <option value="Alenquer">Alenquer</option>
