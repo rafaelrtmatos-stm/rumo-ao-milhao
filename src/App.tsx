@@ -1788,6 +1788,47 @@ function triggerShake(containerEl: HTMLElement | null) {
   }
 }
 
+// --- Download utility (nível de módulo — acessível em qualquer seção) ---
+// Dispara o download de um Blob via link temporário, com fallback para FileReader
+// quando createObjectURL falhar (ex.: alguns navegadores/webviews mobile).
+function triggerDownload(blob: Blob, filename: string) {
+  try {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    setTimeout(() => {
+      try {
+        if (document.body.contains(link)) document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+      } catch {}
+    }, 10000);
+  } catch (e) {
+    console.error('Falha no triggerDownload com Blob URL:', e);
+    try {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const dataUrl = reader.result as string;
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        link.style.display = 'none';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          try { if (document.body.contains(link)) document.body.removeChild(link); } catch {}
+        }, 10000);
+      };
+      reader.readAsDataURL(blob);
+    } catch (e2) {
+      console.error('Falha total no triggerDownload:', e2);
+    }
+  }
+}
+
 // --- Components ---
 
 const Sidebar = ({
