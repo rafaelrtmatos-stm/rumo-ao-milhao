@@ -3001,15 +3001,6 @@ const LotDashboard = ({
     }, 120);
   };
 
-  // Helper universal para parsear preço como número de forma confiável
-  const parsePrecoNumero = (p: any): number => {
-    if (typeof p === "number") return isNaN(p) ? 0 : p;
-    if (!p) return 0;
-    const clean = String(p).trim().replace(/\./g, "").replace(",", ".");
-    const num = parseFloat(clean);
-    return isNaN(num) ? 0 : num;
-  };
-
   // Faixas de preço globais — usadas na aba Preços para colorir bolinhas e cards
   // Posição da legenda flutuante de preços (salva por empreendimento)
   const [legendaPos, setLegendaPos] = React.useState<{x:number;y:number}>(() => {
@@ -13341,6 +13332,15 @@ function faixasParaScript(faixas: FaixaLoteIntervalo[]): string {
   return Object.entries(porQuadra)
     .map(([q, lts]) => `Q${q}: ${lts.join(", ")}.`)
     .join(" ");
+}
+
+// Helper universal para parsear preço como número de forma confiável (escopo de módulo)
+function parsePrecoNumero(p: any): number {
+  if (typeof p === "number") return isNaN(p) ? 0 : p;
+  if (!p) return 0;
+  const clean = String(p).trim().replace(/\./g, "").replace(",", ".");
+  const num = parseFloat(clean);
+  return isNaN(num) ? 0 : num;
 }
 
 function getRegraFaixas(r: any): FaixaLoteIntervalo[] {
