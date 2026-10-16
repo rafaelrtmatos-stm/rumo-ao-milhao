@@ -327,6 +327,61 @@ function expandLotesInput(input: string): string[] {
   return normalizeLotsInput(input);
 }
 
+/** Chave comparável de lote: "01" e "1" são o mesmo lote; letras ignoram maiúsc./minúsc. */
+function normalizeLoteChave(l: string): string {
+  const t = String(l ?? "").trim();
+  return /^\d+$/.test(t) ? String(parseInt(t, 10)) : t.toUpperCase();
+}
+
+/**
+ * Formato das Ações em Massa: VÍRGULA = intervalo (ini,fim) e PONTO = separa um item do próximo.
+ * "1,4.8.38"    → 1,2,3,4,8,38
+ * "5,10.20,25.40" → 5..10, 20..25, 40
+ * "8.38"        → 8, 38
+ * Item com 3+ números separados por vírgula (ex.: "1,4,8") é inválido.
+ */
+function parseLotesIntervaloPonto(input: string): { lotes: string[]; erro?: string } {
+  const raw = (input || "").trim();
+  if (!raw) return { lotes: [] };
+  const itens = raw.split(".").map((s) => s.trim()).filter(Boolean);
+  const out: string[] = [];
+  for (const item of itens) {
+    const partes = item.split(",").map((s) => s.trim());
+    if (partes.length === 1) {
+      if (partes[0]) out.push(partes[0]);
+      continue;
+    }
+    if (partes.length === 2 && /^\d+$/.test(partes[0]) && /^\d+$/.test(partes[1])) {
+      const ini = parseInt(partes[0], 10);
+      const fin = parseInt(partes[1], 10);
+      if (fin < ini) return { lotes: [], erro: `Intervalo invertido em "${item}" (o fim é menor que o início).` };
+      for (let i = ini; i <= fin; i++) out.push(String(i));
+      continue;
+    }
+    return { lotes: [], erro: `Formato inválido em "${item}". Use "ini,fim" para intervalo e ponto para separar (ex: 1,4.8.38).` };
+  }
+  const vistos = new Set<string>();
+  const lotes = out.filter((l) => {
+    const k = normalizeLoteChave(l);
+    if (vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+  return { lotes };
+}
+
+/** Converte o texto digitado para uma quadra no conjunto de chaves de lote; erro se o formato for inválido ou o lote não existir na quadra. */
+function resolverLotesMassa(quadra: string, lotesDaQuadra: string[], texto: string): { chaves: Set<string>; erro?: string } {
+  const { lotes, erro } = parseLotesIntervaloPonto(texto);
+  if (erro) return { chaves: new Set(), erro: `Quadra ${quadra}: ${erro}` };
+  const existentes = new Set(lotesDaQuadra.map(normalizeLoteChave));
+  const naoEncontrados = lotes.filter((l) => !existentes.has(normalizeLoteChave(l)));
+  if (naoEncontrados.length > 0) {
+    return { chaves: new Set(), erro: `Quadra ${quadra}: lote(s) não encontrado(s): ${naoEncontrados.join(", ")}. Nada foi alterado.` };
+  }
+  return { chaves: new Set(lotes.map(normalizeLoteChave)) };
+}
+
 /**
  * A partir dos campos quadra e lote (que podem ser múltiplos),
  * retorna pares [{quadra, lote}] associando pela ordem quando ambos são múltiplos.
@@ -6649,7 +6704,7 @@ const EmpreendimentosSection = ({
                           <div className="space-y-4">
                             <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
                               <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
-                              <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                              <p>As quadras selecionadas serão marcadas como <span className="font-bold text-slate-700">indisponíveis</span>: a quadra inteira se o campo de lotes ficar vazio, ou só os lotes informados. Use <span className="font-bold text-slate-700">vírgula para intervalo</span> e <span className="font-bold text-slate-700">ponto para separar</span> (ex.: <span className="font-bold text-slate-700">1,4.8.38</span> = lotes 1, 2, 3, 4, 8 e 38). Lotes com venda ativa não serão alterados.</p>
                             </div>
                             <div>
                               <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
@@ -6678,9 +6733,32 @@ const EmpreendimentosSection = ({
                                 })}
                               </div>
                               {bulkSelectedQuadras.length > 0 && (
-                                <p className="mt-3 text-xs text-slate-500 font-medium">
-                                  {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""} → todos os lotes disponíveis serão bloqueados.
-                                </p>
+                                <div className="mt-4 space-y-3">
+                                  {bulkSelectedQuadras.map(q => {
+                                    const texto = (bulkLotesEspecificos[q] || "").trim();
+                                    const r = texto ? parseLotesIntervaloPonto(texto) : null;
+                                    return (
+                                      <div key={q} className="rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-2">
+                                        <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                          Quadra {q} — lotes a bloquear (vazio = quadra inteira)
+                                        </label>
+                                        <input
+                                          type="text"
+                                          className="input-field text-sm font-bold w-full"
+                                          placeholder="Ex: 1,4.8.38"
+                                          value={bulkLotesEspecificos[q] ?? ""}
+                                          onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                        />
+                                        {!r && <p className="text-[10px] text-slate-400 font-medium">Todos os lotes da quadra serão bloqueados.</p>}
+                                        {r?.erro && <p className="text-[10px] text-red-600 font-bold">{r.erro}</p>}
+                                        {r && !r.erro && r.lotes.length > 0 && <p className="text-[10px] text-slate-600 font-bold">Bloquear: {r.lotes.join(", ")}</p>}
+                                      </div>
+                                    );
+                                  })}
+                                  <p className="text-xs text-slate-500 font-medium">
+                                    {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""}.
+                                  </p>
+                                </div>
                               )}
                             </div>
                           </div>
@@ -6690,7 +6768,7 @@ const EmpreendimentosSection = ({
                         <div className="space-y-4">
                           <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
                             <p className="font-bold mb-1">ℹ️ Como funciona</p>
-                            <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>.</p>
+                            <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> usando <span className="font-bold">vírgula para intervalo</span> e <span className="font-bold">ponto para separar</span>, ex.: <span className="font-bold">1,4.8.38</span>. Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>.</p>
                           </div>
                           <div>
                             <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
@@ -6714,13 +6792,18 @@ const EmpreendimentosSection = ({
                                     </button>
                                     {isSelected && (
                                       <div className="px-4 py-3 bg-white">
-                                        <label className="label text-[10px] mb-1">Lotes disponíveis (separados por vírgula)</label>
+                                        <label className="label text-[10px] mb-1">Lotes disponíveis (vírgula = intervalo, ponto separa)</label>
                                         <input
                                           className="input-field text-xs h-9"
-                                          placeholder="Ex: 01, 02, 05, 10"
+                                          placeholder="Ex: 1,4.8.38"
                                           value={bulkLotesEspecificos[q] || ""}
                                           onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
                                         />
+                                        {(() => {
+                                          const r = parseLotesIntervaloPonto(bulkLotesEspecificos[q] || "");
+                                          if (r.erro) return <p className="text-[10px] text-red-600 font-bold mt-1">{r.erro}</p>;
+                                          return r.lotes.length > 0 ? <p className="text-[10px] text-emerald-600 font-bold mt-1">Disponíveis: {r.lotes.join(", ")}</p> : null;
+                                        })()}
                                       </div>
                                     )}
                                   </div>
@@ -6741,10 +6824,21 @@ const EmpreendimentosSection = ({
                         const quadraList = (lotRegDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
                         const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
                         const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
+                        const lotesDoDev = (q: string) => getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
+                        // Vírgula = intervalo, ponto = separa itens (ex.: 1,4.8.38). Em "Indisponíveis", vazio = quadra inteira.
+                        const selecaoPorQuadra: Record<string, Set<string> | null> = {};
+                        for (const q of bulkSelectedQuadras) {
+                          const texto = (bulkLotesEspecificos[q] || "").trim();
+                          if (bulkAvailTab === "marcarIndisponiveis" && !texto) { selecaoPorQuadra[q] = null; continue; }
+                          const r = resolverLotesMassa(q, lotesDoDev(q), texto);
+                          if (r.erro) { alert(r.erro); return; }
+                          selecaoPorQuadra[q] = r.chaves;
+                        }
                         if (bulkAvailTab === "marcarIndisponiveis") {
                           bulkSelectedQuadras.forEach(q => {
-                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                            lotes.forEach(l => {
+                            const alvo = selecaoPorQuadra[q];
+                            lotesDoDev(q).forEach(l => {
+                              if (alvo && !alvo.has(normalizeLoteChave(l))) return;
                               const key = `${q}-${l}`.toUpperCase();
                               const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
                               if (!temVendaAtiva) {
@@ -6754,13 +6848,12 @@ const EmpreendimentosSection = ({
                           });
                         } else {
                           bulkSelectedQuadras.forEach(q => {
-                            const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                            const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
-                            lotes.forEach(l => {
+                            const disponiveis = selecaoPorQuadra[q] || new Set<string>();
+                            lotesDoDev(q).forEach(l => {
                               const key = `${q}-${l}`.toUpperCase();
                               const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
                               if (!temVendaAtiva) {
-                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.has(normalizeLoteChave(l)) ? "disponivel" : "indisponivel" };
                               }
                             });
                           });
@@ -6932,7 +7025,7 @@ const EmpreendimentosSection = ({
                       <div className="space-y-4">
                         <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
                           <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
-                          <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
+                          <p>As quadras selecionadas serão marcadas como <span className="font-bold text-slate-700">indisponíveis</span>: a quadra inteira se o campo de lotes ficar vazio, ou só os lotes informados. Use <span className="font-bold text-slate-700">vírgula para intervalo</span> e <span className="font-bold text-slate-700">ponto para separar</span> (ex.: <span className="font-bold text-slate-700">1,4.8.38</span> = lotes 1, 2, 3, 4, 8 e 38). Lotes com venda ativa não serão alterados.</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
@@ -6961,9 +7054,32 @@ const EmpreendimentosSection = ({
                             })}
                           </div>
                           {bulkSelectedQuadras.length > 0 && (
-                            <p className="mt-3 text-xs text-slate-500 font-medium">
-                              {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? 's' : ''} selecionada{bulkSelectedQuadras.length > 1 ? 's' : ''} → todos os lotes disponíveis serão bloqueados.
-                            </p>
+                            <div className="mt-4 space-y-3">
+                              {bulkSelectedQuadras.map(q => {
+                                const texto = (bulkLotesEspecificos[q] || "").trim();
+                                const r = texto ? parseLotesIntervaloPonto(texto) : null;
+                                return (
+                                  <div key={q} className="rounded-xl border border-slate-200 bg-white px-4 py-3 space-y-2">
+                                    <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
+                                      Quadra {q} — lotes a bloquear (vazio = quadra inteira)
+                                    </label>
+                                    <input
+                                      type="text"
+                                      className="input-field text-sm font-bold w-full"
+                                      placeholder="Ex: 1,4.8.38"
+                                      value={bulkLotesEspecificos[q] ?? ""}
+                                      onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                                    />
+                                    {!r && <p className="text-[10px] text-slate-400 font-medium">Todos os lotes da quadra serão bloqueados.</p>}
+                                    {r?.erro && <p className="text-[10px] text-red-600 font-bold">{r.erro}</p>}
+                                    {r && !r.erro && r.lotes.length > 0 && <p className="text-[10px] text-slate-600 font-bold">Bloquear: {r.lotes.join(", ")}</p>}
+                                  </div>
+                                );
+                              })}
+                              <p className="text-xs text-slate-500 font-medium">
+                                {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""}.
+                              </p>
+                            </div>
                           )}
                         </div>
                       </div>
@@ -6975,7 +7091,7 @@ const EmpreendimentosSection = ({
                     <div className="space-y-4">
                       <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
                         <p className="font-bold mb-1">ℹ️ Como funciona</p>
-                        <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>. Lotes com venda ativa não são alterados.</p>
+                        <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> usando <span className="font-bold">vírgula para intervalo</span> e <span className="font-bold">ponto para separar</span>, ex.: <span className="font-bold">1,4.8.38</span>. Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>. Lotes com venda ativa não são alterados.</p>
                       </div>
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
@@ -7000,20 +7116,20 @@ const EmpreendimentosSection = ({
                                 {isSelected && (
                                   <div className="px-4 py-3 bg-white space-y-2">
                                     <label className="text-[9px] font-black uppercase tracking-widest text-slate-400">
-                                      Lotes disponíveis (separados por vírgula)
+                                      Lotes disponíveis (vírgula = intervalo, ponto separa)
                                     </label>
                                     <input
                                       type="text"
                                       className="input-field text-sm font-bold w-full"
-                                      placeholder="Ex: 1, 3, 5, 10, 15"
+                                      placeholder="Ex: 1,4.8.38"
                                       value={bulkLotesEspecificos[q] ?? ""}
                                       onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
                                     />
-                                    {bulkLotesEspecificos[q]?.trim() && (
-                                      <p className="text-[10px] text-emerald-600 font-bold">
-                                        Disponíveis: {bulkLotesEspecificos[q].split(",").map(s => s.trim()).filter(Boolean).join(", ")}
-                                      </p>
-                                    )}
+                                    {(() => {
+                                      const r = parseLotesIntervaloPonto(bulkLotesEspecificos[q] || "");
+                                      if (r.erro) return <p className="text-[10px] text-red-600 font-bold mt-1">{r.erro}</p>;
+                                      return r.lotes.length > 0 ? <p className="text-[10px] text-emerald-600 font-bold mt-1">Disponíveis: {r.lotes.join(", ")}</p> : null;
+                                    })()}
                                   </div>
                                 )}
                               </div>
@@ -7035,12 +7151,21 @@ const EmpreendimentosSection = ({
                     const quadraList = (bulkAvailDev.quadras || "").split(",").map(q => q.trim()).filter(Boolean);
                     const vendas = sales.filter(s => s.empreendimentoId === bulkAvailDev.id);
                     const newLotesInfo: Record<string, any> = { ...(bulkAvailDev.lotesInfo || {}) };
-
+                    const lotesDoDev = (q: string) => getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
+                    // Vírgula = intervalo, ponto = separa itens (ex.: 1,4.8.38). Em "Indisponíveis", vazio = quadra inteira.
+                    const selecaoPorQuadra: Record<string, Set<string> | null> = {};
+                    for (const q of bulkSelectedQuadras) {
+                      const texto = (bulkLotesEspecificos[q] || "").trim();
+                      if (bulkAvailTab === "marcarIndisponiveis" && !texto) { selecaoPorQuadra[q] = null; continue; }
+                      const r = resolverLotesMassa(q, lotesDoDev(q), texto);
+                      if (r.erro) { alert(r.erro); return; }
+                      selecaoPorQuadra[q] = r.chaves;
+                    }
                     if (bulkAvailTab === "marcarIndisponiveis") {
-                      // Para cada quadra selecionada, marcar todos os lotes (sem venda ativa) como indisponíveis
                       bulkSelectedQuadras.forEach(q => {
-                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
-                        lotes.forEach(l => {
+                        const alvo = selecaoPorQuadra[q];
+                        lotesDoDev(q).forEach(l => {
+                          if (alvo && !alvo.has(normalizeLoteChave(l))) return;
                           const key = `${q}-${l}`.toUpperCase();
                           const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
                           if (!temVendaAtiva) {
@@ -7049,21 +7174,17 @@ const EmpreendimentosSection = ({
                         });
                       });
                     } else {
-                      // Para cada quadra com lotes específicos informados, marcar os informados como disponíveis e os demais como indisponíveis
                       bulkSelectedQuadras.forEach(q => {
-                        const lotes = getLotesDeQuadra(bulkAvailDev.lotesPorQuadra?.[q]);
-                        const disponiveis = (bulkLotesEspecificos[q] || "").split(",").map(s => s.trim()).filter(Boolean);
-                        lotes.forEach(l => {
+                        const disponiveis = selecaoPorQuadra[q] || new Set<string>();
+                        lotesDoDev(q).forEach(l => {
                           const key = `${q}-${l}`.toUpperCase();
                           const temVendaAtiva = !!findVendaAtivaDoLote(vendas, bulkAvailDev.id, q, l);
                           if (!temVendaAtiva) {
-                            const isDisponivel = disponiveis.includes(l);
-                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: isDisponivel ? "disponivel" : "indisponivel" };
+                            newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.has(normalizeLoteChave(l)) ? "disponivel" : "indisponivel" };
                           }
                         });
                       });
                     }
-
                     onUpdateLotesInfo(bulkAvailDev.id, newLotesInfo);
                     setBulkAvailDev(null);
                     setBulkSelectedQuadras([]);
