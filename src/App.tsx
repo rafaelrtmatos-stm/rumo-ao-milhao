@@ -658,6 +658,93 @@ function isVendaAtiva(venda?: Venda | null): boolean {
   return !!venda && venda.status !== "cancelado" && venda.status !== "rascunho";
 }
 
+// ===== Aba Massa: campo de lotes por quadra + regra de lotes vendidos (travados) =====
+/**
+ * Lê o campo de lotes da aba Massa. Aceita número, intervalo ("1-9", "1 a 9") e listas que
+ * misturam os dois ("1-9, 12, 15-20"). Sem intervalo dentro da lista, mantém a regra de
+ * normalizeLotsInput (inclusive "1,20" = do lote 1 ao 20).
+ */
+function parseLotesMassa(input: string): string[] {
+  const raw = (input || "").trim();
+  if (!raw) return [];
+  const tokens = raw.split(/[,;]|\se\s/i).map((t) => t.trim()).filter(Boolean);
+  const rangeRe = /^(\d+)\s*(?:-|até|a)\s*(\d+)$/i;
+  if (tokens.length < 2 || !tokens.some((t) => rangeRe.test(t))) return normalizeLotsInput(raw);
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const t of tokens) {
+    const m = t.match(rangeRe);
+    const itens: string[] = [];
+    if (m) {
+      const a = parseInt(m[1], 10);
+      const b = parseInt(m[2], 10);
+      if (b >= a && b - a <= 5000) {
+        for (let i = a; i <= b; i++) itens.push(String(i));
+      } else {
+        itens.push(t);
+      }
+    } else {
+      itens.push(t);
+    }
+    for (const it of itens) {
+      if (!seen.has(it)) {
+        seen.add(it);
+        out.push(it);
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Escreve uma lista de lotes no formato que parseLotesMassa lê de volta sem mudar o sentido
+ * (sequências de 3+ viram "a-b"). Se sobrarem exatamente dois números soltos, usa ";" para
+ * não serem lidos como intervalo ("5, 9" seria 5 a 9).
+ */
+function formatLotesParaCampoMassa(lotes: string[]): string {
+  const ehNumero = (l: string) => /^[1-9]\d*$/.test(l);
+  const nums = Array.from(new Set(lotes.filter(ehNumero).map((l) => parseInt(l, 10)))).sort((a, b) => a - b);
+  const outros = lotes.filter((l) => !ehNumero(l));
+  const partes: string[] = [];
+  let i = 0;
+  while (i < nums.length) {
+    let j = i;
+    while (j + 1 < nums.length && nums[j + 1] === nums[j] + 1) j++;
+    if (j - i >= 2) {
+      partes.push(`${nums[i]}-${nums[j]}`);
+    } else {
+      for (let k = i; k <= j; k++) partes.push(String(nums[k]));
+    }
+    i = j + 1;
+  }
+  partes.push(...outros);
+  const soDoisNumeros = partes.length === 2 && partes.every((p) => /^\d+$/.test(p));
+  return partes.join(soDoisNumeros ? "; " : ", ");
+}
+
+/**
+ * Separa os lotes de uma quadra conforme o mapa hoje.
+ * Vendido = venda ativa OU status "vendido" (mesma regra de getLotStatusForSale).
+ * "abertos" = disponíveis e reservados (tudo que não está bloqueado nem vendido).
+ */
+function classificarLotesQuadraMassa(
+  dev: Empreendimento,
+  vendas: Venda[],
+  quadra: string,
+): { todos: string[]; vendidos: string[]; indisponiveis: string[]; abertos: string[] } {
+  const todos = getLotesDeQuadra(dev.lotesPorQuadra?.[quadra]);
+  const vendidos: string[] = [];
+  const indisponiveis: string[] = [];
+  const abertos: string[] = [];
+  todos.forEach((l) => {
+    const st = getLotStatusForSale(dev, quadra, l, vendas).status;
+    if (st === "vendido") vendidos.push(l);
+    else if (st === "indisponivel") indisponiveis.push(l);
+    else abertos.push(l);
+  });
+  return { todos, vendidos, indisponiveis, abertos };
+}
+
 function findVendaAtivaDoLote(
   vendas: Venda[],
   empreendimentoId: string,
@@ -17491,85 +17578,133 @@ const EmpreendimentosSection = ({
                       if (quadraList.length === 0) {
                         return <p className="text-slate-400 text-sm text-center py-8">Nenhuma quadra configurada neste empreendimento.</p>;
                       }
-                      if (bulkAvailTab === "marcarIndisponiveis") {
+                      const vendasDevMassa = sales.filter(s => s.empreendimentoId === lotRegDev.id);
+                      const camposMassa = (q: string) => classificarLotesQuadraMassa(lotRegDev, vendasDevMassa, q);
+                      const modoAtual: "indisponiveis" | "disponiveis" = bulkAvailTab === "marcarIndisponiveis" ? "indisponiveis" : "disponiveis";
+                      // Já vem preenchido de acordo com o mapa: lotes hoje indisponíveis (ou, na outra aba, os livres)
+                      const preencherQuadraMassa = (q: string): string => {
+                        const c = camposMassa(q);
+                        return formatLotesParaCampoMassa(modoAtual === "indisponiveis" ? c.indisponiveis : c.abertos);
+                      };
+                      const alternarQuadraMassa = (q: string) => {
+                        if (bulkSelectedQuadras.includes(q)) {
+                          setBulkSelectedQuadras(prev => prev.filter(x => x !== q));
+                        } else {
+                          setBulkSelectedQuadras(prev => [...prev, q]);
+                          setBulkLotesEspecificos(prev => ({ ...prev, [q]: preencherQuadraMassa(q) }));
+                        }
+                      };
+                      const alternarTodasMassa = () => {
+                        if (quadraList.length === bulkSelectedQuadras.length) {
+                          setBulkSelectedQuadras([]);
+                          setBulkLotesEspecificos({});
+                          return;
+                        }
+                        const mapa: Record<string, string> = {};
+                        quadraList.forEach(q => { mapa[q] = preencherQuadraMassa(q); });
+                        setBulkSelectedQuadras([...quadraList]);
+                        setBulkLotesEspecificos(mapa);
+                      };
+                      const renderCampoLotesMassa = (q: string) => {
+                        const c = camposMassa(q);
+                        const texto = bulkLotesEspecificos[q] ?? "";
+                        const vendidosSet = new Set(c.vendidos.map(normalizeLotKeyPart));
+                        const todosSet = new Set(c.todos.map(normalizeLotKeyPart));
+                        const lidos = parseLotesMassa(texto);
+                        const ignorados = lidos.filter(l => vendidosSet.has(normalizeLotKeyPart(l)));
+                        const validos = lidos.filter(l => !vendidosSet.has(normalizeLotKeyPart(l)));
+                        const naoExistem = validos.filter(l => !todosSet.has(normalizeLotKeyPart(l)));
+                        const livres = c.todos.filter(l => !vendidosSet.has(normalizeLotKeyPart(l)));
                         return (
-                          <div className="space-y-4">
-                            <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-600 border border-slate-200">
-                              <p className="font-bold text-slate-700 mb-1">⚠️ Atenção</p>
-                              <p>Todos os lotes das quadras selecionadas serão marcados como <span className="font-bold text-slate-700">indisponíveis</span>. Lotes com venda ativa não serão alterados.</p>
-                            </div>
-                            <div>
-                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-2">Selecionar Quadras</p>
-                              <div className="flex flex-wrap gap-2 mb-3">
+                          <div className="px-4 py-3 bg-white space-y-2">
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="label text-[10px] mb-1">
+                                {modoAtual === "indisponiveis" ? "Lotes indisponíveis (separados por vírgula)" : "Lotes disponíveis (separados por vírgula)"}
+                              </label>
+                              <span className="flex items-center gap-3 shrink-0">
                                 <button
-                                  onClick={() => setBulkSelectedQuadras(quadraList.length === bulkSelectedQuadras.length ? [] : [...quadraList])}
-                                  className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                                  type="button"
+                                  onClick={() => setBulkLotesEspecificos(prev => ({ ...prev, [q]: preencherQuadraMassa(q) }))}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline"
                                 >
-                                  {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                                  Recarregar do mapa
                                 </button>
-                              </div>
-                              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
-                                {quadraList.map(q => {
-                                  const isSelected = bulkSelectedQuadras.includes(q);
-                                  const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                                  return (
-                                    <button
-                                      key={q}
-                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
-                                      className={`flex flex-col items-center gap-0.5 px-3 py-3 rounded-xl border-2 text-xs font-bold transition-all ${isSelected ? "bg-slate-700 text-white border-slate-700 shadow-md" : "bg-white border-slate-200 text-slate-600 hover:border-slate-400"}`}
-                                    >
-                                      <span>Q.{q}</span>
-                                      {lotes.length > 0 && <span className={`text-[9px] font-bold ${isSelected ? "text-slate-300" : "text-slate-400"}`}>{lotes.length} lotes</span>}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                              {bulkSelectedQuadras.length > 0 && (
-                                <p className="mt-3 text-xs text-slate-500 font-medium">
-                                  {bulkSelectedQuadras.length} quadra{bulkSelectedQuadras.length > 1 ? "s" : ""} selecionada{bulkSelectedQuadras.length > 1 ? "s" : ""} → todos os lotes disponíveis serão bloqueados.
-                                </p>
-                              )}
+                                <button
+                                  type="button"
+                                  onClick={() => setBulkLotesEspecificos(prev => ({ ...prev, [q]: formatLotesParaCampoMassa(livres) }))}
+                                  className="text-[10px] font-bold text-slate-400 hover:text-slate-600 underline"
+                                >
+                                  Quadra inteira
+                                </button>
+                              </span>
                             </div>
+                            <input
+                              className="input-field text-xs h-9"
+                              placeholder="Ex: 1-9, 12, 15-20 (ou 1,20 = do 1 ao 20)"
+                              value={texto}
+                              onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
+                            />
+                            {c.vendidos.length > 0 && (
+                              <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">🔒 Vendidos (travados)</span>
+                                {c.vendidos.map(l => (
+                                  <span key={l} className="px-1.5 py-0.5 rounded-md bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-500">{l}</span>
+                                ))}
+                              </div>
+                            )}
+                            {ignorados.length > 0 && (
+                              <p className="text-[10px] text-amber-600 font-bold">Ignorados por já estarem vendidos: {ignorados.join(", ")}</p>
+                            )}
+                            {naoExistem.length > 0 && (
+                              <p className="text-[10px] text-red-600 font-bold">Não existem nesta quadra: {naoExistem.join(", ")}</p>
+                            )}
+                            <p className="text-[10px] text-slate-500 font-medium">
+                              {modoAtual === "indisponiveis"
+                                ? `${validos.filter(l => todosSet.has(normalizeLotKeyPart(l))).length} lote(s) ficam indisponíveis; os demais lotes livres da quadra ficam disponíveis.`
+                                : `${validos.filter(l => todosSet.has(normalizeLotKeyPart(l))).length} lote(s) ficam disponíveis; os demais lotes livres da quadra ficam indisponíveis.`}
+                            </p>
                           </div>
                         );
-                      }
+                      };
                       return (
                         <div className="space-y-4">
-                          <div className="p-3 bg-emerald-50 rounded-xl text-xs text-emerald-700 border border-emerald-200">
+                          <div className={`p-3 rounded-xl text-xs border ${modoAtual === "indisponiveis" ? "bg-slate-50 text-slate-600 border-slate-200" : "bg-emerald-50 text-emerald-700 border-emerald-200"}`}>
                             <p className="font-bold mb-1">ℹ️ Como funciona</p>
-                            <p>Para cada quadra selecionada, informe os lotes que ficam <span className="font-bold">disponíveis</span> (separados por vírgula). Os demais lotes da quadra serão marcados como <span className="font-bold">indisponíveis</span>.</p>
+                            <p>
+                              Para cada quadra selecionada, o campo já vem preenchido de acordo com o mapa. Informe os lotes que ficam <span className="font-bold">{modoAtual === "indisponiveis" ? "indisponíveis" : "disponíveis"}</span> (lista ou intervalo, como 1-9). Os demais lotes livres da quadra ficam <span className="font-bold">{modoAtual === "indisponiveis" ? "disponíveis" : "indisponíveis"}</span>.
+                            </p>
+                            <p className="mt-1">🔒 Lotes vendidos ficam travados: não entram na lista e nunca são alterados por aqui.</p>
                           </div>
                           <div>
-                            <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-3">Quadras</p>
+                            <div className="flex items-center justify-between mb-3">
+                              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Quadras</p>
+                              <button
+                                type="button"
+                                onClick={alternarTodasMassa}
+                                className={`text-xs font-bold px-3 py-1.5 rounded-lg border transition-colors ${bulkSelectedQuadras.length === quadraList.length ? "bg-slate-700 text-white border-slate-700" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                              >
+                                {bulkSelectedQuadras.length === quadraList.length ? "Desmarcar todas" : "Todas as quadras"}
+                              </button>
+                            </div>
                             <div className="space-y-3">
                               {quadraList.map(q => {
                                 const isSelected = bulkSelectedQuadras.includes(q);
                                 const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
                                 return (
-                                  <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? "border-emerald-300" : "border-slate-100"}`}>
+                                  <div key={q} className={`rounded-xl border-2 overflow-hidden transition-all ${isSelected ? (modoAtual === "indisponiveis" ? "border-slate-400" : "border-emerald-300") : "border-slate-100"}`}>
                                     <button
-                                      onClick={() => setBulkSelectedQuadras(prev => isSelected ? prev.filter(x => x !== q) : [...prev, q])}
-                                      className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? "bg-emerald-50 text-emerald-700" : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
+                                      onClick={() => alternarQuadraMassa(q)}
+                                      className={`w-full flex items-center justify-between px-4 py-3 text-xs font-bold transition-colors ${isSelected ? (modoAtual === "indisponiveis" ? "bg-slate-100 text-slate-700" : "bg-emerald-50 text-emerald-700") : "bg-slate-50 text-slate-500 hover:bg-slate-100"}`}
                                     >
                                       <span className="flex items-center gap-2">
-                                        <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300"}`}>
+                                        <span className={`w-4 h-4 rounded flex items-center justify-center border-2 transition-all ${isSelected ? (modoAtual === "indisponiveis" ? "bg-slate-700 border-slate-700 text-white" : "bg-emerald-500 border-emerald-500 text-white") : "border-slate-300"}`}>
                                           {isSelected && <Check size={10} />}
                                         </span>
                                         Quadra {q}
                                       </span>
                                       {lotes.length > 0 && <span className="text-[9px] text-slate-400">{lotes.length} lotes configurados</span>}
                                     </button>
-                                    {isSelected && (
-                                      <div className="px-4 py-3 bg-white">
-                                        <label className="label text-[10px] mb-1">Lotes disponíveis (separados por vírgula)</label>
-                                        <input
-                                          className="input-field text-xs h-9"
-                                          placeholder="Ex: 1,20 (intervalo) ou 1, 3, 7 (lista)"
-                                          value={bulkLotesEspecificos[q] || ""}
-                                          onChange={e => setBulkLotesEspecificos(prev => ({ ...prev, [q]: e.target.value }))}
-                                        />
-                                      </div>
-                                    )}
+                                    {isSelected && renderCampoLotesMassa(q)}
                                   </div>
                                 );
                               })}
@@ -17588,30 +17723,32 @@ const EmpreendimentosSection = ({
                         try {
                           const vendas = sales.filter(s => s.empreendimentoId === lotRegDev.id);
                           const newLotesInfo: Record<string, any> = { ...(lotRegDev.lotesInfo || {}) };
-                          if (bulkAvailTab === "marcarIndisponiveis") {
-                            bulkSelectedQuadras.forEach(q => {
-                              const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                              lotes.forEach(l => {
-                                const key = `${q}-${l}`.toUpperCase();
-                                const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
-                                if (!temVendaAtiva) {
-                                  newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
-                                }
-                              });
+                          const modoIndisp = bulkAvailTab === "marcarIndisponiveis";
+                          bulkSelectedQuadras.forEach(q => {
+                            const c = classificarLotesQuadraMassa(lotRegDev, vendas, q);
+                            const vendidosSet = new Set(c.vendidos.map(normalizeLotKeyPart));
+                            const indispSet = new Set(c.indisponiveis.map(normalizeLotKeyPart));
+                            // Números vendidos digitados no campo são ignorados (lote vendido é travado)
+                            const alvo = new Set(
+                              parseLotesMassa(bulkLotesEspecificos[q] || "")
+                                .map(normalizeLotKeyPart)
+                                .filter(l => !vendidosSet.has(l))
+                            );
+                            c.todos.forEach(l => {
+                              const lk = normalizeLotKeyPart(l);
+                              if (vendidosSet.has(lk)) return;
+                              if (findVendaAtivaDoLote(vendas, lotRegDev.id, q, l)) return;
+                              const key = `${q}-${l}`.toUpperCase();
+                              const ficaIndisponivel = modoIndisp ? alvo.has(lk) : !alvo.has(lk);
+                              const estavaIndisponivel = indispSet.has(lk);
+                              // Só grava o que mudou (reservados e lotes já no estado certo ficam como estão)
+                              if (ficaIndisponivel && !estavaIndisponivel) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "indisponivel" };
+                              } else if (!ficaIndisponivel && estavaIndisponivel) {
+                                newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: "disponivel" };
+                              }
                             });
-                          } else {
-                            bulkSelectedQuadras.forEach(q => {
-                              const lotes = getLotesDeQuadra(lotRegDev.lotesPorQuadra?.[q]);
-                              const disponiveis = normalizeLotsInput(bulkLotesEspecificos[q] || "");
-                              lotes.forEach(l => {
-                                const key = `${q}-${l}`.toUpperCase();
-                                const temVendaAtiva = !!findVendaAtivaDoLote(vendas, lotRegDev.id, q, l);
-                                if (!temVendaAtiva) {
-                                  newLotesInfo[key] = { ...(newLotesInfo[key] || {}), rua: newLotesInfo[key]?.rua || "", status: disponiveis.includes(l) ? "disponivel" : "indisponivel" };
-                                }
-                              });
-                            });
-                          }
+                          });
                           onUpdateLotesInfo(lotRegDev.id, newLotesInfo);
                           setLotRegDev(prev => prev ? applyLotesInfoPatchToEmpreendimento(prev, newLotesInfo, sales) : null);
                           // Mantém o painel/aba aberta para continuar editando — não navega nem limpa a seleção
@@ -17624,7 +17761,7 @@ const EmpreendimentosSection = ({
                       className={`px-8 h-11 rounded-xl font-bold text-sm flex items-center gap-2 transition-colors ${bulkSelectedQuadras.length === 0 ? "bg-slate-100 text-slate-400 cursor-not-allowed" : massaAplicadoOk ? "bg-emerald-600 text-white" : bulkAvailTab === "marcarIndisponiveis" ? "bg-slate-700 hover:bg-slate-900 text-white" : "bg-emerald-500 hover:bg-emerald-600 text-white"}`}
                     >
                       {massaAplicadoOk ? <Check size={15} /> : (bulkAvailTab === "marcarIndisponiveis" ? <X size={15} /> : <Check size={15} />)}
-                      {massaAplicadoOk ? "✓ OK" : (bulkAvailTab === "marcarIndisponiveis" ? "Bloquear Lotes" : "Aplicar Disponibilidade")}
+                      {massaAplicadoOk ? "✓ OK" : (bulkAvailTab === "marcarIndisponiveis" ? "Aplicar Indisponibilidade" : "Aplicar Disponibilidade")}
                     </button>
                   </div>
                 </>
